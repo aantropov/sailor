@@ -3,6 +3,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "Submodules/EditorRemote/RemoteViewportFoundation.h"
@@ -11,11 +12,11 @@ using namespace Sailor::EditorRemote;
 
 namespace
 {
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 

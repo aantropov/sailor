@@ -10,10 +10,6 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 
-#ifndef _SAILOR_IMPORT_
-const char* DebugDrawNode::m_name = "DebugDraw";
-#endif
-
 void DebugDrawNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -21,15 +17,15 @@ void DebugDrawNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	auto colorAttachmentSurface = GetRHIResource("color", frameGraph.GetRawPtr()).DynamicCast<RHI::RHISurface>();
-	auto target = GetTargetAttachment("color", frameGraph.GetRawPtr());
+	auto colorAttachmentSurface = GetRHIResource("color"_h, frameGraph.GetRawPtr()).DynamicCast<RHI::RHISurface>();
+	auto target = GetTargetAttachment("color"_h, frameGraph.GetRawPtr());
 
-	auto depthAttachment = GetTargetAttachment("depthStencil", frameGraph.GetRawPtr());
-	if (!depthAttachment)
-	{
-		const auto surface = frameGraph->GetSurface("DepthBuffer");
-		depthAttachment = surface ? surface->GetTarget() : frameGraph->GetRenderTarget("DepthBuffer");
-	}
+	auto depthResource = GetRHIResource("depthStencil"_h, frameGraph.GetRawPtr());
+	if (!depthResource) depthResource = frameGraph->GetResource("DepthBuffer"_h);
+	const auto depthSurface = depthResource.DynamicCast<RHISurface>();
+	const bool bUsesMsaaDepth = colorAttachmentSurface && colorAttachmentSurface->NeedsResolve();
+	const RHITexturePtr depthAttachment = depthSurface ?
+		(bUsesMsaaDepth ? depthSurface->GetTarget() : depthSurface->GetResolved()) : depthResource.DynamicCast<RHITexture>();
 
 	if (!target || !depthAttachment || !sceneView.m_debugDrawSecondaryCmdList)
 	{

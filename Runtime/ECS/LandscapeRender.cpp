@@ -2,142 +2,128 @@
 
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Model/ModelImporter.h"
-#include "AssetRegistry/Texture/TextureImporter.h"
 #include "Containers/Hash.h"
 #include "Core/StringHash.h"
+#include "Engine/GameObject.h"
+#include "Engine/World.h"
 
 #include <cmath>
 #include <limits>
 #include <utility>
 
+using namespace Sailor;
+using namespace Sailor::LandscapeECSInternal;
+
+void LandscapeECS::UpdateTerrainRenderProxy(size_t componentIndex, size_t chunkIndex, RHI::RHIMeshPtr mesh)
+{
+	auto& data = m_components[componentIndex];
+	auto& chunk = data.m_chunks[chunkIndex];
+	// The scene record carries the owner transform; retained topology stays local.
+	const glm::mat4 localMatrix(1.0f);
+	RHI::RHISceneViewProxy proxy;
+	proxy.m_lodPolicy.m_bEnabled = !mesh->m_lods.IsEmpty();
+	proxy.m_lodPolicy.m_minLod = 0u;
+	proxy.m_lodPolicy.m_maxLod = mesh->GetNumLods() - 1u;
+	proxy.m_lodPolicy.m_cameraDistanceThresholds = data.m_lodDistances;
+	if (proxy.m_lodPolicy.m_cameraDistanceThresholds.Num() >= mesh->GetNumLods())
+	{
+		proxy.m_lodPolicy.m_cameraDistanceThresholds.Resize(mesh->GetNumLods() - 1u);
+	}
+	proxy.m_meshes.Add(mesh);
+	proxy.m_meshModelMatrices.Add(localMatrix);
+	auto rhiMaterial = data.m_runtimeMaterial->GetOrAddRHI(mesh->m_vertexDescription);
+	const auto& metadata = data.m_runtimeMaterial->GetRenderMetadata();
+	metadata.AppendTo(proxy, rhiMaterial);
+	auto shadowCaster = TSharedPtr<RHI::RHIShadowCasterProxy>::Make();
+	metadata.AppendShadowMesh(*shadowCaster, mesh, localMatrix, rhiMaterial);
+	proxy.m_shadowCaster = shadowCaster->m_meshes.IsEmpty() ? RHI::RHIShadowCasterProxyPtr{} : shadowCaster;
+	chunk.m_resource = RHI::RHISceneProxyResourcePtr::Make(std::move(proxy));
+}
+
+bool LandscapeECS::UpdateVegetationRenderProxies(size_t componentIndex)
+{
+	auto& data = m_components[componentIndex];
+	bool bChanged = false;
+	for (size_t profileIndex = 0u; profileIndex < data.m_vegetationProfiles.Num(); ++profileIndex)
+	{
+		auto& profile = data.m_vegetationProfiles[profileIndex];
+		const auto revision = CalculateVegetationRenderRevision(profile);
+		if (profile.m_cachedRenderRevision == revision || data.m_dirtyVegetationProfiles.Contains(static_cast<uint32_t>(profileIndex)))
+		{
+			continue;
+		}
+		bool bProfileReady = true;
+		for (size_t chunkIndex = 0u; chunkIndex < data.m_chunks.Num(); ++chunkIndex)
+		{
+			if (data.m_pendingVegetation.FindIf([=](const auto& pending)
+				{ return pending.m_chunkIndex == chunkIndex && pending.m_profileIndex == profileIndex; }) != size_t(-1))
+			{
+				continue;
+			}
+			auto& proxies = data.m_chunks[chunkIndex].m_vegetationProxies;
+			const size_t index = proxies.FindIf([=](const auto& proxy) { return proxy.m_profileIndex == profileIndex; });
+			const auto* previous = index != size_t(-1) ? &proxies[index] : nullptr;
+			if ((!previous && profile.m_settings.m_residency == ELandscapeVegetationResidency::Grass) ||
+				(previous && previous->m_renderRevision == revision))
+			{
+				continue;
+			}
+			LandscapeVegetationRenderInstances instances;
+			if (previous)
+			{
+				const auto& group = previous->m_resource->m_proxy.m_instancedGroups[0];
+				instances = { group.m_instanceTransforms, group.m_instanceLodBiases,
+					group.m_instanceCullDistanceScales, group.m_instanceShadowDistanceScales };
+			}
+			else
+			{
+				for (const auto& placement : data.m_chunks[chunkIndex].m_bakeVegetation)
+					if (placement.m_profileIndex == profileIndex) AppendRenderInstance(placement, instances);
+			}
+			const auto owner = const_cast<ObjectPtr&>(data.GetOwner()).StaticCast<GameObject>();
+			LandscapeVegetationRenderProxy proxy;
+			const auto result = BuildLandscapeVegetationProxy(profileIndex, profile, std::move(instances),
+				ResolveLandscapeProxyMobility(owner->GetMobilityType(), profile.m_settings.m_residency),
+				previous ? previous->m_revision : data.m_chunks[chunkIndex].m_vegetationRevision, proxy);
+			if (result == EVegetationProxyBuildResult::Pending)
+			{
+				if (profile.m_settings.m_residency == ELandscapeVegetationResidency::Persistent)
+				{
+					data.m_pendingVegetation.Add({ chunkIndex, profileIndex, std::move(instances) });
+				}
+				else
+				{
+					// Retry metadata on the current residents; the grass scheduler may replace or evict them.
+					bProfileReady = false;
+				}
+				continue;
+			}
+			if (result == EVegetationProxyBuildResult::Success)
+			{
+				if (previous)
+				{
+					proxy.m_viewRevision = previous->m_viewRevision;
+					proxies[index] = std::move(proxy);
+				}
+				else proxies.Add(std::move(proxy));
+				bChanged = true;
+			}
+			else if (previous)
+			{
+				proxies.RemoveAtSwap(index);
+				bChanged = true;
+			}
+		}
+		if (bProfileReady)
+		{
+			profile.m_cachedRenderRevision = revision;
+		}
+	}
+	return bChanged;
+}
+
 namespace Sailor::LandscapeECSInternal
 {
-	float GetProfileValue(const TVector<float>& values, size_t index, float fallback)
-	{
-		return index < values.Num() && std::isfinite(values[index]) ? values[index] : fallback;
-	}
-
-	void AppendShadowMesh(RHI::RHIShadowCasterProxy& shadowCaster,
-		const RHI::RHIMeshPtr& mesh,
-		const glm::mat4& worldMatrix,
-		const MaterialPtr& material,
-		float maxCameraDistance)
-	{
-		if (!mesh || !material)
-		{
-			return;
-		}
-
-		const size_t opaqueQueueTag = "Opaque"_h.GetHash();
-		const size_t maskedQueueTag = "Masked"_h.GetHash();
-		const size_t renderQueueTag = material->GetRenderState().GetTag();
-		if (renderQueueTag != opaqueQueueTag && renderQueueTag != maskedQueueTag)
-		{
-			return;
-		}
-
-		RHI::RHIShadowMeshProxy shadowMesh;
-		shadowMesh.m_mesh = mesh;
-		shadowMesh.m_worldMatrix = worldMatrix;
-		shadowMesh.m_renderQueueTag = renderQueueTag;
-		shadowMesh.m_maxCameraDistance = maxCameraDistance;
-		if (material->GetRenderState().IsRequiredCustomDepthShader())
-		{
-			auto rhiMaterialSource = material;
-			shadowMesh.m_customDepthMaterial = rhiMaterialSource->GetOrAddRHI(mesh->m_vertexDescription);
-			shadowMesh.m_customDepthShader = material->GetShader();
-		}
-
-		auto* textureImporter = App::GetSubmodule<TextureImporter>();
-		if (renderQueueTag == maskedQueueTag)
-		{
-			const glm::vec4* baseColorFactor = nullptr;
-			if (!material->GetUniformsVec4().Find("material.baseColorFactor", baseColorFactor))
-			{
-				material->GetUniformsVec4().Find("material.albedo", baseColorFactor);
-			}
-			if (baseColorFactor)
-			{
-				shadowMesh.m_baseColorFactor = *baseColorFactor;
-			}
-
-			const float* alphaCutoff = nullptr;
-			if (material->GetUniformsFloat().Find("material.alphaCutoff", alphaCutoff) && alphaCutoff)
-			{
-				shadowMesh.m_alphaCutoff = *alphaCutoff;
-			}
-
-			const TexturePtr* baseColorTexture = nullptr;
-			if (!material->GetSamplers().Find("baseColorSampler", baseColorTexture))
-			{
-				material->GetSamplers().Find("albedoSampler", baseColorTexture);
-			}
-			if (textureImporter && baseColorTexture && *baseColorTexture)
-			{
-				shadowMesh.m_baseColorSampler =
-					static_cast<uint32_t>(textureImporter->GetTextureIndex((*baseColorTexture)->GetFileId()));
-			}
-		}
-#if defined(__APPLE__)
-		if (textureImporter)
-		{
-			for (const auto& sampler : material->GetSamplers())
-			{
-				shadowMesh.m_materialTextureSamplers.Add(
-					sampler.m_second
-						? static_cast<uint32_t>(textureImporter->GetTextureIndex(sampler.m_second->GetFileId()))
-						: 0u);
-			}
-		}
-#endif
-		shadowCaster.m_meshes.Add(std::move(shadowMesh));
-	}
-
-	void AppendDepthMaterialMetadata(RHI::RHISceneViewProxy& proxy, const MaterialPtr& material)
-	{
-		glm::vec4 baseColorFactor{1.0f};
-		float alphaCutoff = 0.5f;
-		uint32_t baseColorSampler = 0u;
-		if (material->GetRenderState().GetTag() != "Masked"_h.GetHash())
-		{
-			proxy.m_baseColorFactors.Add(baseColorFactor);
-			proxy.m_alphaCutoffs.Add(alphaCutoff);
-			proxy.m_baseColorSamplers.Add(baseColorSampler);
-			return;
-		}
-
-		const glm::vec4* materialBaseColorFactor = nullptr;
-		if (!material->GetUniformsVec4().Find("material.baseColorFactor", materialBaseColorFactor))
-		{
-			material->GetUniformsVec4().Find("material.albedo", materialBaseColorFactor);
-		}
-		if (materialBaseColorFactor)
-		{
-			baseColorFactor = *materialBaseColorFactor;
-		}
-		proxy.m_baseColorFactors.Add(baseColorFactor);
-
-		const float* materialAlphaCutoff = nullptr;
-		if (material->GetUniformsFloat().Find("material.alphaCutoff", materialAlphaCutoff) && materialAlphaCutoff)
-		{
-			alphaCutoff = *materialAlphaCutoff;
-		}
-		proxy.m_alphaCutoffs.Add(alphaCutoff);
-
-		const TexturePtr* baseColorTexture = nullptr;
-		if (!material->GetSamplers().Find("baseColorSampler", baseColorTexture))
-		{
-			material->GetSamplers().Find("albedoSampler", baseColorTexture);
-		}
-		auto* textureImporter = App::GetSubmodule<TextureImporter>();
-		if (textureImporter && baseColorTexture && *baseColorTexture)
-		{
-			baseColorSampler =
-				static_cast<uint32_t>(textureImporter->GetTextureIndex((*baseColorTexture)->GetFileId()));
-		}
-		proxy.m_baseColorSamplers.Add(baseColorSampler);
-	}
-
 	void GetOctreeBounds(const Math::AABB& bounds, glm::ivec3& center, glm::ivec3& extents)
 	{
 		const glm::ivec3 minimum = glm::ivec3(glm::floor(bounds.m_min));
@@ -152,24 +138,24 @@ namespace Sailor::LandscapeECSInternal
 			   (chunkIndex & 0xffffffu);
 	}
 
-	static size_t LandscapeVegetationProxyId(size_t componentIndex, size_t chunkIndex, size_t instanceIndex)
+	size_t LandscapeVegetationProxyId(size_t componentIndex, size_t chunkIndex, size_t profileIndex)
 	{
 		return (size_t(3) << (sizeof(size_t) * 8u - 2u)) | ((componentIndex & 0xfffffu) << 36u) |
-			   ((chunkIndex & 0xfffffu) << 16u) | (instanceIndex & 0xffffu);
+			   ((chunkIndex & 0xfffffu) << 16u) | (profileIndex & 0xffffu);
 	}
 
-	EVegetationProxyBuildResult BuildLandscapeVegetationProxy(size_t componentIndex,
-		size_t chunkIndex,
-		size_t profileIndex,
+	EVegetationProxyBuildResult BuildLandscapeVegetationProxy(size_t profileIndex,
 		const LandscapeVegetationProfile& profile,
-		const glm::mat4& ownerMatrix,
-		uint64_t frame,
-		LandscapeVegetationRenderInstances instances,
+		LandscapeVegetationRenderInstances&& instances,
 		EMobilityType mobility,
 		uint64_t revision,
 		LandscapeVegetationRenderProxy& result)
 	{
-		const bool bUseMaterialOverride = static_cast<bool>(profile.m_materialFileId);
+		if (instances.m_transforms.IsEmpty())
+		{
+			return EVegetationProxyBuildResult::NoRenderData;
+		}
+		const bool bUseMaterialOverride = static_cast<bool>(profile.m_settings.m_materialFileId);
 		if (!profile.m_model || !profile.m_model->IsReady() ||
 			(bUseMaterialOverride && (!profile.m_material || !profile.m_material->IsReady())))
 		{
@@ -180,7 +166,7 @@ namespace Sailor::LandscapeECSInternal
 		TVector<glm::mat4> vegetationModelMatrices;
 		Math::AABB vegetationBounds;
 		if (!profile.m_model->CollectRenderData(
-				profile.m_meshIndex, vegetationMeshes, vegetationModelMatrices, vegetationBounds))
+				profile.m_settings.m_meshIndex, vegetationMeshes, vegetationModelMatrices, vegetationBounds))
 		{
 			return EVegetationProxyBuildResult::NoRenderData;
 		}
@@ -205,21 +191,16 @@ namespace Sailor::LandscapeECSInternal
 		}
 
 		RHI::RHISceneViewProxy vegetationProxy;
-		vegetationProxy.m_staticMeshEcs = LandscapeVegetationProxyId(componentIndex, chunkIndex, profileIndex);
-		vegetationProxy.m_mobility = mobility;
-		vegetationProxy.m_worldMatrix = ownerMatrix;
-		vegetationProxy.m_frame = frame;
-		vegetationProxy.m_bCastShadows = profile.m_shadowMode != ELandscapeVegetationShadowMode::None;
 		vegetationProxy.m_lodPolicy.m_bEnabled = true;
-		vegetationProxy.m_lodPolicy.m_minLod = profile.m_minLod;
-		vegetationProxy.m_lodPolicy.m_maxLod = profile.m_maxLod;
-		vegetationProxy.m_lodPolicy.m_screenCoverageThresholds = profile.m_screenCoverageThresholds;
-		vegetationProxy.m_lodPolicy.m_maxCameraDistance = profile.m_cullDistance;
+		vegetationProxy.m_lodPolicy.m_minLod = profile.m_settings.m_minLod;
+		vegetationProxy.m_lodPolicy.m_maxLod = profile.m_settings.m_maxLod;
+		vegetationProxy.m_lodPolicy.m_screenCoverageThresholds = profile.m_settings.m_screenCoverageThresholds;
+		vegetationProxy.m_lodPolicy.m_maxCameraDistance = profile.m_settings.m_cullDistance;
 
 		RHI::RHIInstancedMeshGroup instanceGroup;
-		instanceGroup.m_bCastShadows = vegetationProxy.m_bCastShadows;
-		instanceGroup.m_maxShadowDistance = (std::min)(profile.m_cullDistance,
-			profile.m_shadowMode == ELandscapeVegetationShadowMode::NearOnly ? profile.m_shadowDistance
+		instanceGroup.m_bCastShadows = profile.m_settings.m_shadowMode != ELandscapeVegetationShadowMode::None;
+		instanceGroup.m_maxShadowDistance = (std::min)(profile.m_settings.m_cullDistance,
+			profile.m_settings.m_shadowMode == ELandscapeVegetationShadowMode::NearOnly ? profile.m_settings.m_shadowDistance
 																			 : (std::numeric_limits<float>::max)());
 		instanceGroup.m_materials.Reserve(vegetationMeshes.Num());
 		instanceGroup.m_sourceMaterialShaders.Reserve(vegetationMeshes.Num());
@@ -228,72 +209,24 @@ namespace Sailor::LandscapeECSInternal
 		instanceGroup.m_baseColorSamplers.Reserve(vegetationMeshes.Num());
 		instanceGroup.m_alphaCutoffs.Reserve(vegetationMeshes.Num());
 #if defined(__APPLE__)
-		instanceGroup.m_materialTextureSamplers.Resize(vegetationMeshes.Num());
+		instanceGroup.m_materialTextureSamplers.Reserve(vegetationMeshes.Num());
 #endif
-		auto* textureImporter = App::GetSubmodule<TextureImporter>();
 		for (size_t meshIndex = 0u; meshIndex < vegetationMeshes.Num(); ++meshIndex)
 		{
 			MaterialPtr& material = vegetationMaterials[meshIndex];
-			instanceGroup.m_sourceMaterialShaders.Add(material->GetShader());
-			instanceGroup.m_materials.Add(material->GetOrAddRHI(vegetationMeshes[meshIndex]->m_vertexDescription));
-			instanceGroup.m_renderQueueTags.Add(material->GetRenderState().GetTag());
-
-			glm::vec4 baseColorFactor{1.0f};
-			const glm::vec4* materialBaseColorFactor = nullptr;
-			if (!material->GetUniformsVec4().Find("material.baseColorFactor", materialBaseColorFactor))
-			{
-				material->GetUniformsVec4().Find("material.albedo", materialBaseColorFactor);
-			}
-			if (materialBaseColorFactor)
-			{
-				baseColorFactor = *materialBaseColorFactor;
-			}
-			instanceGroup.m_baseColorFactors.Add(baseColorFactor);
-
-			float alphaCutoff = 0.5f;
-			const float* materialAlphaCutoff = nullptr;
-			if (material->GetUniformsFloat().Find("material.alphaCutoff", materialAlphaCutoff) && materialAlphaCutoff)
-			{
-				alphaCutoff = *materialAlphaCutoff;
-			}
-			instanceGroup.m_alphaCutoffs.Add(alphaCutoff);
-
-			uint32_t baseColorSampler = 0u;
-			const TexturePtr* baseColorTexture = nullptr;
-			if (!material->GetSamplers().Find("baseColorSampler", baseColorTexture))
-			{
-				material->GetSamplers().Find("albedoSampler", baseColorTexture);
-			}
-			if (textureImporter && baseColorTexture && *baseColorTexture)
-			{
-				baseColorSampler =
-					static_cast<uint32_t>(textureImporter->GetTextureIndex((*baseColorTexture)->GetFileId()));
-			}
-			instanceGroup.m_baseColorSamplers.Add(baseColorSampler);
-#if defined(__APPLE__)
-			auto& requested = instanceGroup.m_materialTextureSamplers[meshIndex];
-			if (textureImporter)
-			{
-				for (const auto& sampler : material->GetSamplers())
-				{
-					requested.Add(sampler.m_second ? static_cast<uint32_t>(textureImporter->GetTextureIndex(
-															sampler.m_second->GetFileId()))
-													  : 0u);
-				}
-			}
-#endif
+			material->GetRenderMetadata().AppendTo(instanceGroup,
+				material->GetOrAddRHI(vegetationMeshes[meshIndex]->m_vertexDescription));
 		}
 
 		const uint32_t instanceCount = static_cast<uint32_t>(instances.m_transforms.Num());
 		Math::AABB batchedVegetationBounds;
 		for (const auto& localInstanceMatrix : instances.m_transforms)
 		{
-			const glm::mat4 instanceMatrix = ownerMatrix * localInstanceMatrix;
 			Math::AABB instanceBounds = vegetationBounds;
-			instanceBounds.Apply(instanceMatrix);
+			instanceBounds.Apply(localInstanceMatrix);
 			batchedVegetationBounds.Extend(instanceBounds);
 		}
-		if (instances.m_transforms.IsEmpty() || vegetationMeshes.IsEmpty() || !batchedVegetationBounds.IsValid())
+		if (vegetationMeshes.IsEmpty() || !batchedVegetationBounds.IsValid())
 		{
 			return EVegetationProxyBuildResult::NoRenderData;
 		}
@@ -304,45 +237,28 @@ namespace Sailor::LandscapeECSInternal
 		instanceGroup.m_instanceCullDistanceScales = std::move(instances.m_cullDistanceScales);
 		instanceGroup.m_instanceShadowDistanceScales = std::move(instances.m_shadowDistanceScales);
 
-		vegetationProxy.m_worldAabb = batchedVegetationBounds;
-		auto vegetationShadowCaster = RHI::RHIShadowCasterProxyPtr::Make();
-		vegetationShadowCaster->m_staticMeshEcs = vegetationProxy.m_staticMeshEcs;
-		vegetationShadowCaster->m_mobility = mobility;
-		vegetationShadowCaster->m_skeletonOffset = (std::numeric_limits<uint32_t>::max)();
-		vegetationShadowCaster->m_frame = vegetationProxy.m_frame;
-		vegetationShadowCaster->m_lodPolicy = vegetationProxy.m_lodPolicy;
-		vegetationShadowCaster->m_worldAabb = vegetationProxy.m_worldAabb;
 		vegetationProxy.m_shadowCaster =
-			vegetationProxy.m_bCastShadows ? vegetationShadowCaster : RHI::RHIShadowCasterProxyPtr{};
+			instanceGroup.m_bCastShadows ? RHI::RHIShadowCasterProxyPtr::Make() : RHI::RHIShadowCasterProxyPtr{};
 		vegetationProxy.m_instancedGroups.Add(std::move(instanceGroup));
 
-		GetOctreeBounds(vegetationProxy.m_worldAabb, result.m_octreeCenter, result.m_octreeExtents);
 		result.m_resource = RHI::RHISceneProxyResourcePtr::Make(std::move(vegetationProxy));
+		result.m_localBounds = batchedVegetationBounds;
 		result.m_profileIndex = profileIndex;
 		result.m_instanceCount = instanceCount;
 		result.m_revision = revision;
-		result.m_residency = profile.m_residency;
+		result.m_renderRevision = CalculateVegetationRenderRevision(profile);
+		result.m_residency = profile.m_settings.m_residency;
 		result.m_mobility = mobility;
 		return EVegetationProxyBuildResult::Success;
 	}
 
-	bool AreVegetationProfileSettingsEqual(const LandscapeVegetationProfile& lhs, const LandscapeVegetationProfile& rhs)
-	{
-		return lhs.m_modelFileId == rhs.m_modelFileId && lhs.m_materialFileId == rhs.m_materialFileId &&
-			   lhs.m_meshIndex == rhs.m_meshIndex && lhs.m_instancesPerChunk == rhs.m_instancesPerChunk &&
-			   lhs.m_residency == rhs.m_residency && lhs.m_priority == rhs.m_priority &&
-			   lhs.m_minScale == rhs.m_minScale && lhs.m_maxScale == rhs.m_maxScale &&
-			   lhs.m_groundOffset == rhs.m_groundOffset && lhs.m_shadowMode == rhs.m_shadowMode &&
-			   lhs.m_shadowDistance == rhs.m_shadowDistance && lhs.m_minLod == rhs.m_minLod &&
-			   lhs.m_maxLod == rhs.m_maxLod && lhs.m_screenCoverageThresholds == rhs.m_screenCoverageThresholds &&
-			   lhs.m_cullDistance == rhs.m_cullDistance && lhs.m_colliderRadius == rhs.m_colliderRadius &&
-			   lhs.m_colliderHeight == rhs.m_colliderHeight && lhs.m_colliderOffsetY == rhs.m_colliderOffsetY;
-	}
-
-	uint64_t CalculateVegetationMaterialRenderMetadataRevision(const LandscapeVegetationProfile& profile)
+	uint64_t CalculateVegetationRenderRevision(const LandscapeVegetationProfile& profile)
 	{
 		size_t result = Fnv1aOffsetBasis;
-		if (profile.m_materialFileId)
+		HashCombine(result, profile.m_settings.m_modelFileId, profile.m_model, profile.m_settings.m_meshIndex, profile.m_settings.m_residency,
+			profile.m_settings.m_shadowMode, profile.m_settings.m_shadowDistance, profile.m_settings.m_minLod, profile.m_settings.m_maxLod, profile.m_settings.m_cullDistance);
+		for (float threshold : profile.m_settings.m_screenCoverageThresholds) HashCombine(result, threshold);
+		if (profile.m_settings.m_materialFileId)
 		{
 			HashCombine(result,
 				profile.m_material,

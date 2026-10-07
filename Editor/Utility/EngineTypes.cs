@@ -22,6 +22,7 @@ namespace SailorEngine
     {
         public string Typename { get; set; }
         public NumericPropertyRange Range { get; set; }
+        internal object SerializedDefault { get; set; }
 
 #pragma warning disable CS0067
         public event PropertyChangedEventHandler PropertyChanged;
@@ -53,6 +54,16 @@ namespace SailorEngine
     }
 
     public class EnumProperty : Property<string> { }
+    public class RecordProperty : PropertyBase
+    {
+        public ComponentType RecordType { get; init; }
+    }
+
+    public class ListProperty : PropertyBase
+    {
+        public PropertyBase ElementType { get; init; }
+    }
+
     public partial class ObjectPtr : ObservableObject, ICloneable, IComparable<ObjectPtr>
     {
         [ObservableProperty]
@@ -61,7 +72,11 @@ namespace SailorEngine
         [ObservableProperty]
         InstanceId instanceId = new();
 
-        public object Clone() => new ObjectPtr() { FileId = FileId, InstanceId = InstanceId };
+        public object Clone() => new ObjectPtr
+        {
+            FileId = (FileId)FileId.Clone(),
+            InstanceId = (InstanceId)InstanceId.Clone()
+        };
 
         public int CompareTo(ObjectPtr other)
         {
@@ -293,52 +308,10 @@ namespace SailorEngine
 
                 foreach (var property in component.Properties)
                 {
-                    string propertyType = NormalizePropertyType(property.Value);
-                    string genericType = GetGenericTypeName(property.Value);
-
-                    Quat defaultQuat = default;
                     object defaultValue = null;
                     cdoNode?.DefaultValues?.TryGetValue(property.Key, out defaultValue);
-                    if (defaultValue is Quat q)
-                    {
-                        defaultQuat = q;
-                    }
-                    else if (defaultValue is Rotation r)
-                    {
-                        defaultQuat = r.Quat;
-                    }
-                    else if (defaultValue is not null &&
-                        propertyType == "struct glm::qua<float,0>")
-                    {
-                        var values = EditorTypeMetadataValueCodec.ParseFloatSequence(
-                            defaultValue,
-                            4,
-                            $"{component.Typename}.{property.Key}");
-                        defaultQuat = new Quat(values[0], values[1], values[2], values[3]);
-                    }
-
-                    PropertyBase newProperty = CreateCommonProperty(propertyType) ?? propertyType switch
-                    {
-                        "struct glm::qua<float,0>" => new RotationProperty(defaultQuat),
-                        "struct glm::vec<2,float,0>" => new Vec2Property(),
-                        "struct glm::vec<3,float,0>" => new Vec3Property(),
-                        "struct glm::vec<4,float,0>" => new Vec4Property(),
-                        var value when value.Contains("TObjectPtr") => new ObjectPtrProperty()
-                        {
-                            GenericTypename = genericType,
-                            GenericType = GetEditorType(genericType)
-                        },
-                        var value when value.Contains("InstanceId") => new InstanceIdProperty(),
-                        "FileId" => new FileIdProperty(),
-                        "List<FileId>" => new Property<List<FileId>>(),
-                        "List<float>" => new Property<List<float>>(),
-                        var value when value.StartsWith("enum") => new EnumProperty() { Typename = value },
-                        var value when res.Enums.ContainsKey(value) => new EnumProperty() { Typename = value },
-                        _ => throw new InvalidDataException(
-                            $"Unsupported reflected property type '{property.Value}' for '{component.Typename}.{property.Key}'.")
-                    };
-
-                    ApplyScalarDefault(newProperty, defaultValue, component.Typename, property.Key);
+                    var newProperty = res.CreateProperty(
+                        property.Value, defaultValue, component.Typename, property.Key);
                     if (component.PropertyRanges.TryGetValue(property.Key, out var propertyRange))
                     {
                         newProperty.Range = new NumericPropertyRange(
@@ -348,8 +321,11 @@ namespace SailorEngine
                     newComponent.Properties.Add(property.Key, newProperty);
                 }
 
-                newComponent.Properties["fileId"] = new FileIdProperty() { DefaultValue = FileId.NullFileId };
-                newComponent.Properties["instanceId"] = new InstanceIdProperty() { DefaultValue = InstanceId.NullInstanceId };
+                if (snapshot.IsComponentType(component.Typename) || component.Typename == "Sailor::Component")
+                {
+                    newComponent.Properties["fileId"] = new FileIdProperty() { DefaultValue = FileId.NullFileId };
+                    newComponent.Properties["instanceId"] = new InstanceIdProperty() { DefaultValue = InstanceId.NullInstanceId };
+                }
 
                 foreach (var property in component.ReadOnlyProperties)
                 {
@@ -371,6 +347,50 @@ namespace SailorEngine
             }
 
             return res;
+        }
+
+        PropertyBase CreateProperty(
+            string typeName, object defaultValue, string ownerType, string propertyName)
+        {
+            var propertyType = NormalizePropertyType(typeName);
+            var genericType = GetGenericTypeName(typeName);
+            PropertyBase property = CreateCommonProperty(propertyType) ?? propertyType switch
+            {
+                "struct glm::qua<float,0>" => new RotationProperty(new Quat()),
+                "struct glm::vec<2,float,0>" => new Vec2Property(),
+                "struct glm::vec<3,float,0>" => new Vec3Property(),
+                "struct glm::vec<4,float,0>" => new Vec4Property(),
+                _ when genericType.Length != 0 => new ObjectPtrProperty
+                {
+                    GenericTypename = genericType,
+                    GenericType = GetEditorType(genericType)
+                },
+                "InstanceId" => new InstanceIdProperty(),
+                "FileId" => new FileIdProperty(),
+                "List<FileId>" => new Property<List<FileId>>(),
+                "List<float>" => new Property<List<float>>(),
+                _ when propertyType.StartsWith("List<", StringComparison.Ordinal) && propertyType.EndsWith('>') =>
+                    new ListProperty
+                    {
+                        ElementType = CreateProperty(propertyType[5..^1], null, ownerType, propertyName)
+                    },
+                _ when Enums.ContainsKey(propertyType) => new EnumProperty(),
+                _ when Components.TryGetValue(propertyType, out var recordType) =>
+                    new RecordProperty { RecordType = recordType },
+                _ => throw new InvalidDataException(
+                    $"Unsupported reflected property type '{typeName}' for '{ownerType}.{propertyName}'.")
+            };
+
+            property.Typename = propertyType;
+            property.SerializedDefault = defaultValue;
+            ApplyScalarDefault(property, defaultValue, ownerType, propertyName);
+            if (property is RotationProperty rotation && defaultValue is not null)
+            {
+                var values = EditorTypeMetadataValueCodec.ParseFloatSequence(
+                    defaultValue, 4, $"{ownerType}.{propertyName}");
+                rotation.DefaultValue = new Rotation(new Quat(values[0], values[1], values[2], values[3]));
+            }
+            return property;
         }
 
         static void ApplyScalarDefault(
@@ -572,7 +592,7 @@ namespace SailorEditor
 
         public static implicit operator Rotation(Quat value) => new() { Quat = value };
         public static implicit operator Quat(Rotation uniform) => new(uniform.Quat);
-        public object Clone() => new Rotation { Quat = Quat };
+        public object Clone() => new Rotation { Quat = (Quat)Quat?.Clone() };
 
         public override string ToString() => $"<Yaw: {Yaw}, Pitch: {Pitch}, Roll: {Roll}>";
 

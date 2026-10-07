@@ -2,6 +2,7 @@
 
 #include "AssetRegistry/Shader/ShaderCacheInternal.h"
 #include "Containers/Hash.h"
+#include "Workspace/WorkspacePathEncoding.h"
 
 #include <algorithm>
 #include <cstring>
@@ -13,27 +14,27 @@ using namespace Sailor::ShaderCacheInternal;
 
 std::string ShaderCache::GetShaderCacheFilepath()
 {
-	return GetCacheChildPath("ShaderCache.yaml").string();
+	return Workspace::PathToUtf8(GetCacheChildPath("ShaderCache.yaml"));
 }
 
 std::string ShaderCache::GetPrecompiledShadersFolder()
 {
-	return GetCacheChildPath("PrecompiledShaders").string();
+	return Workspace::PathToUtf8(GetCacheChildPath("PrecompiledShaders"));
 }
 
 std::string ShaderCache::GetCompiledShadersFolder()
 {
-	return GetCacheChildPath("CompiledShaders").string();
+	return Workspace::PathToUtf8(GetCacheChildPath("CompiledShaders"));
 }
 
 std::string ShaderCache::GetCompiledShadersWithDebugFolder()
 {
-	return GetCacheChildPath("CompiledShadersWithDebug").string();
+	return Workspace::PathToUtf8(GetCacheChildPath("CompiledShadersWithDebug"));
 }
 
 std::filesystem::path ShaderCache::GetPrecompiledShaderFilepath(const FileId& uid,
 	int32_t permutation,
-	const std::string& shaderKind)
+	std::string_view shaderKind)
 {
 	return GetShaderFilepath(
 		GetCacheChildPath("PrecompiledShaders"), uid, permutation, shaderKind, PrecompiledShaderFileExtension);
@@ -41,7 +42,7 @@ std::filesystem::path ShaderCache::GetPrecompiledShaderFilepath(const FileId& ui
 
 std::filesystem::path ShaderCache::GetCachedShaderFilepath(const FileId& uid,
 	int32_t permutation,
-	const std::string& shaderKind)
+	std::string_view shaderKind)
 {
 	return GetShaderFilepath(
 		GetCacheChildPath("CompiledShaders"), uid, permutation, shaderKind, CompiledShaderFileExtension);
@@ -49,7 +50,7 @@ std::filesystem::path ShaderCache::GetCachedShaderFilepath(const FileId& uid,
 
 std::filesystem::path ShaderCache::GetCachedShaderWithDebugFilepath(const FileId& uid,
 	int32_t permutation,
-	const std::string& shaderKind)
+	std::string_view shaderKind)
 {
 	return GetShaderFilepath(
 		GetCacheChildPath("CompiledShadersWithDebug"), uid, permutation, shaderKind, CompiledShaderFileExtension);
@@ -87,7 +88,7 @@ bool ShaderCache::ReadArtifactBytes(const std::filesystem::path& path,
 	outIoFailure = false;
 	if (!metadata.Validate("Artifact metadata", outDiagnostic))
 	{
-		outDiagnostic += " Path: '" + path.generic_string() + "'.";
+		outDiagnostic += " Path: '" + Workspace::PathToUtf8(path) + "'.";
 		return false;
 	}
 	if (!metadata.IsPresent())
@@ -99,7 +100,7 @@ bool ShaderCache::ReadArtifactBytes(const std::filesystem::path& path,
 	if (metadata.m_byteLength > std::numeric_limits<size_t>::max() ||
 		metadata.m_byteLength > static_cast<uint64_t>(std::numeric_limits<std::streamsize>::max()))
 	{
-		outDiagnostic = "Artifact is too large to read safely: '" + path.generic_string() + "'.";
+		outDiagnostic = "Artifact is too large to read safely: '" + Workspace::PathToUtf8(path) + "'.";
 		return false;
 	}
 
@@ -108,12 +109,12 @@ bool ShaderCache::ReadArtifactBytes(const std::filesystem::path& path,
 	if (sizeError)
 	{
 		outIoFailure = sizeError != std::errc::no_such_file_or_directory && sizeError != std::errc::not_a_directory;
-		outDiagnostic = "Cannot inspect shader artifact '" + path.generic_string() + "': " + sizeError.message();
+		outDiagnostic = "Cannot inspect shader artifact '" + Workspace::PathToUtf8(path) + "': " + sizeError.message();
 		return false;
 	}
 	if (actualSize != metadata.m_byteLength)
 	{
-		outDiagnostic = "Shader artifact '" + path.generic_string() + "' has byte length " +
+		outDiagnostic = "Shader artifact '" + Workspace::PathToUtf8(path) + "' has byte length " +
 						std::to_string(actualSize) + ", expected " + std::to_string(metadata.m_byteLength) + ".";
 		return false;
 	}
@@ -124,7 +125,7 @@ bool ShaderCache::ReadArtifactBytes(const std::filesystem::path& path,
 		std::error_code existsError;
 		const bool bExists = std::filesystem::exists(path, existsError);
 		outIoFailure = bExists || static_cast<bool>(existsError);
-		outDiagnostic = "Cannot open shader artifact '" + path.generic_string() + "'.";
+		outDiagnostic = "Cannot open shader artifact '" + Workspace::PathToUtf8(path) + "'.";
 		return false;
 	}
 
@@ -133,12 +134,12 @@ bool ShaderCache::ReadArtifactBytes(const std::filesystem::path& path,
 	if (stream.gcount() != static_cast<std::streamsize>(candidate.Num()) || stream.bad())
 	{
 		outIoFailure = stream.bad();
-		outDiagnostic = "Shader artifact read was incomplete for '" + path.generic_string() + "'.";
+		outDiagnostic = "Shader artifact read was incomplete for '" + Workspace::PathToUtf8(path) + "'.";
 		return false;
 	}
 	if (CalculateArtifactChecksum(candidate.GetData(), candidate.Num()) != metadata.m_checksum)
 	{
-		outDiagnostic = "Shader artifact checksum mismatch for '" + path.generic_string() + "'.";
+		outDiagnostic = "Shader artifact checksum mismatch for '" + Workspace::PathToUtf8(path) + "'.";
 		return false;
 	}
 
@@ -177,7 +178,7 @@ bool ShaderCache::ReadSpirvArtifactInternal(const std::filesystem::path& path,
 	if (metadata.IsPresent() && metadata.m_byteLength % sizeof(uint32_t) != 0)
 	{
 		outDiagnostic =
-			"SPIR-V artifact byte length is not aligned to uint32 words for '" + path.generic_string() + "'.";
+			"SPIR-V artifact byte length is not aligned to uint32 words for '" + Workspace::PathToUtf8(path) + "'.";
 		return false;
 	}
 
@@ -216,7 +217,7 @@ bool ShaderCache::HasMatchingArtifactTopology(const ArtifactSet& regular, const 
 		   regular.m_compute.IsPresent() == debug.m_compute.IsPresent();
 }
 
-bool ShaderCache::IsValidGeneration(const std::string& generation) noexcept
+bool ShaderCache::IsValidGeneration(std::string_view generation) noexcept
 {
 	if (generation.size() != 32)
 	{
@@ -283,7 +284,7 @@ std::filesystem::path ShaderCache::GetCompiledDebugFolderLocked() const
 }
 
 std::filesystem::path ShaderCache::GetArtifactPathLocked(const ShaderCacheData::Entry& entry,
-	const std::string& shaderKind,
+	std::string_view shaderKind,
 	bool bIsDebug) const
 {
 	return GetShaderFilepath(bIsDebug ? GetCompiledDebugFolderLocked() : GetCompiledFolderLocked(),

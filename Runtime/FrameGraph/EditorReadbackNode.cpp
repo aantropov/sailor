@@ -13,24 +13,12 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 
-#ifndef _SAILOR_IMPORT_
-const char* EditorReadbackNode::m_name = "EditorReadback";
-#endif
-
 namespace
 {
 	uint32_t GetReadbackPixelSize(const RHITexturePtr& texture)
 	{
-		if (!texture || texture->GetMsaaSamples() != EMsaaSamples::Samples_1) return 0;
-		switch (texture->GetFormat())
-		{
-		case ETextureFormat::B8G8R8A8_UNORM:
-		case ETextureFormat::B8G8R8A8_SRGB:
-		case ETextureFormat::R8G8B8A8_UNORM:
-		case ETextureFormat::R8G8B8A8_SRGB: return 4;
-		case ETextureFormat::R16G16B16A16_SFLOAT: return 8;
-		default: return 0;
-		}
+		return texture && texture->GetMsaaSamples() == EMsaaSamples::Samples_1 ?
+			RHI::GetReadbackPixelSize(texture->GetFormat()) : 0u;
 	}
 }
 
@@ -59,26 +47,27 @@ void EditorReadbackNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandLis
 		return;
 	}
 
-	m_texture = GetResolvedAttachment("src");
-	if (!m_resourceParams.ContainsKey("src") && frameGraph)
+	m_texture = GetResolvedAttachment("src"_h);
+	if (!m_resourceParams.ContainsKey("src"_h) && frameGraph)
 	{
-		auto resolve = [&](const std::string& name) -> RHITexturePtr
+		auto resolve = [&](StringHash name) -> RHITexturePtr
 			{
 				if (auto surface = frameGraph->GetSurface(name))
 				{
 					auto texture = surface->GetResolved() ? surface->GetResolved() : surface->GetTarget();
 					if (GetReadbackPixelSize(texture)) return texture;
 				}
-				return frameGraph->GetRenderTarget(name);
+				if (auto target = frameGraph->GetRenderTarget(name)) return target;
+				return frameGraph->GetSampler(name);
 			};
-		if (m_unresolvedResourceParams.ContainsKey("src"))
+		if (m_unresolvedResourceParams.ContainsKey("src"_h))
 		{
-			m_texture = resolve(m_unresolvedResourceParams["src"]);
+			m_texture = resolve(m_unresolvedResourceParams["src"_h]);
 		}
 		else
 		{
 			// An omitted source follows the same priority as the editor viewport.
-			for (const char* name : { "EditorOutput", "Main", "BackBuffer", "Secondary" })
+			for (const auto name : { "EditorOutput"_h, "Main"_h, "BackBuffer"_h, "Secondary"_h })
 			{
 				m_texture = resolve(name);
 				if (GetReadbackPixelSize(m_texture)) break;
@@ -90,7 +79,7 @@ void EditorReadbackNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandLis
 	if (!bytesPerPixel) return;
 
 	if (m_readbacks.IsEmpty()) m_readbacks.Resize(driver->GetMaxFramesInFlight() + 1u);
-	TSharedPtr<EditorReadbackFrame>* slot = nullptr;
+	TSharedPtr<ReadbackFrame>* slot = nullptr;
 	for (auto& candidate : m_readbacks)
 	{
 		if (!candidate || (!candidate.IsShared() && candidate->m_completion->GetStatus() != EFenceStatus::Pending))
@@ -101,7 +90,7 @@ void EditorReadbackNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandLis
 	}
 	if (!slot) return;
 
-	if (!*slot) *slot = TSharedPtr<EditorReadbackFrame>::Make();
+	if (!*slot) *slot = TSharedPtr<ReadbackFrame>::Make();
 	auto& readback = **slot;
 	const auto extent = m_texture->GetExtent();
 	const uint32_t bytesPerRow = static_cast<uint32_t>(extent.x) * bytesPerPixel;
@@ -133,9 +122,9 @@ void EditorReadbackNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandLis
 	commands->EndDebugRegion(commandList);
 }
 
-EditorReadbackFramePtr EditorReadbackNode::TakeCompletedFrame()
+ReadbackFramePtr EditorReadbackNode::TakeCompletedFrame()
 {
-	TSharedPtr<EditorReadbackFrame> latest;
+	TSharedPtr<ReadbackFrame> latest;
 	for (const auto& frame : m_readbacks)
 	{
 		if (frame && frame->m_frameIndex > m_publishedFrameIndex &&

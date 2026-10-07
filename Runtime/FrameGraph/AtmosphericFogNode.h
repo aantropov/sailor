@@ -22,7 +22,7 @@ namespace Sailor::Framegraph
 		// Render-thread diagnostics, or after Renderer::WaitIdle().
 		const ShaderParameters& GetLightingParameters() const { return m_parameters; }
 		SAILOR_API AtmosphericFogNode();
-		SAILOR_API static const char* GetName() { return m_name; }
+		SAILOR_API static StringHash GetName() { return "AtmosphericFog"_h; }
 		SAILOR_API void PreloadShader();
 		SAILOR_API bool IsShaderReady() const;
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph,
@@ -31,7 +31,7 @@ namespace Sailor::Framegraph
 		SAILOR_API virtual void Clear() override;
 
 	private:
-		SAILOR_SHARED_API static const char* m_name;
+
 		ShaderSetPtr m_shader;
 		RHI::RHIMaterialPtr m_material;
 		RHI::RHIShaderBindingSetPtr m_bindings;

@@ -26,7 +26,7 @@ GltfImporterUtils::MeshInstanceTransforms GltfImporterUtils::ResolveMeshInstance
 	return result;
 }
 
-GltfImporterUtils::MaterialAlphaModeSettings GltfImporterUtils::ResolveMaterialAlphaMode(const std::string& alphaMode,
+GltfImporterUtils::MaterialAlphaModeSettings GltfImporterUtils::ResolveMaterialAlphaMode(std::string_view alphaMode,
 	bool bHasTransmission)
 {
 	if (bHasTransmission)

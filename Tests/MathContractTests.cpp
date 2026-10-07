@@ -1,5 +1,6 @@
 #include "Math/Noise.h"
 #include "Math/Math.h"
+#include "Platform/Time.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -48,6 +49,25 @@ namespace
 		const auto bytes = Utils::LinearToSRGB8(glm::vec4(0.0f, 0.5f, 2.0f, 0.5f));
 		Require(bytes == glm::u8vec4(0, 187, 255, 128),
 			"8-bit output must clamp RGB and round normalized alpha independently");
+	}
+
+	void TestFrameTimeStatistics()
+	{
+		const float alternating[]{ 0.01f, 0.03f, 0.01f, 0.03f };
+		const auto stats = Utils::CalculateFrameTimeStats(alternating);
+		Require(stats.m_numFrames == 4 && std::abs(stats.m_elapsedSeconds - 0.08) < 0.000001 &&
+			std::abs(stats.m_sustainedFps - 50.0) < 0.0001, "alternating 10/30 ms frames must yield 50 sustained FPS, not mean(1/dt)");
+		Require(IsNear(stats.m_minMs, 10) && IsNear(stats.m_meanMs, 20) && IsNear(stats.m_maxMs, 30) &&
+			IsNear(stats.m_p50Ms, 10) && IsNear(stats.m_p95Ms, 30) && IsNear(stats.m_p99Ms, 30),
+			"frame statistics must report nearest-rank percentiles in milliseconds");
+		const float invalid[]{ 0, -1, std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN() };
+		const auto empty = Utils::CalculateFrameTimeStats(invalid);
+		Require(empty.m_numFrames == 0 && empty.m_elapsedSeconds == 0 && empty.m_sustainedFps == 0 && empty.m_p99Ms == 0,
+			"invalid or paused simulation intervals must not create samples or nonfinite statistics");
+		const float single[]{ 0.02f };
+		const auto one = Utils::CalculateFrameTimeStats(single);
+		Require(one.m_numFrames == 1 && IsNear(one.m_minMs, 20) && IsNear(one.m_p99Ms, 20), "a single interval must populate every percentile");
+		Require(alternating[0] == 0.01f && alternating[1] == 0.03f, "statistics must not reorder the caller's intervals");
 	}
 
 	void TestAstronomicalCoordinates()
@@ -192,6 +212,7 @@ int main()
 	try
 	{
 		TestColorConversions();
+		TestFrameTimeStatistics();
 		TestAstronomicalCoordinates();
 		TestPackedRandomColor();
 		TestFractionAndModuloUseFloor();

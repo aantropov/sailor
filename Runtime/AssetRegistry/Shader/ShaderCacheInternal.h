@@ -5,19 +5,20 @@
 
 #include <filesystem>
 #include <string>
+#include <string_view>
 
 namespace Sailor::ShaderCacheInternal
 {
 	std::string NormalizeDependencyPath(const std::filesystem::path& path);
-	std::string NormalizeDependencyVirtualPath(const std::string& path);
+	std::string NormalizeDependencyVirtualPath(std::string_view path);
 	std::filesystem::path GetCacheChildPath(const char* child);
 	std::filesystem::path GetShaderFilepath(const std::filesystem::path& folder,
 		const FileId& uid,
 		int32_t permutation,
-		const std::string& shaderKind,
-		const char* extension,
-		const std::string& generation = {});
-	void AppendDiagnostic(std::string& diagnostic, const std::string& suffix);
+		std::string_view shaderKind,
+		std::string_view extension,
+		std::string_view generation = {});
+	void AppendDiagnostic(std::string& diagnostic, std::string_view suffix);
 	bool ResolveDirectCacheChild(const std::filesystem::path& cacheRoot,
 		const std::filesystem::path& candidate,
 		std::filesystem::path& outCanonical,

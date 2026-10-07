@@ -1,7 +1,9 @@
 #include "FrameGraph/CPUPathTracerNode.h"
 #include "RHI/SceneView.h"
+#include "Support/TaskTestApp.h"
 
 #include <iostream>
+#include <latch>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -34,6 +36,7 @@ namespace
 		using CPUPathTracerNode::AccumulationKey;
 		using CPUPathTracerNode::ApplyCompletedReadback;
 		using CPUPathTracerNode::SubmissionResources;
+		using CPUPathTracerNode::CompleteImageRequests;
 		CameraState& Camera(uint32_t index = 0) { return GetCameraState(index); }
 		size_t NumCameras() const { return m_cameras.Num(); }
 		void AccumulateImage(const TVector<vec4>& image, uvec2 extent, uint32_t samples, uint32_t cameraIndex = 0)
@@ -41,6 +44,113 @@ namespace
 			CPUPathTracerNode::AccumulateImage(Camera(cameraIndex), image, extent, samples);
 		}
 	};
+
+	void TestRequestedImageOwnership()
+	{
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
+		scheduler.Initialize();
+		auto node = TRefPtr<ImageNode>::Make();
+		auto onRender = [](auto action)
+		{
+			auto task = Tasks::CreateTask("Path tracer capture fixture"_h, std::move(action), EThreadType::Render);
+			task->Run();
+			task->Wait();
+		};
+		onRender([&]() { node->AccumulateImage({ vec4(4, 0, 0, 1) }, uvec2(1), 1); });
+		auto first = node->DoOneCapture(0);
+		auto otherCamera = node->DoOneCapture(1);
+		auto sameCamera = node->DoOneCapture(0);
+		scheduler.WaitIdle({ EThreadType::Render });
+		scheduler.ProcessTasksOnMainThread();
+		Require(!first->IsFinished(), "request admission cannot return the previous CPU image");
+		onRender([&]()
+			{
+				node->AccumulateImage({ vec4(0, 3, 0, 1) }, uvec2(1), 2, 1);
+				node->CompleteImageRequests(1, 12, &node->Camera(1));
+			});
+		Require(!otherCamera->IsFinished(), "Render cannot mutate Main's capture result before the handoff runs");
+		scheduler.ProcessTasksOnMainThread();
+		Require(otherCamera->IsFinished() && otherCamera->GetResult() && !first->IsFinished(),
+			"another camera's completed image must not satisfy the requested view");
+		RequireColor(otherCamera->GetResult()->m_pixels[0], vec4(0, 3, 0, 1));
+		onRender([&]()
+			{
+				node->AccumulateImage({ vec4(0, 0, 8, 1) }, uvec2(1), 1);
+				node->CompleteImageRequests(0, 13, &node->Camera());
+			});
+		scheduler.ProcessTasksOnMainThread();
+		Require(first->IsFinished() && sameCamera->IsFinished() && first != sameCamera && first->GetResult() == sameCamera->GetResult(),
+			"coalesced captures may share a completed image, never the request task");
+		const auto retained = first->GetResult();
+		Require(retained && retained->m_frame == 13 && retained->m_cameraIndex == 0 && retained->m_extent == uvec2(1) &&
+			retained->m_accumulatedSamples == 2, "capture metadata must belong to the processed camera");
+		RequireColor(retained->m_pixels[0], vec4(2, 0, 4, 1));
+		auto later = node->DoOneCapture();
+		scheduler.WaitIdle({ EThreadType::Render });
+		scheduler.ProcessTasksOnMainThread();
+		Require(!later->IsFinished(), "retaining an earlier capture must not complete a later request");
+		onRender([&]()
+			{
+				node->AccumulateImage({ vec4(1, 2, 3, 1), vec4(0) }, uvec2(2, 1), 4);
+				node->CompleteImageRequests(0, 14, &node->Camera());
+			});
+		scheduler.ProcessTasksOnMainThread();
+		Require(later->IsFinished() && later->GetResult() && later->GetResult() != retained &&
+			later->GetResult()->m_extent == uvec2(2, 1) && later->GetResult()->m_imageRevision > retained->m_imageRevision,
+			"resize must publish a distinct image with its own extent and revision");
+		RequireColor(retained->m_pixels[0], vec4(2, 0, 4, 1));
+		auto unavailable = node->DoOneCapture();
+		scheduler.WaitIdle({ EThreadType::Render });
+		onRender([&]() { node->CompleteImageRequests(0, 15); });
+		scheduler.ProcessTasksOnMainThread();
+		Require(unavailable->IsFinished() && !unavailable->GetResult(), "no new image must be reported as failure, not replaced with stale pixels");
+		auto cleared = node->DoOneCapture();
+		scheduler.WaitIdle({ EThreadType::Render });
+		onRender([&]() { node->Clear(); });
+		scheduler.ProcessTasksOnMainThread();
+		Require(cleared->IsFinished() && !cleared->GetResult(), "Clear must cancel a pending CPU image request");
+		RequireColor(retained->m_pixels[0], vec4(2, 0, 4, 1));
+		auto abandoned = node->DoOneCapture();
+		scheduler.WaitIdle({ EThreadType::Render });
+		onRender([&]() { node.Clear(); });
+		scheduler.ProcessTasksOnMainThread();
+		Require(abandoned->IsFinished() && !abandoned->GetResult(), "node destruction must complete its pending requests");
+	}
+
+	void TestSceneDemandPublication()
+	{
+		Tests::TaskTestApp app;
+		app.GetScheduler().Initialize();
+		auto node = TRefPtr<ImageNode>::Make();
+		Require(!node->IsEnabled(RHI::ESceneViewRenderMode::Lit), "an unconfigured tracer must not demand scene snapshots");
+		Framegraph::BaseFrameGraphNode& base = *node;
+		base.SetFloat("enabled"_h, 1);
+		Require(node->IsEnabled(RHI::ESceneViewRenderMode::Lit), "base-node configuration must publish tracer demand too");
+		std::latch start(2);
+		auto update = Tasks::CreateTask("Publish tracer demand"_h, [&]()
+			{
+				start.arrive_and_wait();
+				for (uint32_t i = 0; i < 20000; ++i)
+				{
+					base.SetFloat("samplesPerFrame"_h, static_cast<float>(i + 1));
+					base.SetFloat("enabled"_h, static_cast<float>(i % 2));
+				}
+				base.SetFloat("enabled"_h, 0);
+			}, EThreadType::Render);
+		update->Run();
+		start.arrive_and_wait();
+		uint32_t enabledReads = 0;
+		bool bDebugWasEnabled = false;
+		for (uint32_t i = 0; i < 20000; ++i)
+		{
+			enabledReads += node->IsEnabled(RHI::ESceneViewRenderMode::Lit);
+			bDebugWasEnabled |= node->IsEnabled(RHI::ESceneViewRenderMode::AmbientOcclusion);
+		}
+		update->Wait();
+		Require(enabledReads <= 20000 && !bDebugWasEnabled && !node->IsEnabled(RHI::ESceneViewRenderMode::Lit),
+			"Main may observe changing demand without reading Render's mutable parameter map; debug modes remain disabled");
+	}
 
 	void TestLinearAccumulationAndDisplayExport()
 	{
@@ -53,6 +163,12 @@ namespace
 		Require(node.Camera().m_accumulatedSamples == 8, "sample counts, not frame counts, must weight the mean");
 		RequireColor(node.Camera().m_accumulatedImage[0], vec4(2, 0.25f, 0.25f, 0.25f));
 		RequireColor(node.Camera().m_accumulatedImage[1], vec4(0, 3, 0, 0.375f));
+		ImageNode reverse;
+		reverse.AccumulateImage({ vec4(0, 0.3125f, 0.25f, 0), vec4(0, 4, 0, 0.5f) }, uvec2(2, 1), 6);
+		reverse.AccumulateImage({ vec4(8, 0.0625f, 0.25f, 1), vec4(0) }, uvec2(2, 1), 2);
+		RequireColor(reverse.Camera().m_accumulatedImage[0], vec4(2, 0.25f, 0.25f, 0.25f));
+		RequireColor(reverse.Camera().m_accumulatedImage[1], vec4(0, 3, 0, 0.375f));
+		Require(reverse.Camera().m_accumulatedSamples == 8, "reordering sample batches must preserve weighted radiance and sample count");
 		Require(node.GetLastRenderedImage(display, extent) && extent == uvec2(2, 1) && display.Num() == 2,
 			"display export must preserve dimensions");
 		Require(display[0] == u8vec4(255, 136, 136, 64) && display[1] == u8vec4(0, 255, 0, 96),
@@ -209,6 +325,8 @@ int main()
 		TestCameraAndReadbackOwnership();
 		TestPreparedLinearImage();
 		TestAccumulationIdentity();
+		TestRequestedImageOwnership();
+		TestSceneDemandPublication();
 		std::cout << "Path tracer linear HDR image tests passed\n";
 		return 0;
 	}

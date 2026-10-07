@@ -44,7 +44,7 @@ VkResult VulkanQueue::Submit(const VkSubmitInfo& submitInfo, VulkanFencePtr fenc
 VkResult VulkanQueue::Present(const VkPresentInfoKHR& info)
 {
 	m_lock.Lock();
-	auto res = vkQueuePresentKHR(m_queue, &info);
+	auto res = m_queuePresent(m_queue, &info);
 	m_lock.Unlock();
 
 	return res;

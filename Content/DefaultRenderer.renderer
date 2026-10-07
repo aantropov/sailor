@@ -156,10 +156,17 @@ frame:
   - depthStencil: DepthBuffer
   - depthHighZ: DepthHighZ
 
+# Opaque depth is the current-frame occluder for the masked prepass.
+- name: DepthHighZ
+  renderTargets:
+  - src: DepthBuffer
+  - dst: DepthHighZ
+
 - name: DepthPrepass
   string:
   - Tag: Masked
-  - GPUCulling: false
+  - GPUCulling: true
+  - OcclusionCulling: true
   - VirtualizeInstancePayloads: true
   renderTargets:
   - depthStencil: DepthBuffer
@@ -388,7 +395,7 @@ frame:
   - transmissionFramebuffer: Secondary
 
 ############################
-- name: PostProcess
+- name: MotionBlur
 ############################
   string:
   - shader: Shaders/MotionBlur.shader

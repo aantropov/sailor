@@ -1,6 +1,10 @@
 #include "Time.h"
 
 #include <chrono>
+#include <algorithm>
+#include <cmath>
+#include "Memory/LockFreeHeapAllocator.h"
+#include "Containers/Vector.h"
 
 #if defined(_WIN32)
 #include "Sailor.h"
@@ -10,6 +14,37 @@
 
 using namespace Sailor;
 using namespace Sailor::Utils;
+
+FrameTimeStats Utils::CalculateFrameTimeStats(std::span<const float> seconds)
+{
+	FrameTimeStats result;
+	TVector<float> sorted;
+	sorted.Reserve(seconds.size());
+	for (float duration : seconds)
+	{
+		if (duration > 0.0f && std::isfinite(duration))
+		{
+			sorted.Add(duration);
+			result.m_elapsedSeconds += duration;
+		}
+	}
+	result.m_numFrames = sorted.Num();
+	if (sorted.IsEmpty()) return result;
+	std::sort(sorted.begin(), sorted.end());
+	result.m_sustainedFps = static_cast<double>(result.m_numFrames) / result.m_elapsedSeconds;
+	result.m_minMs = *sorted.First() * 1000.0f;
+	result.m_maxMs = *sorted.Last() * 1000.0f;
+	result.m_meanMs = static_cast<float>(result.m_elapsedSeconds / result.m_numFrames * 1000.0);
+	const auto percentile = [&](double fraction)
+	{
+		const size_t rank = static_cast<size_t>(std::ceil(fraction * result.m_numFrames));
+		return sorted[rank - 1] * 1000.0f;
+	};
+	result.m_p50Ms = percentile(0.50);
+	result.m_p95Ms = percentile(0.95);
+	result.m_p99Ms = percentile(0.99);
+	return result;
+}
 
 int64_t Utils::GetCurrentTimeMs()
 {

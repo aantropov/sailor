@@ -24,6 +24,16 @@ YAML::Node TypeInfo::SerializeAssetType() const
 	return m_serializeAssetType ? m_serializeAssetType() : YAML::Node(YAML::NodeType::Undefined);
 }
 
+void TypeInfo::AppendValueTypes(YAML::Node& catalog, TSet<std::string>& types, TSet<std::string>& enums) const
+{
+	m_appendValueTypes(catalog, types, enums);
+}
+
+const YAML::Node* TypeInfo::GetDefaultValues() const
+{
+	return m_getDefaultValues ? m_getDefaultValues() : nullptr;
+}
+
 namespace Sailor::Internal
 {
 	thread_local bool g_bSuppressEngineAutoRegistration = false;
@@ -442,6 +452,9 @@ YAML::Node TypeInfo::Serialize() const
 	::Serialize(res, "typename", m_name);
 	::Serialize(res, "base", m_base);
 	::Serialize(res, "properties", m_props);
+	YAML::Node readOnlyProperties(YAML::NodeType::Sequence);
+	for (const auto& name : m_readOnlyProperties) readOnlyProperties.push_back(name);
+	res["readOnlyProperties"] = std::move(readOnlyProperties);
 
 	YAML::Node propertyRanges(YAML::NodeType::Map);
 	for (const auto& propertyRange : m_propertyRanges)
@@ -461,12 +474,13 @@ void TypeInfo::Deserialize(const YAML::Node& inData)
 	::Deserialize(inData, "typename", m_name);
 	::Deserialize(inData, "base", m_base);
 	::Deserialize(inData, "properties", m_props);
+	::Deserialize(inData, "readOnlyProperties", m_readOnlyProperties);
 
 	m_propertyRanges.Clear();
 	YAML::Node propertyRanges(YAML::NodeType::Undefined);
 	for (const auto& field : inData)
 	{
-		if (field.first.IsScalar() && field.first.as<std::string>() == "propertyRanges")
+		if (field.first.IsScalar() && field.first.Scalar() == "propertyRanges")
 		{
 			propertyRanges = field.second;
 			break;
@@ -491,7 +505,7 @@ void TypeInfo::Deserialize(const YAML::Node& inData)
 					continue;
 				}
 
-				const std::string fieldName = field.first.as<std::string>();
+				const std::string_view fieldName = field.first.Scalar();
 				if (fieldName == "min")
 				{
 					min = field.second;
@@ -641,6 +655,13 @@ YAML::Node Reflection::ExportEngineTypes()
 		}
 	}
 	yamlTypes["assetTypes"] = assetTypes;
+
+	TSet<std::string> exportedTypes;
+	TSet<std::string> exportedEnums;
+	for (const auto* type : types) exportedTypes.Insert(type->Name());
+	for (const auto& entry : yamlTypes["enums"])
+		for (const auto& value : entry) exportedEnums.Insert(value.first.as<std::string>());
+	for (const auto* type : types) type->AppendValueTypes(yamlTypes, exportedTypes, exportedEnums);
 
 	return yamlTypes;
 }

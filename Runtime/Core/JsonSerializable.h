@@ -27,7 +27,7 @@ namespace Sailor
 	template<typename T>
 	void DeserializeEnum(const json& j, typename std::enable_if< std::is_enum<T>::value, T >::type& outEnumeration)
 	{
-		auto value = magic_enum::enum_cast<T>(j.get<std::string>());
+		auto value = magic_enum::enum_cast<T>(j.get_ref<const json::string_t&>());
 		check(value.has_value());
 		outEnumeration = value.value();
 	}

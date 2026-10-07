@@ -15,7 +15,7 @@ namespace Sailor::Framegraph
 		static const uint32_t LightsPerTile = 128;
 		static const uint32_t TileSize = 16;
 
-		SAILOR_API static const char* GetName() { return m_name; }
+		SAILOR_API static StringHash GetName() { return "LightCulling"_h; }
 
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override;
@@ -29,8 +29,6 @@ namespace Sailor::Framegraph
 			alignas(8) glm::ivec2 m_numTiles;
 			alignas(8) int32_t m_lightsNum;
 		};
-
-		SAILOR_SHARED_API static const char* m_name;
 
 		ShaderSetPtr m_pComputeShader{};
 	};

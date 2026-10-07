@@ -10,6 +10,7 @@
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "RHI/DebugContext.h"
+#include "RHI/MaterialMetadata.h"
 #include "RHI/CommandList.h"
 #include "Settings/GraphicsSettings.h"
 
@@ -42,38 +43,67 @@ void RHI::NormalizeTextureSamplers(TVector<uint32_t>& textures)
 }
 #endif
 
+void RHIMaterialMetadata::AppendTo(RHISceneViewProxy& proxy, RHIMaterialPtr material) const
+{
+	proxy.m_overrideMaterials.Add(std::move(material));
+	proxy.m_renderQueueTags.Add(m_renderQueueTag);
+	proxy.m_baseColorFactors.Add(m_baseColorFactor);
+	proxy.m_alphaCutoffs.Add(m_alphaCutoff);
+	proxy.m_baseColorSamplers.Add(m_baseColorSampler);
+#if defined(__APPLE__)
+	proxy.m_materialTextureSamplers.Add(m_textureSamplers);
+#endif
+}
+
+void RHIMaterialMetadata::AppendTo(RHIInstancedMeshGroup& group, RHIMaterialPtr material) const
+{
+	group.m_materials.Add(std::move(material));
+	group.m_sourceMaterialShaders.Add(m_shader);
+	group.m_renderQueueTags.Add(m_renderQueueTag);
+	group.m_baseColorFactors.Add(m_baseColorFactor);
+	group.m_alphaCutoffs.Add(m_alphaCutoff);
+	group.m_baseColorSamplers.Add(m_baseColorSampler);
+#if defined(__APPLE__)
+	group.m_materialTextureSamplers.Add(m_textureSamplers);
+#endif
+}
+
+void RHIMaterialMetadata::AppendShadowMesh(RHIShadowCasterProxy& caster, const RHIMeshPtr& mesh,
+	const glm::mat4& matrix, const RHIMaterialPtr& material, float maxCameraDistance) const
+{
+	const bool bMasked = m_renderQueueTag == "Masked"_h.GetHash();
+	if (m_renderQueueTag != "Opaque"_h.GetHash() && !bMasked) return;
+
+	RHIShadowMeshProxy shadowMesh;
+	shadowMesh.m_mesh = mesh;
+	shadowMesh.m_localMatrix = matrix;
+	shadowMesh.m_renderQueueTag = m_renderQueueTag;
+	shadowMesh.m_maxCameraDistance = maxCameraDistance;
+	if (m_bRequiresCustomDepthShader)
+	{
+		shadowMesh.m_customDepthMaterial = material;
+		shadowMesh.m_customDepthShader = m_shader;
+#if defined(__APPLE__)
+		shadowMesh.m_materialTextureSamplers = m_textureSamplers;
+#endif
+	}
+	if (bMasked)
+	{
+		shadowMesh.m_baseColorFactor = m_baseColorFactor;
+		shadowMesh.m_alphaCutoff = m_alphaCutoff;
+		shadowMesh.m_baseColorSampler = m_baseColorSampler;
+#if defined(__APPLE__)
+		if (!m_bRequiresCustomDepthShader) shadowMesh.m_materialTextureSamplers.Add(m_baseColorSampler);
+#endif
+	}
+#if defined(__APPLE__)
+	NormalizeTextureSamplers(shadowMesh.m_materialTextureSamplers);
+#endif
+	caster.m_meshes.Add(std::move(shadowMesh));
+}
+
 namespace
 {
-	bool TryNormalizeProxyTransforms(RHISceneProxyResource& resource)
-	{
-		const glm::mat4& referenceWorld = resource.m_proxy.m_worldMatrix;
-		const float determinant = glm::determinant(referenceWorld);
-		if (!std::isfinite(determinant) || std::abs(determinant) <= 1e-8f)
-		{
-			return false;
-		}
-
-		const glm::mat4 inverseWorld = glm::inverse(referenceWorld);
-		if (!Math::AllFinite(inverseWorld))
-		{
-			return false;
-		}
-
-		for (auto& meshMatrix : resource.m_proxy.m_meshModelMatrices)
-		{
-			meshMatrix = inverseWorld * meshMatrix;
-		}
-		if (resource.m_proxy.m_shadowCaster)
-		{
-			for (auto& shadowMesh : resource.m_proxy.m_shadowCaster->m_meshes)
-			{
-				shadowMesh.m_worldMatrix = inverseWorld * shadowMesh.m_worldMatrix;
-			}
-		}
-		resource.m_bMeshTransformsAreLocal = true;
-		return true;
-	}
-
 	void HashMatrix(size_t& result, const glm::mat4& matrix)
 	{
 		HashCombine(result, std::hash<glm::mat4>{}(matrix));
@@ -281,6 +311,7 @@ namespace
 		{
 			for (const auto& shadowMesh : proxy.m_shadowCaster->m_meshes)
 			{
+				HashMatrix(shadowRevision, shadowMesh.m_localMatrix);
 				HashCombine(
 					shadowRevision,
 					shadowMesh.m_mesh,
@@ -338,10 +369,8 @@ namespace
 	void PrepareProxyResource(RHISceneProxyResource& resource)
 	{
 		auto& proxy = resource.m_proxy;
-		if (proxy.m_shadowCaster)
-		{
-			proxy.m_shadowCaster = RHIShadowCasterProxyPtr::Make(*proxy.m_shadowCaster);
-		}
+		auto shadowCaster = proxy.m_shadowCaster ?
+			TSharedPtr<RHIShadowCasterProxy>::Make(*proxy.m_shadowCaster) : TSharedPtr<RHIShadowCasterProxy>{};
 #if defined(__APPLE__)
 		for (auto& textures : proxy.m_materialTextureSamplers)
 		{
@@ -354,15 +383,15 @@ namespace
 				NormalizeTextureSamplers(textures);
 			}
 		}
-		if (proxy.m_shadowCaster)
+		if (shadowCaster)
 		{
-			for (auto& mesh : proxy.m_shadowCaster->m_meshes)
+			for (auto& mesh : shadowCaster->m_meshes)
 			{
 				NormalizeTextureSamplers(mesh.m_materialTextureSamplers);
 			}
 		}
 #endif
-		TryNormalizeProxyTransforms(resource);
+		proxy.m_shadowCaster = std::move(shadowCaster);
 		CalculateProxyResourceRevisions(resource);
 	}
 }
@@ -381,93 +410,47 @@ RHISceneProxyResource::RHISceneProxyResource(RHISceneViewProxy&& proxy) :
 
 const RHISceneViewProxy* RHIVisibleSceneProxy::GetSource() const
 {
-	return m_resource ? &m_resource->m_proxy : nullptr;
+	return &m_resource->m_proxy;
 }
 
 const glm::mat4& RHIVisibleSceneProxy::GetWorldMatrix() const
 {
-	if (m_record)
-	{
-		return m_record->m_worldMatrix;
-	}
-	if (const auto* source = GetSource())
-	{
-		return source->m_worldMatrix;
-	}
-
-	static const glm::mat4 identity{ 1.0f };
-	return identity;
+	return m_record->m_worldMatrix;
 }
 
 const Math::AABB& RHIVisibleSceneProxy::GetWorldBounds() const
 {
-	if (m_record)
-	{
-		return m_record->m_worldBounds;
-	}
-	if (const auto* source = GetSource())
-	{
-		return source->m_worldAabb;
-	}
-
-	static const Math::AABB empty{};
-	return empty;
+	return m_record->m_worldBounds;
 }
 
 EMobilityType RHIVisibleSceneProxy::GetMobility() const
 {
-	if (m_record)
-	{
-		return m_record->m_mobility;
-	}
-	if (const auto* source = GetSource())
-	{
-		return source->m_mobility;
-	}
-	return EMobilityType::Static;
+	return m_record->m_mobility;
 }
 
 uint32_t RHIVisibleSceneProxy::GetSkeletonOffset() const
 {
-	if (m_record)
-	{
-		return m_record->m_skeletonOffset;
-	}
-	if (const auto* source = GetSource())
-	{
-		return source->m_skeletonOffset;
-	}
-	return (std::numeric_limits<uint32_t>::max)();
+	return m_record->m_skeletonOffset;
 }
 
 uint32_t RHIVisibleSceneProxy::GetRenderFlags() const
 {
-	if (m_record)
-	{
-		return m_record->m_renderFlags;
-	}
-	if (const auto* source = GetSource())
-	{
-		return source->m_bCastShadows ? 1u : 0u;
-	}
-	return 0u;
+	return m_record->m_renderFlags;
 }
 
 uint64_t RHIVisibleSceneProxy::GetContentRevision() const
 {
-	return m_record ? m_record->m_topologyRevision : 0ull;
+	return m_record->m_topologyRevision;
 }
 
 glm::mat4 RHIVisibleSceneProxy::ResolveMeshWorldMatrix(size_t meshIndex) const
 {
 	const auto* source = GetSource();
-	if (!source || meshIndex >= source->m_meshModelMatrices.Num())
+	if (meshIndex >= source->m_meshModelMatrices.Num())
 	{
 		return GetWorldMatrix();
 	}
-	return m_resource->m_bMeshTransformsAreLocal ?
-		GetWorldMatrix() * source->m_meshModelMatrices[meshIndex] :
-		source->m_meshModelMatrices[meshIndex];
+	return GetWorldMatrix() * source->m_meshModelMatrices[meshIndex];
 }
 
 glm::mat4 RHIVisibleSceneProxy::ResolveInstancedMeshWorldMatrix(
@@ -517,86 +500,43 @@ bool RHIVisibleSceneProxy::IsInstancedMeshWithinDistance(
 
 const RHIShadowCasterProxy* RHIVisibleShadowCaster::GetSource() const
 {
-	const auto* proxy = m_resource ? &m_resource->m_proxy : nullptr;
-	return proxy && proxy->m_shadowCaster ? proxy->m_shadowCaster.GetRawPtr() : nullptr;
+	return m_resource->m_proxy.m_shadowCaster.GetRawPtr();
 }
 
 const glm::mat4& RHIVisibleShadowCaster::GetWorldMatrix() const
 {
-	if (m_record)
-	{
-		return m_record->m_worldMatrix;
-	}
-	if (m_resource)
-	{
-		return m_resource->m_proxy.m_worldMatrix;
-	}
-
-	static const glm::mat4 identity{ 1.0f };
-	return identity;
+	return m_record->m_worldMatrix;
 }
 
 const Math::AABB& RHIVisibleShadowCaster::GetWorldBounds() const
 {
-	if (m_record)
-	{
-		return m_record->m_worldBounds;
-	}
-	if (const auto* source = GetSource())
-	{
-		return source->m_worldAabb;
-	}
-
-	static const Math::AABB empty{};
-	return empty;
+	return m_record->m_worldBounds;
 }
 
 EMobilityType RHIVisibleShadowCaster::GetMobility() const
 {
-	if (m_record)
-	{
-		return m_record->m_mobility;
-	}
-	if (m_resource)
-	{
-		return m_resource->m_proxy.m_mobility;
-	}
-	return EMobilityType::Static;
+	return m_record->m_mobility;
 }
 
 uint32_t RHIVisibleShadowCaster::GetSkeletonOffset() const
 {
-	if (m_record)
-	{
-		return m_record->m_skeletonOffset;
-	}
-	if (const auto* source = GetSource())
-	{
-		return source->m_skeletonOffset;
-	}
-	return (std::numeric_limits<uint32_t>::max)();
+	return m_record->m_skeletonOffset;
 }
 
 uint64_t RHIVisibleShadowCaster::GetProducerKey() const
 {
-	if (m_record)
-	{
-		return m_record->m_producerKey;
-	}
-	return m_resource ? m_resource->m_proxy.m_staticMeshEcs : 0ull;
+	return m_record->m_producerKey;
 }
 
 uint64_t RHIVisibleShadowCaster::GetContentRevision() const
 {
-	return m_resource ? m_resource->m_shadowRevision : 0ull;
+	return m_resource->m_shadowRevision;
 }
 
 glm::mat4 RHIVisibleShadowCaster::ResolveMeshWorldMatrix(
 	const RHIShadowMeshProxy& shadowMesh) const
 {
-	return m_resource && m_resource->m_bMeshTransformsAreLocal ?
-		GetWorldMatrix() * shadowMesh.m_worldMatrix :
-		shadowMesh.m_worldMatrix;
+	return GetWorldMatrix() * shadowMesh.m_localMatrix;
 }
 
 glm::mat4 RHIVisibleShadowCaster::ResolveInstancedMeshWorldMatrix(
@@ -779,11 +719,11 @@ void RHISceneView::PrepareDebugDrawCommandLists(
 	for (const auto& camera : m_cameras)
 	{
 		const glm::mat4 viewProjection = camera.GetProjectionMatrix() * camera.GetViewMatrix();
-		auto task = Tasks::CreateTaskWithResult<RHI::RHICommandListPtr>("Record DebugContext Draw Command List",
+		auto task = Tasks::CreateTaskWithResult<RHI::RHICommandListPtr>("Record DebugContext Draw Command List"_h,
 			[debugDrawSnapshot, viewProjection, renderExtent]()
 			{
 				RHI::RHICommandListPtr secondaryCmdList = RHI::Renderer::GetDriver()->CreateCommandList(true, RHI::ECommandListQueue::Graphics);
-				Sailor::RHI::Renderer::GetDriver()->SetDebugName(secondaryCmdList, "Draw Debug Mesh");
+				Sailor::RHI::Renderer::GetDriver()->SetDebugName(secondaryCmdList, "Draw Debug Mesh"_h);
 				auto commands = App::GetSubmodule<Renderer>()->GetDriverCommands();
 				commands->BeginSecondaryCommandList(secondaryCmdList, false, true);
 				DebugContext::DrawDebugMesh(
@@ -839,20 +779,35 @@ void RHISceneView::Clear()
 		m_virtualSceneVersions.Clear(false);
 		m_retainedSceneVersions.Clear();
 	}
-	m_sceneRevision = 0ull;
 	m_renderMode = ESceneViewRenderMode::Lit;
 	m_shadowCastersRevision = 0ull;
 	m_bHasCustomDepthShadowCasters = false;
 	m_pathTracerScene.Clear();
 }
 
+UboFrameData RHISceneViewSnapshot::GetFrameData(const glm::ivec2& extent) const
+{
+	UboFrameData frame;
+	frame.m_cameraPosition = m_cameraTransform.m_position;
+	frame.m_projection = m_camera->GetProjectionMatrix();
+	frame.m_invProjection = m_camera->GetInvProjection();
+	frame.m_cameraZNearZFar = glm::vec2(m_camera->GetZNear(), m_camera->GetZFar());
+	frame.m_currentTime = m_currentTime;
+	frame.m_deltaTime = m_deltaTime;
+	frame.m_view = m_camera->GetViewMatrix();
+	frame.m_viewportSize = extent;
+	return frame;
+}
+
 void RHISceneViewSnapshot::ResetForReuse()
 {
 	SAILOR_PROFILE_FUNCTION();
 	m_submissionContext.Clear();
+	m_submissionCompletionToken.Clear();
+	m_world = nullptr;
+	m_currentTime = 0.0f;
 	m_previousMotionFrame.Clear();
 	m_sceneVersions.Clear();
-	m_sceneRevision = 0ull;
 	m_renderMode = ESceneViewRenderMode::Lit;
 	m_deltaTime = 0.0f;
 	m_frame = 0ull;
@@ -890,7 +845,7 @@ void RHISceneViewSnapshot::ResetForReuse()
 const RHIMeshPtr& RHISceneViewSnapshot::ResolveMesh(const RHIVisibleSceneProxy& proxy, size_t meshIndex) const
 {
 	const auto* source = proxy.GetSource();
-	if (!source || meshIndex >= source->m_meshes.Num())
+	if (meshIndex >= source->m_meshes.Num())
 	{
 		static const RHIMeshPtr empty;
 		return empty;
@@ -929,7 +884,7 @@ void RHISceneViewSnapshot::PrepareLods(const glm::mat4& viewMatrix, const glm::m
 		{
 			LodOffsets offsets;
 			const auto* source = proxy.GetSource();
-			if (!source || !source->m_lodPolicy.m_bEnabled)
+			if (!source->m_lodPolicy.m_bEnabled)
 			{
 				return offsets;
 			}
@@ -966,7 +921,7 @@ void RHISceneViewSnapshot::PrepareLods(const glm::mat4& viewMatrix, const glm::m
 				return offsets;
 			}
 			// Record identity also distinguishes equal handles in different scene roots.
-			const void* key = proxy.m_record ? static_cast<const void*>(proxy.m_record) : proxy.m_resource;
+			const void* key = proxy.m_record;
 			LodOffsets* existing = nullptr;
 			if (preparedInstances.Find(key, existing))
 			{
@@ -1065,10 +1020,7 @@ void RHISceneViewSnapshot::PrepareLods(const glm::mat4& viewMatrix, const glm::m
 	{
 		for (auto& caster : pass.m_meshList)
 		{
-			RHIVisibleSceneProxy proxy;
-			proxy.m_handle = caster.m_handle;
-			proxy.m_record = caster.m_record;
-			proxy.m_resource = caster.m_resource;
+			RHIVisibleSceneProxy proxy(caster.m_handle, *caster.m_record, *caster.m_resource);
 			const auto offsets = prepare(proxy);
 			caster.m_meshLodOffset = offsets.m_shadow;
 			caster.m_instancedLodOffset = offsets.m_instanced;
@@ -1128,7 +1080,6 @@ void RHISceneView::AddSceneVersion(RHISpatialSceneVersionPtr sceneVersion)
 		return;
 	}
 
-	HashCombine(m_sceneRevision, sceneVersion->m_revision);
 	HashCombine(
 		m_shadowCastersRevision,
 		sceneVersion->m_shadowCastersRevision);
@@ -1141,12 +1092,11 @@ void RHISceneView::AddSceneVersion(RHISpatialSceneVersionPtr sceneVersion)
 	m_sceneVersions.Emplace(std::move(sceneVersion));
 }
 
-TSharedPtr<TVector<RHISceneVersionPtr>> RHISceneView::GetRetainedSceneVersions()
+TSharedPtr<const TVector<RHISceneVersionPtr>> RHISceneView::GetRetainedSceneVersions()
 {
 	if (!m_retainedSceneVersions)
 	{
-		m_retainedSceneVersions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make();
-		*m_retainedSceneVersions = m_virtualSceneVersions;
+		m_retainedSceneVersions = TSharedPtr<const TVector<RHISceneVersionPtr>>::Make(m_virtualSceneVersions);
 	}
 	return m_retainedSceneVersions;
 }
@@ -1183,20 +1133,18 @@ void RHISceneView::CompleteSubmissionResources(bool bSucceeded)
 	}
 }
 
-TVector<RHIVisibleSceneProxy> RHISceneView::TraceScene(const Math::Frustum& frustum, bool bSkipMaterials) const
+TVector<RHIVisibleSceneProxy> RHISceneView::TraceScene(const Math::Frustum& frustum) const
 {
 	TVector<RHIVisibleSceneProxy> result;
-	TraceScene(frustum, result, bSkipMaterials);
+	TraceScene(frustum, result);
 	return result;
 }
 
 void RHISceneView::TraceScene(
 	const Math::Frustum& frustum,
-	TVector<RHIVisibleSceneProxy>& result,
-	bool bSkipMaterials) const
+	TVector<RHIVisibleSceneProxy>& result) const
 {
 	SAILOR_PROFILE_FUNCTION();
-	(void)bSkipMaterials;
 
 	result.Clear(false);
 	size_t numCandidates = 0u;
@@ -1236,10 +1184,7 @@ void RHISceneView::TraceScene(
 					return;
 				}
 
-				RHIVisibleSceneProxy visible;
-				visible.m_handle = handle;
-				visible.m_record = record;
-				visible.m_resource = resource;
+				RHIVisibleSceneProxy visible(handle, *record, *resource);
 				result.Add(std::move(visible));
 		};
 		if (spatialVersion->m_dynamicOctree)
@@ -1311,10 +1256,7 @@ void RHISceneView::TraceShadowCasters(
 					return;
 				}
 
-				RHIVisibleShadowCaster visible;
-				visible.m_handle = handle;
-				visible.m_record = record;
-				visible.m_resource = resource;
+				RHIVisibleShadowCaster visible(handle, *record, *resource);
 				result.Add(std::move(visible));
 		};
 		if (spatialVersion->m_dynamicOctree)
@@ -1344,8 +1286,10 @@ void RHISceneView::PrepareSnapshots()
 		auto& res = m_snapshots[i];
 		res.ResetForReuse();
 		res.m_submissionContext = m_submissionContext;
+		res.m_submissionCompletionToken = GetOrCreateSubmissionCompletionToken();
+		res.m_world = m_world;
+		res.m_currentTime = m_currentTime;
 		res.m_sceneVersions = GetRetainedSceneVersions();
-		res.m_sceneRevision = m_sceneRevision;
 		res.m_renderMode = m_renderMode;
 
 		Math::Frustum frustum;
@@ -1381,7 +1325,7 @@ void RHISceneView::PrepareSnapshots()
 		res.m_bGlobalIlluminationEnabled =
 			m_bGlobalIlluminationEnabled;
 		res.m_globalIllumination = m_globalIllumination;
-		TraceScene(frustum, res.m_proxies, false);
+		TraceScene(frustum, res.m_proxies);
 		const glm::vec3 cameraPosition = glm::vec3(m_cameraTransforms[i].m_position);
 		size_t visibleProxyWriteIndex = 0u;
 		for (size_t visibleProxyReadIndex = 0u;
@@ -1390,22 +1334,9 @@ void RHISceneView::PrepareSnapshots()
 		{
 			auto& proxy = res.m_proxies[visibleProxyReadIndex];
 			const auto* source = proxy.GetSource();
-			bool bKeepProxy = source != nullptr;
-			float cameraDistance = 0.0f;
-			if (source)
-			{
-				const glm::vec3 closest = glm::clamp(
-					cameraPosition,
-					proxy.GetWorldBounds().m_min,
-					proxy.GetWorldBounds().m_max);
-				cameraDistance = glm::distance(cameraPosition, closest);
-			}
-			if (source && std::isfinite(source->m_lodPolicy.m_maxCameraDistance))
-			{
-				bKeepProxy = cameraDistance <=
-					source->m_lodPolicy.m_maxCameraDistance;
-			}
-			if (!bKeepProxy)
+			const glm::vec3 closest = glm::clamp(cameraPosition, proxy.GetWorldBounds().m_min, proxy.GetWorldBounds().m_max);
+			if (std::isfinite(source->m_lodPolicy.m_maxCameraDistance) &&
+				glm::distance(cameraPosition, closest) > source->m_lodPolicy.m_maxCameraDistance)
 			{
 				continue;
 			}
@@ -1415,7 +1346,7 @@ void RHISceneView::PrepareSnapshots()
 			}
 			++visibleProxyWriteIndex;
 		}
-		res.m_proxies.Resize(visibleProxyWriteIndex);
+		res.m_proxies.RemoveAt(visibleProxyWriteIndex, res.m_proxies.Num() - visibleProxyWriteIndex);
 		res.m_proxies.Sort([](const RHIVisibleSceneProxy& lhs, const RHIVisibleSceneProxy& rhs)
 			{
 				if (lhs.m_handle.IsValid() != rhs.m_handle.IsValid())
@@ -1433,10 +1364,8 @@ void RHISceneView::PrepareSnapshots()
 						return lhs.m_handle.m_generation < rhs.m_handle.m_generation;
 					}
 				}
-				const auto* lhsSource = lhs.GetSource();
-				const auto* rhsSource = rhs.GetSource();
-				const size_t lhsProducer = lhsSource ? lhsSource->m_staticMeshEcs : 0u;
-				const size_t rhsProducer = rhsSource ? rhsSource->m_staticMeshEcs : 0u;
+				const uint64_t lhsProducer = lhs.m_record->m_producerKey;
+				const uint64_t rhsProducer = rhs.m_record->m_producerKey;
 				if (lhsProducer != rhsProducer)
 				{
 					return lhsProducer < rhsProducer;

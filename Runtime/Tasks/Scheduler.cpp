@@ -21,13 +21,13 @@ using namespace Sailor::Tasks;
 
 WorkerThread::WorkerThread(
 	Scheduler& scheduler,
-	std::string threadName,
+	StringHash threadName,
 	EThreadType threadType,
 	std::condition_variable& refresh,
 	std::mutex& mutex,
 	TVector<ITaskPtr>& pTasksQueue) :
 	m_scheduler(scheduler),
-	m_threadName(std::move(threadName)),
+	m_threadName(threadName),
 	m_threadType(threadType),
 	m_refresh(refresh),
 	m_sharedQueueMutex(mutex),
@@ -109,7 +109,7 @@ void WorkerThread::ProcessTask(ITaskPtr& task)
 	if (task)
 	{
 		SAILOR_PROFILE_SCOPE("Task Execution");
-		SAILOR_PROFILE_TEXT(task->GetName().c_str());
+		SAILOR_PROFILE_TEXT(task->GetName());
 
 		m_bIsBusy = true;
 		task->Execute();
@@ -126,9 +126,10 @@ void WorkerThread::SetExecFlag()
 
 void WorkerThread::Process()
 {
-	Sailor::Utils::SetThreadName(m_threadName);
+	const auto& threadName = m_threadName.ToString();
+	Sailor::Utils::SetThreadName(threadName);
 
-	SAILOR_PROFILE_THREAD_NAME(m_threadName.c_str());
+	SAILOR_PROFILE_THREAD_NAME(threadName.c_str());
 
 	if (m_threadType == EThreadType::Render || m_threadType == EThreadType::RHI)
 	{
@@ -216,7 +217,7 @@ void Scheduler::Initialize()
 
 	WorkerThread* newRenderingThread = new WorkerThread(
 		*this,
-		"Render Thread",
+		"Render Thread"_h,
 		EThreadType::Render,
 		m_refreshCondVar[(uint32_t)EThreadType::Render],
 		m_queueMutex[(uint32_t)EThreadType::Render],
@@ -228,7 +229,7 @@ void Scheduler::Initialize()
 
 	for (uint32_t i = 0; i < numThreads; i++)
 	{
-		const std::string threadName = std::string("Worker Thread ") + std::to_string(i);
+		const auto threadName = StringHash::Runtime("Worker Thread " + std::to_string(i));
 		WorkerThread* newThread = new WorkerThread(*this, threadName, EThreadType::Worker,
 			m_refreshCondVar[(uint32_t)EThreadType::Worker],
 			m_queueMutex[(uint32_t)EThreadType::Worker],
@@ -241,7 +242,7 @@ void Scheduler::Initialize()
 
 	for (uint32_t i = 0; i < numGIThreads; i++)
 	{
-		const std::string threadName = std::string("GI Thread ") + std::to_string(i);
+		const auto threadName = StringHash::Runtime("GI Thread " + std::to_string(i));
 		WorkerThread* newThread = new WorkerThread(*this, threadName, EThreadType::GI,
 			m_refreshCondVar[(uint32_t)EThreadType::GI],
 			m_queueMutex[(uint32_t)EThreadType::GI],
@@ -253,7 +254,7 @@ void Scheduler::Initialize()
 
 	for (uint32_t i = 0; i < numRHIThreads; i++)
 	{
-		const std::string threadName = std::string("RHI Thread ") + std::to_string(i);
+		const auto threadName = StringHash::Runtime("RHI Thread " + std::to_string(i));
 		WorkerThread* newThread = new WorkerThread(*this, threadName, EThreadType::RHI,
 			m_refreshCondVar[(uint32_t)EThreadType::RHI],
 			m_queueMutex[(uint32_t)EThreadType::RHI],
@@ -265,7 +266,7 @@ void Scheduler::Initialize()
 
 	WorkerThread* newEditorThread = new WorkerThread(
 		*this,
-		"Editor Thread",
+		"Editor Thread"_h,
 		EThreadType::Editor,
 		m_refreshCondVar[(uint32_t)EThreadType::Editor],
 		m_queueMutex[(uint32_t)EThreadType::Editor],
@@ -277,7 +278,7 @@ void Scheduler::Initialize()
 
 	WorkerThread* newBackgroundThread = new WorkerThread(
 		*this,
-		"Background Thread",
+		"Background Thread"_h,
 		EThreadType::Background,
 		m_refreshCondVar[(uint32_t)EThreadType::Background],
 		m_queueMutex[(uint32_t)EThreadType::Background],
@@ -288,7 +289,7 @@ void Scheduler::Initialize()
 
 	WorkerThread* newPhysicsThread = new WorkerThread(
 		*this,
-		"Physics Thread",
+		"Physics Thread"_h,
 		EThreadType::Physics,
 		m_refreshCondVar[(uint32_t)EThreadType::Physics],
 		m_queueMutex[(uint32_t)EThreadType::Physics],
@@ -300,7 +301,7 @@ void Scheduler::Initialize()
 
 	WorkerThread* newAudioThread = new WorkerThread(
 		*this,
-		"Audio Thread",
+		"Audio Thread"_h,
 		EThreadType::Audio,
 		m_refreshCondVar[(uint32_t)EThreadType::Audio],
 		m_queueMutex[(uint32_t)EThreadType::Audio],
@@ -388,7 +389,7 @@ void Scheduler::ProcessTasksOnMainThread()
 		if (pCurrentTask)
 		{
 			SAILOR_PROFILE_SCOPE("Task Execution");
-			SAILOR_PROFILE_TEXT(pCurrentTask->GetName().c_str());
+			SAILOR_PROFILE_TEXT(pCurrentTask->GetName());
 
 			pCurrentTask->Execute();
 			pCurrentTask.Clear();

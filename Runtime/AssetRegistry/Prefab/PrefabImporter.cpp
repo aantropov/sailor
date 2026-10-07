@@ -743,11 +743,11 @@ Tasks::TaskPtr<PrefabPtr> PrefabImporter::LoadPrefab(FileId uid, PrefabPtr& outP
 	// There is no promise, we need to load prefab
 	if (PrefabAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<PrefabAssetInfoPtr>(uid))
 	{
-		SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
+		SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath());
 
 		PrefabPtr prefab = PrefabPtr::Make(m_allocator, uid);
 
-		promise = Tasks::CreateTaskWithResult<PrefabPtr>("Load prefab",
+		promise = Tasks::CreateTaskWithResult<PrefabPtr>("Load prefab"_h,
 			[prefab, assetInfo]() mutable
 			{
 				std::string text;

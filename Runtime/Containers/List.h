@@ -97,6 +97,7 @@ namespace Sailor
 
 			TNode* m_node;
 			const TList* m_owner = nullptr;
+			friend class TList;
 		};
 
 		using TIterator = TBaseIterator<TElementType>;
@@ -380,6 +381,13 @@ namespace Sailor
 			return num;
 		}
 
+		TIterator Erase(TIterator position)
+		{
+			auto* next = position.m_node->m_pNext;
+			Remove(position.m_node);
+			return { next, this };
+		}
+
 		void Clear()
 		{
 			TNode* current = m_pFirst;
@@ -528,5 +536,4 @@ namespace Sailor
 		TAllocator m_allocator{};
 	};
 
-	SAILOR_API void RunListBenchmark();
 }

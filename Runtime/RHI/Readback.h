@@ -4,12 +4,14 @@
 
 namespace Sailor::RHI
 {
-	struct EditorReadbackFrame
+	SAILOR_API uint32_t GetReadbackPixelSize(ETextureFormat format);
+
+	struct ReadbackFrame
 	{
-		SAILOR_API EditorReadbackFrame();
-		SAILOR_API ~EditorReadbackFrame();
-		EditorReadbackFrame(const EditorReadbackFrame&) = delete;
-		EditorReadbackFrame& operator=(const EditorReadbackFrame&) = delete;
+		SAILOR_API ReadbackFrame();
+		SAILOR_API ~ReadbackFrame();
+		ReadbackFrame(const ReadbackFrame&) = delete;
+		ReadbackFrame& operator=(const ReadbackFrame&) = delete;
 
 		RHIBufferPtr m_buffer{};
 		RHIFencePtr m_completion{};
@@ -24,9 +26,11 @@ namespace Sailor::RHI
 		SAILOR_API bool PrepareBgraPixels();
 		SAILOR_API const uint8_t* GetBgraPixels() const;
 		SAILOR_API uint32_t GetBgraBytesPerRow() const;
+		// Decode the original pixels, honoring format/pitch; sRGB formats stay encoded.
+		SAILOR_API bool CopySrgbPixels(TVector<glm::u8vec4>& outPixels) const;
 	};
 
-	using EditorReadbackFramePtr = TSharedPtr<const EditorReadbackFrame>;
+	using ReadbackFramePtr = TSharedPtr<const ReadbackFrame>;
 
 	struct EditorReadbackStats
 	{

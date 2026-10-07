@@ -14,14 +14,12 @@ namespace Sailor::Framegraph
 
 		const uint32_t HistogramShades = 256;
 
-		SAILOR_API static const char* GetName() { return m_name; }
+		SAILOR_API static StringHash GetName() { return "EyeAdaptation"_h; }
 
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override;
 
 	protected:
-
-		SAILOR_SHARED_API static const char* m_name;
 
 		ShaderSetPtr m_pComputeHistogramShader{};
 		ShaderSetPtr m_pComputeAverageShader{};

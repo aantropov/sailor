@@ -1,12 +1,12 @@
 #include "Platform/Win32/Window.h"
 #include "Platform/Win32/Input.h"
-#include "Submodules/ImGuiApi.h"
 #include "Sailor.h"
 
 #if defined(__APPLE__)
 
 #import <Cocoa/Cocoa.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <IOKit/hidsystem/IOLLEvent.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import <objc/runtime.h>
 
@@ -15,6 +15,7 @@
 
 using namespace Sailor;
 using namespace Sailor::Win32;
+using Sailor::Platform::InputEvent;
 
 Utils::WindowSizeAndPosition Utils::GetWindowSizeAndPosition(HWND hwnd)
 {
@@ -27,13 +28,6 @@ namespace
 	NSWindow* sReusableEditorRenderingWindow = nil;
 }
 
-static void SailorDispatchImGuiMacEvent(const ImGuiApi::MacEvent& event)
-{
-	if (auto* imGui = App::GetSubmodule<ImGuiApi>())
-	{
-		imGui->HandleMac(event);
-	}
-}
 
 static uint32_t SailorMapMacKeyCode(unsigned short keyCode)
 {
@@ -78,6 +72,7 @@ static uint32_t SailorMapMacKeyCode(unsigned short keyCode)
 	case 0x30: return 0x09;
 	case 0x31: return 0x20;
 	case 0x24: return 0x0D;
+	case 0x4C: return 0x0D;
 	case 0x33: return 0x08;
 	case 0x7B: return 0x25;
 	case 0x7C: return 0x27;
@@ -86,12 +81,14 @@ static uint32_t SailorMapMacKeyCode(unsigned short keyCode)
 	case 0x35: return VK_ESCAPE;
 	case 0x60: return VK_F5;
 	case 0x61: return VK_F6;
-	case 0x38:
-	case 0x3C:
-		return VK_SHIFT;
-	case 0x3B:
-	case 0x3E:
-		return VK_CONTROL;
+	case 0x38: return VK_LSHIFT;
+	case 0x3C: return VK_RSHIFT;
+	case 0x3B: return VK_LCONTROL;
+	case 0x3E: return VK_RCONTROL;
+	case 0x3A: return VK_LMENU;
+	case 0x3D: return VK_RMENU;
+	case 0x37: return VK_LWIN;
+	case 0x36: return VK_RWIN;
 	default:
 		return 0;
 	}
@@ -207,7 +204,7 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 		self.sailorWindow->UpdateMouseCapture();
 	}
 
-	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::Focus, 0.0f, 0.0f, 0, -1, true, nullptr });
+	GlobalInput::QueueNativeEvent({ InputEvent::Type::Focus, 0.0f, 0.0f, 0, -1, true, {} });
 }
 
 - (void)windowDidResignKey:(NSNotification*)notification
@@ -219,7 +216,7 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 		self.sailorWindow->UpdateMouseCapture();
 	}
 
-	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::Focus, 0.0f, 0.0f, 0, -1, false, nullptr });
+	GlobalInput::QueueNativeEvent({ InputEvent::Type::Focus, 0.0f, 0.0f, 0, -1, false, {} });
 }
 
 - (void)windowDidResize:(NSNotification*)notification
@@ -260,7 +257,7 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 	return YES;
 }
 
-- (void)updateCursorFromEvent:(NSEvent*)event
+- (NSPoint)updateCursorFromEvent:(NSEvent*)event
 {
 	if (self.sailorWindow && (event.type == NSEventTypeMouseMoved ||
 		event.type == NSEventTypeLeftMouseDragged || event.type == NSEventTypeRightMouseDragged ||
@@ -273,25 +270,20 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 	const float viewHeight = self.bounds.size.height;
 	const float x = (float)point.x;
 	const float y = (float)(viewHeight - point.y);
-	GlobalInput::SetCursorPosition((int32_t)x, (int32_t)y);
-	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::MousePos, x, y, 0, -1, false, nullptr });
+	GlobalInput::QueueNativeEvent({ InputEvent::Type::MousePos, x, y, 0, -1, false, {} });
+	return NSMakePoint(x, y);
 }
 
 - (void)keyDown:(NSEvent*)event
 {
-	if (event.isARepeat)
-	{
-		return;
-	}
-
 	const uint32_t key = SailorMapMacKeyCode(event.keyCode);
-	if (key != 0)
+	if (key != 0 && !event.isARepeat)
 	{
-		GlobalInput::SetKeyState(key, KeyState::Pressed);
-		SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::Key, 0.0f, 0.0f, key, -1, true, nullptr });
+		GlobalInput::QueueNativeEvent({ InputEvent::Type::Key, 0.0f, 0.0f, key, -1, true, {}, event.keyCode == 0x4C });
 	}
 
-	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::Text, 0.0f, 0.0f, 0, -1, false, [[event characters] UTF8String] });
+	if (const char* text = [[event characters] UTF8String])
+		GlobalInput::QueueNativeEvent({ InputEvent::Type::Text, 0.0f, 0.0f, 0, -1, false, text });
 }
 
 - (void)keyUp:(NSEvent*)event
@@ -299,20 +291,28 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 	const uint32_t key = SailorMapMacKeyCode(event.keyCode);
 	if (key != 0)
 	{
-		GlobalInput::SetKeyState(key, KeyState::Up);
-		SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::Key, 0.0f, 0.0f, key, -1, false, nullptr });
+		GlobalInput::QueueNativeEvent({ InputEvent::Type::Key, 0.0f, 0.0f, key, -1, false, {}, event.keyCode == 0x4C });
 	}
 }
 
 - (void)flagsChanged:(NSEvent*)event
 {
 	const uint32_t key = SailorMapMacKeyCode(event.keyCode);
-	if (key == VK_SHIFT || key == VK_CONTROL)
+	NSEventModifierFlags mask;
+	switch (key)
 	{
-		const bool isDown = (event.modifierFlags & (key == VK_SHIFT ? NSEventModifierFlagShift : NSEventModifierFlagControl)) != 0;
-		GlobalInput::SetKeyState(key, isDown ? KeyState::Pressed : KeyState::Up);
-		SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::Key, 0.0f, 0.0f, key, -1, isDown, nullptr });
+	case VK_LSHIFT: mask = NX_DEVICELSHIFTKEYMASK; break;
+	case VK_RSHIFT: mask = NX_DEVICERSHIFTKEYMASK; break;
+	case VK_LCONTROL: mask = NX_DEVICELCTLKEYMASK; break;
+	case VK_RCONTROL: mask = NX_DEVICERCTLKEYMASK; break;
+	case VK_LMENU: mask = NX_DEVICELALTKEYMASK; break;
+	case VK_RMENU: mask = NX_DEVICERALTKEYMASK; break;
+	case VK_LWIN: mask = NX_DEVICELCMDKEYMASK; break;
+	case VK_RWIN: mask = NX_DEVICERCMDKEYMASK; break;
+	default: return;
 	}
+	const bool bIsPressed = (event.modifierFlags & mask) != 0;
+	GlobalInput::QueueNativeEvent({ InputEvent::Type::Key, 0.0f, 0.0f, key, -1, bIsPressed, {} });
 }
 
 - (void)mouseMoved:(NSEvent*)event
@@ -338,50 +338,43 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 - (void)scrollWheel:(NSEvent*)event
 {
 	[self updateCursorFromEvent:event];
-	GlobalInput::AddMouseWheelDelta((float)event.scrollingDeltaY);
-	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::MouseWheel, (float)event.scrollingDeltaX, (float)event.scrollingDeltaY, 0, -1, false, nullptr });
+	GlobalInput::QueueNativeEvent({ InputEvent::Type::MouseWheel, (float)event.scrollingDeltaX, (float)event.scrollingDeltaY, 0, -1, false, {} });
 }
 
 - (void)mouseDown:(NSEvent*)event
 {
-	[self updateCursorFromEvent:event];
-	GlobalInput::SetMouseButtonState(0, KeyState::Pressed);
-	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::MouseButton, 0.0f, 0.0f, 0, 0, true, nullptr });
+	NSPoint position = [self updateCursorFromEvent:event];
+	GlobalInput::QueueNativeEvent({ InputEvent::Type::MouseButton, (float)position.x, (float)position.y, 0, 0, true, {} });
 }
 
 - (void)mouseUp:(NSEvent*)event
 {
-	[self updateCursorFromEvent:event];
-	GlobalInput::SetMouseButtonState(0, KeyState::Up);
-	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::MouseButton, 0.0f, 0.0f, 0, 0, false, nullptr });
+	NSPoint position = [self updateCursorFromEvent:event];
+	GlobalInput::QueueNativeEvent({ InputEvent::Type::MouseButton, (float)position.x, (float)position.y, 0, 0, false, {} });
 }
 
 - (void)rightMouseDown:(NSEvent*)event
 {
-	[self updateCursorFromEvent:event];
-	GlobalInput::SetMouseButtonState(1, KeyState::Pressed);
-	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::MouseButton, 0.0f, 0.0f, 0, 1, true, nullptr });
+	NSPoint position = [self updateCursorFromEvent:event];
+	GlobalInput::QueueNativeEvent({ InputEvent::Type::MouseButton, (float)position.x, (float)position.y, 0, 1, true, {} });
 }
 
 - (void)rightMouseUp:(NSEvent*)event
 {
-	[self updateCursorFromEvent:event];
-	GlobalInput::SetMouseButtonState(1, KeyState::Up);
-	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::MouseButton, 0.0f, 0.0f, 0, 1, false, nullptr });
+	NSPoint position = [self updateCursorFromEvent:event];
+	GlobalInput::QueueNativeEvent({ InputEvent::Type::MouseButton, (float)position.x, (float)position.y, 0, 1, false, {} });
 }
 
 - (void)otherMouseDown:(NSEvent*)event
 {
-	[self updateCursorFromEvent:event];
-	GlobalInput::SetMouseButtonState(2, KeyState::Pressed);
-	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::MouseButton, 0.0f, 0.0f, 0, 2, true, nullptr });
+	NSPoint position = [self updateCursorFromEvent:event];
+	GlobalInput::QueueNativeEvent({ InputEvent::Type::MouseButton, (float)position.x, (float)position.y, 0, 2, true, {} });
 }
 
 - (void)otherMouseUp:(NSEvent*)event
 {
-	[self updateCursorFromEvent:event];
-	GlobalInput::SetMouseButtonState(2, KeyState::Up);
-	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::MouseButton, 0.0f, 0.0f, 0, 2, false, nullptr });
+	NSPoint position = [self updateCursorFromEvent:event];
+	GlobalInput::QueueNativeEvent({ InputEvent::Type::MouseButton, (float)position.x, (float)position.y, 0, 2, false, {} });
 }
 
 @end

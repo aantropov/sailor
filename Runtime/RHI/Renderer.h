@@ -19,6 +19,9 @@
 #include "RendererTimings.h"
 #include "Readback.h"
 #include "SceneView.h"
+#include "FrameGraph/SkyParameters.h"
+
+namespace Sailor::Framegraph { class SkyNode; }
 
 namespace Sailor
 {
@@ -66,13 +69,24 @@ namespace Sailor::RHI
 
 		SAILOR_API FrameGraphPtr GetFrameGraph() { return m_frameGraph; }
 		// Render queues completed captures; only Main reads the published frame.
-		SAILOR_API void QueueEditorReadback(EditorReadbackFramePtr frame);
-		SAILOR_API EditorReadbackFramePtr GetEditorReadback() const { return m_editorReadback; }
+		SAILOR_API void QueueEditorReadback(ReadbackFramePtr frame);
+		SAILOR_API ReadbackFramePtr GetEditorReadback() const { return m_editorReadback; }
 		SAILOR_API bool HasEditorReadback() const { return m_bHasEditorReadback; }
 
 		SAILOR_API static void MemoryStats();
 
+	private:
+		friend class RendererSubmissionTestAccess;
+		struct FrameSubmission;
+		void CaptureSceneView(FrameSubmission& submission, const Sailor::FrameState& frame);
+		bool AcquireSubmission(FrameSubmission& submission);
+		void PrepareSceneView(FrameSubmission& submission, const Sailor::FrameState& frame);
+		void RecordAndSubmitFrame(FrameSubmission& submission, const Sailor::FrameState& frame);
+		void CompleteFrame(FrameSubmission& submission);
+		void ReturnSceneView(RHISceneViewPtr& sceneView);
+
 	protected:
+		SAILOR_API void UpdateSkyParameters(WorldPtr world, RHIFrameGraphPtr graph);
 		void UpdateMemoryStats();
 		void PublishGpuTimings(const std::optional<GpuTimingResult>& timings);
 		void InvalidateGpuTimings();
@@ -100,7 +114,9 @@ namespace Sailor::RHI
 		class Win32::Window* m_pViewport;
 
 		FrameGraphPtr m_frameGraph{};
-		EditorReadbackFramePtr m_editorReadback{};
+		TRefPtr<Framegraph::SkyNode> m_skyNode;
+		SkyParameters m_publishedSkyParams;
+		ReadbackFramePtr m_editorReadback{};
 		bool m_bHasEditorReadback = false;
 		TConcurrentMap<WorldPtr, TList<TPair<RHISceneViewPtr,bool>>, 4, ERehashPolicy::Never> m_cachedSceneViews{};
 			TUniquePtr<IGraphicsDriver> m_driverInstance{};

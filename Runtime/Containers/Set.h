@@ -452,7 +452,6 @@ namespace Sailor
 		TEntry* m_last = nullptr;
 	};
 
-	SAILOR_API void RunSetBenchmark();
 }
 
 namespace std

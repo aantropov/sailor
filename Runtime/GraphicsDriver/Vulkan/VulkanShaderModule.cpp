@@ -5,14 +5,14 @@
 using namespace Sailor;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
-VulkanShaderStage::VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, VulkanShaderModulePtr shaderModule) :
+VulkanShaderStage::VulkanShaderStage(VkShaderStageFlagBits stage, StringHash entryPointName, VulkanShaderModulePtr shaderModule) :
 	m_stage(stage),
 	m_module(shaderModule),
 	m_entryPointName(entryPointName)
 {
 }
 
-VulkanShaderStage::VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, VulkanDevicePtr pDevice, const RHI::ShaderByteCode& spirv) :
+VulkanShaderStage::VulkanShaderStage(VkShaderStageFlagBits stage, StringHash entryPointName, VulkanDevicePtr pDevice, const RHI::ShaderByteCode& spirv) :
 	m_stage(stage),
 	m_entryPointName(entryPointName)
 {
@@ -47,7 +47,7 @@ void VulkanShaderStage::Apply(VkPipelineShaderStageCreateInfo& stageInfo) const
 	stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	stageInfo.stage = m_stage;
 	stageInfo.module = *m_module;
-	stageInfo.pName = m_entryPointName.c_str();
+	stageInfo.pName = m_entryPointName.ToString().c_str();
 }
 
 void VulkanShaderStage::Compile()
@@ -127,7 +127,7 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 			layoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
 
 			// Fill data
-			rhiBinding.m_name = reflBinding.name ? std::string(reflBinding.name) : "";
+			rhiBinding.m_name = StringHash::Runtime(reflBinding.name ? reflBinding.name : "");
 			rhiBinding.m_type = (RHI::EShaderBindingType)reflBinding.descriptor_type;
 			rhiBinding.m_binding = reflBinding.binding;
 			rhiBinding.m_size = reflBinding.block.size;
@@ -154,7 +154,7 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 			{
 				RHI::ShaderLayoutBindingMember member;
 
-				member.m_name = blockContent[i].name ? std::string(blockContent[i].name) : "";
+				member.m_name = StringHash::Runtime(blockContent[i].name ? blockContent[i].name : "");
 				member.m_absoluteOffset = blockContent[i].offset;
 				member.m_size = blockContent[i].size;
 				member.m_type = (RHI::EShaderBindingMemberType)(blockContent[i].type_description->op);

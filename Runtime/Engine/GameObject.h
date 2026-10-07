@@ -143,7 +143,7 @@ namespace Sailor
 		EMobilityType m_type = EMobilityType::Stationary;
 
 		// Only world can create GameObject
-		GameObject(WorldPtr world, const std::string& name);
+		GameObject(WorldPtr world, std::string_view name);
 
 		std::string m_name;
 
@@ -159,6 +159,8 @@ namespace Sailor
 		TVector<ComponentPtr> m_components;
 
 		size_t m_frameLastChange = 0;
+		uint64_t m_worldOrder = 0;
+		TList<GameObjectPtr>::TIterator m_worldIterator;
 
 		friend GameObjectPtr;
 		friend class World;

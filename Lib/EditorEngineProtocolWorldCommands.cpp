@@ -1,6 +1,7 @@
 #include "EditorEngineProtocolInternal.h"
 
 #include "Memory/UniquePtr.hpp"
+#include "Engine/InstanceId.h"
 #include "Protocol/Generated/editor_engine.pb.h"
 #include "Sailor.h"
 
@@ -157,14 +158,14 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 
 	static void DispatchSelection(const sailor::editor::v1::SelectionRequest& request, ProtocolResponse& response)
 	{
-		YAML::Node selection(YAML::NodeType::Sequence);
+		TVector<InstanceId> selection;
+		selection.Reserve(request.instance_ids_size());
 		for (const auto& instanceId : request.instance_ids())
 		{
-			selection.push_back(instanceId);
+			selection.Emplace(instanceId);
 		}
 
-		const std::string serializedSelection = YAML::Dump(selection);
-		SetBoolResult(response, Sailor::App::SetEditorSelection(serializedSelection.c_str()));
+		SetBoolResult(response, Sailor::App::SetEditorSelection(std::move(selection)));
 	}
 
 	static void DispatchAnimatorParameter(const sailor::editor::v1::AnimatorParameterRequest& request,

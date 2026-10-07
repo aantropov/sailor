@@ -45,7 +45,7 @@ namespace
 		using ShadowPrepassNode::m_pBlurHorizontalMaterial;
 		using ShadowPrepassNode::m_pBlurVerticalMaterial;
 		using ShadowPrepassNode::m_pBlurShaderBindings;
-		ShadowProbe() { SetString("VirtualizeInstancePayloads", "false"); }
+		ShadowProbe() { SetString("VirtualizeInstancePayloads"_h, "false"); }
 		auto Resources(const RHISceneViewSnapshot& scene)
 		{
 			return scene.m_submissionContext->GetOrAddFrameGraphResources<SubmissionResources>(this, scene.m_cameraIndex, 0u);
@@ -125,14 +125,7 @@ namespace
 	RHISpatialSceneVersionPtr CreateCaster(RHIMeshPtr mesh, uint32_t sampler, uint32_t meshCount = 1u)
 	{
 		RHISceneViewProxy proxy;
-		proxy.m_staticMeshEcs = 1u;
-		proxy.m_mobility = EMobilityType::Static;
-		proxy.m_worldMatrix = glm::mat4(1.0f);
-		proxy.m_worldAabb = Math::AABB(glm::vec3(0), glm::vec3(3));
-		proxy.m_bCastShadows = true;
-		proxy.m_shadowCaster = RHIShadowCasterProxyPtr::Make();
-		proxy.m_shadowCaster->m_staticMeshEcs = 1u;
-		proxy.m_shadowCaster->m_worldAabb = proxy.m_worldAabb;
+		auto shadowCaster = TSharedPtr<RHIShadowCasterProxy>::Make();
 		RHIShadowMeshProxy shadow;
 		shadow.m_mesh = mesh;
 		shadow.m_renderQueueTag = "Masked"_h.GetHash();
@@ -140,22 +133,24 @@ namespace
 #if defined(__APPLE__)
 		shadow.m_materialTextureSamplers = { 0u, sampler };
 #endif
-		for (uint32_t i = 0u; i < meshCount; ++i) proxy.m_shadowCaster->m_meshes.Add(shadow);
+		for (uint32_t i = 0u; i < meshCount; ++i) shadowCaster->m_meshes.Add(shadow);
+		proxy.m_shadowCaster = std::move(shadowCaster);
 		auto topology = RHISceneProxyResourcePtr::Make(std::move(proxy));
 		RHISceneInstanceRecord record;
 		record.m_producerKey = 1u;
 		record.m_mobility = EMobilityType::Static;
-		record.m_worldBounds = topology->m_proxy.m_worldAabb;
+		record.m_worldBounds = Math::AABB(glm::vec3(0), glm::vec3(3));
 		record.m_topology = topology;
 		record.m_topologyRevision = topology->m_mainRevision;
 		record.m_shadowRevision = topology->m_shadowRevision;
 		record.m_renderFlags = 1u;
-		auto result = RHISpatialSceneVersionPtr::Make();
+		auto result = TSharedPtr<RHISpatialSceneVersion>::Make();
 		result->m_scene = RHIScenePtr::Make();
 		const auto handle = result->m_scene->AddInstance(record);
 		result->m_sceneVersion = result->m_scene->PublishVersion();
-		result->m_staticOctree = TSharedPtr<RHISceneSpatialIndex>::Make(glm::ivec3(0), 128u, 2u);
-		result->m_staticOctree->Update(glm::ivec3(0), glm::ivec3(3), handle);
+		auto index = TSharedPtr<RHISceneSpatialIndex>::Make(glm::ivec3(0), 128u, 2u);
+		index->Update(glm::ivec3(0), glm::ivec3(3), handle);
+		result->m_staticOctree = std::move(index);
 		return result;
 	}
 
@@ -170,7 +165,7 @@ namespace
 		{
 			auto buffer = driver->CreateBuffer(sizeof(frame), EBufferUsageBit::UniformBuffer_Bit, HostMemory);
 			std::memcpy(buffer->GetPointer(), &frame, sizeof(frame));
-			driver->AddBufferToShaderBindings(result, buffer, i ? "previousFrame" : "frame", i);
+			driver->AddBufferToShaderBindings(result, buffer, i ? "previousFrame"_h : "frame"_h, i);
 		}
 		return result;
 	}
@@ -182,8 +177,9 @@ namespace
 		snapshot.m_frameBindings = FrameBindings();
 		snapshot.m_camera = TUniquePtr<CameraData>::Make(Camera());
 		snapshot.m_cameraTransform = Math::Transform(glm::vec4(0, 2, 12, 1));
-		snapshot.m_sceneVersions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make();
-		if (scene) snapshot.m_sceneVersions->Add(scene->m_sceneVersion);
+		auto versions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make();
+		if (scene) versions->Add(scene->m_sceneVersion);
+		snapshot.m_sceneVersions = std::move(versions);
 	}
 
 	void AddPass(RHISceneViewSnapshot& snapshot, RHISpatialSceneVersionPtr scene, uint32_t matrixIndex)
@@ -198,17 +194,19 @@ namespace
 		InitializeSnapshot(visible, scene);
 		visible.ForEachSceneProxy(EMobilityType::Static, [&](const RHIVisibleSceneProxy& proxy)
 		{
-			RHIVisibleShadowCaster caster;
-			caster.m_handle = proxy.m_handle;
-			caster.m_record = proxy.m_record;
-			caster.m_resource = proxy.m_resource;
+			RHIVisibleShadowCaster caster(proxy.m_handle, *proxy.m_record, *proxy.m_resource);
 			pass.m_meshList.Add(caster);
 		});
-		if (!snapshot.m_sceneVersions->Contains(scene->m_sceneVersion)) snapshot.m_sceneVersions->Add(scene->m_sceneVersion);
+		if (!snapshot.m_sceneVersions->Contains(scene->m_sceneVersion))
+		{
+			auto versions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make(*snapshot.m_sceneVersions);
+			versions->Add(scene->m_sceneVersion);
+			snapshot.m_sceneVersions = std::move(versions);
+		}
 		snapshot.m_shadowMapsToUpdate.Add(std::move(pass));
 	}
 
-	void Prepare(ShadowProbe& node, RHIFrameGraphPtr graph, const RHISceneViewSnapshot& snapshot)
+	void Prepare(ShadowProbe& node, RHIFrameGraphPtr graph, RHISceneViewSnapshot& snapshot)
 	{
 		// Render coordinates; actual preparation/finalization uses RHI/Worker.
 		auto task = node.Prepare(graph, snapshot);
@@ -328,7 +326,7 @@ namespace
 	{
 		auto* entry = node.Entry(index);
 		RHIShaderBindingPtr sampler;
-		if (!entry || !entry->m_textureBindings->GetShaderBindings().TryGet("textureSamplers", sampler)) return "no private sampler binding to republish";
+		if (!entry || !entry->m_textureBindings->GetShaderBindings().TryGet("textureSamplers"_h, sampler)) return "no private sampler binding to republish";
 		auto set = entry->m_textureBindings;
 		auto previous = set->m_vulkan.m_descriptorSet;
 		const auto revision = set->GetDescriptorRevision();
@@ -394,7 +392,7 @@ namespace
 		return {};
 	}
 
-	bool HasPublishedBuffer(RHIShaderBindingSetPtr set, const char* name, uint32_t index, EShaderBindingType type, size_t bytes)
+	bool HasPublishedBuffer(RHIShaderBindingSetPtr set, StringHash name, uint32_t index, EShaderBindingType type, size_t bytes)
 	{
 		RHIShaderBindingPtr binding;
 		if (!set || !set->m_vulkan.m_descriptorSet || !set->m_vulkan.m_descriptorSet->IsCompiled() ||
@@ -424,7 +422,7 @@ namespace
 			node.m_pBlurHorizontalMaterial->IsReady() && node.m_pBlurVerticalMaterial->IsReady() &&
 			node.m_pBlurHorizontalMaterial->GetBindings() == node.m_pBlurShaderBindings &&
 			node.m_pBlurVerticalMaterial->GetBindings() == node.m_pBlurShaderBindings &&
-			HasPublishedBuffer(node.m_pBlurShaderBindings, "data", 0u, EShaderBindingType::UniformBuffer, 3u * sizeof(glm::vec4));
+			HasPublishedBuffer(node.m_pBlurShaderBindings, "data"_h, 0u, EShaderBindingType::UniformBuffer, 3u * sizeof(glm::vec4));
 	}
 
 	std::string ValidateBlurRadius(ShadowDrawCompletionState& state)
@@ -523,7 +521,7 @@ namespace
 		commands->EndCommandList(graphics);
 		const bool complete = CompleteBlurTuple(*gate);
 		auto firstFlight = gate->Resources(empty)->m_blurShaderBindings;
-		const bool flightReady = HasPublishedBuffer(firstFlight, "data", 0u, EShaderBindingType::UniformBuffer, 3u * sizeof(glm::vec4));
+		const bool flightReady = HasPublishedBuffer(firstFlight, "data"_h, 0u, EShaderBindingType::UniformBuffer, 3u * sizeof(glm::vec4));
 		if (!complete || !flightReady)
 		{
 			upload->m_vulkan.m_commandBuffer->Reset();
@@ -559,7 +557,7 @@ namespace
 		if (!driver->FillShadersLayout(incompatible, { state.m_shaders[4]->GetDebugVertexShaderRHI(), state.m_shaders[4]->GetDebugFragmentShaderRHI() }, 1u)) return "ShadowCaster reflection is unavailable";
 		const auto& reflected = incompatible->GetLayoutBindings();
 		if (reflected.FindIf([](const ShaderLayoutBinding& binding)
-			{ return binding.m_binding == 0u && binding.m_name == "data" && binding.m_type == EShaderBindingType::StorageBuffer; }) == static_cast<size_t>(-1)) return "real ShadowCaster data binding is not the incompatible StorageBuffer prerequisite";
+			{ return binding.m_binding == 0u && binding.m_name == "data"_h && binding.m_type == EShaderBindingType::StorageBuffer; }) == static_cast<size_t>(-1)) return "real ShadowCaster data binding is not the incompatible StorageBuffer prerequisite";
 		for (uint32_t flightOnly = 0u; flightOnly < 2u; ++flightOnly)
 		{
 			auto node = TRefPtr<ShadowProbe>::Make();
@@ -581,7 +579,7 @@ namespace
 			const auto oldRevision = oldTemplate ? oldTemplate->GetDescriptorRevision() : 0u;
 			const auto oldHash = oldTemplate ? oldTemplate->GetCompatibilityHashCode() : 0u;
 			auto oldFlight = flightOnly ? node->Resources(previousFlight)->m_blurShaderBindings : RHIShaderBindingSetPtr{};
-			if (flightOnly && !HasPublishedBuffer(oldFlight, "data", 0u, EShaderBindingType::UniformBuffer, 3u * sizeof(glm::vec4))) return "submission rejection requires a complete previous flight UBO";
+			if (flightOnly && !HasPublishedBuffer(oldFlight, "data"_h, 0u, EShaderBindingType::UniformBuffer, 3u * sizeof(glm::vec4))) return "submission rejection requires a complete previous flight UBO";
 			auto oldFlightNative = oldFlight ? oldFlight->m_vulkan.m_descriptorSet : VulkanDescriptorSetPtr{};
 			const auto oldFlightRevision = oldFlight ? oldFlight->GetDescriptorRevision() : 0u;
 			RHISceneViewSnapshot snapshot;
@@ -629,7 +627,7 @@ namespace
 					if (resources->m_blurShaderBindings || !Tokens(snapshot, { false, true })) return "failed candidate was published or its failed token was lost before retry";
 				}
 				else if (!CompleteBlurTuple(*node) || resources->m_blurShaderBindings == oldFlight ||
-					!HasPublishedBuffer(resources->m_blurShaderBindings, "data", 0u, EShaderBindingType::UniformBuffer, 3u * sizeof(glm::vec4))) return "corrected same-owner UBO retry did not publish complete native data bindings";
+					!HasPublishedBuffer(resources->m_blurShaderBindings, "data"_h, 0u, EShaderBindingType::UniformBuffer, 3u * sizeof(glm::vec4))) return "corrected same-owner UBO retry did not publish complete native data bindings";
 			}
 		}
 
@@ -704,16 +702,16 @@ namespace
 			if (phase < 4u && view->m_packet.m_metrics.m_instanceUploadBytes != dataBytes)
 				return "cold/grown SSBO must upload the complete instance payload";
 			if (view->m_sizePerInstanceData != dataBytes || view->m_sizeInstanceIndices != indexBytes ||
-				!HasPublishedBuffer(set, "data", 0u, EShaderBindingType::StorageBuffer, dataBytes) ||
-				!HasPublishedBuffer(set, "indices", 1u, EShaderBindingType::StorageBuffer, indexBytes)) return "SSBO pair/capacity/native publication is incomplete";
+				!HasPublishedBuffer(set, "data"_h, 0u, EShaderBindingType::StorageBuffer, dataBytes) ||
+				!HasPublishedBuffer(set, "indices"_h, 1u, EShaderBindingType::StorageBuffer, indexBytes)) return "SSBO pair/capacity/native publication is incomplete";
 			if (phase == 3u && (set == previousSet || set->m_vulkan.m_descriptorSet == previousNative)) return "larger packet did not publish a fresh SSBO pair";
 			if (phase == 4u && (set != previousSet || set->m_vulkan.m_descriptorSet != previousNative)) return "same-size packet unnecessarily replaced its SSBO pair";
 			if (phase == 1u) coldSet = set;
 			previousSet = set;
 			previousNative = set->m_vulkan.m_descriptorSet;
 		}
-		if (!HasPublishedBuffer(coldSet, "data", 0u, EShaderBindingType::StorageBuffer, sizeof(ShadowPrepassNode::PerInstanceData)) ||
-			!HasPublishedBuffer(coldSet, "indices", 1u, EShaderBindingType::StorageBuffer, sizeof(uint32_t))) return "retained original SSBO pair lost its native resources after growth";
+		if (!HasPublishedBuffer(coldSet, "data"_h, 0u, EShaderBindingType::StorageBuffer, sizeof(ShadowPrepassNode::PerInstanceData)) ||
+			!HasPublishedBuffer(coldSet, "indices"_h, 1u, EShaderBindingType::StorageBuffer, sizeof(uint32_t))) return "retained original SSBO pair lost its native resources after growth";
 		return {};
 	}
 
@@ -853,7 +851,7 @@ namespace
 		node->SetBlurMaterials(horizontal, vertical);
 		auto resources = node->Resources(snapshot);
 		auto bindings = resources->m_blurShaderBindings;
-		auto extra = driver->AddBufferToShaderBindings(bindings, "unusedProducer", sizeof(glm::vec4), 31u, EShaderBindingType::UniformBuffer);
+		auto extra = driver->AddBufferToShaderBindings(bindings, "unusedProducer"_h, sizeof(glm::vec4), 31u, EShaderBindingType::UniformBuffer);
 		if (!extra || !extra->m_vulkan.m_valueBinding) return "unused producer buffer could not be published";
 		for (auto material : { horizontal, vertical })
 		{
@@ -877,7 +875,7 @@ namespace
 		if (auto error = Record(*node, graph, snapshot, 2u, { true }, readback); !error.empty()) return "blur publication A: " + error;
 		if (auto error = checkPixels(1024u, glm::vec4(1.25f, 1.5f, -1, 1), "A"); !error.empty()) return error;
 		RHIShaderBindingPtr samplerA;
-		if (!bindings->GetShaderBindings().TryGet("colorSampler", samplerA) || !samplerA->GetTextureBinding()) return "blur publication A has no sampler";
+		if (!bindings->GetShaderBindings().TryGet("colorSampler"_h, samplerA) || !samplerA->GetTextureBinding()) return "blur publication A has no sampler";
 		auto textureA = samplerA->GetTextureBinding();
 		auto viewA = textureA->m_vulkan.m_imageView;
 		auto nativeA = bindings->m_vulkan.m_descriptorSet;
@@ -910,7 +908,7 @@ namespace
 		// A for these normal materials legitimately excludes the unavailable binding 31.
 		const auto rejected = Record(*node, graph, snapshot, 0u, { false }, readback);
 		RHIShaderBindingPtr retained;
-		const bool unchanged = resources->m_blurShaderBindings == bindings && bindings->GetShaderBindings().TryGet("colorSampler", retained) &&
+		const bool unchanged = resources->m_blurShaderBindings == bindings && bindings->GetShaderBindings().TryGet("colorSampler"_h, retained) &&
 			retained == samplerA && retained->GetTextureBinding() == textureA && textureA->m_vulkan.m_imageView == viewA &&
 			bindings->m_vulkan.m_descriptorSet == nativeA && bindings->GetDescriptorRevision() == revisionA &&
 			bindings->GetCompatibilityHashCode() == hashA && nativeA->IsCompiled() && nativeA->ReferencesImageView(1u, 0u, viewA);
@@ -925,7 +923,7 @@ namespace
 		if (auto error = Record(*node, graph, snapshot, 2u, { true }, readback); !error.empty()) return "blur publication retry: " + error;
 		if (auto error = checkPixels(256u, glm::vec4(1.25f, 1.5f, -1, 1), "B retry"); !error.empty()) return error;
 		RHIShaderBindingPtr samplerC;
-		if (!bindings->GetShaderBindings().TryGet("colorSampler", samplerC) || samplerC != samplerA ||
+		if (!bindings->GetShaderBindings().TryGet("colorSampler"_h, samplerC) || samplerC != samplerA ||
 			!samplerC->GetTextureBinding() || samplerC->GetTextureBinding() == textureA || samplerC->GetTextureBinding() == targetB ||
 			samplerC->GetTextureBinding()->GetExtent() != glm::ivec2(16) ||
 			bindings->m_vulkan.m_descriptorSet == nativeA || !bindings->m_vulkan.m_descriptorSet->IsCompiled() ||
@@ -966,8 +964,8 @@ namespace
 				EFormat::R32G32B32A32_SFLOAT, ETextureFiltration::Nearest, ETextureClamping::Clamp);
 			snapshot.m_frameBindings = driver->CreateShaderBindings();
 			auto extra = driver->CreateBuffer(16u, EBufferUsageBit::UniformBuffer_Bit, HostMemory);
-			if (!driver->AddBufferToShaderBindings(snapshot.m_frameBindings, extra, "unused", 0u) ||
-				!driver->AddSamplerToShaderBindings(snapshot.m_frameBindings, "failureInput", texture, 7u)) return "read-only blur frame setup failed";
+			if (!driver->AddBufferToShaderBindings(snapshot.m_frameBindings, extra, "unused"_h, 0u) ||
+				!driver->AddSamplerToShaderBindings(snapshot.m_frameBindings, "failureInput"_h, texture, 7u)) return "read-only blur frame setup failed";
 			node.SetBlurMaterials(materials[failVertical ? 0u : 2u], materials[failVertical ? 3u : 1u]);
 			if (VulkanApi::IsCompatible(materials[failVertical ? 3u : 2u]->m_vulkan.m_pipelines[0]->m_layout,
 				snapshot.m_frameBindings->m_vulkan.m_descriptorSet, 0u)) return "fresh blur frame must require projection";
@@ -1064,7 +1062,7 @@ void ShadowDrawCompletionTestComponent::Tick(float)
 		if (!state.m_index || state.m_index >= TextureImporter::MaxTexturesInScene) { MarkFailed("private texture has no unique sampler slot"); return; }
 		state.m_sourceA = importer->GetTextureSamplersSnapshot({ 0u, state.m_index });
 		state.m_phase = Phase::Warm;
-		m_validation = Tasks::CreateTaskWithResult<std::string>("Warm independent shadow nodes", [hold = m_state]() { return Warm(*hold); }, EThreadType::Render);
+		m_validation = Tasks::CreateTaskWithResult<std::string>("Warm independent shadow nodes"_h, [hold = m_state]() { return Warm(*hold); }, EThreadType::Render);
 		m_validation->Run();
 		return;
 	}
@@ -1076,7 +1074,7 @@ void ShadowDrawCompletionTestComponent::Tick(float)
 			current.m_slots[1].m_contentRevision == state.m_sourceA.m_slots[1].m_contentRevision) return;
 		state.m_sourceB = current;
 		state.m_phase = Phase::Validate;
-		m_validation = Tasks::CreateTaskWithResult<std::string>("Validate shadow draw completion", [hold = m_state]()
+		m_validation = Tasks::CreateTaskWithResult<std::string>("Validate shadow draw completion"_h, [hold = m_state]()
 		{
 			if (auto error = ValidateBlurRadius(*hold); !error.empty()) return error;
 			if (auto error = ValidateColdPublication(*hold); !error.empty()) return error;

@@ -216,7 +216,7 @@ namespace
 			!error && it != end;
 			it.increment(error))
 		{
-			std::string extension = it->path().extension().string();
+			std::string extension = Workspace::PathToUtf8(it->path().extension());
 			std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char character)
 				{
 					return static_cast<char>(std::tolower(character));
@@ -349,7 +349,7 @@ bool App::DispatchOnEngineMainThread(std::function<void()> command)
 	}
 
 	auto task = Tasks::CreateTask(
-		"Editor interop on engine main thread",
+		"Editor interop on engine main thread"_h,
 		std::move(guardedCommand),
 		EThreadType::Main);
 	scheduler->Run(task);
@@ -370,7 +370,7 @@ AppArgs ParseCommandLineArgs(const char** args, int32_t num)
 
 	for (int32_t i = 1; i < num; i++)
 	{
-		std::string arg = args[i];
+		const std::string_view arg = args[i];
 
 		if (arg == "--port")
 		{
@@ -436,6 +436,8 @@ EAppInitializationResult App::Initialize(const char** commandLineArgs, int32_t n
 	}
 
 	EditorRuntime::ResetForAppLifecycle();
+	Win32::GlobalInput::ProcessPendingEvents(false);
+	Win32::GlobalInput::Reset();
 	g_graphicsSettingsState = Settings::GraphicsSettingsState{};
 	g_renderStatsMode.store(Settings::ERenderStatsMode::None, std::memory_order_release);
 	g_editorRenderMode.store(RHI::ESceneViewRenderMode::Lit, std::memory_order_release);
@@ -495,7 +497,7 @@ EAppInitializationResult App::Initialize(const char** commandLineArgs, int32_t n
 
 	s_pInstance->m_workspaceContext = workspaceContextResult.m_context;
 	s_pInstance->s_workspace = Utils::SanitizeFilepath(
-		s_pInstance->m_workspaceContext.GetRoot().generic_string());
+		Workspace::PathToUtf8(s_pInstance->m_workspaceContext.GetRoot()));
 	if (!s_pInstance->s_workspace.ends_with("/"))
 	{
 		s_pInstance->s_workspace += "/";
@@ -530,17 +532,15 @@ EAppInitializationResult App::Initialize(const char** commandLineArgs, int32_t n
 			SAILOR_LOG_ERROR("%s", g_graphicsSettingsState.m_editorDiagnostic.c_str());
 		}
 	}
-	const std::string activeQualityName(
-		magic_enum::enum_name(g_graphicsSettingsState.m_activeQuality));
-	const std::string renderStatsModeName(
-		magic_enum::enum_name(GetRenderStatsMode()));
+	const std::string_view activeQualityName = magic_enum::enum_name(g_graphicsSettingsState.m_activeQuality);
+	const std::string_view renderStatsModeName = magic_enum::enum_name(GetRenderStatsMode());
 	SAILOR_LOG(
-		"Active graphics quality: %s (FPS cap %u, MSAA %ux, PCF shadow bias %.3f, stats mode %s).",
-		activeQualityName.c_str(),
+		"Active graphics quality: %.*s (FPS cap %u, MSAA %ux, PCF shadow bias %.3f, stats mode %.*s).",
+		static_cast<int>(activeQualityName.size()), activeQualityName.empty() ? "" : activeQualityName.data(),
 		g_graphicsSettingsState.GetActiveProfile().m_fpsCap,
 		g_graphicsSettingsState.GetActiveProfile().m_msaaSamples,
 		g_graphicsSettingsState.GetActiveProfile().m_shadowBias,
-		renderStatsModeName.c_str());
+		static_cast<int>(renderStatsModeName.size()), renderStatsModeName.empty() ? "" : renderStatsModeName.data());
 
 	bool bWorkspaceModuleActivationFailed = false;
 	s_pInstance->m_pWorkspaceModuleManager = TUniquePtr<Workspace::WorkspaceModuleManager>::Make();
@@ -802,15 +802,9 @@ void App::Start()
 	bool bCanCreateNewFrame = true;
 	bool bFirstFrame = true;
 
-	TMap<std::string, std::function<void()>> consoleVars;
-	consoleVars["scan"] = []() { App::RequestAssetReload(); };
-	consoleVars["memory.benchmark"] = &Memory::RunMemoryBenchmark;
-	consoleVars["vector.benchmark"] = &Sailor::RunVectorBenchmark;
-	consoleVars["set.benchmark"] = &Sailor::RunSetBenchmark;
-	consoleVars["map.benchmark"] = &Sailor::RunMapBenchmark;
-	consoleVars["list.benchmark"] = &Sailor::RunListBenchmark;
-	consoleVars["octree.benchmark"] = &Sailor::RunOctreeBenchmark;
-	consoleVars["stats.memory"] = &Sailor::RHI::Renderer::MemoryStats;
+	TMap<uint64_t, std::function<void()>> consoleVars;
+	consoleVars["scan"_h.GetHash()] = []() { App::RequestAssetReload(); };
+	consoleVars["stats.memory"_h.GetHash()] = &Sailor::RHI::Renderer::MemoryStats;
 
 	FrameInputState systemInputState = (Sailor::FrameInputState)Win32::GlobalInput::GetInputState();
 
@@ -820,15 +814,18 @@ void App::Start()
 		trackEditor.Start();
 
 #if defined(_WIN32)
+		if (Win32::ConsoleWindow::IsExitRequested())
+		{
+			Stop();
+			break;
+		}
 		Win32::ConsoleWindow::GetInstance()->Update();
 
-		char line[256];
-		if (Win32::ConsoleWindow::GetInstance()->Read(line, 256) != 0)
+		char line[Win32::ConsoleWindow::MaxCommandBytes];
+		if (Win32::ConsoleWindow::GetInstance()->Read(line, sizeof(line)) != 0)
 		{
-			std::string cmd = std::string(line);
-			Utils::Trim(cmd);
-
-			auto it = consoleVars.Find(cmd);
+			const std::string_view cmd = Utils::TrimView(line);
+			auto it = consoleVars.Find(HashString(cmd));
 			if (it != consoleVars.end())
 			{
 				it.Value()();
@@ -836,14 +833,11 @@ void App::Start()
 		}
 #endif
 
-#if defined(__APPLE__)
 		if (!bRunsInsideEditor)
 		{
 			pMainWindow->ProcessSystemMessages();
 		}
-#else
-		pMainWindow->ProcessSystemMessages();
-#endif
+		Win32::GlobalInput::ProcessPendingEvents(!bRunsInsideEditor);
 		if (!bRunsInsideEditor)
 		{
 			renderer->FixLostDevice();
@@ -1108,7 +1102,7 @@ void App::QueueAssetReloadTaskLocked(Tasks::Scheduler* scheduler)
 {
 	check(s_pInstance && scheduler);
 	auto task = Tasks::CreateTask(
-		"Reload assets on engine main thread",
+		"Reload assets on engine main thread"_h,
 		[]() { ProcessAssetReloadRequestOnEngineMainThread(); },
 		EThreadType::Main);
 	s_pInstance->m_pendingAssetReloadTask = task;
@@ -1199,8 +1193,6 @@ bool App::Shutdown()
 	}
 	const TEngineShutdownCompletion shutdownCompletion{};
 
-	EditorRuntime::ResetForAppLifecycle();
-
 	auto scheduler = GetSubmodule<Tasks::Scheduler>();
 	auto renderer = GetSubmodule<Renderer>();
 
@@ -1222,6 +1214,8 @@ bool App::Shutdown()
 		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render,
 			EThreadType::Editor, EThreadType::Background, EThreadType::Physics, EThreadType::Audio, EThreadType::GI });
 	}
+
+	EditorRuntime::ResetForAppLifecycle();
 
 	if (renderer && !renderer->BeginConditionalDestroy())
 	{
@@ -1281,10 +1275,6 @@ bool App::Shutdown()
 	RemoveSubmodule<Tasks::Scheduler>();
 	RemoveSubmodule<Renderer>();
 
-#if defined(_WIN32)
-	Win32::ConsoleWindow::Shutdown();
-#endif
-
 	// Remove all left submodules
 	for (auto& pSubmodule : s_pInstance->m_submodules)
 	{
@@ -1304,6 +1294,10 @@ bool App::Shutdown()
 	g_graphicsSettingsState = Settings::GraphicsSettingsState{};
 	g_renderStatsMode.store(Settings::ERenderStatsMode::None, std::memory_order_release);
 	g_editorRenderMode.store(RHI::ESceneViewRenderMode::Lit, std::memory_order_release);
+#if defined(_WIN32)
+	// A console-close callback may return (and terminate the process) only after engine teardown.
+	Win32::ConsoleWindow::Shutdown();
+#endif
 	return true;
 }
 

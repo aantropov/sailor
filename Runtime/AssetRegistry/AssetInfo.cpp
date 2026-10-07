@@ -18,6 +18,7 @@
 #include <sstream>
 
 using namespace Sailor;
+using namespace Sailor::Workspace;
 
 namespace
 {
@@ -144,7 +145,7 @@ bool AssetInfo::SaveMetaFile()
 	std::string contents, diagnostic;
 	if (!External::GuardYamlExceptions(
 		[this, &contents]() { contents = YAML::Dump(Serialize()); }, diagnostic) ||
-		!Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(filepath, contents, diagnostic)))
+		!Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(PathFromUtf8(filepath), contents, diagnostic)))
 	{
 		SAILOR_LOG_ERROR("Cannot save asset metadata '%s': %s", filepath.c_str(), diagnostic.c_str());
 		return false;
@@ -281,12 +282,12 @@ AssetInfoPtr IAssetInfoHandler::ImportAsset(
 
 	auto fileId = FileId::CreateNewFileId();
 	newMeta["fileId"] = fileId.Serialize();
-	newMeta["filename"] = std::filesystem::path(assetFilepath).filename().string();
+	newMeta["filename"] = PathToUtf8(PathFromUtf8(assetFilepath).filename());
 
 	std::string importedMetadataContents;
 	std::string writeDiagnostic;
 	if (!WriteNewMetadataFile(
-			assetInfoFilename,
+			PathFromUtf8(assetInfoFilename),
 			newMeta,
 			importedMetadataContents,
 			writeDiagnostic))
@@ -310,7 +311,7 @@ AssetInfoPtr IAssetInfoHandler::ImportAsset(
 		false);
 	if (assetInfoPtr == nullptr)
 	{
-		RemoveFileIfContentsMatch(assetInfoFilename, importedMetadataContents);
+		RemoveFileIfContentsMatch(PathFromUtf8(assetInfoFilename), importedMetadataContents);
 		return nullptr;
 	}
 
@@ -339,7 +340,7 @@ bool IAssetInfoHandler::DiscardImportedMetadataIfUnchanged(AssetInfoPtr assetInf
 	}
 
 	const bool bRemoved = RemoveFileIfContentsMatch(
-		assetInfo->GetMetaFilepath(),
+		PathFromUtf8(assetInfo->GetMetaFilepath()),
 		assetInfo->m_importedMetadataContents);
 	assetInfo->m_importedMetadataContents.clear();
 	return bRemoved;
@@ -354,7 +355,7 @@ AssetInfoPtr IAssetInfoHandler::LoadAssetInfo(
 	bool bUpdateAssetCache) const
 {
 	AssetInfoPtr res = CreateAssetInfo();
-	res->m_folder = std::filesystem::path(assetInfoPath).remove_filename().string();
+	res->m_folder = PathToUtf8(PathFromUtf8(assetInfoPath).remove_filename());
 	res->m_metaFilepath = assetInfoPath;
 	res->m_virtualMetaFilepath = virtualMetaFilepath;
 	res->m_mountKind = mountKind;
@@ -400,7 +401,7 @@ bool IAssetInfoHandler::ReloadAssetInfo(
 
 	// A complete file starts from typed defaults, not the previous live values.
 	TUniquePtr<AssetInfo> metadata(CreateAssetInfo());
-	metadata->m_assetFilename = std::filesystem::path(metadataPath).stem().string();
+	metadata->m_assetFilename = PathToUtf8(PathFromUtf8(metadataPath).stem());
 	YAML::Node document;
 	std::string diagnostic;
 	if (!External::TryLoadYaml(content, document, diagnostic) ||
@@ -434,9 +435,9 @@ bool IAssetInfoHandler::ReloadAssetInfo(
 	assetInfo->CopyMetadata(*metadata);
 	if (!assetInfo->m_virtualMetaFilepath.empty())
 	{
-		assetInfo->m_virtualAssetFilepath = (
-			std::filesystem::path(assetInfo->m_virtualMetaFilepath).parent_path() /
-			assetInfo->m_assetFilename).generic_string();
+		assetInfo->m_virtualAssetFilepath = PathToUtf8(
+			PathFromUtf8(assetInfo->m_virtualMetaFilepath).parent_path() /
+			PathFromUtf8(assetInfo->m_assetFilename));
 	}
 	AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
 	const bool bWasCacheExpired = assetRegistry == nullptr ||

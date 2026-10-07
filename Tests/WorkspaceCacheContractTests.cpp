@@ -1,5 +1,6 @@
 #include "Workspace/WorkspaceCacheContract.h"
 #include "Workspace/WorkspaceContext.h"
+#include "Workspace/WorkspacePathEncoding.h"
 #include "Platform/AtomicFile.h"
 #include "Platform/AtomicFileTestAccess.h"
 
@@ -15,6 +16,7 @@
 #include <latch>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <yaml-cpp/yaml.h>
@@ -57,18 +59,18 @@ namespace
 		std::filesystem::path m_path;
 	};
 
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
 	std::string ReadText(const std::filesystem::path& path)
 	{
 		std::ifstream input(path, std::ios::binary);
-		Require(input.is_open(), "test file should be readable: " + path.generic_string());
+		Require(input.is_open(), "test file should be readable: " + PathToUtf8(path));
 		return std::string(
 			std::istreambuf_iterator<char>(input),
 			std::istreambuf_iterator<char>());
@@ -97,7 +99,7 @@ namespace
 
 	std::string Serialize(
 		const WorkspaceCacheIdentity& identity,
-		const std::string& payload = "entries:\n  - value: 42\n")
+		std::string_view payload = "entries:\n  - value: 42\n")
 	{
 		std::string envelope;
 		std::string diagnostic;
@@ -108,7 +110,7 @@ namespace
 	}
 
 	WorkspaceCacheIdentity Identity(
-		const std::string& workspaceId = "workspace-a",
+		std::string_view workspaceId = "workspace-a",
 		const std::filesystem::path& root = "/workspace/a")
 	{
 		return MakeWorkspaceCacheIdentity(
@@ -122,13 +124,12 @@ namespace
 	void RequireStatus(
 		const WorkspaceCacheLoadResult& result,
 		EWorkspaceCacheLoadStatus expected,
-		const std::string& message)
+		std::string_view message)
 	{
-		Require(result.m_status == expected, message + ": " + result.m_diagnostic);
-		if (expected != EWorkspaceCacheLoadStatus::Loaded)
-		{
-			Require(result.m_payload.empty(), message + " must not expose an unvalidated payload");
-		}
+		if (result.m_status != expected)
+			throw std::runtime_error(std::string(message) + ": " + result.m_diagnostic);
+		if (expected != EWorkspaceCacheLoadStatus::Loaded && !result.m_payload.empty())
+			throw std::runtime_error(std::string(message) + " must not expose an unvalidated payload");
 	}
 
 	void TestIdentityContract()
@@ -185,6 +186,44 @@ namespace
 			"context overload should derive the same deterministic legacy identity");
 	}
 
+	void TestBorrowedIdentityAndPayload()
+	{
+		WorkspaceCacheIdentity identity;
+		WorkspaceCacheLoadResult loaded;
+		WorkspaceCacheLoadResult invalid;
+		{
+			std::string kind = "borrowed-cache:ignored";
+			std::string producer = "borrowed-producer-v1:ignored";
+			std::string workspace = "borrowed-workspace:ignored";
+			std::string label = "BorrowedCache.yaml:ignored";
+			std::string payload("value\0more:ignored", 18);
+			const auto prefix = [](const std::string& text)
+			{
+				return std::string_view(text).substr(0, text.find(':'));
+			};
+			identity = MakeWorkspaceCacheIdentity(prefix(kind), prefix(producer), 1, prefix(workspace), "/workspace");
+			const auto envelope = Serialize(identity, std::string_view(payload).substr(0, 10));
+			loaded = ParseWorkspaceCacheEnvelope(envelope, identity, prefix(label));
+			invalid = ParseWorkspaceCacheEnvelope("[", identity, prefix(label));
+			kind.assign(1024, 'x');
+			producer.clear();
+			workspace.clear();
+			label.clear();
+			payload.clear();
+		}
+		Require(identity.m_cacheKind == "borrowed-cache" && identity.m_producerIdentity == "borrowed-producer-v1" &&
+			identity.m_workspaceId == "borrowed-workspace",
+			"cache identity must own exactly the borrowed fields after their source buffers are destroyed");
+		Require(loaded.IsLoaded() && loaded.m_payload == std::string("value\0more", 10) &&
+			loaded.m_diagnostic == "BorrowedCache.yaml loaded with matching workspace and producer identity.",
+			"parsed cache payload and diagnostics must own bounded input, including embedded zero bytes");
+		Require(invalid.m_status == EWorkspaceCacheLoadStatus::Corrupt &&
+			invalid.m_diagnostic.starts_with("BorrowedCache.yaml is corrupt: invalid YAML:"),
+			"failed parsing must own its bounded source label");
+		Require(ParseWorkspaceCacheEnvelope("[", identity, {}).m_diagnostic.starts_with("workspace cache is corrupt:"),
+			"an empty source view must use the default cache label");
+	}
+
 	void TestRoundTripAndFileStatuses()
 	{
 		TempDirectory directory("roundtrip");
@@ -215,6 +254,27 @@ namespace
 		const WorkspaceCacheLoadResult ioFailure = LoadWorkspaceCacheEnvelope(directory.Get(), identity);
 		RequireStatus(ioFailure, EWorkspaceCacheLoadStatus::IoFailure,
 			"directory in place of a cache file should be an I/O failure");
+	}
+
+	void TestUtf8FileDiagnostics()
+	{
+		TempDirectory directory("utf8-path");
+		const auto path = directory.Path(PathFromUtf8(reinterpret_cast<const char*>(u8"Cache \u042f \u00e9 \u8239 \U0001f6a2.yaml")));
+		const auto identity = Identity("utf8-workspace", directory.Get());
+		const auto missing = LoadWorkspaceCacheEnvelope(path, identity);
+		RequireStatus(missing, EWorkspaceCacheLoadStatus::Missing, "a Unicode cache path must report an absent file");
+		Require(missing.m_diagnostic.find(PathToUtf8(path)) != std::string::npos,
+			"cache diagnostics must retain UTF-8 path bytes independently of the Windows ANSI code page");
+		std::ofstream(path, std::ios::binary) << Serialize(identity, "Unicode cache payload");
+		const auto loaded = LoadWorkspaceCacheEnvelope(path, identity);
+		RequireStatus(loaded, EWorkspaceCacheLoadStatus::Loaded, "a Unicode cache path must read its actual file");
+		Require(loaded.m_payload == "Unicode cache payload" && loaded.m_diagnostic.starts_with(PathToUtf8(path)),
+			"loading a cache must preserve its payload and UTF-8 source name");
+		std::ofstream(path, std::ios::binary) << "[incomplete";
+		const auto corrupt = LoadWorkspaceCacheEnvelope(path, identity);
+		RequireStatus(corrupt, EWorkspaceCacheLoadStatus::Corrupt, "an invalid cache must retain the usual failure status");
+		Require(corrupt.m_diagnostic.find(PathToUtf8(path)) != std::string::npos,
+			"failed parsing must keep the Unicode source name in its diagnostic");
 	}
 
 	void TestIdentityMismatches()
@@ -626,7 +686,9 @@ int main()
 	try
 	{
 		TestIdentityContract();
+		TestBorrowedIdentityAndPayload();
 		TestRoundTripAndFileStatuses();
+		TestUtf8FileDiagnostics();
 		TestIdentityMismatches();
 		TestUnsupportedVersions();
 		TestCorruptEnvelopes();

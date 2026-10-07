@@ -100,7 +100,8 @@ bool LandscapeECS::UpdateGrassResidency(const TVector<Math::Transform>& cameraTr
 			{
 				bChunkResident |= IsLandscapeGrassProxy(proxy);
 			}
-			const Math::AABB& worldBounds = chunk.m_resource->m_proxy.m_worldAabb;
+			Math::AABB worldBounds = chunk.m_localBounds;
+			worldBounds.Apply(ownerMatrix);
 			bool bOverlapsCameraFrustum = false;
 			for (const auto& frustum : m_cameraFrustumsScratch)
 			{
@@ -146,7 +147,7 @@ bool LandscapeECS::UpdateGrassResidency(const TVector<Math::Transform>& cameraTr
 			for (size_t profileIndex = 0u; profileIndex < component.m_vegetationProfiles.Num(); ++profileIndex)
 			{
 				const auto& profile = component.m_vegetationProfiles[profileIndex];
-				if (profile.m_residency != ELandscapeVegetationResidency::Grass || !profile.m_modelFileId)
+				if (profile.m_settings.m_residency != ELandscapeVegetationResidency::Grass || !profile.m_settings.m_modelFileId)
 				{
 					continue;
 				}
@@ -157,7 +158,7 @@ bool LandscapeECS::UpdateGrassResidency(const TVector<Math::Transform>& cameraTr
 				}
 				const bool bResident = findResident(chunk, profileIndex) != nullptr;
 				const float residencyDistance =
-					profile.m_cullDistance + (bResident ? component.m_grassResidencyHysteresis : 0.0f);
+					profile.m_settings.m_cullDistance + (bResident ? component.m_grassResidencyHysteresis : 0.0f);
 				if (minCameraDistance > residencyDistance)
 				{
 					continue;
@@ -170,7 +171,7 @@ bool LandscapeECS::UpdateGrassResidency(const TVector<Math::Transform>& cameraTr
 				candidate.m_capacity = instanceCapacity;
 				candidate.m_chunkRing = chunkRing;
 				candidate.m_chunkManhattanDistance = chunkManhattanDistance;
-				candidate.m_priority = profile.m_priority;
+				candidate.m_priority = profile.m_settings.m_priority;
 				candidate.m_bChunkResident = bChunkResident;
 				m_grassCandidatesScratch.Add(std::move(candidate));
 			}
@@ -277,7 +278,7 @@ bool LandscapeECS::UpdateGrassResidency(const TVector<Math::Transform>& cameraTr
 			for (size_t profileIndex = 0u; profileIndex < component.m_vegetationProfiles.Num(); ++profileIndex)
 			{
 				const auto& profile = component.m_vegetationProfiles[profileIndex];
-				if (profile.m_residency != ELandscapeVegetationResidency::Grass)
+				if (profile.m_settings.m_residency != ELandscapeVegetationResidency::Grass)
 				{
 					continue;
 				}
@@ -297,7 +298,7 @@ bool LandscapeECS::UpdateGrassResidency(const TVector<Math::Transform>& cameraTr
 				const LandscapeData* componentData = &component;
 				const LandscapeChunk* chunkData = &chunk;
 				auto task = Tasks::CreateTask<LandscapeVegetationRenderInstances>(
-					"LandscapeECS:Build Grass Transforms",
+					"LandscapeECS:Build Grass Transforms"_h,
 					[componentData, chunkData, profileIndex, selectedCount, ownerMatrix, this]()
 					{
 						return BuildGrassInstanceTransforms(*componentData,
@@ -322,7 +323,6 @@ bool LandscapeECS::UpdateGrassResidency(const TVector<Math::Transform>& cameraTr
 	}
 
 	bool bChanged = false;
-	const uint64_t frame = GetWorld()->GetCurrentFrame();
 	auto findBuildRequest =
 		[this](size_t componentIndex, size_t chunkIndex, size_t profileIndex) -> GrassTransformBuildRequest*
 	{
@@ -372,7 +372,7 @@ bool LandscapeECS::UpdateGrassResidency(const TVector<Math::Transform>& cameraTr
 			for (size_t profileIndex = 0u; profileIndex < component.m_vegetationProfiles.Num(); ++profileIndex)
 			{
 				const auto& profile = component.m_vegetationProfiles[profileIndex];
-				if (profile.m_residency != ELandscapeVegetationResidency::Grass)
+				if (profile.m_settings.m_residency != ELandscapeVegetationResidency::Grass)
 				{
 					continue;
 				}
@@ -405,7 +405,7 @@ bool LandscapeECS::UpdateGrassResidency(const TVector<Math::Transform>& cameraTr
 			for (size_t profileIndex = 0u; profileIndex < component.m_vegetationProfiles.Num(); ++profileIndex)
 			{
 				const auto& profile = component.m_vegetationProfiles[profileIndex];
-				if (profile.m_residency != ELandscapeVegetationResidency::Grass)
+				if (profile.m_settings.m_residency != ELandscapeVegetationResidency::Grass)
 				{
 					continue;
 				}
@@ -449,14 +449,10 @@ bool LandscapeECS::UpdateGrassResidency(const TVector<Math::Transform>& cameraTr
 				auto instances = std::move(buildRequest->m_task->m_result);
 				LandscapeVegetationRenderProxy streamedProxy;
 				const uint64_t revision = (uint64_t(1u) << 63u) | ++component.m_streamingRevision;
-				const auto buildResult = BuildLandscapeVegetationProxy(componentIndex,
-					chunkIndex,
-					profileIndex,
+				const auto buildResult = BuildLandscapeVegetationProxy(profileIndex,
 					profile,
-					ownerMatrix,
-					frame,
 					std::move(instances),
-					ResolveLandscapeProxyMobility(owner->GetMobilityType(), profile.m_residency),
+					ResolveLandscapeProxyMobility(owner->GetMobilityType(), profile.m_settings.m_residency),
 					revision,
 					streamedProxy);
 				if (buildResult != EVegetationProxyBuildResult::Success)

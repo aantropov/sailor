@@ -500,5 +500,4 @@ namespace Sailor
 		ERehashPolicy m_rehashPolicy;
 	};
 
-	SAILOR_API void RunSetBenchmark();
 }

@@ -5,21 +5,23 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "Platform/Win32/Input.h"
 #include "Submodules/EditorRemote/RemoteViewportRuntime.h"
+#include "Support/ScopeExit.h"
 
 using namespace Sailor::EditorRemote;
 
 namespace
 {
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -206,14 +208,17 @@ namespace
 		Require(session.EnsureBackendTransport(backend, transport).IsOk() && session.MarkTransportReady(transport).IsOk(),
 			"imported transport should become ready");
 		auto frame = std::async(std::launch::async, [&]() { return session.PublishFrameFromBackend(backend); });
-		backend.m_entered.get_future().wait();
-		auto input = std::async(std::launch::async, [&]()
+		std::future<bool> input;
+		Sailor::Tests::ScopeExit release([&]() { backend.m_release.set_value(); });
+		Require(backend.m_entered.get_future().wait_for(std::chrono::seconds(5)) == std::future_status::ready,
+			"frame export must enter before testing concurrent input");
+		input = std::async(std::launch::async, [&]()
 		{
 			auto packet = MakeInput(1, 0, 0);
 			return session.StampAndHandleInput(packet).IsOk() && session.IsInputCurrent(packet);
 		});
 		const bool inputCompleted = input.wait_for(std::chrono::seconds(5)) == std::future_status::ready;
-		backend.m_release.set_value();
+		release.Run();
 		Require(input.get(), "input should be stamped and accepted");
 		Require(frame.get().IsOk(), "frame export should complete after release");
 		Require(inputCompleted, "input must complete before the blocked frame export is released");

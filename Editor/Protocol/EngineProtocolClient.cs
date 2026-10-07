@@ -1427,35 +1427,6 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 .ConfigureAwait(false),
             nameof(ProtocolRequest.ShowMainWindow));
 
-    public async Task<bool> RenderPathTracedImageAsync(
-        string outputPath,
-        string instanceId,
-        uint height,
-        uint samplesPerPixel,
-        uint maxBounces,
-        CancellationToken cancellationToken = default)
-        => ReadBool(
-            await SendAsync(
-                    new ProtocolRequest
-                    {
-                        RenderPathTracedImage =
-                            new RenderPathTracedImageRequest
-                            {
-                                OutputPath = ValidateString(
-                                    outputPath,
-                                    nameof(outputPath)),
-                                InstanceId = ValidateString(
-                                    instanceId,
-                                    nameof(instanceId)),
-                                Height = height,
-                                SamplesPerPixel = samplesPerPixel,
-                                MaxBounces = maxBounces
-                            }
-                    },
-                    cancellationToken)
-                .ConfigureAwait(false),
-            nameof(ProtocolRequest.RenderPathTracedImage));
-
     internal async Task<ProtocolResponse> SendAsync(
         ProtocolRequest request,
         CancellationToken cancellationToken = default,
@@ -1565,8 +1536,6 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
         {
             ProtocolRequest.CommandOneofCase.Start =>
                 EngineProtocolInvocationKind.Lifecycle,
-            ProtocolRequest.CommandOneofCase.RenderPathTracedImage =>
-                EngineProtocolInvocationKind.Background,
             ProtocolRequest.CommandOneofCase.Stop or
                 ProtocolRequest.CommandOneofCase.Shutdown or
                 ProtocolRequest.CommandOneofCase.IsEngineRunning =>

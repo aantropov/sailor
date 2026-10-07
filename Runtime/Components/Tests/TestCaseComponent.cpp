@@ -1,11 +1,6 @@
 #include "Components/Tests/TestCaseComponent.h"
 #include "Platform/Time.h"
-#include "Math/Math.h"
 #include "AssetRegistry/AssetRegistry.h"
-#include "FrameGraph/CopyTextureToRamNode.h"
-#include "RHI/Renderer.h"
-#include "RHI/Buffer.h"
-#include "RHI/Texture.h"
 #include "Engine/InstanceId.h"
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
@@ -18,7 +13,6 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
-#include <cstring>
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -35,50 +29,6 @@ namespace
 		return filename;
 	}
 
-	static float HalfToFloat(uint16_t h)
-	{
-		const uint32_t sign = (uint32_t)(h & 0x8000u) << 16u;
-		uint32_t exp = (h >> 10u) & 0x1Fu;
-		uint32_t mant = h & 0x03FFu;
-
-		uint32_t out = 0;
-		if (exp == 0)
-		{
-			if (mant == 0)
-			{
-				out = sign;
-			}
-			else
-			{
-				exp = 1;
-				while ((mant & 0x0400u) == 0)
-				{
-					mant <<= 1u;
-					--exp;
-				}
-				mant &= 0x03FFu;
-				out = sign | ((exp + 112u) << 23u) | (mant << 13u);
-			}
-		}
-		else if (exp == 31)
-		{
-			out = sign | 0x7F800000u | (mant << 13u);
-		}
-		else
-		{
-			out = sign | ((exp + 112u) << 23u) | (mant << 13u);
-		}
-
-		float result = 0.0f;
-		std::memcpy(&result, &out, sizeof(float));
-		return result;
-	}
-
-	static glm::vec4 DecodeR16G16B16A16_SFLOAT(const uint8_t* src)
-	{
-		const uint16_t* halfs = reinterpret_cast<const uint16_t*>(src);
-		return glm::vec4(HalfToFloat(halfs[0]), HalfToFloat(halfs[1]), HalfToFloat(halfs[2]), HalfToFloat(halfs[3]));
-	}
 }
 
 void TestCaseComponent::BeginPlay()
@@ -158,74 +108,18 @@ std::string TestCaseComponent::GetTestsCacheFolder()
 	return AssetRegistry::GetCacheFolder() + "Tests/";
 }
 
-bool TestCaseComponent::CaptureScreenshot(const std::string& outputFilename, std::string& outError)
+bool TestCaseComponent::CaptureScreenshot(const ReadbackFrame& frame, std::string_view outputFilename, std::string& outError)
 {
-	auto renderer = App::GetSubmodule<Renderer>();
-	if (!renderer || !renderer->GetFrameGraph())
+	TVector<glm::u8vec4> pixels;
+	if (!frame.CopySrgbPixels(pixels))
 	{
-		outError = "Renderer frame graph is not available.";
+		outError = "Capture pixel format or row layout is invalid.";
 		return false;
 	}
-
-	auto snapshotNode = renderer->GetFrameGraph()->GetRHI()->GetGraphNode("CopyTextureToRam");
-	auto snapshot = snapshotNode.DynamicCast<Framegraph::CopyTextureToRamNode>();
-	if (!snapshot)
-	{
-		outError = "CopyTextureToRam node is not available.";
-		return false;
-	}
-
-	auto cpuRam = snapshot->GetBuffer();
-	auto texture = snapshot->GetTexture();
-	if (!cpuRam || !texture)
-	{
-		outError = "Screenshot readback resources are not ready yet.";
-		return false;
-	}
-
-	const glm::ivec2 extent = texture->GetExtent();
-	if (extent.x <= 0 || extent.y <= 0)
-	{
-		outError = "Screenshot texture extent is invalid.";
-		return false;
-	}
-
-	const auto* ptr = reinterpret_cast<const uint8_t*>(cpuRam->GetPointer());
-	if (!ptr)
-	{
-		outError = "Screenshot readback buffer is not mapped.";
-		return false;
-	}
-
-	constexpr size_t pixelStride = sizeof(uint16_t) * 4u;
-	TVector<glm::u8vec3> outSrgb((size_t)extent.x * (size_t)extent.y);
-	for (int y = 0; y < extent.y; y++)
-	{
-		for (int x = 0; x < extent.x; x++)
-		{
-			const uint32_t index = x + y * extent.x;
-			const glm::vec4 rgba = DecodeR16G16B16A16_SFLOAT(ptr + (size_t)index * pixelStride);
-			const glm::vec3 value = glm::clamp(Utils::LinearToSRGB(glm::vec3(rgba)), glm::vec3(0.0f), glm::vec3(1.0f));
-			outSrgb[index] = glm::u8vec3(value * 255.0f);
-		}
-	}
-
-	std::error_code ec;
-	const std::filesystem::path outputPath = std::filesystem::path(GetTestsCacheFolder()) / EnsurePngExtension(outputFilename);
-	std::filesystem::create_directories(outputPath.parent_path(), ec);
-
-	constexpr uint32_t Channels = 3;
-	if (!stbi_write_png(outputPath.string().c_str(), extent.x, extent.y, Channels, outSrgb.GetData(), extent.x * Channels))
-	{
-		outError = "Cannot write screenshot to " + outputPath.string();
-		return false;
-	}
-
-	outError.clear();
-	return true;
+	return SaveImageToPng(pixels, glm::uvec2(frame.m_extent), outputFilename, outError);
 }
 
-bool TestCaseComponent::SaveImageToPng(const TVector<glm::u8vec4>& data, glm::uvec2 extent, const std::string& outputFilename, std::string& outError)
+bool TestCaseComponent::SaveImageToPng(const TVector<glm::u8vec4>& data, glm::uvec2 extent, std::string_view outputFilename, std::string& outError)
 {
 	if (extent.x == 0 || extent.y == 0)
 	{
@@ -240,13 +134,13 @@ bool TestCaseComponent::SaveImageToPng(const TVector<glm::u8vec4>& data, glm::uv
 	}
 
 	std::error_code ec;
-	const std::filesystem::path outputPath = std::filesystem::path(GetTestsCacheFolder()) / EnsurePngExtension(outputFilename);
+	const std::filesystem::path outputPath = Workspace::PathFromUtf8(GetTestsCacheFolder()) / Workspace::PathFromUtf8(EnsurePngExtension(std::string(outputFilename)));
 	std::filesystem::create_directories(outputPath.parent_path(), ec);
 
 	constexpr uint32_t Channels = 4;
-	if (!stbi_write_png(outputPath.string().c_str(), (int)extent.x, (int)extent.y, Channels, data.GetData(), (int)extent.x * (int)Channels))
+	if (!stbi_write_png(Workspace::PathToUtf8(outputPath).c_str(), (int)extent.x, (int)extent.y, Channels, data.GetData(), (int)extent.x * (int)Channels))
 	{
-		outError = "Cannot write image to " + outputPath.string();
+		outError = "Cannot write image to " + Workspace::PathToUtf8(outputPath);
 		return false;
 	}
 

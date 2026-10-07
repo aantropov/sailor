@@ -6,24 +6,16 @@
 
 using namespace Sailor;
 
-bool AnimationPose::Sample(
-	const AnimationPtr& animation,
-	float time,
-	bool bLoop,
-	TVector<Math::Transform>& outLocalPose,
-	uint32_t& outFrameIndex,
-	float& outLerp)
+bool AnimationPose::ResolveFrame(const Animation& animation, float time, bool bLoop, float& outFrame)
 {
-	if (!animation || !std::isfinite(time) ||
-		animation->m_numFrames == 0 || animation->m_numBones == 0 ||
-		animation->m_frames.Num() !=
-			static_cast<size_t>(animation->m_numFrames) * animation->m_numBones)
+	if (!std::isfinite(time) || animation.m_numFrames == 0 || animation.m_numBones == 0 ||
+		animation.m_frames.Num() != static_cast<size_t>(animation.m_numFrames) * animation.m_numBones)
 	{
 		return false;
 	}
 
-	const float lastFrame = static_cast<float>(animation->m_numFrames - 1);
-	float frame = time * animation->m_fps;
+	const float lastFrame = static_cast<float>(animation.m_numFrames - 1);
+	float frame = time * animation.m_fps;
 	if (bLoop && lastFrame > 0.0f)
 	{
 		frame = std::fmod(frame, lastFrame);
@@ -36,27 +28,49 @@ bool AnimationPose::Sample(
 	{
 		frame = std::clamp(frame, 0.0f, lastFrame);
 	}
+	outFrame = frame;
+	return true;
+}
 
+bool AnimationPose::Sample(
+	const AnimationPtr& animation,
+	float time,
+	bool bLoop,
+	TVector<Math::Transform>& outLocalPose,
+	uint32_t& outFrameIndex,
+	float& outLerp)
+{
+	float frame = 0.0f;
+	if (!animation || !ResolveFrame(*animation, time, bLoop, frame))
+	{
+		return false;
+	}
+	SampleFrame(*animation, frame, outLocalPose, outFrameIndex, outLerp);
+	return true;
+}
+
+void AnimationPose::SampleFrame(const Animation& animation, float frame,
+	TVector<Math::Transform>& outLocalPose, uint32_t& outFrameIndex, float& outLerp)
+{
 	outFrameIndex = (std::min)(
 		static_cast<uint32_t>(std::floor(frame)),
-		animation->m_numFrames - 1);
+		animation.m_numFrames - 1);
 	outLerp = frame - std::floor(frame);
 	const uint32_t nextFrame = (std::min)(
 		outFrameIndex + 1,
-		animation->m_numFrames - 1);
-	if (outLocalPose.Num() != animation->m_numBones)
+		animation.m_numFrames - 1);
+	if (outLocalPose.Num() != animation.m_numBones)
 	{
-		outLocalPose.Resize(animation->m_numBones);
+		outLocalPose.Resize(animation.m_numBones);
 	}
-	for (uint32_t boneIndex = 0; boneIndex < animation->m_numBones; ++boneIndex)
+	for (uint32_t boneIndex = 0; boneIndex < animation.m_numBones; ++boneIndex)
 	{
-		const Math::Transform& from = animation->m_frames[
-			static_cast<size_t>(outFrameIndex) * animation->m_numBones + boneIndex];
-		const Math::Transform& to = animation->m_frames[
-			static_cast<size_t>(nextFrame) * animation->m_numBones + boneIndex];
+		const Math::Transform& from = animation.m_frames[
+			static_cast<size_t>(outFrameIndex) * animation.m_numBones + boneIndex];
+		const Math::Transform& to = animation.m_frames[
+			static_cast<size_t>(nextFrame) * animation.m_numBones + boneIndex];
 		outLocalPose[boneIndex] = Math::Lerp(from, to, outLerp);
 	}
-	return true;
 }
 
 bool AnimationPose::ComposeLocalPose(

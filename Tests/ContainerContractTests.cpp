@@ -329,6 +329,123 @@ namespace
 		CheckLifetime(0);
 	}
 
+	void TestListIteratorErase()
+	{
+		{
+			TList<MoveOnly> values;
+			for (int i = 0; i < 5; ++i) values.EmplaceBack(i);
+			auto first = values.begin();
+			auto second = std::next(first);
+			auto middle = std::next(second);
+			auto fourth = std::next(middle);
+			auto last = values.Last();
+			const auto* secondAddress = &*second;
+			const auto* fourthAddress = &*fourth;
+			Require(values.Erase(middle) == fourth && values.Num() == 4,
+				"erasing the middle must return its successor without moving surviving values");
+			CheckLifetime(4);
+			Require(values.Erase(first) == second && values.First() == second,
+				"erasing the first node must update the list head");
+			Require(values.Erase(last) == values.end() && values.Last() == fourth,
+				"erasing the last node must return end and update the tail");
+			Require(&*second == secondAddress && &*fourth == fourthAddress &&
+				second->m_value == 1 && fourth->m_value == 3 && std::next(second) == fourth && std::prev(fourth) == second,
+				"surviving iterators must retain their values, addresses and bidirectional order");
+			CheckLifetime(2);
+			auto position = values.begin();
+			while (position != values.end()) position = values.Erase(position);
+			Require(values.IsEmpty() && values.First() == values.end() && values.Last() == values.end(),
+				"iterator erasure must empty the list without leaving either endpoint behind");
+			values.EmplaceBack(9);
+			Require(values.First()->m_value == 9 && values.Last() == values.First(), "an erased list must remain reusable");
+		}
+		CheckLifetime(0);
+	}
+
+	void TestListAlternatingEndsAndRemoval()
+	{
+		TList<int> values;
+		for (int i = 0; i < 8; ++i)
+		{
+			if (i % 2) values.PushBack(i); else values.PushFront(i);
+		}
+		const std::vector<int> inserted{ 6, 4, 2, 0, 1, 3, 5, 7 };
+		Require(std::equal(values.begin(), values.end(), inserted.begin(), inserted.end()), "alternating pushes must preserve both ends and sequence order");
+		values.PopFront();
+		values.PopBack();
+		const std::vector<int> popped{ 4, 2, 0, 1, 3, 5 };
+		Require(values.Num() == popped.size() && std::equal(values.begin(), values.end(), popped.begin(), popped.end()),
+			"front/back pops must remove different ends without rearranging survivors");
+		values.PushFront(3);
+		values.PushBack(3);
+		Require(values.RemoveAll(3) == 3 && values.RemoveAll(42) == 0, "RemoveAll must remove duplicates, including both ends, and count only matches");
+		const std::vector<int> removed{ 4, 2, 0, 1, 5 };
+		Require(values.Num() == removed.size() && std::equal(values.begin(), values.end(), removed.begin(), removed.end()),
+			"value removal must retain survivor order");
+	}
+
+	void TestSetLookupResults()
+	{
+		TSet<uint32_t> values;
+		for (uint32_t key = 0; key < 64; ++key) { values.Insert(key); values.Insert(key); }
+		Require(values.Num() == 64, "duplicate set insertion must retain one entry per key");
+		for (uint32_t key = 0; key < 128; ++key) Require(values.Contains(key) == (key < 64), "set lookups must distinguish present and absent keys");
+		for (uint32_t key = 1; key < 64; key += 2) Require(values.Remove(key), "present odd keys must be removable");
+		Require(values.Num() == 32, "removing odd keys must preserve the even-key count");
+		for (uint32_t key = 0; key < 128; ++key)
+			Require(values.Contains(key) == (key < 64 && key % 2 == 0), "set lookups must reflect removals without losing survivors");
+	}
+
+	void TestOctreeSpatialContents()
+	{
+		TOctree<size_t> tree(glm::ivec3(0), 128, 2);
+		std::vector<glm::ivec3> positions;
+		std::vector<bool> present;
+		for (int z = -36; z <= 36; z += 24)
+			for (int y = -36; y <= 36; y += 24)
+				for (int x = -36; x <= 36; x += 24)
+				{
+					positions.emplace_back(x, y, z);
+					present.push_back(true);
+					Require(tree.Insert(positions.back(), glm::ivec3(3), positions.size() - 1), "spatial fixture must insert each bound");
+				}
+		const auto checkQueries = [&]
+		{
+			Require(tree.Num() == std::count(present.begin(), present.end(), true), "spatial mutations must preserve the element count");
+			for (size_t query = 0; query <= positions.size(); ++query)
+			{
+				const auto target = query == positions.size() ? glm::ivec3(0, 90, 90) : positions[query];
+				const float distance = query % 2 ? 180.0f : 80.0f;
+				TVector<size_t> actual;
+				tree.TraceRay(Math::Ray(glm::vec3(-100, target.y, target.z), glm::vec3(1, 0, 0)), actual, distance);
+				std::vector<size_t> expected;
+				for (size_t i = 0; i < positions.size(); ++i)
+				{
+					const auto& p = positions[i];
+					if (present[i] && p.x + 3 >= -100 && p.x - 3 <= -100 + distance &&
+						std::abs(p.y - target.y) <= 3 && std::abs(p.z - target.z) <= 3) expected.push_back(i);
+				}
+				std::sort(actual.begin(), actual.end());
+				Require(std::equal(actual.begin(), actual.end(), expected.begin(), expected.end()),
+					"ray query must match independent segment/bounds membership, without missing or duplicate elements");
+			}
+		};
+		checkQueries();
+		for (size_t i = 1; i < positions.size(); i += 2)
+		{
+			positions[i] += glm::ivec3(5, -7, 4);
+			Require(tree.Update(positions[i], glm::ivec3(3), i), "moving bounds must retain their identity");
+		}
+		checkQueries();
+		for (size_t i = 0; i < positions.size(); i += 3)
+		{
+			Require(tree.Remove(i), "spatial fixture removal must succeed");
+			present[i] = false;
+		}
+		tree.Resolve();
+		checkQueries();
+	}
+
 	void TestIteratorInterfaces()
 	{
 		TVector<int> vector{ 4, 5, 6 };
@@ -653,6 +770,10 @@ int main()
 		TestVectorInsertionAndRemoveFirst<int>();
 		TestVectorInsertionAndRemoveFirst<CopyOnly>();
 		TestListOwnershipAndSorting();
+		TestListIteratorErase();
+		TestListAlternatingEndsAndRemoval();
+		TestSetLookupResults();
+		TestOctreeSpatialContents();
 		TestIteratorInterfaces();
 		TestMapExtractionAndConstIteration();
 		TestMapValueEqualityAndSwap();

@@ -1,17 +1,20 @@
 #include "Platform/Win32/Window.h"
+#include "Platform/Win32/Input.h"
 #include <windows.h>
 #include <algorithm>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <thread>
 
 namespace
 {
-	void Require(bool condition, const char* message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -30,6 +33,93 @@ namespace
 		window.RecalculateWindowSize();
 		Require(window.GetWidth() == width && window.GetHeight() == height,
 			"recalculating the window size must preserve client dimensions");
+	}
+
+	void CheckInputOwner(Sailor::Win32::Window& window)
+	{
+		using namespace Sailor::Win32;
+		GlobalInput::ProcessPendingEvents(false);
+		GlobalInput::Reset();
+		SendMessage(window.GetHWND(), WM_KEYDOWN, 'W', 1);
+		SendMessage(window.GetHWND(), WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(static_cast<WORD>(-9), 41));
+		Require(!GlobalInput::GetInputState().IsKeyDown('W'), "WndProc must not modify frame input on the UI thread");
+		InputState pressed;
+		std::thread frameOwner([&]
+		{
+			// An embedded engine must not pump another thread's HWND or update its capture.
+			window.ProcessSystemMessages();
+			GlobalInput::ProcessPendingEvents(true);
+			pressed = GlobalInput::GetInputState();
+		});
+		frameOwner.join();
+		Require(pressed.IsKeyPressed('W') && pressed.IsButtonClick(VK_LBUTTON) &&
+			pressed.GetButtonPressCursorPos(VK_LBUTTON) == glm::ivec2(-9, 41),
+			"the frame owner must receive native keys and signed button coordinates");
+		SendMessage(window.GetHWND(), WM_KILLFOCUS, 0, 0);
+		Require(GlobalInput::GetInputState().IsKeyDown('W'), "UI focus loss must wait for the frame owner");
+		std::thread releaseOwner([] { GlobalInput::ProcessPendingEvents(true); });
+		releaseOwner.join();
+		Require(!GlobalInput::GetInputState().IsKeyDown('W') && !GlobalInput::GetInputState().IsButtonDown(VK_LBUTTON),
+			"focus loss must clear input even without a key-up delivered to this window");
+		SendMessage(window.GetHWND(), WM_SETFOCUS, 0, 0);
+		GlobalInput::ProcessPendingEvents(true);
+		Require(!GlobalInput::GetInputState().IsKeyDown('W'), "regaining focus must not resurrect a held key");
+	}
+
+	void CheckModifierSides(Sailor::Win32::Window& window)
+	{
+		using namespace Sailor::Win32;
+		struct Modifier { uint32_t aggregate; uint32_t key[2]; uint32_t scan[2]; bool bRightExtended; };
+		const Modifier modifiers[] = {
+			{ VK_SHIFT, { VK_LSHIFT, VK_RSHIFT }, { 0x2A, 0x36 }, false },
+			{ VK_CONTROL, { VK_LCONTROL, VK_RCONTROL }, { 0x1D, 0x1D }, true },
+			{ VK_MENU, { VK_LMENU, VK_RMENU }, { 0x38, 0x38 }, true },
+			{ 0, { VK_LWIN, VK_RWIN }, { 0x5B, 0x5C }, true }
+		};
+		auto drain = []
+		{
+			InputState result;
+			std::thread owner([&]
+			{
+				GlobalInput::ProcessPendingEvents(true);
+				result = GlobalInput::GetInputState();
+			});
+			owner.join();
+			return result;
+		};
+		for (const auto& modifier : modifiers)
+		{
+			auto dispatch = [&](uint32_t side, bool bPressed)
+			{
+				const bool bIsSystem = modifier.aggregate == VK_MENU;
+				const auto key = modifier.aggregate ? modifier.aggregate : modifier.key[side];
+				LPARAM flags = 1 | (static_cast<LPARAM>(modifier.scan[side]) << 16);
+				if ((side && modifier.bRightExtended) || modifier.aggregate == 0) flags |= LPARAM(1) << 24;
+				if (!bPressed) flags |= (LPARAM(1) << 30) | (LPARAM(1) << 31);
+				SendMessage(window.GetHWND(), bPressed ? (bIsSystem ? WM_SYSKEYDOWN : WM_KEYDOWN) :
+					(bIsSystem ? WM_SYSKEYUP : WM_KEYUP), key, flags);
+			};
+			for (uint32_t first : { 0u, 1u })
+			{
+				const uint32_t second = 1u - first;
+				GlobalInput::ProcessPendingEvents(false);
+				GlobalInput::Reset();
+				dispatch(first, true);
+				Require(!GlobalInput::GetInputState().IsKeyDown(modifier.key[first]), "WndProc must enqueue physical modifiers");
+				auto state = drain();
+				Require(state.IsKeyDown(modifier.key[first]) && !state.IsKeyDown(modifier.key[second]) &&
+					(!modifier.aggregate || state.IsKeyDown(modifier.aggregate)), "scan codes must preserve the physical modifier side");
+				dispatch(second, true);
+				dispatch(first, false);
+				state = drain();
+				Require(!state.IsKeyDown(modifier.key[first]) && state.IsKeyDown(modifier.key[second]) &&
+					(!modifier.aggregate || state.IsKeyDown(modifier.aggregate)), "one native release must preserve the held sibling");
+				dispatch(second, false);
+				state = drain();
+				Require(!state.IsKeyDown(modifier.key[0]) && !state.IsKeyDown(modifier.key[1]) &&
+					(!modifier.aggregate || !state.IsKeyDown(modifier.aggregate)), "the last native release must clear the modifier");
+			}
+		}
 	}
 
 	SIZE GetMaximumClientExtent(HWND window)
@@ -103,6 +193,10 @@ int main()
 		Require(GetWindowRect(window.GetHWND(), &actual) && EqualRect(&actual, &suggested),
 			"DPI changes must apply the suggested window rectangle");
 		std::cout << "[PASS] DPI change updates window and renderer dimensions together\n";
+		CheckInputOwner(window);
+		std::cout << "[PASS] Native input delivery and focus release on a separate frame owner\n";
+		CheckModifierSides(window);
+		std::cout << "[PASS] Left/right native modifiers and aggregate release\n";
 	}
 	catch (const std::exception& error)
 	{

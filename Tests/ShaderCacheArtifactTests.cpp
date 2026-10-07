@@ -27,7 +27,9 @@
 #include <latch>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
+#include <utility>
 #include <spirv_reflect.h>
 #include <yaml-cpp/yaml.h>
 
@@ -108,11 +110,11 @@ namespace
 		std::filesystem::path m_path;
 	};
 
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -162,37 +164,50 @@ namespace
 	void RequireWords(
 		const TVector<uint32_t>& actual,
 		const TVector<uint32_t>& expected,
-		const std::string& context)
+		std::string_view context)
 	{
-		Require(actual.Num() == expected.Num(), context + " should preserve the word count");
+		if (actual.Num() != expected.Num())
+			throw std::runtime_error(std::string(context) + " should preserve the word count");
 		for (size_t index = 0; index < expected.Num(); ++index)
 		{
-			Require(actual[index] == expected[index], context + " should preserve every word");
+			if (actual[index] != expected[index])
+				throw std::runtime_error(std::string(context) + " should preserve every word");
 		}
 	}
 
-	void RequireSpirvCombinedImageSamplerBinding(
-		const RHI::ShaderByteCode& byteCode,
-		uint32_t set,
-		uint32_t binding)
+	class ReflectedShader
 	{
-		SpvReflectShaderModule module{};
-		Require(
-			spvReflectCreateShaderModule(
-				byteCode.Num() * sizeof(byteCode[0]),
-				&byteCode[0],
-				&module) == SPV_REFLECT_RESULT_SUCCESS,
-			"compiled shader artifact should support SPIR-V reflection");
+	public:
+		explicit ReflectedShader(RHI::ShaderByteCode byteCode) : m_byteCode(std::move(byteCode))
+		{
+			Require(spvReflectCreateShaderModule(m_byteCode.Num() * sizeof(uint32_t), m_byteCode.GetData(),
+				&m_module) == SPV_REFLECT_RESULT_SUCCESS, "compiled shader artifact should support SPIR-V reflection");
+		}
+		~ReflectedShader() { spvReflectDestroyShaderModule(&m_module); }
+		ReflectedShader(const ReflectedShader&) = delete;
+		ReflectedShader& operator=(const ReflectedShader&) = delete;
 
-		SpvReflectResult result = SPV_REFLECT_RESULT_SUCCESS;
-		const SpvReflectDescriptorBinding* reflected =
-			spvReflectGetDescriptorBinding(&module, binding, set, &result);
+		const RHI::ShaderByteCode& GetByteCode() const { return m_byteCode; }
+		const SpvReflectShaderModule& GetModule() const { return m_module; }
+		const SpvReflectDescriptorBinding* FindBinding(uint32_t set, uint32_t binding) const
+		{
+			SpvReflectResult status;
+			const auto* result = spvReflectGetDescriptorBinding(&m_module, binding, set, &status);
+			return status == SPV_REFLECT_RESULT_SUCCESS ? result : nullptr;
+		}
+
+	private:
+		RHI::ShaderByteCode m_byteCode;
+		SpvReflectShaderModule m_module{};
+	};
+
+	void RequireSpirvCombinedImageSamplerBinding(const ReflectedShader& shader, uint32_t set, uint32_t binding)
+	{
+		const auto* reflected = shader.FindBinding(set, binding);
 		const bool bMatches =
-			result == SPV_REFLECT_RESULT_SUCCESS &&
 			reflected &&
 			reflected->descriptor_type ==
 				SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		spvReflectDestroyShaderModule(&module);
 
 		Require(
 			bMatches,
@@ -201,45 +216,25 @@ namespace
 				", binding " + std::to_string(binding));
 	}
 
-	void RequireLocalReflectionUniformLayout(const RHI::ShaderByteCode& byteCode)
+	void RequireLocalReflectionUniformLayout(const ReflectedShader& shader)
 	{
-		SpvReflectShaderModule module{};
-		Require(spvReflectCreateShaderModule(byteCode.Num() * sizeof(uint32_t), byteCode.GetData(),
-			&module) == SPV_REFLECT_RESULT_SUCCESS, "local reflection shader should reflect");
-		SpvReflectResult status;
-		const auto* binding = spvReflectGetDescriptorBinding(&module, 20u, 1u, &status);
-		const bool valid = status == SPV_REFLECT_RESULT_SUCCESS && binding &&
+		const auto* binding = shader.FindBinding(1u, 20u);
+		const bool valid = binding &&
 			binding->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER &&
 			binding->block.size == sizeof(Framegraph::LocalReflectionParameters) && binding->block.member_count == 3u &&
 			binding->block.members[0].offset == offsetof(Framegraph::LocalReflectionParameters, m_positionBlend) &&
 			binding->block.members[1].offset == offsetof(Framegraph::LocalReflectionParameters, m_minEnabled) &&
 			binding->block.members[2].offset == offsetof(Framegraph::LocalReflectionParameters, m_max);
-		spvReflectDestroyShaderModule(&module);
 		Require(valid, "local reflection uniform must match the three packed CPU vec4 fields");
 	}
 
-	void RequireSpirvStorageImageBinding(
-		const RHI::ShaderByteCode& byteCode,
-		uint32_t set,
-		uint32_t binding)
+	void RequireSpirvStorageImageBinding(const ReflectedShader& shader, uint32_t set, uint32_t binding)
 	{
-		SpvReflectShaderModule module{};
-		Require(
-			spvReflectCreateShaderModule(
-				byteCode.Num() * sizeof(byteCode[0]),
-				&byteCode[0],
-				&module) == SPV_REFLECT_RESULT_SUCCESS,
-			"compiled shader artifact should support SPIR-V reflection");
-
-		SpvReflectResult result = SPV_REFLECT_RESULT_SUCCESS;
-		const SpvReflectDescriptorBinding* reflected =
-			spvReflectGetDescriptorBinding(&module, binding, set, &result);
+		const auto* reflected = shader.FindBinding(set, binding);
 		const bool bMatches =
-			result == SPV_REFLECT_RESULT_SUCCESS &&
 			reflected &&
 			reflected->descriptor_type ==
 				SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-		spvReflectDestroyShaderModule(&module);
 
 		Require(
 			bMatches,
@@ -248,28 +243,13 @@ namespace
 				", binding " + std::to_string(binding));
 	}
 
-	void RequireSpirvStorageBufferBinding(
-		const RHI::ShaderByteCode& byteCode,
-		uint32_t set,
-		uint32_t binding)
+	void RequireSpirvStorageBufferBinding(const ReflectedShader& shader, uint32_t set, uint32_t binding)
 	{
-		SpvReflectShaderModule module{};
-		Require(
-			spvReflectCreateShaderModule(
-				byteCode.Num() * sizeof(byteCode[0]),
-				&byteCode[0],
-				&module) == SPV_REFLECT_RESULT_SUCCESS,
-			"compiled shader artifact should support SPIR-V reflection");
-
-		SpvReflectResult result = SPV_REFLECT_RESULT_SUCCESS;
-		const SpvReflectDescriptorBinding* reflected =
-			spvReflectGetDescriptorBinding(&module, binding, set, &result);
+		const auto* reflected = shader.FindBinding(set, binding);
 		const bool bMatches =
-			result == SPV_REFLECT_RESULT_SUCCESS &&
 			reflected &&
 			reflected->descriptor_type ==
 				SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		spvReflectDestroyShaderModule(&module);
 
 		Require(
 			bMatches,
@@ -279,25 +259,14 @@ namespace
 	}
 
 	void RequireSpirvStorageBufferArrayStride(
-		const RHI::ShaderByteCode& byteCode,
+		const ReflectedShader& shader,
 		uint32_t set,
 		uint32_t binding,
 		uint32_t expectedStride)
 	{
-		SpvReflectShaderModule module{};
-		Require(
-			spvReflectCreateShaderModule(
-				byteCode.Num() * sizeof(byteCode[0]),
-				&byteCode[0],
-				&module) == SPV_REFLECT_RESULT_SUCCESS,
-			"compiled shader artifact should support SPIR-V reflection");
-
-		SpvReflectResult result = SPV_REFLECT_RESULT_SUCCESS;
-		const SpvReflectDescriptorBinding* reflected =
-			spvReflectGetDescriptorBinding(&module, binding, set, &result);
+		const auto* reflected = shader.FindBinding(set, binding);
 		uint32_t reflectedStride = 0u;
-		if (result == SPV_REFLECT_RESULT_SUCCESS &&
-			reflected &&
+		if (reflected &&
 			reflected->descriptor_type ==
 				SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER &&
 			reflected->block.member_count > 0u)
@@ -315,7 +284,6 @@ namespace
 				reflectedStride = reflectedArray.padded_size;
 			}
 		}
-		spvReflectDestroyShaderModule(&module);
 
 		Require(
 			reflectedStride == expectedStride,
@@ -341,18 +309,18 @@ namespace
 		return nullptr;
 	}
 
-	void RequireGltfMaterialLayout(const RHI::ShaderByteCode& byteCode,
+	void RequireGltfMaterialLayout(const ReflectedShader& compiled,
 		const RHI::ShaderByteCode& reflectionByteCode,
 		uint32_t payloadSize, uint32_t stride)
 	{
-		RequireSpirvStorageBufferArrayStride(byteCode, 3u, 0u, stride);
+		RequireSpirvStorageBufferArrayStride(compiled, 3u, 0u, stride);
 		ShaderLayoutProbe shader;
 		shader.ReflectDescriptorSetBindings(reflectionByteCode);
 		const auto* material = FindBinding(shader, 3u, 0u);
 		Require(material && material->m_size == payloadSize && material->m_paddedSize == stride,
 			"material upload size and array stride must retain internal and trailing std430 padding");
 		ShaderLayoutProbe optimizedShader;
-		optimizedShader.ReflectDescriptorSetBindings(byteCode);
+		optimizedShader.ReflectDescriptorSetBindings(compiled.GetByteCode());
 		const auto* optimizedMaterial = FindBinding(optimizedShader, 3u, 0u);
 		Require(optimizedMaterial != nullptr,
 			"the optimized shader must retain the used material binding");
@@ -368,40 +336,35 @@ namespace
 		}
 		auto binding = RHI::RHIShaderBindingPtr::Make();
 		binding->SetLayout(*material);
-		auto requireMember = [&](const char* name, uint32_t offset, uint32_t size)
+		auto requireMember = [&](StringHash name, uint32_t offset, uint32_t size)
 		{
 			RHI::ShaderLayoutBindingMember member;
 			Require(binding->FindVariableInUniformBuffer(name, member) &&
 				member.m_absoluteOffset == offset && member.m_size == size,
-				std::string("CPU material packing must preserve the reflected offset and size of ") + name);
+				std::string("CPU material packing must preserve the reflected offset and size of ") + name.ToString());
 		};
-		requireMember("baseColorFactor", 0u, 16u);
-		requireMember("sheenRoughnessFactor", 84u, 4u);
-		requireMember("sheenColorFactor", 96u, 16u);
-		requireMember("sheenRoughnessSampler", 128u, 4u);
+		requireMember("baseColorFactor"_h, 0u, 16u);
+		requireMember("sheenRoughnessFactor"_h, 84u, 4u);
+		requireMember("sheenColorFactor"_h, 96u, 16u);
+		requireMember("sheenRoughnessSampler"_h, 128u, 4u);
 		if (payloadSize == 176u)
 		{
-			requireMember("transmissionFactor", 132u, 4u);
-			requireMember("thicknessFactor", 140u, 4u);
-			requireMember("attenuationDistance", 144u, 4u);
-			requireMember("indexOfRefraction", 148u, 4u);
-			requireMember("thicknessSampler", 152u, 4u);
-			requireMember("attenuationColor", 160u, 16u);
+			requireMember("transmissionFactor"_h, 132u, 4u);
+			requireMember("thicknessFactor"_h, 140u, 4u);
+			requireMember("attenuationDistance"_h, 144u, 4u);
+			requireMember("indexOfRefraction"_h, 148u, 4u);
+			requireMember("thicknessSampler"_h, 152u, 4u);
+			requireMember("attenuationColor"_h, 160u, 16u);
 		}
 		else if (payloadSize == 136u)
 		{
-			requireMember("indexOfRefraction", 132u, 4u);
+			requireMember("indexOfRefraction"_h, 132u, 4u);
 		}
 	}
 
-	void RequireSkyUniformLayout(const RHI::ShaderByteCode& byteCode)
+	void RequireSkyUniformLayout(const ReflectedShader& shader)
 	{
-		SpvReflectShaderModule module{};
-		Require(spvReflectCreateShaderModule(byteCode.Num() * sizeof(byteCode[0]),
-			&byteCode[0], &module) == SPV_REFLECT_RESULT_SUCCESS,
-			"sky shader should support SPIR-V reflection");
-		SpvReflectResult result = SPV_REFLECT_RESULT_SUCCESS;
-		const auto* binding = spvReflectGetDescriptorBinding(&module, 0u, 1u, &result);
+		const auto* binding = shader.FindBinding(1u, 0u);
 		const std::pair<const char*, size_t> expected[] = {
 			{ "lightDirection", offsetof(SkyParameters, m_lightDirection) },
 			{ "sunIlluminance", offsetof(SkyParameters, m_sunIlluminance) },
@@ -424,7 +387,7 @@ namespace
 			{ "sunShaftsIntensity", offsetof(SkyParameters, m_sunShaftsIntensity) },
 			{ "sunShaftsDistance", offsetof(SkyParameters, m_sunShaftsDistance) }
 		};
-		bool matches = result == SPV_REFLECT_RESULT_SUCCESS && binding &&
+		bool matches = binding &&
 			binding->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER &&
 			binding->block.member_count == std::size(expected);
 		std::string diagnostic = binding ? " memberCount=" + std::to_string(binding->block.member_count) : " missing binding";
@@ -437,32 +400,16 @@ namespace
 				diagnostic += " " + std::string(expected[index].first) + ":" +
 					std::to_string(member.offset) + "/" + std::to_string(expected[index].second);
 			}
-		spvReflectDestroyShaderModule(&module);
 		Require(matches, "every compiled sky uniform must match its C++ upload offset;" + diagnostic);
 	}
 
 	void RequireSpirvDescriptorBindingAbsent(
-		const RHI::ShaderByteCode& byteCode,
+		const ReflectedShader& shader,
 		uint32_t set,
 		uint32_t binding)
 	{
-		SpvReflectShaderModule module{};
 		Require(
-			spvReflectCreateShaderModule(
-				byteCode.Num() * sizeof(byteCode[0]),
-				&byteCode[0],
-				&module) == SPV_REFLECT_RESULT_SUCCESS,
-			"compiled shader artifact should support SPIR-V reflection");
-
-		SpvReflectResult result = SPV_REFLECT_RESULT_SUCCESS;
-		const SpvReflectDescriptorBinding* reflected =
-			spvReflectGetDescriptorBinding(&module, binding, set, &result);
-		const bool bAbsent =
-			result != SPV_REFLECT_RESULT_SUCCESS || reflected == nullptr;
-		spvReflectDestroyShaderModule(&module);
-
-		Require(
-			bAbsent,
+			shader.FindBinding(set, binding) == nullptr,
 			std::string("compiled shader artifact must not expose a descriptor at set ") +
 				std::to_string(set) +
 				", binding " + std::to_string(binding));
@@ -524,6 +471,44 @@ namespace
 		Require(
 			output.Num() == 2 && output[0] == 0xdecafbad && output[1] == 0xabcdef01,
 			context + " must not partially replace caller output");
+	}
+
+	void TestBorrowedShaderArtifactText()
+	{
+		TempDirectory temp;
+		ShaderCache cache(&c_shaderSourceStateProvider);
+		Require(ShaderCacheTestAccess::Configure(cache, temp.Path("Cache")),
+			"borrowed shader text test storage must initialize");
+		const auto uid = MakeFileId("{BORROWED-SHADER-TEXT}");
+		Require(PublishComplete(cache, uid, 7, 10), "a complete shader generation must publish");
+
+		std::filesystem::path regular, debug;
+		{
+			const char stage[] = { 'V', 'E', 'R', 'T', 'E', 'X', 'x' };
+			const std::string_view kind(stage, 6);
+			regular = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 7, kind, false);
+			debug = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 7, kind, true);
+		}
+		const auto expectedFilename = uid.ToString() + "VERTEX7." +
+			ShaderCacheTestAccess::GetGeneration(cache, uid, 7) + ".spirv";
+		Require(regular.filename() == expectedFilename && debug.filename() == expectedFilename &&
+			std::filesystem::is_regular_file(regular) && std::filesystem::is_regular_file(debug),
+			"artifact paths must own their names and resolve published files using a bounded stage view");
+		Require(regular.parent_path().filename() == "CompiledShaders" &&
+			debug.parent_path().filename() == "CompiledShadersWithDebug",
+			"borrowed stage names must preserve the existing artifact directory layout");
+
+		const auto path = temp.Path("borrowed-text.glsl");
+		const char text[] = { 'a', '\0', 'b', 'x' };
+		std::string diagnostic;
+		Require(Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(
+			path, std::string_view(text, 3), diagnostic)),
+			"a synchronous text write must accept a bounded view");
+		Require(ReadText(path) == std::string("a\0b", 3),
+			"text writes must preserve embedded zero bytes without consuming the view's suffix");
+		Require(Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(
+			path, std::string_view{}, diagnostic)) && ReadText(path).empty(),
+			"a default empty view must write an empty file without requiring a C string");
 	}
 
 	void TestArtifactRoundTrip()
@@ -721,6 +706,41 @@ namespace
 				ShaderCacheTestAccess::PayloadWithUnknownFields(cache),
 				diagnostic),
 			"unknown engine metadata should not invalidate the shader cache: " + diagnostic);
+	}
+
+	void TestArtifactValidationDiagnostics()
+	{
+		TempDirectory directory;
+		ShaderCache cache(&c_shaderSourceStateProvider);
+		Require(ShaderCacheTestAccess::Configure(cache, directory.Path("Cache")),
+			"artifact diagnostic fixture must initialize");
+		const FileId uid = MakeFileId("{SHADER-CACHE-ARTIFACT-DIAGNOSTICS}");
+		Require(PublishComplete(cache, uid, 0, 23), "artifact diagnostic fixture must publish");
+		const std::string validPayload = ShaderCacheTestAccess::PayloadWithUnknownFields(cache);
+		for (const auto mode : { "regular", "debug" })
+		{
+			for (const auto stage : { "vertex", "fragment", "compute" })
+			{
+				for (uint64_t byteLength : { 0u, 3u })
+				{
+					YAML::Node payload = YAML::Load(validPayload);
+					auto artifact = payload["shaderCache"]["entries"][uid.ToString()][0][mode][stage];
+					artifact["byteLength"] = byteLength;
+					artifact["checksum"] = 1u;
+					std::string diagnostic;
+					Require(!ShaderCacheTestAccess::ParsePayload(YAML::Dump(payload), diagnostic),
+						"malformed artifact metadata must fail cache validation");
+					const std::string expected = "Shader cache entry '" + uid.ToString() + "' " +
+						mode + " " + stage + (byteLength == 0 ?
+							" artifact has a checksum for an absent artifact." :
+							" artifact byteLength is not aligned to uint32 SPIR-V words.");
+					Require(diagnostic == expected,
+						"deferred diagnostics must retain the file, variant, stage and failure reason");
+					Require(ShaderCacheTestAccess::ParsePayload(validPayload, diagnostic) && diagnostic.empty(),
+						"valid cache metadata must clear the preceding failure diagnostic");
+				}
+			}
+		}
 	}
 
 	void TestBatchInvalidationAndRestart()
@@ -1542,7 +1562,44 @@ namespace
 		}
 	}
 
-	void TestShaderCompilerFailureLifecycle()
+	void TestBorrowedShaderCompilerText()
+	{
+		constexpr std::string_view source =
+			"#version 450\nlayout(location = 0) out vec4 color;\nvoid main() { color = vec4(1.0); }\n";
+		const std::string paddedSource = "prefix:" + std::string(source) + "#error outside the source view\n";
+		for (bool debug : { false, true })
+		{
+			RHI::ShaderByteCode expected;
+			Require(ShaderCompilerTestAccess::CompileGlslToSpirv("bounded.frag", std::string(source),
+				RHI::EShaderStage::Fragment, expected, debug), "compilation must consume temporary text synchronously");
+			RHI::ShaderByteCode actual;
+			Require(ShaderCompilerTestAccess::CompileGlslToSpirv("bounded.frag",
+				std::string_view(paddedSource).substr(7, source.size()), RHI::EShaderStage::Fragment, actual, debug),
+				"compilation must use the bounded source without consuming its prefix or invalid suffix");
+			RequireWords(actual, expected, "bounded GLSL source");
+			Require(!ShaderCompilerTestAccess::CompileGlslToSpirv("empty.frag", {},
+				RHI::EShaderStage::Fragment, actual, debug), "an empty source view must fail compilation normally");
+			RequireWords(actual, expected, "failed empty-source compilation");
+		}
+
+		std::string extension;
+		{
+			const std::string path = "Shaders/Upper.SHADER:not-part-of-the-path";
+			extension = ShaderCompilerTestAccess::NormalizeShaderExtension(std::string_view(path).substr(0, 20));
+		}
+		Require(extension == "shader", "normalized extensions must own their text and respect the input view");
+		constexpr std::string_view include = "Shaders/Shared/./Common.glsl:unused";
+		Require(ShaderCompilerTestAccess::DoesShaderIncludePath({ "Shaders/Shared/Common.glsl" },
+			include.substr(0, include.find(':'))), "include matching must normalize only the bounded path");
+		std::string shader = "glslVertex: |\n\tvoid main() {}\n";
+		std::string diagnostic;
+		constexpr std::string_view fileType = "shader:unused";
+		Require(ShaderCompilerTestAccess::NormalizeShaderTabs(fileType.substr(0, 6), shader, diagnostic) &&
+			diagnostic.empty() && shader == "glslVertex: |\n    void main() {}\n",
+			"shader normalization must read only the bounded extension and retain the edited source");
+	}
+
+	void TestShaderDependencyAndCacheOperations()
 	{
 		const FileId parsedOnly = MakeFileId("{SHADER-DEPENDENCY-PARSED}");
 		const FileId shared = MakeFileId("{SHADER-DEPENDENCY-SHARED}");
@@ -1582,10 +1639,6 @@ namespace
 		Require(
 			!ShaderCompilerTestAccess::AggregateCompileResults(oneFailed, std::size(oneFailed)),
 			"one failed permutation should fail the aggregate compile result");
-		Require(ShaderCompilerTestAccess::ExerciseFailedLoadEvictionAndRetry(),
-			"failed shader load eviction should permit a second permutation load attempt");
-		Require(ShaderCompilerTestAccess::ExercisePromiseGarbageCollection(),
-			"promise garbage collection should retain newly pending permutations");
 
 		TempDirectory directory;
 		const std::filesystem::path cacheRoot = directory.Path("Cache");
@@ -1913,13 +1966,13 @@ void main() { gl_Position = position; }
 
 	void TestRuntimeLightingShadersCompile()
 	{
-		const std::array<const char*, 5> shaderPaths =
+		constexpr std::array<const char*, 5> shaderPaths =
 		{
 			"Shaders/Standard.shader",
 			"Shaders/Standard_glTF.shader",
 			"Shaders/Landscape.shader",
-			"Shaders/HBAO.shader",
-			"Shaders/HBAO_Blur.shader"
+			"Shaders/Unlit.shader",
+			"Shaders/Simple.shader"
 		};
 
 		auto compileRuntimeFragment = [](
@@ -1943,18 +1996,15 @@ void main() { gl_Position = position; }
 				RHI::EShaderStage::Vertex);
 		};
 
-		const auto fogByteCode = compileRuntimeFragment("Shaders/AtmosphericFog.shader", {});
+		const ReflectedShader fog(compileRuntimeFragment("Shaders/AtmosphericFog.shader", {}));
 		compileRuntimeVertex("Shaders/AtmosphericFog.shader", {});
-		RequireSpirvCombinedImageSamplerBinding(fogByteCode, 1u, 1u);
-		RequireSpirvCombinedImageSamplerBinding(fogByteCode, 1u, 2u);
-		RequireSpirvCombinedImageSamplerBinding(fogByteCode, 1u, 3u);
-		RequireSpirvDescriptorBindingAbsent(fogByteCode, 1u, 4u);
-		SpvReflectShaderModule fogModule{};
-		Require(spvReflectCreateShaderModule(fogByteCode.Num() * sizeof(uint32_t), fogByteCode.GetData(),
-			&fogModule) == SPV_REFLECT_RESULT_SUCCESS, "Fog shader must support reflection");
-		SpvReflectResult fogStatus;
-		const auto* fogBinding = spvReflectGetDescriptorBinding(&fogModule, 0u, 1u, &fogStatus);
-		const bool fogLayoutValid = fogStatus == SPV_REFLECT_RESULT_SUCCESS && fogBinding &&
+		RequireSpirvCombinedImageSamplerBinding(fog, 1u, 1u);
+		RequireSpirvCombinedImageSamplerBinding(fog, 1u, 2u);
+		RequireSpirvCombinedImageSamplerBinding(fog, 1u, 3u);
+		RequireSpirvDescriptorBindingAbsent(fog, 1u, 4u);
+		const auto& fogModule = fog.GetModule();
+		const auto* fogBinding = fog.FindBinding(1u, 0u);
+		const bool fogLayoutValid = fogBinding &&
 			fogBinding->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER &&
 			fogBinding->block.size == sizeof(Framegraph::AtmosphericFogNode::ShaderParameters) && fogBinding->block.member_count == 6 &&
 			fogBinding->block.members[0].offset == 0 && fogBinding->block.members[1].offset == 16 &&
@@ -1963,127 +2013,81 @@ void main() { gl_Position = position; }
 			fogBinding->block.members[4].offset == offsetof(Framegraph::AtmosphericFogNode::ShaderParameters, m_previousDirectionToSun) &&
 			fogBinding->block.members[5].offset == offsetof(Framegraph::AtmosphericFogNode::ShaderParameters, m_previousSunIlluminance) &&
 			fogModule.push_constant_block_count == 0 && fogModule.output_variable_count == 1;
-		spvReflectDestroyShaderModule(&fogModule);
 		Require(fogLayoutValid, "Fog shader must match the CPU medium/lighting snapshots and one colour output");
 
 		for (size_t shaderIndex = 0u;
 			shaderIndex < shaderPaths.size();
 			++shaderIndex)
 		{
-			const RHI::ShaderByteCode byteCode =
-				compileRuntimeFragment(shaderPaths[shaderIndex], {});
+			const auto* path = shaderPaths[shaderIndex];
+			const ReflectedShader fragment(compileRuntimeFragment(path, {}));
 			if (shaderIndex == 1u)
-				RequireGltfMaterialLayout(byteCode,
-					compileRuntimeFragment(shaderPaths[shaderIndex], {}, true), 132u, 144u);
+				RequireGltfMaterialLayout(fragment,
+					compileRuntimeFragment(path, {}, true), 132u, 144u);
 			if (shaderIndex < 3u)
 			{
-				RequireLocalReflectionUniformLayout(byteCode);
-				RequireSpirvCombinedImageSamplerBinding(byteCode, 1u, 21u);
+				RequireLocalReflectionUniformLayout(fragment);
+				RequireSpirvCombinedImageSamplerBinding(fragment, 1u, 21u);
 				RequireSpirvStorageBufferArrayStride(
-					byteCode,
+					fragment,
 					1u,
 					0u,
 					sizeof(RHI::RHILightShaderData));
-				const RHI::ShaderByteCode vertexByteCode =
-					compileRuntimeVertex(shaderPaths[shaderIndex], {});
-				RequireSpirvStorageBufferBinding(vertexByteCode, 2u, 0u);
-				RequireSpirvStorageBufferBinding(vertexByteCode, 2u, 1u);
+				const ReflectedShader vertex(compileRuntimeVertex(path, {}));
+				RequireSpirvStorageBufferBinding(vertex, 2u, 0u);
+				RequireSpirvStorageBufferBinding(vertex, 2u, 1u);
 				RequireSpirvStorageBufferArrayStride(
-					vertexByteCode,
+					vertex,
 					2u,
 					0u,
 					sizeof(Framegraph::RenderSceneNode::PerInstanceData));
 				RequireSpirvStorageBufferArrayStride(
-					vertexByteCode,
+					vertex,
 					2u,
 					1u,
 					sizeof(uint32_t));
-				RequireSpirvStorageBufferBinding(byteCode, 1u, 12u);
-				RequireSpirvDescriptorBindingAbsent(byteCode, 1u, 13u);
-				RequireSpirvStorageBufferBinding(byteCode, 1u, 14u);
+				RequireSpirvStorageBufferBinding(fragment, 1u, 12u);
+				RequireSpirvDescriptorBindingAbsent(fragment, 1u, 13u);
+				RequireSpirvStorageBufferBinding(fragment, 1u, 14u);
 				for (uint32_t binding = 15u; binding <= 17u; ++binding)
 				{
-					RequireSpirvStorageBufferBinding(byteCode, 1u, binding);
+					RequireSpirvStorageBufferBinding(fragment, 1u, binding);
 				}
 				RequireSpirvStorageBufferArrayStride(
-					byteCode,
+					fragment,
 					1u,
 					14u,
 					sizeof(RHI::RHIGlobalIlluminationGpuBrick));
 				RequireSpirvStorageBufferArrayStride(
-					byteCode,
+					fragment,
 					1u,
 					15u,
 					sizeof(RHI::RHIGlobalIlluminationGpuProbe));
 				RequireSpirvStorageBufferArrayStride(
-					byteCode,
+					fragment,
 					1u,
 					16u,
 					sizeof(RHI::RHIGlobalIlluminationGpuCoefficients));
 				RequireSpirvStorageBufferArrayStride(
-					byteCode,
+					fragment,
 					1u,
 					17u,
 					sizeof(RHI::RHIGlobalIlluminationGpuState));
 				RequireSpirvCombinedImageSamplerBinding(
-					byteCode,
+					fragment,
 					2u,
 					4u);
-				RequireSpirvDescriptorBindingAbsent(byteCode, 1u, 18u);
-				RequireSpirvDescriptorBindingAbsent(byteCode, 1u, 19u);
-				RequireSpirvDescriptorBindingAbsent(byteCode, 1u, 22u);
+				RequireSpirvDescriptorBindingAbsent(fragment, 1u, 18u);
+				RequireSpirvDescriptorBindingAbsent(fragment, 1u, 19u);
+				RequireSpirvDescriptorBindingAbsent(fragment, 1u, 22u);
 			}
-		}
-		compileRuntimeFragment(
-			"Shaders/Standard.shader",
-			{ "ALPHA_CUTOUT" });
-		compileRuntimeFragment(
-			"Shaders/Standard_glTF.shader",
-			{ "ALPHA_CUTOUT" });
-		const RHI::ShaderByteCode materialExtensionsByteCode =
-			compileRuntimeFragment(
-				"Shaders/Standard_glTF.shader",
-				{ "CLEAR_COAT", "SHEEN", "TRANSMISSION" });
-		RequireSpirvCombinedImageSamplerBinding(
-			materialExtensionsByteCode,
-			1u,
-			19u);
-		RequireLocalReflectionUniformLayout(materialExtensionsByteCode);
-		for (const bool debug : { false, true })
-		{
-			const auto transmission = compileRuntimeFragment("Shaders/Standard_glTF.shader", { "TRANSMISSION" }, debug);
-			RequireSpirvCombinedImageSamplerBinding(transmission, 2u, 2u);
-			RequireSpirvCombinedImageSamplerBinding(transmission, 2u, 4u);
-			RequireSpirvDescriptorBindingAbsent(transmission, 1u, 10u);
-			RequireSpirvDescriptorBindingAbsent(transmission, 1u, 18u);
-		}
-		RequireGltfMaterialLayout(materialExtensionsByteCode, compileRuntimeFragment(
-			"Shaders/Standard_glTF.shader", { "CLEAR_COAT", "SHEEN", "TRANSMISSION" }, true), 176u, 176u);
-		RequireGltfMaterialLayout(compileRuntimeFragment(
-			"Shaders/Standard_glTF.shader", { "TRANSMISSION", "MOTIONS" }), compileRuntimeFragment(
-			"Shaders/Standard_glTF.shader", { "TRANSMISSION", "MOTIONS" }, true), 176u, 176u);
-		RequireSpirvCombinedImageSamplerBinding(materialExtensionsByteCode, 1u, 21u);
-		RequireSpirvCombinedImageSamplerBinding(materialExtensionsByteCode, 1u, 22u);
-		RequireGltfMaterialLayout(compileRuntimeFragment(
-			"Shaders/Standard_glTF.shader",
-			{ "MATERIAL_IOR" }), compileRuntimeFragment(
-			"Shaders/Standard_glTF.shader", { "MATERIAL_IOR" }, true), 136u, 144u);
-		compileRuntimeVertex(
-			"Shaders/Standard_glTF.shader",
-			{ "SKINNING", "TRANSMISSION" });
-		compileRuntimeFragment(
-			"Shaders/Standard_glTF.shader",
-			{ "DISABLE_SCREEN_SPACE_AO" });
-		for (const auto* path : { "Shaders/Standard.shader", "Shaders/Standard_glTF.shader", "Shaders/Landscape.shader", "Shaders/Unlit.shader", "Shaders/Simple.shader" })
-		{
-			const auto vertex = compileRuntimeVertex(path, { "MOTIONS" });
-			RequireSpirvStorageBufferArrayStride(vertex, 2u, 0u, sizeof(Framegraph::RenderSceneNode::PerInstanceData));
+
+			const ReflectedShader motionVertex(compileRuntimeVertex(path, { "MOTIONS" }));
+			RequireSpirvStorageBufferArrayStride(motionVertex, 2u, 0u, sizeof(Framegraph::RenderSceneNode::PerInstanceData));
+			const ReflectedShader motionFragment(compileRuntimeFragment(path, { "MOTIONS" }));
 			for (const bool motions : { false, true })
 			{
-				const auto fragment = motions ? compileRuntimeFragment(path, { "MOTIONS" }) : compileRuntimeFragment(path, {});
-				SpvReflectShaderModule module{};
-				Require(spvReflectCreateShaderModule(fragment.Num() * sizeof(uint32_t), fragment.GetData(), &module) == SPV_REFLECT_RESULT_SUCCESS,
-					"MRT shader must expose a compiled fragment interface");
+				const auto& module = (motions ? motionFragment : fragment).GetModule();
 				bool hasMotionOutput = false;
 				for (uint32_t i = 0u; i < module.entry_points[0].output_variable_count; ++i)
 				{
@@ -2094,44 +2098,84 @@ void main() { gl_Position = position; }
 						Require(output->numeric.vector.component_count == 4u, "velocity MRT must carry XY motion, depth and coverage");
 					}
 				}
-				spvReflectDestroyShaderModule(&module);
 				Require(hasMotionOutput == motions, "MOTIONS must control the second MRT output without a separate geometry pass");
 			}
 		}
-		const auto skinnedMotion = compileRuntimeVertex("Shaders/Standard_glTF.shader", { "MOTIONS", "SKINNING", "TRANSMISSION" });
+		compileRuntimeFragment(
+			"Shaders/Standard.shader",
+			{ "ALPHA_CUTOUT" });
+		compileRuntimeFragment(
+			"Shaders/Standard_glTF.shader",
+			{ "ALPHA_CUTOUT" });
+		const ReflectedShader materialExtensions(
+			compileRuntimeFragment(
+				"Shaders/Standard_glTF.shader",
+				{ "CLEAR_COAT", "SHEEN", "TRANSMISSION" }));
+		RequireSpirvCombinedImageSamplerBinding(
+			materialExtensions,
+			1u,
+			19u);
+		RequireLocalReflectionUniformLayout(materialExtensions);
+		for (const bool debug : { false, true })
+		{
+			const ReflectedShader transmission(compileRuntimeFragment("Shaders/Standard_glTF.shader", { "TRANSMISSION" }, debug));
+			RequireSpirvCombinedImageSamplerBinding(transmission, 2u, 2u);
+			RequireSpirvCombinedImageSamplerBinding(transmission, 2u, 4u);
+			RequireSpirvDescriptorBindingAbsent(transmission, 1u, 10u);
+			RequireSpirvDescriptorBindingAbsent(transmission, 1u, 18u);
+		}
+		RequireGltfMaterialLayout(materialExtensions, compileRuntimeFragment(
+			"Shaders/Standard_glTF.shader", { "CLEAR_COAT", "SHEEN", "TRANSMISSION" }, true), 176u, 176u);
+		RequireGltfMaterialLayout(ReflectedShader(compileRuntimeFragment(
+			"Shaders/Standard_glTF.shader", { "TRANSMISSION", "MOTIONS" })), compileRuntimeFragment(
+			"Shaders/Standard_glTF.shader", { "TRANSMISSION", "MOTIONS" }, true), 176u, 176u);
+		RequireSpirvCombinedImageSamplerBinding(materialExtensions, 1u, 21u);
+		RequireSpirvCombinedImageSamplerBinding(materialExtensions, 1u, 22u);
+		RequireGltfMaterialLayout(ReflectedShader(compileRuntimeFragment(
+			"Shaders/Standard_glTF.shader",
+			{ "MATERIAL_IOR" })), compileRuntimeFragment(
+			"Shaders/Standard_glTF.shader", { "MATERIAL_IOR" }, true), 136u, 144u);
+		compileRuntimeVertex(
+			"Shaders/Standard_glTF.shader",
+			{ "SKINNING", "TRANSMISSION" });
+		compileRuntimeFragment(
+			"Shaders/Standard_glTF.shader",
+			{ "DISABLE_SCREEN_SPACE_AO" });
+		const ReflectedShader skinnedMotion(compileRuntimeVertex("Shaders/Standard_glTF.shader", { "MOTIONS", "SKINNING", "TRANSMISSION" }));
 		RequireSpirvStorageBufferArrayStride(skinnedMotion, 0u, 2u, sizeof(glm::mat4));
 		RequireSpirvStorageBufferArrayStride(skinnedMotion, 2u, 0u, sizeof(Framegraph::RenderSceneNode::PerInstanceData));
 		compileRuntimeFragment("Shaders/Standard_glTF.shader", { "MOTIONS", "ALPHA_CUTOUT", "TRANSMISSION", "CLEAR_COAT", "SHEEN" });
-		const auto motionBlur = compileRuntimeFragment("Shaders/MotionBlur.shader", {});
+		const ReflectedShader motionBlur(compileRuntimeFragment("Shaders/MotionBlur.shader", {}));
 		RequireSpirvCombinedImageSamplerBinding(motionBlur, 1u, 3u);
 		compileRuntimeFragment("Shaders/MotionBlur.shader", { "DEBUG_MOTIONS" });
 		compileRuntimeVertex("Experimental/MeshParticles/Particle.shader", {});
 		compileRuntimeFragment("Experimental/MeshParticles/Particle.shader", {});
 		compileRuntimeVertex("Tests/Shaders/DepthCoverage.shader", {});
 		compileRuntimeFragment("Tests/Shaders/DepthCoverage.shader", {});
-		const RHI::ShaderByteCode hbaoByteCode = compileRuntimeFragment(
+		const ReflectedShader hbao(compileRuntimeFragment(
 			"Shaders/HBAO.shader",
-			{});
-		RequireSpirvCombinedImageSamplerBinding(hbaoByteCode, 1u, 1u);
-		RequireSpirvCombinedImageSamplerBinding(hbaoByteCode, 1u, 2u);
+			{}));
+		RequireSpirvCombinedImageSamplerBinding(hbao, 1u, 1u);
+		RequireSpirvCombinedImageSamplerBinding(hbao, 1u, 2u);
+		compileRuntimeFragment("Shaders/HBAO_Blur.shader", {});
 		compileRuntimeFragment("Shaders/HBAO_Blur.shader", { "VERTICAL" });
 		compileRuntimeFragment("Shaders/HBAO_Blur.shader", { "HORIZONTAL" });
-		const RHI::ShaderByteCode debugAoByteCode = compileRuntimeFragment(
+		const ReflectedShader debugAo(compileRuntimeFragment(
 			"Shaders/Debug.shader",
-			{ "AO" });
+			{ "AO" }));
 		RequireSpirvCombinedImageSamplerBinding(
-			debugAoByteCode,
+			debugAo,
 			2u,
 			8u);
 		compileRuntimeFragment("Shaders/Debug.shader", { "CASCADES" });
 		compileRuntimeFragment("Shaders/Debug.shader", { "LIGHT_TILES" });
-		RequireSkyUniformLayout(compileRuntimeFragment("Shaders/Sky.shader", { "ATMOSPHERE" }));
-		RequireSkyUniformLayout(compileRuntimeFragment("Shaders/Sky.shader", { "SUN" }));
-		RequireSkyUniformLayout(compileRuntimeFragment("Shaders/Sky.shader", { "CLOUDS" }));
-		RequireSkyUniformLayout(compileRuntimeFragment(
+		RequireSkyUniformLayout(ReflectedShader(compileRuntimeFragment("Shaders/Sky.shader", { "ATMOSPHERE" })));
+		RequireSkyUniformLayout(ReflectedShader(compileRuntimeFragment("Shaders/Sky.shader", { "SUN" })));
+		RequireSkyUniformLayout(ReflectedShader(compileRuntimeFragment("Shaders/Sky.shader", { "CLOUDS" })));
+		RequireSkyUniformLayout(ReflectedShader(compileRuntimeFragment(
 			"Shaders/Sky.shader",
-			{ "CLOUDS", "DITHER" }));
-		RequireSkyUniformLayout(compileRuntimeFragment("Shaders/SunShafts.shader", {}));
+			{ "CLOUDS", "DITHER" })));
+		RequireSkyUniformLayout(ReflectedShader(compileRuntimeFragment("Shaders/SunShafts.shader", {})));
 		compileRuntimeFragment("Shaders/Tonemapping.shader", { "AGX" });
 		compileRuntimeFragment("Shaders/Tonemapping.shader", { "ACES" });
 		compileRuntimeFragment(
@@ -2150,46 +2194,37 @@ void main() { gl_Position = position; }
 
 		for (bool depthLayout : { false, true })
 		{
-			const auto culling = depthLayout ?
+			const ReflectedShader culling(depthLayout ?
 				compileRuntimeCompute("Shaders/ComputeMeshCulling.shader", { "OCCLUSION_CULLING", "DEPTH_INSTANCE_LAYOUT" }) :
-				compileRuntimeCompute("Shaders/ComputeMeshCulling.shader", { "OCCLUSION_CULLING" });
+				compileRuntimeCompute("Shaders/ComputeMeshCulling.shader", { "OCCLUSION_CULLING" }));
 			RequireSpirvStorageBufferArrayStride(culling, 1u, 0u,
 				depthLayout ? sizeof(DepthPrepassNode::PerInstanceData) :
 				sizeof(Framegraph::RenderSceneNode::PerInstanceData));
 			RequireSpirvCombinedImageSamplerBinding(culling, 0u, 0u);
-			SpvReflectShaderModule module{};
-			Require(spvReflectCreateShaderModule(culling.Num() * sizeof(uint32_t),
-				culling.GetData(), &module) == SPV_REFLECT_RESULT_SUCCESS, "culling SPIR-V must reflect");
+			const auto& module = culling.GetModule();
 			const bool valid = module.push_constant_block_count == 1u &&
 				module.push_constant_blocks[0].size == sizeof(RHI::GpuCullingPushConstants) &&
 				module.push_constant_blocks[0].member_count == 7u &&
 				module.push_constant_blocks[0].members[5].offset == offsetof(RHI::GpuCullingPushConstants, m_phase) &&
 				module.push_constant_blocks[0].members[6].offset == offsetof(RHI::GpuCullingPushConstants, m_bEnableOcclusion);
-			spvReflectDestroyShaderModule(&module);
 			Require(valid, "host and compute shader must agree on phase/occlusion push constants");
 		}
-		const auto depthInput = compileRuntimeCompute("Shaders/ComputeDepthHighZ.shader", { "DEPTH_INPUT" });
+		const ReflectedShader depthInput(compileRuntimeCompute("Shaders/ComputeDepthHighZ.shader", { "DEPTH_INPUT" }));
 		RequireSpirvCombinedImageSamplerBinding(depthInput, 0u, 0u);
 		RequireSpirvStorageImageBinding(depthInput, 0u, 1u);
-		const auto depthMsaa = compileRuntimeCompute("Shaders/ComputeDepthHighZ.shader", { "MSAA_DEPTH_INPUT" });
+		const ReflectedShader depthMsaa(compileRuntimeCompute("Shaders/ComputeDepthHighZ.shader", { "MSAA_DEPTH_INPUT" }));
 		RequireSpirvCombinedImageSamplerBinding(depthMsaa, 0u, 0u);
 		RequireSpirvStorageImageBinding(depthMsaa, 0u, 1u);
-		SpvReflectShaderModule depthModule{};
-		Require(spvReflectCreateShaderModule(depthMsaa.Num() * sizeof(uint32_t), depthMsaa.GetData(),
-			&depthModule) == SPV_REFLECT_RESULT_SUCCESS, "MSAA depth input must reflect");
-		SpvReflectResult depthStatus;
-		const auto* depthBinding = spvReflectGetDescriptorBinding(&depthModule, 0u, 0u, &depthStatus);
-		const bool multisampled = depthStatus == SPV_REFLECT_RESULT_SUCCESS && depthBinding &&
+		const auto* depthBinding = depthMsaa.FindBinding(0u, 0u);
+		const bool multisampled = depthBinding &&
 			depthBinding->image.ms == 1u && depthBinding->image.dim == SpvDim2D;
-		spvReflectDestroyShaderModule(&depthModule);
 		Require(multisampled, "Hi-Z input must retain access to each depth sample before reduction");
-		const auto depthMips = compileRuntimeCompute("Shaders/ComputeDepthHighZ.shader");
+		const ReflectedShader depthMips(compileRuntimeCompute("Shaders/ComputeDepthHighZ.shader"));
 		RequireSpirvStorageImageBinding(depthMips, 0u, 0u);
 		RequireSpirvStorageImageBinding(depthMips, 0u, 1u);
-		const RHI::ShaderByteCode lightCullingByteCode =
-			compileRuntimeCompute("Shaders/ComputeLightCulling.shader");
+		const ReflectedShader lightCulling(compileRuntimeCompute("Shaders/ComputeLightCulling.shader"));
 		RequireSpirvStorageBufferArrayStride(
-			lightCullingByteCode,
+			lightCulling,
 			0u,
 			0u,
 			sizeof(RHI::RHILightShaderData));
@@ -2197,48 +2232,45 @@ void main() { gl_Position = position; }
 		compileRuntimeCompute("Shaders/ComputeAverageLuminance.shader");
 		compileRuntimeCompute("Shaders/ComputeBloomDownscale.shader");
 		compileRuntimeCompute("Shaders/ComputeBloomUpscale.shader");
-		const RHI::ShaderByteCode brdfLutByteCode =
-			compileRuntimeCompute("Shaders/ComputeBrdfLut.shader");
-		RequireSpirvStorageImageBinding(brdfLutByteCode, 0u, 0u);
-		const RHI::ShaderByteCode sheenEnvironmentByteCode =
-			compileRuntimeCompute("Shaders/ComputeSheenEnvMap.shader");
+		const ReflectedShader brdfLut(compileRuntimeCompute("Shaders/ComputeBrdfLut.shader"));
+		RequireSpirvStorageImageBinding(brdfLut, 0u, 0u);
+		const ReflectedShader sheenEnvironment(compileRuntimeCompute("Shaders/ComputeSheenEnvMap.shader"));
 		RequireSpirvCombinedImageSamplerBinding(
-			sheenEnvironmentByteCode,
+			sheenEnvironment,
 			0u,
 			0u);
 		RequireSpirvStorageImageBinding(
-			sheenEnvironmentByteCode,
+			sheenEnvironment,
 			0u,
 			1u);
-		const RHI::ShaderByteCode giResolveByteCode =
-			compileRuntimeCompute("Shaders/GlobalIlluminationResolve.shader");
+		const ReflectedShader giResolve(compileRuntimeCompute("Shaders/GlobalIlluminationResolve.shader"));
 		for (uint32_t binding = 12u; binding <= 14u; ++binding)
 		{
-			RequireSpirvStorageBufferBinding(giResolveByteCode, 1u, binding);
+			RequireSpirvStorageBufferBinding(giResolve, 1u, binding);
 		}
 		RequireSpirvStorageBufferArrayStride(
-			giResolveByteCode,
+			giResolve,
 			1u,
 			13u,
 			sizeof(RHI::RHIGlobalIlluminationGpuBvhNode));
 		RequireSpirvStorageBufferArrayStride(
-			giResolveByteCode,
+			giResolve,
 			1u,
 			14u,
 			sizeof(RHI::RHIGlobalIlluminationGpuBrick));
 		for (uint32_t binding = 15u; binding <= 21u; ++binding)
 		{
 			RequireSpirvDescriptorBindingAbsent(
-				giResolveByteCode,
+				giResolve,
 				1u,
 				binding);
 		}
-		RequireSpirvDescriptorBindingAbsent(giResolveByteCode, 1u, 3u);
-		RequireSpirvCombinedImageSamplerBinding(giResolveByteCode, 2u, 0u);
-		RequireSpirvStorageImageBinding(giResolveByteCode, 2u, 1u);
-		RequireSpirvDescriptorBindingAbsent(giResolveByteCode, 2u, 2u);
-		RequireSpirvDescriptorBindingAbsent(giResolveByteCode, 2u, 3u);
-		RequireSpirvDescriptorBindingAbsent(giResolveByteCode, 2u, 4u);
+		RequireSpirvDescriptorBindingAbsent(giResolve, 1u, 3u);
+		RequireSpirvCombinedImageSamplerBinding(giResolve, 2u, 0u);
+		RequireSpirvStorageImageBinding(giResolve, 2u, 1u);
+		RequireSpirvDescriptorBindingAbsent(giResolve, 2u, 2u);
+		RequireSpirvDescriptorBindingAbsent(giResolve, 2u, 3u);
+		RequireSpirvDescriptorBindingAbsent(giResolve, 2u, 4u);
 	}
 
 	void TestShadowCasterPermutationsCompile()
@@ -2363,12 +2395,14 @@ void main() { gl_Position = position; }
 		Require(!filesystemError,
 			"the shader rewrite fixture should support hard links: " + filesystemError.message());
 		const auto permissionsBefore = std::filesystem::status(shaderPath).permissions();
+		const std::string expectedBuffer = "prefix:" + originalSource + ":unused";
+		const std::string replacementBuffer = "prefix:" + normalizedSource + ":unused";
 
 		Require(
 			ShaderCompilerTestAccess::RewriteShaderSourceInPlace(
 				shaderPath.generic_string(),
-				originalSource,
-				normalizedSource,
+				std::string_view(expectedBuffer).substr(7, originalSource.size()),
+				std::string_view(replacementBuffer).substr(7, normalizedSource.size()),
 				diagnostic),
 			"normalized shader source should be written in place: " + diagnostic);
 		Require(ReadText(shaderPath) == normalizedSource && ReadText(hardLinkPath) == normalizedSource,
@@ -2394,6 +2428,19 @@ void main() { gl_Position = position; }
 			"a concurrent user edit should cancel shader normalization");
 		Require(ReadText(shaderPath) == concurrentSource && !diagnostic.empty(),
 			"a concurrent user edit should remain intact and produce a diagnostic");
+
+		const auto emptyPath = directory.Path("Empty.shader");
+		{
+			std::ofstream output(emptyPath, std::ios::binary);
+			Require(output.is_open(), "the empty source fixture must be writable");
+		}
+		Require(ShaderCompilerTestAccess::RewriteShaderSourceInPlace(emptyPath.generic_string(), {}, {}, diagnostic) &&
+			diagnostic.empty() && ReadText(emptyPath).empty(), "empty views must preserve an empty source file");
+		constexpr char replacement[] = "new\0source:unused";
+		const std::string_view binaryReplacement(replacement, 10);
+		Require(ShaderCompilerTestAccess::RewriteShaderSourceInPlace(emptyPath.generic_string(), {}, binaryReplacement, diagnostic) &&
+			diagnostic.empty() && ReadText(emptyPath) == binaryReplacement,
+			"source rewrites must preserve embedded zero bytes and stop at the view boundary");
 	}
 }
 
@@ -2401,6 +2448,7 @@ int main()
 {
 	try
 	{
+		TestBorrowedShaderArtifactText();
 		TestArtifactRoundTrip();
 		TestTruncatedArtifactIsRejected();
 		TestMisalignedArtifactIsRejected();
@@ -2408,6 +2456,7 @@ int main()
 		TestOwnedArtifactContainment();
 		TestDebugArtifactsAreRequired();
 		TestPayloadIgnoresUnknownFields();
+		TestArtifactValidationDiagnostics();
 		TestBatchInvalidationAndRestart();
 		TestWarmPermutationReadsEachArtifactOnce();
 		TestReloadKeepsHealthyShaderPermutations();
@@ -2423,8 +2472,9 @@ int main()
 		TestSameSizeChecksumCorruptionAndClearExpiredTransaction();
 		TestIoFailureQuarantineIsReadOnlyAndSessionOnly();
 		TestRuntimeArtifactIoFailureEntersReadOnlyQuarantine();
-		TestShaderCompilerFailureLifecycle();
+		TestShaderDependencyAndCacheOperations();
 		TestFailedGlslCompilationPreservesBytecode();
+		TestBorrowedShaderCompilerText();
 		TestShaderDependencyFingerprintTracksTimestampAndWinner();
 		TestMissingYamlIncludeFailsWithoutPartialSource();
 		TestShaderMaterialDefaults();

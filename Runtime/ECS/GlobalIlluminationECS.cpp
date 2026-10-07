@@ -25,7 +25,7 @@ void GlobalIlluminationECS::BeginPlay()
 	InitializeFromWorld();
 }
 
-Tasks::ITaskPtr GlobalIlluminationECS::Tick(float deltaTime)
+void GlobalIlluminationECS::Tick(float deltaTime)
 {
 	SAILOR_PROFILE_FUNCTION();
 	InitializeFromWorld();
@@ -53,7 +53,7 @@ Tasks::ITaskPtr GlobalIlluminationECS::Tick(float deltaTime)
 		{
 			StopRuntimeProvider(true);
 		}
-		return nullptr;
+		return;
 	}
 	if (m_worldSettings.m_mode == EGlobalIlluminationMode::Runtime)
 	{
@@ -64,7 +64,6 @@ Tasks::ITaskPtr GlobalIlluminationECS::Tick(float deltaTime)
 		TickBakedProvider();
 	}
 	DrawDebugVisualization();
-	return nullptr;
 }
 
 void GlobalIlluminationECS::EndPlay()
@@ -798,7 +797,7 @@ bool GlobalIlluminationECS::BeginRuntimeScenePreparation(
 	const uint64_t requestId = ++m_runtimeScenePreparationRequestId;
 	m_runtimeScenePreparationTask =
 		Tasks::CreateTask<RuntimeScenePreparationResult>(
-			"GlobalIlluminationECS:Prepare Runtime GI Scene",
+			"GlobalIlluminationECS:Prepare Runtime GI Scene"_h,
 			[immutableSnapshot, previous, bakeSettings, cancel, requestId,
 				captureWarningCount]()
 			{

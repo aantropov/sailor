@@ -100,11 +100,11 @@ struct SkyDrawCompletionTestComponent::CaptureState
 		auto color = driver->CreateRenderTarget(graphics, glm::ivec2(Side), 1u, EFormat::R16G16B16A16_SFLOAT);
 		auto depth = driver->CreateRenderTarget(graphics, glm::ivec2(Side), 1u, driver->GetDepthBuffer()->GetFormat(),
 			ETextureFiltration::Nearest, ETextureClamping::Clamp, ETextureUsageBit::DepthStencilAttachment_Bit);
-		m_graph->SetRenderTarget("DepthBuffer", depth);
-		m_graph->SetSampler("g_noiseSampler", driver->GetDefaultTexture());
-		m_graph->SetSampler("g_ditherPatternSampler", driver->GetDefaultTexture());
-		m_sky->SetRHIResource("color", color);
-		m_sky->SetRHIResource("linearDepth", driver->GetDefaultTexture());
+		m_graph->SetRenderTarget("DepthBuffer"_h, depth);
+		m_graph->SetSampler("g_noiseSampler"_h, driver->GetDefaultTexture());
+		m_graph->SetSampler("g_ditherPatternSampler"_h, driver->GetDefaultTexture());
+		m_sky->SetRHIResource("color"_h, color);
+		m_sky->SetRHIResource("linearDepth"_h, driver->GetDefaultTexture());
 		m_scene.m_frameBindings = driver->CreateShaderBindings();
 		UboFrameData frame{};
 		frame.m_view = glm::mat4(1.0f);
@@ -115,7 +115,7 @@ struct SkyDrawCompletionTestComponent::CaptureState
 		for (uint32_t binding = 0u; binding < 2u; ++binding)
 		{
 			auto buffer = driver->AddBufferToShaderBindings(m_scene.m_frameBindings,
-				binding ? "previousFrameData" : "frameData", sizeof(frame), binding, EShaderBindingType::UniformBuffer);
+				binding ? "previousFrameData"_h : "frameData"_h, sizeof(frame), binding, EShaderBindingType::UniformBuffer);
 			if (!buffer) { return "Sky frame uniform creation failed"; }
 			commands->UpdateShaderBinding(upload, buffer, &frame, sizeof(frame));
 		}
@@ -141,7 +141,7 @@ struct SkyDrawCompletionTestComponent::CaptureState
 		RestoreBuffer restore;
 		if (error.empty() && m_stage == Stage::RejectFaceB)
 		{
-			if (!m_request->GetShaderBindings().TryGet("data", restore.m_binding))
+			if (!m_request->GetShaderBindings().TryGet("data"_h, restore.m_binding))
 			{
 				error = "Frozen environment has no captured data binding";
 			}
@@ -197,7 +197,7 @@ struct SkyDrawCompletionTestComponent::CaptureState
 
 		SkyParameters published;
 		const bool bReady = m_sky->GetEnvironmentSkyParams(published);
-		auto texture = m_graph->GetSampler("g_skyCubemap");
+		auto texture = m_graph->GetSampler("g_skyCubemap"_h);
 		const uint32_t step = m_sky->m_environmentCaptureStep;
 		if (m_stage == Stage::WarmA)
 		{
@@ -236,7 +236,7 @@ struct SkyDrawCompletionTestComponent::CaptureState
 			m_candidateB = m_sky->m_pEnvironmentCapture;
 			m_request = m_sky->m_pEnvironmentBindings;
 			m_firstFaceStats = m_sky->GetDrawCallStats();
-			if (!driver->AddBufferToShaderBindings(m_request, "unused", sizeof(glm::vec4), 31u, EShaderBindingType::UniformBuffer) ||
+			if (!driver->AddBufferToShaderBindings(m_request, "unused"_h, sizeof(glm::vec4), 31u, EShaderBindingType::UniformBuffer) ||
 				VulkanApi::IsCompatible(m_sky->m_pSkyEnvMaterial->m_vulkan.m_pipelines[0]->m_layout, m_request->m_vulkan.m_descriptorSet, 1u))
 			{
 				return { false, "Private captured set did not require a fresh descriptor projection" };
@@ -296,7 +296,7 @@ void SkyDrawCompletionTestComponent::Tick(float)
 		}
 	}
 	if (!m_capture) { m_capture = TSharedPtr<CaptureState>::Make(); }
-	m_step = Tasks::CreateTaskWithResult<StepResult>("Sky draw completion step",
+	m_step = Tasks::CreateTaskWithResult<StepResult>("Sky draw completion step"_h,
 		[capture = m_capture]() { return capture->Step(); }, EThreadType::Render);
 	m_step->Run();
 }

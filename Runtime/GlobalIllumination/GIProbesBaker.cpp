@@ -56,35 +56,6 @@ namespace
 		return result;
 	}
 
-	bool ComputeLightingHash(const GIProbesData& data,
-		const GIProbesBakeRequest& request, uint64_t& outHash) noexcept
-	{
-		uint64_t hash = Fnv1aOffsetBasis;
-		HashValue(hash, data.m_layoutHash);
-		HashValue(hash, data.m_bakeSettings.m_raysPerProbe);
-		HashValue(hash, data.m_bakeSettings.m_bounceCount);
-		HashValue(hash, data.m_bakeSettings.m_randomSeed);
-		HashValue(hash, data.m_bakeSettings.m_skyIndirectIntensity);
-		for (size_t probeIndex = 0u; probeIndex < data.m_probes.Num(); ++probeIndex)
-		{
-			if (probeIndex % 256u == 0u && IsCancelled(request))
-			{
-				return false;
-			}
-			const GIProbe& probe = data.m_probes[probeIndex];
-			for (const glm::vec3& coefficient : probe.m_irradiance)
-			{
-				HashValues(
-					hash,
-					coefficient.x,
-					coefficient.y,
-					coefficient.z);
-			}
-		}
-		outHash = hash;
-		return !IsCancelled(request);
-	}
-
 	uint32_t CanonicalFloatBits(float value) noexcept
 	{
 		return value == 0.0f ? 0u : std::bit_cast<uint32_t>(value);
@@ -1047,7 +1018,7 @@ GIProbesBakeResult GIProbesBaker::Bake(
 				return CancelledBake();
 			}
 		}
-		if (!ComputeLightingHash(*data, request, data->m_lightingHash))
+		if (!ComputeGIProbesLightingHash(*data, data->m_lightingHash, request.m_cancel))
 		{
 			return CancelledBake();
 		}

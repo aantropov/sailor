@@ -37,10 +37,10 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		return Sailor::App::Shutdown();
 	}
 
-	void SetError(ProtocolResponse& response, const std::string& error)
+	void SetError(ProtocolResponse& response, std::string_view error)
 	{
 		response.set_success(false);
-		response.set_error(error);
+		response.set_error(error.empty() ? "" : error.data(), error.size());
 		response.clear_result();
 	}
 

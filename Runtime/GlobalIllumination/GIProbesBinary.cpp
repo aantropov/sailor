@@ -1,5 +1,6 @@
 #include "GlobalIllumination/GIProbesBinary.h"
 #include "Platform/AtomicFile.h"
+#include "Workspace/WorkspacePathEncoding.h"
 
 #include "Containers/Hash.h"
 
@@ -69,7 +70,7 @@ namespace
 			WriteFloat(value.z);
 		}
 
-		bool WriteString(const std::string& value, std::string& outDiagnostic)
+		bool WriteString(std::string_view value, std::string& outDiagnostic)
 		{
 			if (value.size() > MaxStringBytes ||
 				value.size() > std::numeric_limits<uint32_t>::max())
@@ -581,7 +582,7 @@ GIProbesBinaryResult GIProbesBinary::Load(
 		if (!stream.is_open())
 		{
 			return Fail(EGIProbesBinaryStatus::IoFailure,
-				"cannot open .probes file '" + path.generic_string() + "'");
+				"cannot open .probes file '" + Workspace::PathToUtf8(path) + "'");
 		}
 		const std::streampos end = stream.tellg();
 		if (end < 0 || static_cast<uint64_t>(end) > MaxPayloadBytes + FixedHeaderSize)
@@ -601,7 +602,7 @@ GIProbesBinaryResult GIProbesBinary::Load(
 		if (!stream.good() && !stream.eof())
 		{
 			return Fail(EGIProbesBinaryStatus::IoFailure,
-				"cannot read .probes file '" + path.generic_string() + "'");
+				"cannot read .probes file '" + Workspace::PathToUtf8(path) + "'");
 		}
 		return Deserialize(bytes.GetData(), bytes.Num());
 	}

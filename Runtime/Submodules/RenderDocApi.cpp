@@ -108,10 +108,10 @@ RENDERDOC_API_1_4_2* RenderDocApi::GetRenderDocAPI()
 
 	if (!g_pRenderDocAPI)
 	{
-		const std::string renderDocDll = "C:/Program Files/RenderDoc/renderdoc.dll";
+		constexpr const char* renderDocDll = "C:/Program Files/RenderDoc/renderdoc.dll";
 
-		LoadLibrary(renderDocDll.c_str());
-		HMODULE mod = GetModuleHandleA(renderDocDll.c_str());
+		LoadLibraryA(renderDocDll);
+		HMODULE mod = GetModuleHandleA(renderDocDll);
 		if (!mod)
 		{
 			SAILOR_LOG("Cannot find renderdoc.dll");

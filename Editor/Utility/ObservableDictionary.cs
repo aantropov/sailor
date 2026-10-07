@@ -22,7 +22,12 @@ namespace SailorEditor.Utility
         public event EventHandler<ItemChangedEventArgs<TValue>> ValueChanged;
 
         public ObservableDictionary() : this(new Dictionary<TKey, TValue>()) { }
-        public ObservableDictionary(IDictionary<TKey, TValue> dictionary) { this.dictionary = dictionary; }
+        public ObservableDictionary(IDictionary<TKey, TValue> dictionary)
+        {
+            this.dictionary = dictionary;
+            foreach (var value in dictionary.Values)
+                value.PropertyChanged += ValuePropertyChanged;
+        }
 
         private void ValuePropertyChanged(object sender, PropertyChangedEventArgs e)
         {
@@ -146,7 +151,7 @@ namespace SailorEditor.Utility
 
             ((ICollection<KeyValuePair<TKey, TValue>>)dictionary).Clear();
 
-            CollectionChanged(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
 
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Count"));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Keys"));

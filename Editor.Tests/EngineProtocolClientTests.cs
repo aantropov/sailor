@@ -1548,19 +1548,7 @@ public sealed class EngineProtocolClientTests
                 "yaml",
                 "parent\0id"),
             () => client.SetEditorSelectionAsync(
-                ["object", "component\0id"]),
-            () => client.RenderPathTracedImageAsync(
-                "output\0path",
-                "object",
-                1,
-                1,
-                1),
-            () => client.RenderPathTracedImageAsync(
-                "output",
-                "object\0id",
-                1,
-                1,
-                1)
+                ["object", "component\0id"])
         ];
 
         foreach (var invalidCall in invalidCalls)

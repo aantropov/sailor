@@ -7,6 +7,7 @@
 #include <thread>
 #include "Sailor.h"
 #include "Core/Submodule.h"
+#include "Core/StringHash.h"
 #include "Memory/UniquePtr.hpp"
 
 // TODO: Implement ConcurrentList
@@ -78,7 +79,7 @@ namespace Sailor
 
 			SAILOR_API WorkerThread(
 				Scheduler& scheduler,
-				std::string threadName,
+				StringHash threadName,
 				EThreadType threadType,
 				std::condition_variable& refresh,
 				std::mutex& mutex,
@@ -108,7 +109,7 @@ namespace Sailor
 			SAILOR_API bool TryFetchTask(ITaskPtr& pOutTask);
 
 			Scheduler& m_scheduler;
-			std::string m_threadName;
+			StringHash m_threadName;
 			TUniquePtr<std::thread> m_pThread;
 
 			EThreadType m_threadType;

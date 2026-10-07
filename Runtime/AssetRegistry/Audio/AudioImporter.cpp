@@ -115,7 +115,7 @@ Tasks::TaskPtr<AudioClipPtr> AudioImporter::LoadAudioClip(FileId uid, AudioClipP
 	{
 		AudioClipPtr clip = AudioClipPtr::Make(m_allocator, uid);
 		promise = Tasks::CreateTaskWithResult<AudioClipPtr>(
-			"Load Audio Clip",
+			"Load Audio Clip"_h,
 			[this, uid, clip]() mutable
 			{
 				AudioClipPtr imported = clip;
@@ -158,7 +158,7 @@ bool AudioImporter::ImportAudioClip(FileId uid, AudioClipPtr& outClip)
 
 	const std::string sourcePath = info->GetAssetFilepath();
 	std::error_code error;
-	if (!std::filesystem::is_regular_file(sourcePath, error) || error)
+	if (!std::filesystem::is_regular_file(Workspace::PathFromUtf8(sourcePath), error) || error)
 	{
 		SAILOR_LOG_ERROR("Cannot load audio clip '%s'.", sourcePath.c_str());
 		return false;

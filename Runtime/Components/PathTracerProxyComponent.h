@@ -3,17 +3,9 @@
 #include "Components/Component.h"
 #include "Engine/Types.h"
 #include "ECS/PathTracerECS.h"
-#include "AssetRegistry/Model/ModelImporter.h"
-#include "AssetRegistry/AssetRegistry.h"
-#include "Components/MeshRendererComponent.h"
 
 namespace Sailor
 {
-	namespace Raytracing
-	{
-		class PathTracer;
-	}
-
 	class PathTracerProxyComponent : public Component
 	{
 		SAILOR_REFLECTABLE(PathTracerProxyComponent)
@@ -25,8 +17,6 @@ namespace Sailor
 
 		SAILOR_API __forceinline PathTracerProxyData& GetData();
 		SAILOR_API __forceinline const PathTracerProxyData& GetData() const;
-
-		SAILOR_API ModelPtr GetModel() const;
 
 		SAILOR_API bool IsEnabled() const { return GetData().GetOptions().m_bEnabled; }
 		SAILOR_API void SetEnabled(bool bEnabled);

@@ -18,10 +18,6 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 
-#ifndef _SAILOR_IMPORT_
-const char* EnvironmentNode::m_name = "Environment";
-#endif
-
 bool EnvironmentNode::TryRestoreEnvironment(RHIFrameGraphPtr frameGraph,
 	const SkyEnvironmentKey& key, RHICubemapPtr rawCubemap)
 {
@@ -36,10 +32,10 @@ bool EnvironmentNode::TryRestoreEnvironment(RHIFrameGraphPtr frameGraph,
 			}
 			m_environmentCache[m_numCachedEnvironments - 1u] = std::move(entry);
 			const EnvironmentMaps& maps = m_environmentCache[m_numCachedEnvironments - 1u].m_maps;
-			frameGraph->SetSampler("g_rawEnvCubemap", rawCubemap);
-			frameGraph->SetSampler("g_envCubemap", maps.m_specular);
-			frameGraph->SetSampler("g_irradianceCubemap", maps.m_irradiance);
-			frameGraph->SetSampler("g_sheenEnvCubemap", maps.m_sheen);
+			frameGraph->SetSampler("g_rawEnvCubemap"_h, rawCubemap);
+			frameGraph->SetSampler("g_envCubemap"_h, maps.m_specular);
+			frameGraph->SetSampler("g_irradianceCubemap"_h, maps.m_irradiance);
+			frameGraph->SetSampler("g_sheenEnvCubemap"_h, maps.m_sheen);
 			return true;
 		}
 	}
@@ -70,7 +66,7 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdCompute);
 
-	SetTag("Environment");
+	SetTag("Environment"_h);
 
 	if (!m_pComputeBrdfShader)
 	{
@@ -132,12 +128,12 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		commands->ImageMemoryBarrier(commandList, m_brdfSampler, EImageLayout::ShaderReadOnlyOptimal);
 		m_brdfSampler->ForceSetDefaultLayout(EImageLayout::ShaderReadOnlyOptimal);
 
-		RHI::Renderer::GetDriver()->SetDebugName(m_brdfSampler, "g_brdfSampler");
-		frameGraph->SetSampler("g_brdfSampler", m_brdfSampler);
+		RHI::Renderer::GetDriver()->SetDebugName(m_brdfSampler, "g_brdfSampler"_h);
+		frameGraph->SetSampler("g_brdfSampler"_h, m_brdfSampler);
 
-		commands->BeginDebugRegion(commandList, "Generate Cook-Torrance BRDF 2D LUT for split-sum approximation", DebugContext::Color_CmdCompute);
+		commands->BeginDebugRegion(commandList, "Generate Cook-Torrance BRDF 2D LUT for split-sum approximation"_h, DebugContext::Color_CmdCompute);
 		{
-			driver->AddStorageImageToShaderBindings(m_computeBrdfBindings, "dst", m_brdfSampler, 0);
+			driver->AddStorageImageToShaderBindings(m_computeBrdfBindings, "dst"_h, m_brdfSampler, 0);
 			commands->ImageMemoryBarrier(commandList, m_brdfSampler, EImageLayout::ComputeWrite);
 
 			commands->Dispatch(commandList, m_pComputeBrdfShader->GetComputeShaderRHI(),
@@ -157,12 +153,12 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	if (m_bIsDirty)
 	{
 		std::string environmentMap;
-		TryGetString("EnvironmentMap", environmentMap);
+		TryGetString("EnvironmentMap"_h, environmentMap);
 		TRefPtr<SkyNode> skyNode;
 		SkyParameters skyParameters;
 		if (environmentMap.empty())
 		{
-			if (auto node = frameGraph->GetGraphNode("Sky")) skyNode = node.DynamicCast<SkyNode>();
+			if (auto node = frameGraph->GetGraphNode("Sky"_h)) skyNode = node.DynamicCast<SkyNode>();
 			if (skyNode && !skyNode->GetEnvironmentSkyParams(skyParameters))
 			{
 				commands->EndDebugRegion(commandList);
@@ -231,9 +227,9 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			commands->ImageMemoryBarrier(commandList, rawEnvCubemap, EImageLayout::ShaderReadOnlyOptimal);
 			rawEnvCubemap->ForceSetDefaultLayout(EImageLayout::ShaderReadOnlyOptimal);
 
-			RHI::Renderer::GetDriver()->SetDebugName(rawEnvCubemap, "rawEnvCubemap");
+			RHI::Renderer::GetDriver()->SetDebugName(rawEnvCubemap, "rawEnvCubemap"_h);
 
-			commands->BeginDebugRegion(commandList, "Generate Raw Env Cubemap from Equirect", DebugContext::Color_CmdCompute);
+			commands->BeginDebugRegion(commandList, "Generate Raw Env Cubemap from Equirect"_h, DebugContext::Color_CmdCompute);
 			{
 				commands->ImageMemoryBarrier(commandList, rawEnvCubemap, EImageLayout::ComputeWrite);
 				commands->ConvertEquirect2Cubemap(commandList, authoredSource, rawEnvCubemap);
@@ -245,9 +241,9 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		}
 		else if (source.m_type == EEnvironmentSource::Constant)
 		{
-			m_environmentUsesSky = false;
 			if (m_staticRawCubemap && TryRestoreEnvironment(frameGraph, {}, m_staticRawCubemap))
 			{
+				m_environmentUsesSky = false;
 				m_bIsDirty = false;
 				commands->EndDebugRegion(commandList);
 				return;
@@ -264,7 +260,7 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			commands->ImageMemoryBarrier(commandList, rawEnvCubemap, EImageLayout::ShaderReadOnlyOptimal);
 			rawEnvCubemap->ForceSetDefaultLayout(EImageLayout::ShaderReadOnlyOptimal);
 		}
-		else if (auto g_skyCubemap = frameGraph->GetSampler("g_skyCubemap").DynamicCast<RHICubemap>())
+		else if (auto g_skyCubemap = frameGraph->GetSampler("g_skyCubemap"_h).DynamicCast<RHICubemap>())
 		{
 			rawEnvCubemap = g_skyCubemap;
 		}
@@ -274,16 +270,12 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			return;
 		}
 
-		SkyEnvironmentKey skyHash{};
-		m_environmentUsesSky = source.m_type == EEnvironmentSource::Sky;
-		if (m_environmentUsesSky)
+		const bool bUsesSky = source.m_type == EEnvironmentSource::Sky;
+		const auto skyHash = bUsesSky ? source.m_sky.GetEnvironmentKey() : SkyEnvironmentKey{};
+		if (bUsesSky && TryRestoreEnvironment(frameGraph, skyHash, rawEnvCubemap))
 		{
+			m_environmentUsesSky = true;
 			m_environmentSkyParams = source.m_sky;
-			skyHash = m_environmentSkyParams.GetEnvironmentKey();
-		}
-
-		if (m_environmentUsesSky && TryRestoreEnvironment(frameGraph, skyHash, rawEnvCubemap))
-		{
 			m_bIsDirty = false;
 			commands->EndDebugRegion(commandList);
 			return;
@@ -307,11 +299,11 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				commands->EndDebugRegion(commandList);
 				return;
 			}
-			RHI::Renderer::GetDriver()->SetDebugName(envCubemap, "g_envCubemap");
+			RHI::Renderer::GetDriver()->SetDebugName(envCubemap, "g_envCubemap"_h);
 
 			commands->ImageMemoryBarrier(commandList, envCubemap, EImageLayout::General);
 
-			commands->BeginDebugRegion(commandList, "Compute pre-filtered specular environment map", DebugContext::Color_CmdCompute);
+			commands->BeginDebugRegion(commandList, "Compute pre-filtered specular environment map"_h, DebugContext::Color_CmdCompute);
 			{
 				struct PushConstants { int32_t level{}; float roughness{}; };
 				const uint32_t NumMipTailLevels = EnvMapLevels - 1;
@@ -333,8 +325,8 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 					envMapMips.Add(envCubemap->GetMipLevel(level));
 				}
 
-				driver->AddSamplerToShaderBindings(m_computeSpecularBindings, "rawEnvMap", rawEnvCubemap, 0);
-				driver->AddStorageImageToShaderBindings(m_computeSpecularBindings, "envMap", envMapMips, 1);
+				driver->AddSamplerToShaderBindings(m_computeSpecularBindings, "rawEnvMap"_h, rawEnvCubemap, 0);
+				driver->AddStorageImageToShaderBindings(m_computeSpecularBindings, "envMap"_h, envMapMips, 1);
 
 				m_computeSpecularBindings->RecalculateCompatibility();
 
@@ -376,17 +368,17 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			commands->ImageMemoryBarrier(commandList, irradianceCubemap, EImageLayout::ShaderReadOnlyOptimal);
 			irradianceCubemap->ForceSetDefaultLayout(EImageLayout::ShaderReadOnlyOptimal);
 
-			RHI::Renderer::GetDriver()->SetDebugName(irradianceCubemap, "g_irradianceCubemap");
+			RHI::Renderer::GetDriver()->SetDebugName(irradianceCubemap, "g_irradianceCubemap"_h);
 
 			commands->ImageMemoryBarrier(commandList, irradianceCubemap, EImageLayout::General);
 
-			commands->BeginDebugRegion(commandList, "Compute diffuse irradiance cubemap", DebugContext::Color_CmdCompute);
+			commands->BeginDebugRegion(commandList, "Compute diffuse irradiance cubemap"_h, DebugContext::Color_CmdCompute);
 			{
 				commands->ImageMemoryBarrier(commandList, envCubemap, EImageLayout::ShaderReadOnlyOptimal);
 				commands->ImageMemoryBarrier(commandList, irradianceCubemap, EImageLayout::ComputeWrite);
 
-				driver->AddSamplerToShaderBindings(m_computeIrradianceBindings, "envMap", envCubemap, 0);
-				driver->AddStorageImageToShaderBindings(m_computeIrradianceBindings, "irradianceMap", irradianceCubemap, 1);
+				driver->AddSamplerToShaderBindings(m_computeIrradianceBindings, "envMap"_h, envCubemap, 0);
+				driver->AddStorageImageToShaderBindings(m_computeIrradianceBindings, "irradianceMap"_h, irradianceCubemap, 1);
 
 				m_computeIrradianceBindings->RecalculateCompatibility();
 
@@ -426,11 +418,11 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				EImageLayout::ShaderReadOnlyOptimal);
 			RHI::Renderer::GetDriver()->SetDebugName(
 				sheenEnvCubemap,
-				"g_sheenEnvCubemap");
+				"g_sheenEnvCubemap"_h);
 
 			commands->BeginDebugRegion(
 				commandList,
-				"Compute Charlie pre-filtered sheen environment map",
+				"Compute Charlie pre-filtered sheen environment map"_h,
 				DebugContext::Color_CmdCompute);
 			{
 				struct PushConstants
@@ -451,12 +443,12 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 				driver->AddSamplerToShaderBindings(
 					m_computeSheenBindings,
-					"rawEnvMap",
+					"rawEnvMap"_h,
 					rawEnvCubemap,
 					0u);
 				driver->AddStorageImageToShaderBindings(
 					m_computeSheenBindings,
-					"sheenEnvMap",
+					"sheenEnvMap"_h,
 					sheenEnvMapMips,
 					1u);
 				m_computeSheenBindings->RecalculateCompatibility();
@@ -500,10 +492,12 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			commands->EndDebugRegion(commandList);
 		}
 
-		frameGraph->SetSampler("g_rawEnvCubemap", rawEnvCubemap);
-		frameGraph->SetSampler("g_envCubemap", envCubemap);
-		frameGraph->SetSampler("g_irradianceCubemap", irradianceCubemap);
-		frameGraph->SetSampler("g_sheenEnvCubemap", sheenEnvCubemap);
+		frameGraph->SetSampler("g_rawEnvCubemap"_h, rawEnvCubemap);
+		frameGraph->SetSampler("g_envCubemap"_h, envCubemap);
+		frameGraph->SetSampler("g_irradianceCubemap"_h, irradianceCubemap);
+		frameGraph->SetSampler("g_sheenEnvCubemap"_h, sheenEnvCubemap);
+		m_environmentUsesSky = bUsesSky;
+		if (bUsesSky) m_environmentSkyParams = source.m_sky;
 		if (source.m_type != EEnvironmentSource::Sky)
 		{
 			// Authored revisions replace the previous bundle; sky states retain their LRU.
@@ -536,7 +530,7 @@ bool EnvironmentNode::SetLocalReflection(LocalReflectionImage image)
 		return false;
 	}
 	image.m_parameters.m_minEnabled.w = 1.0f;
-	Tasks::CreateTask("Update local reflection",
+	Tasks::CreateTask("Update local reflection"_h,
 		[node = TRefPtr<EnvironmentNode>(this), image = TSharedPtr<const LocalReflectionImage>::Make(std::move(image))]() mutable
 		{
 			node->m_localReflection = std::move(image);
@@ -548,7 +542,7 @@ bool EnvironmentNode::SetLocalReflection(LocalReflectionImage image)
 
 void EnvironmentNode::ResetLocalReflection()
 {
-	Tasks::CreateTask("Reset local reflection", [node = TRefPtr<EnvironmentNode>(this)]() mutable
+	Tasks::CreateTask("Reset local reflection"_h, [node = TRefPtr<EnvironmentNode>(this)]() mutable
 		{
 			node->Clear();
 		}, EThreadType::Render)->Run();
@@ -562,8 +556,8 @@ void EnvironmentNode::ProcessLocalReflection(RHIFrameGraphPtr frameGraph, RHICom
 	}
 	if (!m_localReflection)
 	{
-		frameGraph->SetSampler("g_localEnvCubemap", {});
-		frameGraph->SetSampler("g_localSheenEnvCubemap", {});
+		frameGraph->SetSampler("g_localEnvCubemap"_h, {});
+		frameGraph->SetSampler("g_localSheenEnvCubemap"_h, {});
 		m_bLocalReflectionDirty = false;
 		return;
 	}
@@ -595,7 +589,7 @@ void EnvironmentNode::ProcessLocalReflection(RHIFrameGraphPtr frameGraph, RHICom
 	if (!specular) return;
 	auto sheen = createCube();
 	if (!sheen) return;
-	commands->BeginDebugRegion(commandList, "Local scene reflection", DebugContext::Color_CmdCompute);
+	commands->BeginDebugRegion(commandList, "Local scene reflection"_h, DebugContext::Color_CmdCompute);
 	commands->ImageMemoryBarrier(commandList, raw, EImageLayout::ComputeWrite);
 	commands->ConvertEquirect2Cubemap(commandList, m_localUploadTexture, raw);
 	commands->ImageMemoryBarrier(commandList, raw, EImageLayout::TransferDstOptimal);
@@ -619,8 +613,8 @@ void EnvironmentNode::ProcessLocalReflection(RHIFrameGraphPtr frameGraph, RHICom
 		// The existing GGX shader declares nine outputs; unused tail bindings
 		// remain valid even though this bounded capture has fewer mip levels.
 		while (mips.Num() < (sheen ? 8u : 9u)) mips.Add(filtered->GetMipLevel(levels - 1u));
-		driver->AddSamplerToShaderBindings(bindings, "rawEnvMap", raw, 0u);
-		driver->AddStorageImageToShaderBindings(bindings, sheen ? "sheenEnvMap" : "envMap", mips, 1u);
+		driver->AddSamplerToShaderBindings(bindings, "rawEnvMap"_h, raw, 0u);
+		driver->AddStorageImageToShaderBindings(bindings, sheen ? "sheenEnvMap"_h : "envMap"_h, mips, 1u);
 		bindings->RecalculateCompatibility();
 		for (uint32_t level = first; level < levels; ++level)
 		{
@@ -636,8 +630,8 @@ void EnvironmentNode::ProcessLocalReflection(RHIFrameGraphPtr frameGraph, RHICom
 	};
 	prefilter(specular, false);
 	prefilter(sheen, true);
-	frameGraph->SetSampler("g_localEnvCubemap", specular);
-	frameGraph->SetSampler("g_localSheenEnvCubemap", sheen);
+	frameGraph->SetSampler("g_localEnvCubemap"_h, specular);
+	frameGraph->SetSampler("g_localSheenEnvCubemap"_h, sheen);
 	m_localParameters = m_localReflection->m_parameters;
 	m_localReflectionSamples.store(m_localReflection->m_samplesPerPixel);
 	m_localReflectionReady.store(true);

@@ -16,7 +16,7 @@ using namespace std;
 using namespace Sailor;
 using namespace Sailor::Tasks;
 
-ITask::ITask(const std::string& name, EThreadType thread) :
+ITask::ITask(StringHash name, EThreadType thread) :
 	m_threadType(thread), m_name(name)
 {
 	auto* scheduler = App::GetSubmodule<Scheduler>();

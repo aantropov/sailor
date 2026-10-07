@@ -70,6 +70,15 @@ internal static class EngineProtocolNative
     internal static extern int SailorProtocolStopLocalHost(
         [MarshalAs(UnmanagedType.I1)] bool shutdownEngine);
 
+#if MACCATALYST
+    [DllImport(
+        EngineLibrary,
+        EntryPoint = "SailorProtocolSetMacViewportHost",
+        ExactSpelling = true,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int SailorProtocolSetMacViewportHost(ulong viewportId, nint layer);
+#endif
+
 #if WINDOWS
     [DllImport(
         EngineLibrary,

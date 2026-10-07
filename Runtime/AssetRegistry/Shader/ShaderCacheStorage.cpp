@@ -19,7 +19,7 @@ void ShaderCache::Initialize()
 	SAILOR_PROFILE_FUNCTION();
 
 	std::error_code error;
-	m_cacheRoot = std::filesystem::path(AssetRegistry::GetCacheFolder());
+	m_cacheRoot = Workspace::PathFromUtf8(AssetRegistry::GetCacheFolder());
 	std::filesystem::create_directories(m_cacheRoot, error);
 	if (!error)
 	{
@@ -98,7 +98,7 @@ bool ShaderCache::RecoverMissingStorage()
 		if (error)
 		{
 			m_lastSaveDiagnostic =
-				"Cannot inspect shader cache storage '" + path.generic_string() + "': " + error.message();
+				"Cannot inspect shader cache storage '" + Workspace::PathToUtf8(path) + "': " + error.message();
 			SAILOR_LOG_ERROR("Shader cache recovery failed: %s", m_lastSaveDiagnostic.c_str());
 			return false;
 		}
@@ -208,9 +208,10 @@ void ShaderCache::LoadCache()
 		m_bHasCommittedSnapshot = false;
 		m_lastSaveDiagnostic.clear();
 		m_lastLoadResult = std::move(loadResult);
-		SAILOR_LOG_ERROR("Shader cache reload status=%s: %s Read-only I/O quarantine remains active until a fully "
+		const auto statusName = magic_enum::enum_name(m_lastLoadResult.m_status);
+		SAILOR_LOG_ERROR("Shader cache reload status=%.*s: %s Read-only I/O quarantine remains active until a fully "
 						 "successful reload or ClearAll.",
-			std::string(magic_enum::enum_name(m_lastLoadResult.m_status)).c_str(),
+			static_cast<int>(statusName.size()), statusName.empty() ? "" : statusName.data(),
 			m_lastLoadResult.m_diagnostic.c_str());
 		return;
 	}
@@ -224,9 +225,10 @@ void ShaderCache::LoadCache()
 		m_bHasCommittedSnapshot = false;
 		m_lastSaveDiagnostic.clear();
 		m_lastLoadResult = std::move(loadResult);
+		const auto statusName = magic_enum::enum_name(m_lastLoadResult.m_status);
 		SAILOR_LOG_ERROR(
-			"Shader cache load status=%s: %s Existing cache metadata and artifact directories were preserved.",
-			std::string(magic_enum::enum_name(m_lastLoadResult.m_status)).c_str(),
+			"Shader cache load status=%.*s: %s Existing cache metadata and artifact directories were preserved.",
+			static_cast<int>(statusName.size()), statusName.empty() ? "" : statusName.data(),
 			m_lastLoadResult.m_diagnostic.c_str());
 		return;
 	}
@@ -332,8 +334,9 @@ void ShaderCache::ResetInvalidCacheLocked(Workspace::WorkspaceCacheLoadResult lo
 		m_lastSaveDiagnostic.clear();
 		AppendDiagnostic(m_lastLoadResult.m_diagnostic,
 			"The shader cache and owned artifact directories were reset to an empty current envelope.");
-		SAILOR_LOG("Shader cache load status=%s: %s",
-			std::string(magic_enum::enum_name(m_lastLoadResult.m_status)).c_str(),
+		const auto statusName = magic_enum::enum_name(m_lastLoadResult.m_status);
+		SAILOR_LOG("Shader cache load status=%.*s: %s",
+			static_cast<int>(statusName.size()), statusName.empty() ? "" : statusName.data(),
 			m_lastLoadResult.m_diagnostic.c_str());
 		return;
 	}
@@ -342,8 +345,9 @@ void ShaderCache::ResetInvalidCacheLocked(Workspace::WorkspaceCacheLoadResult lo
 	AppendDiagnostic(m_lastSaveDiagnostic, resetDiagnostic);
 	AppendDiagnostic(m_lastSaveDiagnostic, writeDiagnostic);
 	AppendDiagnostic(m_lastLoadResult.m_diagnostic, "The shader cache reset was incomplete: " + m_lastSaveDiagnostic);
-	SAILOR_LOG_ERROR("Shader cache load status=%s: %s",
-		std::string(magic_enum::enum_name(m_lastLoadResult.m_status)).c_str(),
+	const auto statusName = magic_enum::enum_name(m_lastLoadResult.m_status);
+	SAILOR_LOG_ERROR("Shader cache load status=%.*s: %s",
+		static_cast<int>(statusName.size()), statusName.empty() ? "" : statusName.data(),
 		m_lastLoadResult.m_diagnostic.c_str());
 }
 
@@ -371,7 +375,7 @@ bool ShaderCache::EnsureOwnedDirectoriesLocked(std::string& outDiagnostic)
 	std::filesystem::create_directories(m_cacheRoot, error);
 	if (error)
 	{
-		outDiagnostic = "Cannot create shader cache root '" + m_cacheRoot.generic_string() + "': " + error.message();
+		outDiagnostic = "Cannot create shader cache root '" + Workspace::PathToUtf8(m_cacheRoot) + "': " + error.message();
 		return false;
 	}
 
@@ -385,7 +389,7 @@ bool ShaderCache::EnsureOwnedDirectoriesLocked(std::string& outDiagnostic)
 		if (!error && std::filesystem::is_symlink(status))
 		{
 			AppendDiagnostic(
-				outDiagnostic, "Refusing symlinked shader cache directory '" + directory.generic_string() + "'.");
+				outDiagnostic, "Refusing symlinked shader cache directory '" + Workspace::PathToUtf8(directory) + "'.");
 			bSuccess = false;
 			continue;
 		}
@@ -395,7 +399,7 @@ bool ShaderCache::EnsureOwnedDirectoriesLocked(std::string& outDiagnostic)
 		if (error)
 		{
 			AppendDiagnostic(outDiagnostic,
-				"Cannot create shader cache directory '" + directory.generic_string() + "': " + error.message());
+				"Cannot create shader cache directory '" + Workspace::PathToUtf8(directory) + "': " + error.message());
 			bSuccess = false;
 			continue;
 		}
@@ -605,7 +609,7 @@ bool ShaderCache::WriteSpirvSetLocked(const FileId& uid,
 		++artifactIndex;
 		if (!Platform::IsAtomicWriteComplete(result))
 		{
-			outDiagnostic = "Cannot atomically write shader artifact '" + path.generic_string() + "': " + diagnostic;
+			outDiagnostic = "Cannot atomically write shader artifact '" + Workspace::PathToUtf8(path) + "': " + diagnostic;
 			return false;
 		}
 		return true;
@@ -674,7 +678,7 @@ bool ShaderCache::GenerateUniqueGenerationLocked(const FileId& uid,
 			if (error)
 			{
 				outDiagnostic = "Cannot check immutable shader generation collision for '" +
-								candidate.generic_string() + "': " + error.message();
+								Workspace::PathToUtf8(candidate) + "': " + error.message();
 				return false;
 			}
 		}
@@ -691,9 +695,9 @@ bool ShaderCache::GenerateUniqueGenerationLocked(const FileId& uid,
 
 bool ShaderCache::CachePrecompiledGlsl(const FileId& uid,
 	uint32_t permutation,
-	const std::string& vertexGlsl,
-	const std::string& fragmentGlsl,
-	const std::string& computeGlsl)
+	std::string_view vertexGlsl,
+	std::string_view fragmentGlsl,
+	std::string_view computeGlsl)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -716,7 +720,7 @@ bool ShaderCache::CachePrecompiledGlsl(const FileId& uid,
 		return false;
 	}
 
-	auto write = [&](const std::string& glsl, const char* shaderKind) -> bool
+	auto write = [&](std::string_view glsl, std::string_view shaderKind) -> bool
 	{
 		if (glsl.empty())
 		{
@@ -743,7 +747,7 @@ bool ShaderCache::CachePrecompiledGlsl(const FileId& uid,
 		if (!Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(path, glsl, writeDiagnostic)))
 		{
 			m_lastSaveDiagnostic =
-				"Cannot atomically write precompiled shader '" + path.generic_string() + "': " + writeDiagnostic;
+				"Cannot atomically write precompiled shader '" + Workspace::PathToUtf8(path) + "': " + writeDiagnostic;
 			SAILOR_LOG_ERROR("Precompiled shader cache write failed: %s", m_lastSaveDiagnostic.c_str());
 			return false;
 		}

@@ -1,6 +1,7 @@
 #pragma once
 #include "Core/Defines.h"
 #include <string>
+#include <string_view>
 #include "Containers/Vector.h"
 #include "Containers/ConcurrentMap.h"
 #include "RHI/Types.h"
@@ -47,7 +48,7 @@ namespace Sailor
 			Value() = default;
 			Value(float value) : m_float(value), m_bIsFloat(true) {}
 			Value(const glm::vec4& value) : m_vec4(value), m_bIsVec4(true) {}
-			Value(const std::string& value) : m_string(value), m_bIsString(true) {}
+			Value(std::string_view value) : m_string(value), m_bIsString(true) {}
 
 			bool operator==(const Value& rhs) const { return m_name == rhs.m_name; }
 
@@ -89,7 +90,7 @@ namespace Sailor
 
 			bool operator==(const RenderTarget& rhs) const { return m_name == rhs.m_name; }
 
-			SAILOR_API static uint32_t ParseUintValue(const std::string& str);
+			SAILOR_API static uint32_t ParseUintValue(std::string_view str);
 
 			virtual void Deserialize(const YAML::Node& inData)
 			{

@@ -22,11 +22,12 @@ namespace Sailor::RHI
 
 		SAILOR_API RHITexturePtr GetFace(uint32_t face, uint32_t mipLevel = 0) const;
 		SAILOR_API RHICubemapPtr GetMipLevel(uint32_t mipLevel) const;
-		uint32_t GetMipLevels() const { return (uint32_t)m_mipLevels.Num(); }
+		uint32_t GetMipLevels() const { return 1u + static_cast<uint32_t>(m_mipLevels.Num()); }
 
 	protected:
 
 		TVector<RHITexturePtr> m_faces;
+		// The base level belongs to this resource; only additional mip views live here.
 		TVector<RHICubemapPtr> m_mipLevels;
 
 #if defined(SAILOR_BUILD_WITH_VULKAN)

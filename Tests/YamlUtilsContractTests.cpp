@@ -1,4 +1,6 @@
 #include "Core/YamlUtils.h"
+#include "Core/YamlSerializable.h"
+#include "Core/JsonSerializable.h"
 
 #include <cstdint>
 #include <iostream>
@@ -9,11 +11,13 @@ using namespace Sailor;
 
 namespace
 {
-	void Require(bool condition, const std::string& message)
+	enum class ETextMode { Default, Streamed };
+
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -213,6 +217,12 @@ namespace
 			"field counting should preserve duplicate detection and the first-match lookup contract");
 		Require(Utils::FindYamlMapField(map, "name").as<std::string>() == "first",
 			"field lookup should match yaml-cpp's first-match map indexing behavior");
+		const char bounded[] = { 'n', 'a', 'm', 'e', 'x' };
+		const std::string_view name(bounded, 4);
+		Require(Utils::CountYamlMapField(map, name) == 2 && Utils::FindYamlMapField(map, name).is(first),
+			"field lookup must respect a bounded, non-null-terminated name without copying it");
+		Require(Utils::CountYamlMapField(map, {}) == 0 && !Utils::FindYamlMapField(map, {}).IsDefined(),
+			"an empty field-name view must remain a valid missing-key query");
 
 		YAML::Node nonScalarKey(YAML::NodeType::Sequence);
 		nonScalarKey.push_back("key");
@@ -237,8 +247,8 @@ namespace
 
 	void TestExactFieldValidation()
 	{
-		const TVector<std::string> required{ "name", "value" };
-		const TVector<std::string> optional{ "enabled" };
+		const TVector<std::string_view> required{ "name", "value" };
+		const TVector<std::string_view> optional{ "enabled" };
 
 		YAML::Node valid(YAML::NodeType::Map);
 		valid["name"] = "Sailor";
@@ -264,6 +274,64 @@ namespace
 			missingResult.m_error == Utils::EYamlMapValidationError::MissingField &&
 				missingResult.m_fieldName == "value",
 			"exact field validation should identify missing required fields");
+		const std::string longName(256, 'x');
+		Utils::YamlMapValidationResult retained;
+		{
+			YAML::Node temporary;
+			temporary[longName] = true;
+			retained = Utils::ValidateYamlMapFields(temporary, {});
+		}
+		Require(retained.m_error == Utils::EYamlMapValidationError::UnknownField && retained.m_fieldName == longName,
+			"validation results must own diagnostic names after their YAML document is destroyed");
+		{
+			std::string name = longName + ":ignored suffix";
+			const TVector<std::string_view> fields{ std::string_view(name).substr(0, longName.size()) };
+			YAML::Node document(YAML::NodeType::Map);
+			retained = Utils::ValidateYamlMapFields(document, fields);
+			document[longName] = true;
+			Require(Utils::ValidateYamlMapFields(document, fields).IsValid(),
+				"required fields must use the exact view length without reading its suffix");
+		}
+		Require(retained.m_error == Utils::EYamlMapValidationError::MissingField && retained.m_fieldName == longName,
+			"missing-field diagnostics must own the borrowed field name after its source is destroyed");
+	}
+
+	void TestBorrowedSerializationNames()
+	{
+		YAML::Node document;
+		std::string key = "a long borrowed field name:ignored suffix";
+		const std::string_view name(key.data(), key.find(':'));
+		Sailor::Serialize(document, name, 42);
+		int value = 0;
+		Require(Sailor::Deserialize(document, name, value) && value == 42 && document.size() == 1,
+			"serialization must use only the bounded field name, without requiring a terminator");
+		key.assign(1024, 'x');
+		Require(document["a long borrowed field name"].as<int>() == 42,
+			"the serialized document must own its key after the borrowed source is replaced");
+		Require(!Sailor::Deserialize(document, "missing", value) && value == 42,
+			"a missing field must leave the caller's value unchanged");
+
+		FileRevision revision{ 123456789, true };
+		const char revisionName[] = { 'r', 'e', 'v', 'x' };
+		Sailor::Serialize(document, std::string_view(revisionName, 3), revision);
+		FileRevision decoded;
+		Require(Sailor::Deserialize(document, std::string_view(revisionName, 3), decoded) && decoded == revision,
+			"the FileRevision overload must preserve the same bounded-name contract");
+
+		Sailor::Serialize(document, "mode", ETextMode::Streamed);
+		ETextMode mode = ETextMode::Default;
+		Require(document["mode"].Scalar() == "Streamed" &&
+			Sailor::Deserialize(document, "mode", mode) && mode == ETextMode::Streamed,
+			"enum serialization must retain readable text and decode without owning a second copy");
+		document["mode"] = "Unknown";
+		Require(!Sailor::Deserialize(document, "mode", mode) && mode == ETextMode::Streamed,
+			"an unknown enum name must not overwrite the previous value");
+
+		json jsonMode;
+		Sailor::SerializeEnum<ETextMode>(jsonMode, ETextMode::Default);
+		Sailor::DeserializeEnum<ETextMode>(jsonMode, mode);
+		Require(jsonMode == "Default" && mode == ETextMode::Default,
+			"JSON enum readers must preserve the same textual contract");
 	}
 
 	void TestScalarDecoding()
@@ -292,6 +360,7 @@ int main()
 		TestSingleDocumentLoading();
 		TestMapStructureValidation();
 		TestExactFieldValidation();
+		TestBorrowedSerializationNames();
 		TestScalarDecoding();
 		std::cout << "[PASS] YAML utility contracts" << std::endl;
 		return 0;

@@ -45,7 +45,7 @@ namespace
 					ETextureFiltration::Nearest, ETextureClamping::Clamp,
 					ETextureUsageBit::Storage_Bit | ETextureUsageBit::TextureTransferSrc_Bit);
 				auto bindings = driver->CreateShaderBindings();
-				driver->AddStorageImageToShaderBindings(bindings, "outputValue", output, 0u);
+				driver->AddStorageImageToShaderBindings(bindings, "outputValue"_h, output, 0u);
 				std::array<uint32_t, 8> constants;
 				constants.fill(0xdeadbeefu);
 				constants[variant == 0u ? 0u : 4u] = round == 0u ? 17u : 43u;
@@ -168,7 +168,7 @@ void PushConstantsTestComponent::Tick(float)
 	ready &= load(m_graphicsShaders[3], "Tests/Shaders/PushConstantsGraphics.shader", { "MIXED_STAGES" });
 	if (ready)
 	{
-		m_validation = Tasks::CreateTaskWithResult<std::string>("Push constants GPU validation",
+		m_validation = Tasks::CreateTaskWithResult<std::string>("Push constants GPU validation"_h,
 			[compute = m_computeShaders, graphics = m_graphicsShaders]()
 			{
 				auto error = ValidateCompute(compute);

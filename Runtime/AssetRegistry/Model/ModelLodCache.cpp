@@ -116,9 +116,9 @@ namespace
 
 	std::filesystem::path GetPath(const FileId& fileId, uint32_t lodLevel)
 	{
-		const std::filesystem::path filename = ModelImporter::GetLodCacheFilename(fileId, lodLevel);
+		const auto filename = Workspace::PathFromUtf8(ModelImporter::GetLodCacheFilename(fileId, lodLevel));
 		return filename.empty() ? std::filesystem::path{}
-								: std::filesystem::path(AssetRegistry::GetCacheFolder()) / "Lods" / filename;
+								: Workspace::PathFromUtf8(AssetRegistry::GetCacheFolder()) / "Lods" / filename;
 	}
 }
 
@@ -259,6 +259,6 @@ void Sailor::ModelLodCache::Save(const ModelAssetInfo& assetInfo,
 	std::string diagnostic;
 	if (!path.empty() && !Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(path, bytes.data(), bytes.size(), diagnostic)))
 	{
-		SAILOR_LOG("Cannot save model LOD cache %s: %s", path.string().c_str(), diagnostic.c_str());
+		SAILOR_LOG("Cannot save model LOD cache %s: %s", Workspace::PathToUtf8(path).c_str(), diagnostic.c_str());
 	}
 }

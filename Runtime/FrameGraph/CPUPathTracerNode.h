@@ -12,7 +12,21 @@ namespace Sailor::Framegraph
 	class CPUPathTracerNode : public TFrameGraphNode<CPUPathTracerNode>
 	{
 	public:
-		SAILOR_API static const char* GetName() { return m_name; }
+		struct Image
+		{
+			TVector<glm::vec4> m_pixels;
+			glm::uvec2 m_extent{};
+			uint32_t m_cameraIndex = 0;
+			uint64_t m_frame = 0;
+			uint64_t m_imageRevision = 0;
+			uint64_t m_accumulatedSamples = 0;
+		};
+		using ImagePtr = TSharedPtr<const Image>;
+		using CaptureTask = Tasks::TaskPtr<ImagePtr, ImagePtr>;
+
+		SAILOR_API ~CPUPathTracerNode() override;
+		SAILOR_API static StringHash GetName() { return "CPUPathTracerNode"_h; }
+		SAILOR_API void SetFloat(StringHash name, float value) override;
 		SAILOR_API bool IsEnabled(RHI::ESceneViewRenderMode mode) const;
 
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph,
@@ -21,6 +35,9 @@ namespace Sailor::Framegraph
 			const RHI::RHISceneViewSnapshot& sceneView) override;
 
 		SAILOR_API virtual void Clear() override;
+		// Completes on Main after this camera is processed on Render, or with null on cancellation.
+		SAILOR_API CaptureTask DoOneCapture(uint32_t cameraIndex = 0);
+		// Render queue only. Cross-thread consumers use DoOneCapture.
 		SAILOR_API bool GetLastRenderedImage(TVector<glm::u8vec4>& outImage, glm::uvec2& outExtent) const;
 
 	protected:
@@ -85,6 +102,7 @@ namespace Sailor::Framegraph
 
 		SAILOR_API CameraState& GetCameraState(uint32_t cameraIndex);
 		SAILOR_API void AccumulateImage(CameraState& camera, const TVector<glm::vec4>& image, glm::uvec2 extent, uint32_t samples);
+		SAILOR_API void CompleteImageRequests(uint32_t cameraIndex, uint64_t frame, const CameraState* camera = nullptr);
 		SAILOR_API bool ApplyCompletedReadback(CameraState& camera,
 			const RHI::RHICubemapPtr& environment, const RHI::RHICubemapPtr& diffuseEnvironment);
 		void QueueEnvironmentReadback(CameraState& camera, TRefPtr<SubmissionResources> resources,
@@ -97,9 +115,20 @@ namespace Sailor::Framegraph
 		TMap<uint32_t, TUniquePtr<CameraState>> m_cameras;
 		uint32_t m_lastCameraIndex = 0;
 		uint64_t m_nextImageRevision = 0;
+		struct ImageRequest
+		{
+			uint32_t m_cameraIndex;
+			CaptureTask m_task;
+		};
+		TVector<ImageRequest> m_imageRequests;
+		// Main checks scene demand without reading Render's parameter table.
+		std::atomic<bool> m_bIsEnabled{ false };
 
-		SAILOR_SHARED_API static const char* m_name;
 	};
 
+#ifdef _SAILOR_IMPORT_
+	extern template class TFrameGraphNode<CPUPathTracerNode>;
+#else
 	template class TFrameGraphNode<CPUPathTracerNode>;
+#endif
 }

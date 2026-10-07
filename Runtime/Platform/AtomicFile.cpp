@@ -1,4 +1,5 @@
 #include "Platform/AtomicFile.h"
+#include "Workspace/WorkspacePathEncoding.h"
 #include "Platform/AtomicFileTestAccess.h"
 
 #include <algorithm>
@@ -92,7 +93,7 @@ namespace
 		{
 			const DWORD error = GetLastError();
 			outDiagnostic = "Cannot create file temporary file " +
-				Quote(temporaryPath.generic_string()) + ": " + WindowsErrorMessage(error) + ".";
+				Quote(Sailor::Workspace::PathToUtf8(temporaryPath)) + ": " + WindowsErrorMessage(error) + ".";
 			return false;
 		}
 
@@ -109,7 +110,7 @@ namespace
 				const DWORD error = GetLastError();
 				CloseHandle(file);
 				outDiagnostic = "Cannot write file temporary file " +
-					Quote(temporaryPath.generic_string()) + ": " + WindowsErrorMessage(error) + ".";
+					Quote(Sailor::Workspace::PathToUtf8(temporaryPath)) + ": " + WindowsErrorMessage(error) + ".";
 				return false;
 			}
 			cursor += written;
@@ -121,7 +122,7 @@ namespace
 			const DWORD error = GetLastError();
 			CloseHandle(file);
 			outDiagnostic = "Cannot flush file temporary file " +
-				Quote(temporaryPath.generic_string()) + ": " + WindowsErrorMessage(error) + ".";
+				Quote(Sailor::Workspace::PathToUtf8(temporaryPath)) + ": " + WindowsErrorMessage(error) + ".";
 			return false;
 		}
 
@@ -129,7 +130,7 @@ namespace
 		{
 			const DWORD error = GetLastError();
 			outDiagnostic = "Cannot close file temporary file " +
-				Quote(temporaryPath.generic_string()) + ": " + WindowsErrorMessage(error) + ".";
+				Quote(Sailor::Workspace::PathToUtf8(temporaryPath)) + ": " + WindowsErrorMessage(error) + ".";
 			return false;
 		}
 
@@ -156,7 +157,7 @@ namespace
 		{
 			const int error = errno;
 			outDiagnostic = "Cannot create file temporary file " +
-				Quote(temporaryPath.generic_string()) + ": " + PosixErrorMessage(error) + ".";
+				Quote(Sailor::Workspace::PathToUtf8(temporaryPath)) + ": " + PosixErrorMessage(error) + ".";
 			return false;
 		}
 
@@ -178,14 +179,14 @@ namespace
 				const int error = errno;
 				close(file);
 				outDiagnostic = "Cannot write file temporary file " +
-					Quote(temporaryPath.generic_string()) + ": " + PosixErrorMessage(error) + ".";
+					Quote(Sailor::Workspace::PathToUtf8(temporaryPath)) + ": " + PosixErrorMessage(error) + ".";
 				return false;
 			}
 			if (written == 0)
 			{
 				close(file);
 				outDiagnostic = "Cannot write file temporary file " +
-					Quote(temporaryPath.generic_string()) + ": the write made no progress.";
+					Quote(Sailor::Workspace::PathToUtf8(temporaryPath)) + ": the write made no progress.";
 				return false;
 			}
 
@@ -198,7 +199,7 @@ namespace
 			const int error = errno;
 			close(file);
 			outDiagnostic = "Cannot flush file temporary file " +
-				Quote(temporaryPath.generic_string()) + ": " + PosixErrorMessage(error) + ".";
+				Quote(Sailor::Workspace::PathToUtf8(temporaryPath)) + ": " + PosixErrorMessage(error) + ".";
 			return false;
 		}
 
@@ -206,7 +207,7 @@ namespace
 		{
 			const int error = errno;
 			outDiagnostic = "Cannot close file temporary file " +
-				Quote(temporaryPath.generic_string()) + ": " + PosixErrorMessage(error) + ".";
+				Quote(Sailor::Workspace::PathToUtf8(temporaryPath)) + ": " + PosixErrorMessage(error) + ".";
 			return false;
 		}
 
@@ -242,7 +243,7 @@ namespace
 		{
 			const int error = errno;
 			outDiagnostic = "File was replaced, but its directory could not be opened for durability sync " +
-				Quote(directory.generic_string()) + ": " + PosixErrorMessage(error) + ".";
+				Quote(Sailor::Workspace::PathToUtf8(directory)) + ": " + PosixErrorMessage(error) + ".";
 			return EAtomicWriteResult::Published;
 		}
 
@@ -264,11 +265,11 @@ namespace
 			if (IsUnsupportedDirectorySyncError(syncError))
 			{
 				outDiagnostic = "File was published; its filesystem does not support directory sync " +
-					Quote(directory.generic_string()) + ".";
+					Quote(Sailor::Workspace::PathToUtf8(directory)) + ".";
 				return EAtomicWriteResult::DirectorySyncUnsupported;
 			}
 			outDiagnostic = "File was replaced, but its directory durability sync failed " +
-				Quote(directory.generic_string()) + ": " + PosixErrorMessage(syncError) + ".";
+				Quote(Sailor::Workspace::PathToUtf8(directory)) + ": " + PosixErrorMessage(syncError) + ".";
 			return EAtomicWriteResult::Published;
 		}
 
@@ -276,7 +277,7 @@ namespace
 		{
 			const int error = errno;
 			outDiagnostic = "File was replaced, but its directory handle could not be closed " +
-				Quote(directory.generic_string()) + ": " + PosixErrorMessage(error) + ".";
+				Quote(Sailor::Workspace::PathToUtf8(directory)) + ": " + PosixErrorMessage(error) + ".";
 			return EAtomicWriteResult::Published;
 		}
 
@@ -300,7 +301,7 @@ namespace
 		}
 		if (size > 0 && data == nullptr)
 		{
-			outDiagnostic = "Cannot atomically replace file " + Quote(target.generic_string()) +
+			outDiagnostic = "Cannot atomically replace file " + Quote(Sailor::Workspace::PathToUtf8(target)) +
 				": non-empty data has a null address.";
 			return EAtomicWriteResult::NotPublished;
 		}
@@ -312,7 +313,7 @@ namespace
 		std::filesystem::create_directories(parent, directoryError);
 		if (directoryError)
 		{
-			outDiagnostic = "Cannot create file directory " + Quote(parent.generic_string()) +
+			outDiagnostic = "Cannot create file directory " + Quote(Sailor::Workspace::PathToUtf8(parent)) +
 				": " + directoryError.message() + ".";
 			return EAtomicWriteResult::NotPublished;
 		}
@@ -328,7 +329,7 @@ namespace
 		if (failurePoint == EAtomicWriteFailurePoint::BeforePublish)
 		{
 			outDiagnostic = "Injected file replacement failure before replacing " +
-				Quote(target.generic_string()) + ".";
+				Quote(Sailor::Workspace::PathToUtf8(target)) + ".";
 			return EAtomicWriteResult::NotPublished;
 		}
 #endif
@@ -344,7 +345,7 @@ namespace
 			moveFlags))
 		{
 			const DWORD error = GetLastError();
-			outDiagnostic = "Cannot atomically publish file " + Quote(target.generic_string()) +
+			outDiagnostic = "Cannot atomically publish file " + Quote(Sailor::Workspace::PathToUtf8(target)) +
 				": " + WindowsErrorMessage(error) + ".";
 			return EAtomicWriteResult::NotPublished;
 		}
@@ -352,7 +353,7 @@ namespace
 #if defined(SAILOR_FILE_IO_TEST_HOOKS)
 		if (failurePoint == EAtomicWriteFailurePoint::DirectorySync)
 		{
-			outDiagnostic = "Injected sync confirmation failure after publishing '" + target.generic_string() + "'.";
+			outDiagnostic = "Injected sync confirmation failure after publishing '" + Sailor::Workspace::PathToUtf8(target) + "'.";
 			return EAtomicWriteResult::Published;
 		}
 #endif
@@ -362,7 +363,7 @@ namespace
 			if (link(temporaryPath.c_str(), target.c_str()) != 0)
 			{
 				const int error = errno;
-				outDiagnostic = "Cannot atomically create file " + Quote(target.generic_string()) +
+				outDiagnostic = "Cannot atomically create file " + Quote(Sailor::Workspace::PathToUtf8(target)) +
 					": " + PosixErrorMessage(error) + ".";
 				return EAtomicWriteResult::NotPublished;
 			}
@@ -374,7 +375,7 @@ namespace
 			{
 				const int error = cleanupFailed ? EIO : errno;
 				outDiagnostic = "File was created; removing its temporary link failed " +
-					Quote(temporaryPath.generic_string()) + ": " + PosixErrorMessage(error) + ". Retrying cleanup on exit.";
+					Quote(Sailor::Workspace::PathToUtf8(temporaryPath)) + ": " + PosixErrorMessage(error) + ". Retrying cleanup on exit.";
 			}
 			else
 			{
@@ -384,7 +385,7 @@ namespace
 		else if (rename(temporaryPath.c_str(), target.c_str()) != 0)
 		{
 			const int error = errno;
-			outDiagnostic = "Cannot atomically replace file " + Quote(target.generic_string()) +
+			outDiagnostic = "Cannot atomically replace file " + Quote(Sailor::Workspace::PathToUtf8(target)) +
 				": " + PosixErrorMessage(error) + ".";
 			return EAtomicWriteResult::NotPublished;
 		}
@@ -395,7 +396,7 @@ namespace
 #if defined(SAILOR_FILE_IO_TEST_HOOKS)
 		if (failurePoint == EAtomicWriteFailurePoint::DirectorySync)
 		{
-			outDiagnostic = "Injected directory sync failure after publishing '" + target.generic_string() + "'.";
+			outDiagnostic = "Injected directory sync failure after publishing '" + Sailor::Workspace::PathToUtf8(target) + "'.";
 			return EAtomicWriteResult::Published;
 		}
 #endif
@@ -411,8 +412,8 @@ namespace
 		if (outDiagnostic.empty())
 		{
 			outDiagnostic = writeMode == EAtomicWriteMode::FailIfExists ?
-				"Atomically created file " + Quote(target.generic_string()) + "." :
-				"Atomically replaced file " + Quote(target.generic_string()) + ".";
+				"Atomically created file " + Quote(Sailor::Workspace::PathToUtf8(target)) + "." :
+				"Atomically replaced file " + Quote(Sailor::Workspace::PathToUtf8(target)) + ".";
 		}
 		return EAtomicWriteResult::Synced;
 	}

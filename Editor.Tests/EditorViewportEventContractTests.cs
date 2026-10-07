@@ -1,3 +1,4 @@
+using Google.Protobuf;
 using SailorEditor.Scene;
 using SailorEditor.Protocol.Generated;
 
@@ -5,326 +6,256 @@ namespace Editor.Tests;
 
 public sealed class EditorViewportEventContractTests
 {
-    [Fact]
-    public void SelectionEvent_ParsesSelectedAndClearedSelection()
+    [Theory]
+    [InlineData("go-42")]
+    [InlineData("")]
+    [InlineData("船-42")]
+    public void SelectionEvent_RoundTripsSelectionAndClear(string instanceId)
     {
-        Assert.True(EditorViewportEventContract.TryParse(
-            "kind: selection\nrevision: 17\nmanagedMutationRevision: 5\nselectedInstanceId: go-42\n",
-            out var selected,
-            out var selectedError), selectedError);
-        var selection = Assert.IsType<EditorViewportSelectionEvent>(selected);
+        var selection = Assert.IsType<EditorViewportSelectionEvent>(Create(new ViewportEvent
+        {
+            Revision = 17,
+            ManagedMutationRevision = 5,
+            Selection = new ViewportSelectionEvent { SelectedInstanceId = instanceId }
+        }));
+
         Assert.Equal(17UL, selection.Revision);
         Assert.Equal(5UL, selection.ManagedMutationRevision);
-        Assert.Equal("go-42", selection.SelectedInstanceId);
-
-        Assert.True(EditorViewportEventContract.TryParse(
-            "kind: selection\nrevision: 18\nmanagedMutationRevision: 5\nselectedInstanceId: ''\n",
-            out var cleared,
-            out var clearedError), clearedError);
-        Assert.Equal(string.Empty, Assert.IsType<EditorViewportSelectionEvent>(cleared).SelectedInstanceId);
-    }
-
-    [Fact]
-    public void TransformEvent_ParsesTypedOperationSpaceAndNumericTransform()
-    {
-        const string yaml = """
-            kind: transform
-            revision: 21
-            managedMutationRevision: 8
-            instanceId: go-42
-            operation: Rotate
-            space: Local
-            beforePosition: [0, 0, 0, 1]
-            beforeRotation: [0, 0, 0, 1]
-            beforeScale: [1, 1, 1, 0]
-            afterPosition: [1, 2.5, -3, 1]
-            afterRotation: [0, 0.70710677, 0, 0.70710677]
-            afterScale: [1, 2, 3, 0]
-            """;
-
-        Assert.True(EditorViewportEventContract.TryParse(yaml, out var parsed, out var error), error);
-        var transform = Assert.IsType<EditorViewportTransformEvent>(parsed);
-        Assert.Equal(21UL, transform.Revision);
-        Assert.Equal(8UL, transform.ManagedMutationRevision);
-        Assert.Equal("go-42", transform.InstanceId);
-        Assert.Equal(EditorViewportTransformOperation.Rotate, transform.Operation);
-        Assert.Equal(EditorViewportTransformSpace.Local, transform.Space);
-        Assert.Equal(new EditorViewportVector4(0, 0, 0, 1), transform.BeforePosition);
-        Assert.Equal(new EditorViewportVector4(1, 2.5f, -3, 1), transform.AfterPosition);
-        Assert.Equal(new EditorViewportVector4(1, 2, 3, 0), transform.AfterScale);
-    }
-
-    [Fact]
-    public void TypedTransformEvent_MapsGeneratedProtocolPayload()
-    {
-        var source = new ViewportEvent
-        {
-            Revision = 21,
-            ManagedMutationRevision = 8,
-            Transform = new ViewportTransformEvent
-            {
-                InstanceId = "go-42",
-                Operation = ViewportTransformOperation.Rotate,
-                Space = ViewportTransformSpace.Local,
-                BeforePosition = new Vector4 { W = 1 },
-                BeforeRotation = new Vector4 { W = 1 },
-                BeforeScale = new Vector4 { X = 1, Y = 1, Z = 1 },
-                AfterPosition = new Vector4 { X = 1, Y = 2.5f, Z = -3, W = 1 },
-                AfterRotation = new Vector4 { Y = 0.70710677f, W = 0.70710677f },
-                AfterScale = new Vector4 { X = 1, Y = 2, Z = 3 }
-            }
-        };
-
-        Assert.True(
-            EditorViewportEventContract.TryCreate(
-                source,
-                out var viewportEvent,
-                out var error),
-            error);
-        var transform = Assert.IsType<EditorViewportTransformEvent>(viewportEvent);
-        Assert.Equal(21UL, transform.Revision);
-        Assert.Equal(8UL, transform.ManagedMutationRevision);
-        Assert.Equal(EditorViewportTransformOperation.Rotate, transform.Operation);
-        Assert.Equal(EditorViewportTransformSpace.Local, transform.Space);
-        Assert.Equal(new EditorViewportVector4(1, 2.5f, -3, 1), transform.AfterPosition);
-    }
-
-    [Fact]
-    public void TypedTransformEvent_RejectsUnspecifiedEnumsAndNonFiniteVectors()
-    {
-        var source = new ViewportEvent
-        {
-            Transform = new ViewportTransformEvent
-            {
-                InstanceId = "go-42",
-                Operation = ViewportTransformOperation.Unspecified,
-                Space = ViewportTransformSpace.World
-            }
-        };
-
-        Assert.False(
-            EditorViewportEventContract.TryCreate(
-                source,
-                out var unsupported,
-                out var unsupportedError));
-        Assert.Null(unsupported);
-        Assert.Contains("unsupported", unsupportedError, StringComparison.OrdinalIgnoreCase);
-
-        source.Transform.Operation = ViewportTransformOperation.Translate;
-        source.Transform.BeforePosition = new Vector4 { X = float.PositiveInfinity };
-        source.Transform.BeforeRotation = new Vector4();
-        source.Transform.BeforeScale = new Vector4();
-        source.Transform.AfterPosition = new Vector4();
-        source.Transform.AfterRotation = new Vector4();
-        source.Transform.AfterScale = new Vector4();
-
-        Assert.False(
-            EditorViewportEventContract.TryCreate(
-                source,
-                out var nonFinite,
-                out var nonFiniteError));
-        Assert.Null(nonFinite);
-        Assert.Contains("non-finite", nonFiniteError, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void AssetDropEvent_MapsTypedAndYamlPayloads()
-    {
-        var source = new ViewportEvent
-        {
-            Revision = 31,
-            ManagedMutationRevision = 9,
-            AssetDrop = new ViewportAssetDropEvent
-            {
-                FileId = "{12345678-1234-1234-1234-123456789ABC}",
-                NormalizedX = 0.25f,
-                NormalizedY = 0.75f
-            }
-        };
-
-        Assert.True(
-            EditorViewportEventContract.TryCreate(
-                source,
-                out var typedEvent,
-                out var typedError),
-            typedError);
-        var typedDrop =
-            Assert.IsType<EditorViewportAssetDropEvent>(typedEvent);
-        Assert.Equal(31ul, typedDrop.Revision);
-        Assert.Equal(9ul, typedDrop.ManagedMutationRevision);
-        Assert.Equal(source.AssetDrop.FileId, typedDrop.FileId);
-        Assert.Equal(0.25f, typedDrop.NormalizedX);
-        Assert.Equal(0.75f, typedDrop.NormalizedY);
-
-        Assert.True(
-            EditorViewportEventContract.TryParse(
-                """
-                kind: assetDrop
-                revision: 32
-                managedMutationRevision: 10
-                fileId: "{12345678-1234-1234-1234-123456789ABC}"
-                normalizedX: 0
-                normalizedY: 1
-                """,
-                out var yamlEvent,
-                out var yamlError),
-            yamlError);
-        var yamlDrop =
-            Assert.IsType<EditorViewportAssetDropEvent>(yamlEvent);
-        Assert.Equal(0f, yamlDrop.NormalizedX);
-        Assert.Equal(1f, yamlDrop.NormalizedY);
-    }
-
-    [Fact]
-    public void AssetDropEvent_RejectsMissingIdentityAndInvalidCoordinates()
-    {
-        var source = new ViewportEvent
-        {
-            AssetDrop = new ViewportAssetDropEvent
-            {
-                FileId = string.Empty,
-                NormalizedX = 0.5f,
-                NormalizedY = 0.5f
-            }
-        };
-
-        Assert.False(
-            EditorViewportEventContract.TryCreate(
-                source,
-                out var missingId,
-                out var missingIdError));
-        Assert.Null(missingId);
-        Assert.Contains(
-            "file",
-            missingIdError,
-            StringComparison.OrdinalIgnoreCase);
-
-        source.AssetDrop.FileId =
-            "{12345678-1234-1234-1234-123456789ABC}";
-        source.AssetDrop.NormalizedX = float.NaN;
-        Assert.False(
-            EditorViewportEventContract.TryCreate(
-                source,
-                out var nonFinite,
-                out var nonFiniteError));
-        Assert.Null(nonFinite);
-        Assert.Contains(
-            "normalized",
-            nonFiniteError,
-            StringComparison.OrdinalIgnoreCase);
-
-        Assert.False(
-            EditorViewportEventContract.TryParse(
-                """
-                kind: assetDrop
-                revision: 33
-                managedMutationRevision: 10
-                fileId: "{12345678-1234-1234-1234-123456789ABC}"
-                normalizedX: -0.1
-                normalizedY: 0.5
-                """,
-                out var outOfRange,
-                out var outOfRangeError));
-        Assert.Null(outOfRange);
-        Assert.Contains(
-            "normalized",
-            outOfRangeError,
-            StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void ToolShortcutEvent_MapsTypedAndYamlPayloads()
-    {
-        var source = new ViewportEvent
-        {
-            Revision = 34,
-            ManagedMutationRevision = 12,
-            ToolShortcut = new ViewportToolShortcutEvent
-            {
-                KeyCode = 'W'
-            }
-        };
-
-        Assert.True(
-            EditorViewportEventContract.TryCreate(
-                source,
-                out var typedEvent,
-                out var typedError),
-            typedError);
-        var typedShortcut =
-            Assert.IsType<EditorViewportToolShortcutEvent>(typedEvent);
-        Assert.Equal(34ul, typedShortcut.Revision);
-        Assert.Equal(12ul, typedShortcut.ManagedMutationRevision);
-        Assert.Equal((uint)'W', typedShortcut.KeyCode);
-
-        Assert.True(
-            EditorViewportEventContract.TryParse(
-                """
-                kind: toolShortcut
-                revision: 35
-                managedMutationRevision: 13
-                keyCode: 84
-                """,
-                out var yamlEvent,
-                out var yamlError),
-            yamlError);
-        var yamlShortcut =
-            Assert.IsType<EditorViewportToolShortcutEvent>(yamlEvent);
-        Assert.Equal((uint)'T', yamlShortcut.KeyCode);
-    }
-
-    [Fact]
-    public void ToolShortcutEvent_RejectsUnsupportedKeys()
-    {
-        var source = new ViewportEvent
-        {
-            ToolShortcut = new ViewportToolShortcutEvent
-            {
-                KeyCode = 'X'
-            }
-        };
-
-        Assert.False(
-            EditorViewportEventContract.TryCreate(
-                source,
-                out var typedEvent,
-                out var typedError));
-        Assert.Null(typedEvent);
-        Assert.Contains(
-            "unsupported",
-            typedError,
-            StringComparison.OrdinalIgnoreCase);
-
-        Assert.False(
-            EditorViewportEventContract.TryParse(
-                """
-                kind: toolShortcut
-                revision: 36
-                managedMutationRevision: 13
-                keyCode: 119
-                """,
-                out var yamlEvent,
-                out var yamlError));
-        Assert.Null(yamlEvent);
-        Assert.Contains(
-            "unsupported",
-            yamlError,
-            StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(instanceId, selection.SelectedInstanceId);
     }
 
     [Theory]
-    [InlineData("kind: unknown\nrevision: 1\nmanagedMutationRevision: 0\n", "Unsupported viewport event kind")]
-    [InlineData("kind: selection\nrevision: 1\nmanagedMutationRevision: 0\nselectedInstanceId: go\nunexpected: true\n", "unexpected field")]
-    [InlineData("kind: transform\nrevision: 2\nmanagedMutationRevision: 0\ninstanceId: ''\noperation: Translate\nspace: World\nbeforePosition: [0, 0, 0, 1]\nbeforeRotation: [0, 0, 0, 1]\nbeforeScale: [1, 1, 1, 0]\nafterPosition: [1, 0, 0, 1]\nafterRotation: [0, 0, 0, 1]\nafterScale: [1, 1, 1, 0]\n", "instanceId")]
-    [InlineData("kind: transform\nrevision: 2\nmanagedMutationRevision: 0\ninstanceId: go\noperation: translate\nspace: World\nbeforePosition: [0, 0, 0, 1]\nbeforeRotation: [0, 0, 0, 1]\nbeforeScale: [1, 1, 1, 0]\nafterPosition: [1, 0, 0, 1]\nafterRotation: [0, 0, 0, 1]\nafterScale: [1, 1, 1, 0]\n", "unsupported value")]
-    [InlineData("kind: transform\nrevision: 2\nmanagedMutationRevision: 0\ninstanceId: go\noperation: Scale\nspace: World\nbeforePosition: [0, 0, 0]\nbeforeRotation: [0, 0, 0, 1]\nbeforeScale: [1, 1, 1, 0]\nafterPosition: [1, 0, 0, 1]\nafterRotation: [0, 0, 0, 1]\nafterScale: [1, 1, 1, 0]\n", "exactly four")]
-    [InlineData("kind: transform\nrevision: 2\nmanagedMutationRevision: 0\ninstanceId: go\noperation: Scale\nspace: World\nbeforePosition: [.inf, 0, 0, 1]\nbeforeRotation: [0, 0, 0, 1]\nbeforeScale: [1, 1, 1, 0]\nafterPosition: [1, 0, 0, 1]\nafterRotation: [0, 0, 0, 1]\nafterScale: [1, 1, 1, 0]\n", "invalid number")]
-    public void InvalidPayload_IsRejected(string yaml, string expectedError)
+    [InlineData(ViewportTransformOperation.Select, EditorViewportTransformOperation.Select)]
+    [InlineData(ViewportTransformOperation.Translate, EditorViewportTransformOperation.Translate)]
+    [InlineData(ViewportTransformOperation.Rotate, EditorViewportTransformOperation.Rotate)]
+    [InlineData(ViewportTransformOperation.Scale, EditorViewportTransformOperation.Scale)]
+    public void TransformEvent_RoundTripsOperationSpaceAndBothPoses(
+        ViewportTransformOperation operation,
+        EditorViewportTransformOperation expectedOperation)
     {
-        Assert.False(EditorViewportEventContract.TryParse(yaml, out var parsed, out var error));
-        Assert.Null(parsed);
+        foreach (var (space, expectedSpace) in new[]
+        {
+            (ViewportTransformSpace.World, EditorViewportTransformSpace.World),
+            (ViewportTransformSpace.Local, EditorViewportTransformSpace.Local)
+        })
+        {
+            var source = TransformPayload();
+            source.Transform.Operation = operation;
+            source.Transform.Space = space;
+            var transform = Assert.IsType<EditorViewportTransformEvent>(Create(source));
+
+            Assert.Equal(21UL, transform.Revision);
+            Assert.Equal(8UL, transform.ManagedMutationRevision);
+            Assert.Equal("go-42", transform.InstanceId);
+            Assert.Equal(expectedOperation, transform.Operation);
+            Assert.Equal(expectedSpace, transform.Space);
+            Assert.Equal(new EditorViewportVector4(0, 0, 0, 1), transform.BeforePosition);
+            Assert.Equal(new EditorViewportVector4(0, 0, 0, 1), transform.BeforeRotation);
+            Assert.Equal(new EditorViewportVector4(1, 1, 1, 0), transform.BeforeScale);
+            Assert.Equal(new EditorViewportVector4(1, 2.5f, -3, 1), transform.AfterPosition);
+            Assert.Equal(new EditorViewportVector4(0, 0.70710677f, 0, 0.70710677f), transform.AfterRotation);
+            Assert.Equal(new EditorViewportVector4(1, 2, 3, 0), transform.AfterScale);
+        }
+    }
+
+    [Fact]
+    public void TransformEvent_DoesNotRetainMutableProtocolVectors()
+    {
+        var source = TransformPayload();
+        Assert.True(EditorViewportEventContract.TryCreate(source, out var result, out var error), error);
+        var transform = Assert.IsType<EditorViewportTransformEvent>(result);
+
+        source.Transform.BeforePosition.X = 99;
+        source.Transform.AfterPosition.X = 99;
+
+        Assert.Equal(0, transform.BeforePosition.X);
+        Assert.Equal(1, transform.AfterPosition.X);
+    }
+
+    [Fact]
+    public void MissingPayload_IsRejected()
+    {
+        AssertRejected(null, "null");
+        AssertRejected(new ViewportEvent(), "payload");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void TransformEvent_RejectsMissingIdentity(string instanceId)
+    {
+        var source = TransformPayload();
+        source.Transform.InstanceId = instanceId;
+        AssertRejected(source, "instance id");
+    }
+
+    [Theory]
+    [InlineData(ViewportTransformOperation.Unspecified, ViewportTransformSpace.World)]
+    [InlineData((ViewportTransformOperation)99, ViewportTransformSpace.World)]
+    [InlineData(ViewportTransformOperation.Translate, ViewportTransformSpace.Unspecified)]
+    [InlineData(ViewportTransformOperation.Translate, (ViewportTransformSpace)99)]
+    public void TransformEvent_RejectsUnsupportedEnums(
+        ViewportTransformOperation operation, ViewportTransformSpace space)
+    {
+        var source = TransformPayload();
+        source.Transform.Operation = operation;
+        source.Transform.Space = space;
+        AssertRejected(source, "unsupported");
+    }
+
+    [Fact]
+    public void TransformEvent_RejectsMissingAndNonFiniteVectors()
+    {
+        (string Name, Action<ViewportTransformEvent, Vector4?> Set)[] fields =
+        [
+            ("beforePosition", (t, v) => t.BeforePosition = v),
+            ("beforeRotation", (t, v) => t.BeforeRotation = v),
+            ("beforeScale", (t, v) => t.BeforeScale = v),
+            ("afterPosition", (t, v) => t.AfterPosition = v),
+            ("afterRotation", (t, v) => t.AfterRotation = v),
+            ("afterScale", (t, v) => t.AfterScale = v)
+        ];
+        Action<Vector4, float>[] components =
+        [
+            (v, n) => v.X = n,
+            (v, n) => v.Y = n,
+            (v, n) => v.Z = n,
+            (v, n) => v.W = n
+        ];
+        foreach (var field in fields)
+        {
+            var missing = TransformPayload();
+            field.Set(missing.Transform, null);
+            AssertRejected(missing, field.Name);
+
+            foreach (var setComponent in components)
+            foreach (var value in new[] { float.NaN, float.PositiveInfinity, float.NegativeInfinity })
+            {
+                var source = TransformPayload();
+                var vector = new Vector4();
+                setComponent(vector, value);
+                field.Set(source.Transform, vector);
+                AssertRejected(source, field.Name);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(0.25f, 0.75f)]
+    [InlineData(0f, 1f)]
+    [InlineData(1f, 0f)]
+    public void AssetDropEvent_RoundTripsIdentityAndInclusiveCoordinates(float x, float y)
+    {
+        var source = AssetDropPayload(x, y);
+        var drop = Assert.IsType<EditorViewportAssetDropEvent>(Create(source));
+
+        Assert.Equal(31UL, drop.Revision);
+        Assert.Equal(9UL, drop.ManagedMutationRevision);
+        Assert.Equal(source.AssetDrop.FileId, drop.FileId);
+        Assert.Equal(x, drop.NormalizedX);
+        Assert.Equal(y, drop.NormalizedY);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void AssetDropEvent_RejectsMissingIdentity(string fileId)
+    {
+        var source = AssetDropPayload(0.5f, 0.5f);
+        source.AssetDrop.FileId = fileId;
+        AssertRejected(source, "file id");
+    }
+
+    [Theory]
+    [InlineData(-0.1f)]
+    [InlineData(1.1f)]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    [InlineData(float.NegativeInfinity)]
+    public void AssetDropEvent_RejectsInvalidCoordinatesOnEitherAxis(float value)
+    {
+        AssertRejected(AssetDropPayload(value, 0.5f), "normalized");
+        AssertRejected(AssetDropPayload(0.5f, value), "normalized");
+    }
+
+    [Theory]
+    [InlineData('Q')]
+    [InlineData('W')]
+    [InlineData('E')]
+    [InlineData('R')]
+    [InlineData('T')]
+    public void ToolShortcutEvent_RoundTripsSupportedKeys(char key)
+    {
+        var shortcut = Assert.IsType<EditorViewportToolShortcutEvent>(Create(new ViewportEvent
+        {
+            Revision = 34,
+            ManagedMutationRevision = 12,
+            ToolShortcut = new ViewportToolShortcutEvent { KeyCode = key }
+        }));
+
+        Assert.Equal(34UL, shortcut.Revision);
+        Assert.Equal(12UL, shortcut.ManagedMutationRevision);
+        Assert.Equal((uint)key, shortcut.KeyCode);
+    }
+
+    [Theory]
+    [InlineData((uint)'X')]
+    [InlineData((uint)'w')]
+    [InlineData(0u)]
+    [InlineData(uint.MaxValue)]
+    public void ToolShortcutEvent_RejectsUnsupportedKeys(uint key)
+    {
+        AssertRejected(new ViewportEvent
+        {
+            ToolShortcut = new ViewportToolShortcutEvent { KeyCode = key }
+        }, "unsupported");
+    }
+
+    static EditorViewportEvent Create(ViewportEvent source)
+    {
+        var decoded = ViewportEvent.Parser.ParseFrom(source.ToByteArray());
+        Assert.True(EditorViewportEventContract.TryCreate(decoded, out var result, out var error), error);
+        Assert.Equal(string.Empty, error);
+        return Assert.IsAssignableFrom<EditorViewportEvent>(result);
+    }
+
+    static void AssertRejected(ViewportEvent? source, string expectedError)
+    {
+        var decoded = source is null ? null : ViewportEvent.Parser.ParseFrom(source.ToByteArray());
+        Assert.False(EditorViewportEventContract.TryCreate(decoded, out var result, out var error));
+        Assert.Null(result);
         Assert.Contains(expectedError, error, StringComparison.OrdinalIgnoreCase);
     }
+
+    static ViewportEvent TransformPayload() => new()
+    {
+        Revision = 21,
+        ManagedMutationRevision = 8,
+        Transform = new ViewportTransformEvent
+        {
+            InstanceId = "go-42",
+            Operation = ViewportTransformOperation.Rotate,
+            Space = ViewportTransformSpace.Local,
+            BeforePosition = new Vector4 { W = 1 },
+            BeforeRotation = new Vector4 { W = 1 },
+            BeforeScale = new Vector4 { X = 1, Y = 1, Z = 1 },
+            AfterPosition = new Vector4 { X = 1, Y = 2.5f, Z = -3, W = 1 },
+            AfterRotation = new Vector4 { Y = 0.70710677f, W = 0.70710677f },
+            AfterScale = new Vector4 { X = 1, Y = 2, Z = 3 }
+        }
+    };
+
+    static ViewportEvent AssetDropPayload(float x, float y) => new()
+    {
+        Revision = 31,
+        ManagedMutationRevision = 9,
+        AssetDrop = new ViewportAssetDropEvent
+        {
+            FileId = "{12345678-1234-1234-1234-123456789ABC}",
+            NormalizedX = x,
+            NormalizedY = y
+        }
+    };
 
     [Fact]
     public void RevisionGate_RejectsDuplicateAndStaleEventsAcrossKinds()

@@ -6,6 +6,7 @@
 #include "Engine/Types.h"
 #include "Engine/Object.h"
 #include "Core/Reflection.h"
+#include "Containers/List.h"
 
 namespace Sailor
 {
@@ -43,6 +44,7 @@ namespace Sailor
 		virtual ~Component() = default;
 
 		GameObjectPtr m_owner;
+		TList<TPair<ComponentPtr, ReflectedData>>::TIterator m_pendingDependency;
 
 		size_t m_frameAdded = 0;
 		bool m_bBeginPlayCalled = false;

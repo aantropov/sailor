@@ -148,7 +148,7 @@ namespace Sailor::RHI
 	private:
 		struct TimingHistory
 		{
-			std::string m_name;
+			StringHash m_name;
 			ECommandListQueue m_queue = ECommandListQueue::Graphics;
 			TGpuTimingAverage<60u> m_average;
 			uint64_t m_lastQueryId = 0u;

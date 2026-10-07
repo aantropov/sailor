@@ -91,7 +91,7 @@ namespace Sailor::EditorRemote
 		PixelFormat m_pixelFormat = PixelFormat::Unknown;
 		CrossApiSyncKind m_crossApiSyncKind = CrossApiSyncKind::None;
 		TSharedPtr<std::vector<uint8_t>> m_cpuBytes{};
-		RHI::EditorReadbackFramePtr m_readback{};
+		RHI::ReadbackFramePtr m_readback{};
 		std::string m_debugName{};
 		bool m_releaseTextureObjectAfterUse = false;
 		bool m_crossApiCpuWaited = false;

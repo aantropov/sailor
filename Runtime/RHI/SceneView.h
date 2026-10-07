@@ -39,7 +39,7 @@ namespace Sailor::RHI
 	struct RHIShadowMeshProxy
 	{
 		RHIMeshPtr m_mesh{};
-		glm::mat4 m_worldMatrix{ 1.0f };
+		glm::mat4 m_localMatrix{ 1.0f };
 		size_t m_renderQueueTag{};
 		glm::vec4 m_baseColorFactor{ 1.0f };
 		float m_alphaCutoff = 0.5f;
@@ -70,16 +70,10 @@ namespace Sailor::RHI
 
 	struct RHIShadowCasterProxy
 	{
-		size_t m_staticMeshEcs{};
-		EMobilityType m_mobility = EMobilityType::Static;
-		Math::AABB m_worldAabb{};
-		uint32_t m_skeletonOffset = (std::numeric_limits<uint32_t>::max)();
-		size_t m_frame{};
 		TVector<RHIShadowMeshProxy> m_meshes{};
-		RHILodPolicy m_lodPolicy{};
 	};
 
-	using RHIShadowCasterProxyPtr = TSharedPtr<RHIShadowCasterProxy>;
+	using RHIShadowCasterProxyPtr = TSharedPtr<const RHIShadowCasterProxy>;
 
 	/**
 	 * Immutable topology shared by every instance of one landscape vegetation
@@ -107,14 +101,6 @@ namespace Sailor::RHI
 		float m_maxShadowDistance = (std::numeric_limits<float>::max)();
 	};
 
-	struct RHIMeshProxy
-	{
-		size_t m_staticMeshEcs = 0;
-		glm::mat4 m_worldMatrix{};
-		RHIShadowCasterProxyPtr m_shadowCaster{};
-		SAILOR_API bool operator==(const RHIMeshProxy& rhs) const { return m_staticMeshEcs == rhs.m_staticMeshEcs; }
-	};
-
 	struct RHILightProxy
 	{
 		uint32_t m_index = 0;
@@ -129,16 +115,8 @@ namespace Sailor::RHI
 
 	struct RHISceneViewProxy
 	{
-		size_t m_staticMeshEcs{};
-		EMobilityType m_mobility = EMobilityType::Static;
-		glm::mat4 m_worldMatrix;
-		Math::AABB m_worldAabb{};
-
-		bool m_bCastShadows{};
-		uint32_t m_skeletonOffset = (std::numeric_limits<uint32_t>::max)();
-		size_t m_frame{};
-
 		TVector<RHIMeshPtr> m_meshes;
+		// Mesh transforms are local to the owning scene instance.
 		TVector<glm::mat4> m_meshModelMatrices;
 		TVector<RHIMaterialPtr> m_overrideMaterials;
 		TVector<size_t> m_renderQueueTags;
@@ -152,7 +130,6 @@ namespace Sailor::RHI
 		RHIShadowCasterProxyPtr m_shadowCaster{};
 		RHILodPolicy m_lodPolicy{};
 
-		SAILOR_API bool operator==(const RHISceneViewProxy& rhs) const { return m_staticMeshEcs == rhs.m_staticMeshEcs; }
 		SAILOR_API const TVector<RHIMaterialPtr>& GetMaterials() const;
 
 	};
@@ -165,22 +142,24 @@ namespace Sailor::RHI
 		SAILOR_API explicit RHISceneProxyResource(RHISceneViewProxy&& proxy);
 
 		RHISceneViewProxy m_proxy{};
-		bool m_bMeshTransformsAreLocal = false;
 		size_t m_geometryRevision = 0u;
 		size_t m_mainRevision = 0u;
 		size_t m_depthRevision = 0u;
 		size_t m_shadowRevision = 0u;
 	};
 
-	using RHISceneProxyResourcePtr = TRefPtr<RHISceneProxyResource>;
+	using RHISceneProxyResourcePtr = TRefPtr<const RHISceneProxyResource>;
 
 	struct RHIVisibleSceneProxy
 	{
+		RHIVisibleSceneProxy(RenderInstanceHandle handle, const RHISceneInstanceRecord& record,
+			const RHISceneProxyResource& resource) : m_handle(handle), m_record(&record), m_resource(&resource) {}
+
 		RenderInstanceHandle m_handle{};
 		// Non-owning pointers into the immutable record root retained by
 		// RHISceneViewSnapshot::m_sceneVersions for the whole submission.
-		const RHISceneInstanceRecord* m_record = nullptr;
-		const RHISceneProxyResource* m_resource = nullptr;
+		const RHISceneInstanceRecord* m_record;
+		const RHISceneProxyResource* m_resource;
 		uint32_t m_meshLodOffset = InvalidIndex;
 		uint32_t m_instancedLodOffset = InvalidIndex;
 		static constexpr uint32_t InvalidIndex = (std::numeric_limits<uint32_t>::max)();
@@ -207,10 +186,13 @@ namespace Sailor::RHI
 
 	struct RHIVisibleShadowCaster
 	{
+		RHIVisibleShadowCaster(RenderInstanceHandle handle, const RHISceneInstanceRecord& record,
+			const RHISceneProxyResource& resource) : m_handle(handle), m_record(&record), m_resource(&resource) {}
+
 		RenderInstanceHandle m_handle{};
 		// The owning RHISceneVersion is retained by the submission snapshot.
-		const RHISceneInstanceRecord* m_record = nullptr;
-		const RHISceneProxyResource* m_resource = nullptr;
+		const RHISceneInstanceRecord* m_record;
+		const RHISceneProxyResource* m_resource;
 		uint32_t m_meshLodOffset = RHIVisibleSceneProxy::InvalidIndex;
 		uint32_t m_instancedLodOffset = RHIVisibleSceneProxy::InvalidIndex;
 
@@ -299,9 +281,9 @@ namespace Sailor::RHI
 
 	struct RHISpatialSceneVersion
 	{
-		TSharedPtr<RHISceneSpatialIndex> m_dynamicOctree{};
-		TSharedPtr<RHISceneSpatialIndex> m_stationaryOctree{};
-		TSharedPtr<RHISceneSpatialIndex> m_staticOctree{};
+		TSharedPtr<const RHISceneSpatialIndex> m_dynamicOctree{};
+		TSharedPtr<const RHISceneSpatialIndex> m_stationaryOctree{};
+		TSharedPtr<const RHISceneSpatialIndex> m_staticOctree{};
 		uint64_t m_revision = 0ull;
 		uint64_t m_shadowCastersRevision = 0ull;
 		bool m_bHasCustomDepthShadowCasters = false;
@@ -309,7 +291,7 @@ namespace Sailor::RHI
 		RHISceneVersionPtr m_sceneVersion{};
 	};
 
-	using RHISpatialSceneVersionPtr = TSharedPtr<RHISpatialSceneVersion>;
+	using RHISpatialSceneVersionPtr = TSharedPtr<const RHISpatialSceneVersion>;
 
 	struct RHIPathTracerScene
 	{
@@ -344,6 +326,7 @@ namespace Sailor::RHI
 	struct RHISceneViewSnapshot
 	{
 		SAILOR_API void ResetForReuse();
+		SAILOR_API UboFrameData GetFrameData(const glm::ivec2& extent) const;
 		SAILOR_API void PrepareLods(const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
 		SAILOR_API const RHIMeshPtr& ResolveMesh(const RHIVisibleSceneProxy& proxy, size_t meshIndex) const;
 		SAILOR_API const RHIMeshPtr& ResolveMesh(const RHIVisibleShadowCaster& proxy, size_t meshIndex) const;
@@ -378,7 +361,7 @@ namespace Sailor::RHI
 					continue;
 				}
 
-				const TSharedPtr<TVector<RenderInstanceHandle>>* handles = nullptr;
+				const TSharedPtr<const TVector<RenderInstanceHandle>>* handles = nullptr;
 				switch (mobility)
 				{
 				case EMobilityType::Static:
@@ -410,10 +393,7 @@ namespace Sailor::RHI
 						continue;
 					}
 
-					RHIVisibleSceneProxy proxy;
-					proxy.m_handle = handle;
-					proxy.m_record = record;
-					proxy.m_resource = resource;
+					RHIVisibleSceneProxy proxy(handle, *record, *resource);
 					callback(proxy);
 				}
 			}
@@ -424,26 +404,23 @@ namespace Sailor::RHI
 		{
 			ForEachSceneProxy(mobility, [&](const RHIVisibleSceneProxy& sceneProxy)
 			{
-				if (!sceneProxy.m_record ||
-					(sceneProxy.m_record->m_renderFlags & 1u) == 0u ||
-					!sceneProxy.m_resource ||
+				if ((sceneProxy.GetRenderFlags() & 1u) == 0u ||
 					!sceneProxy.m_resource->m_proxy.m_shadowCaster)
 				{
 					return;
 				}
 
-				RHIVisibleShadowCaster caster;
-				caster.m_handle = sceneProxy.m_handle;
-				caster.m_record = sceneProxy.m_record;
-				caster.m_resource = sceneProxy.m_resource;
+				RHIVisibleShadowCaster caster(sceneProxy.m_handle, *sceneProxy.m_record, *sceneProxy.m_resource);
 				callback(caster);
 			});
 		}
 
 		RHIRenderSubmissionContextPtr m_submissionContext{};
-		TSharedPtr<RHIMotionHistoryFrame> m_previousMotionFrame{};
-		TSharedPtr<TVector<RHISceneVersionPtr>> m_sceneVersions{};
-		uint64_t m_sceneRevision = 0ull;
+		RHISubmissionCompletionTokenPtr m_submissionCompletionToken{};
+		WorldPtr m_world{};
+		float m_currentTime = 0.0f;
+		TSharedPtr<const RHIMotionHistoryFrame> m_previousMotionFrame{};
+		TSharedPtr<const TVector<RHISceneVersionPtr>> m_sceneVersions{};
 		ESceneViewRenderMode m_renderMode = ESceneViewRenderMode::Lit;
 		float m_deltaTime = 0.0f;
 		uint64_t m_frame = 0ull;
@@ -465,11 +442,11 @@ namespace Sailor::RHI
 		RHIShaderBindingSetPtr m_frameBindings{};
 		RHIShaderBindingSetPtr m_rhiLightsData{};
 		RHIShaderBindingSetPtr m_rhiLightCullingData{};
-		TSharedPtr<TVector<RHILightShaderData>> m_cpuLightsData{};
+		TSharedPtr<const TVector<RHILightShaderData>> m_cpuLightsData{};
 		TVector<glm::mat4> m_shadowMatrices{};
 		uint64_t m_lightingRevision = 0ull;
 		RHIShaderBindingSetPtr m_boneMatrices{};
-		TSharedPtr<TVector<glm::mat4>> m_cpuBoneMatrices{};
+		TSharedPtr<const TVector<glm::mat4>> m_cpuBoneMatrices{};
 		uint64_t m_animationRevision = 0ull;
 		EGlobalIlluminationMode m_globalIlluminationMode =
 			EGlobalIlluminationMode::Baked;
@@ -482,11 +459,10 @@ namespace Sailor::RHI
 
 	struct RHISceneView
 	{
-		SAILOR_API TVector<RHIVisibleSceneProxy> TraceScene(const Math::Frustum& frustum, bool bSkipMaterials) const;
+		SAILOR_API TVector<RHIVisibleSceneProxy> TraceScene(const Math::Frustum& frustum) const;
 		SAILOR_API void TraceScene(
 			const Math::Frustum& frustum,
-			TVector<RHIVisibleSceneProxy>& outVisibleProxies,
-			bool bSkipMaterials) const;
+			TVector<RHIVisibleSceneProxy>& outVisibleProxies) const;
 		SAILOR_API TVector<RHIVisibleShadowCaster> TraceShadowCasters(
 			const Math::Frustum& frustum) const;
 		SAILOR_API void TraceShadowCasters(
@@ -502,21 +478,20 @@ namespace Sailor::RHI
 			const RHISubmissionCompletionTokenPtr& token) const;
 		SAILOR_API void CompleteSubmissionResources(bool bSucceeded);
 		SAILOR_API void AddSceneVersion(RHISpatialSceneVersionPtr sceneVersion);
-		SAILOR_API TSharedPtr<TVector<RHISceneVersionPtr>> GetRetainedSceneVersions();
+		SAILOR_API TSharedPtr<const TVector<RHISceneVersionPtr>> GetRetainedSceneVersions();
 
 		TVector<RHISpatialSceneVersionPtr> m_sceneVersions{};
 		TVector<RHISceneVersionPtr> m_virtualSceneVersions{};
-		TSharedPtr<TVector<RHISceneVersionPtr>> m_retainedSceneVersions{};
-		uint64_t m_sceneRevision = 0ull;
+		TSharedPtr<const TVector<RHISceneVersionPtr>> m_retainedSceneVersions{};
 		ESceneViewRenderMode m_renderMode = ESceneViewRenderMode::Lit;
 
 		uint32_t m_totalNumLights = 0;
 		RHI::RHIShaderBindingSetPtr m_rhiLightsData{};
 		TVector<RHI::RHIShaderBindingSetPtr> m_rhiLightsDataPerCamera{};
-		TSharedPtr<TVector<RHILightShaderData>> m_cpuLightsData{};
+		TSharedPtr<const TVector<RHILightShaderData>> m_cpuLightsData{};
 		uint64_t m_lightingRevision = 0ull;
 		RHI::RHIShaderBindingSetPtr m_boneMatrices{};
-		TSharedPtr<TVector<glm::mat4>> m_cpuBoneMatrices{};
+		TSharedPtr<const TVector<glm::mat4>> m_cpuBoneMatrices{};
 		uint64_t m_animationRevision = 0ull;
 		EGlobalIlluminationMode m_globalIlluminationMode =
 			EGlobalIlluminationMode::Baked;
@@ -552,26 +527,3 @@ namespace Sailor::RHI
 
 	using RHISceneViewPtr = TSharedPtr<RHISceneView>;
 };
-
-namespace std
-{
-	template<>
-	struct hash<Sailor::RHI::RHISceneViewProxy>
-	{
-		SAILOR_API std::size_t operator()(const Sailor::RHI::RHISceneViewProxy& p) const
-		{
-			std::hash<size_t> p1;
-			return p1(p.m_staticMeshEcs);
-		}
-	};
-
-	template<>
-	struct hash<Sailor::RHI::RHIMeshProxy>
-	{
-		SAILOR_API std::size_t operator()(const Sailor::RHI::RHIMeshProxy& p) const
-		{
-			std::hash<size_t> p1;
-			return p1(p.m_staticMeshEcs);
-		}
-	};
-}

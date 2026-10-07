@@ -38,23 +38,23 @@ namespace
 		auto& driver = Renderer::GetDriver();
 		auto relocated = driver->CreateShaderBindings();
 		ShaderLayoutBinding reflected;
-		reflected.m_name = "reflected";
+		reflected.m_name = "reflected"_h;
 		reflected.m_binding = 1u;
 		reflected.m_type = EShaderBindingType::CombinedImageSampler;
 		relocated->SetLayoutShaderBindings({ reflected });
 		auto texture = driver->GetDefaultTexture();
-		auto originalSampler = driver->AddSamplerToShaderBindings(relocated, "sampler", texture, 0u);
-		if (!originalSampler || driver->AddSamplerToShaderBindings(relocated, "sampler", texture, 1u) != originalSampler ||
+		auto originalSampler = driver->AddSamplerToShaderBindings(relocated, "sampler"_h, texture, 0u);
+		if (!originalSampler || driver->AddSamplerToShaderBindings(relocated, "sampler"_h, texture, 1u) != originalSampler ||
 			relocated->GetLayoutBindings().Num() != 1u || relocated->GetLayoutBindings()[0].m_binding != 1u ||
-			relocated->GetLayoutBindings()[0].m_name != "sampler")
+			relocated->GetLayoutBindings()[0].m_name != "sampler"_h)
 			return "moving a sampler into a reflected slot left duplicate layout entries";
 
 		auto bindings = driver->CreateShaderBindings();
 		for (uint32_t slot = 0; slot < 24; ++slot)
-			if (!driver->AddSamplerToShaderBindings(bindings, std::format("slot{}", slot), texture, slot))
+			if (!driver->AddSamplerToShaderBindings(bindings, StringHash::Runtime(std::format("slot{}", slot)), texture, slot))
 				return "binding update benchmark could not prepare its 24-slot set";
-		const auto original = bindings->GetOrAddShaderBinding("slot7");
-		const auto source = bindings->GetOrAddShaderBinding("slot8");
+		const auto original = bindings->GetOrAddShaderBinding("slot7"_h);
+		const auto source = bindings->GetOrAddShaderBinding("slot8"_h);
 		std::array<double, 2> medians{};
 		for (uint32_t kind = 0; kind < medians.size(); ++kind)
 		{
@@ -66,8 +66,8 @@ namespace
 				for (uint32_t i = 0; i < 256; ++i)
 				{
 					const auto updated = kind == 0 ?
-						driver->AddSamplerToShaderBindings(bindings, "slot7", texture, 7) :
-						driver->AddShaderBinding(bindings, source, "slot7", 7);
+						driver->AddSamplerToShaderBindings(bindings, "slot7"_h, texture, 7) :
+						driver->AddShaderBinding(bindings, source, "slot7"_h, 7);
 					if (updated != original) return "repeated update replaced the published binding identity";
 				}
 				sample = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count() / 256;
@@ -316,7 +316,7 @@ namespace
 	{
 		struct Binding
 		{
-			std::string m_name;
+			StringHash m_name;
 			RHIShaderBindingPtr m_binding;
 			ShaderLayoutBinding m_layout;
 			TVector<RHITexturePtr> m_textures;
@@ -416,7 +416,7 @@ namespace
 		auto output = driver->CreateBuffer(size, EBufferUsageBit::StorageBuffer_Bit | EBufferUsageBit::BufferTransferSrc_Bit,
 			EMemoryPropertyBit::DeviceLocal);
 		auto outputBindings = driver->CreateShaderBindings();
-		if (!driver->AddBufferToShaderBindings(outputBindings, output, "outputValue", 0u)) return "readback output binding failed";
+		if (!driver->AddBufferToShaderBindings(outputBindings, output, "outputValue"_h, 0u)) return "readback output binding failed";
 		if (requireProjection)
 		{
 			auto* nativeDriver = driver.DynamicCast<VulkanGraphicsDriver>();
@@ -475,7 +475,7 @@ namespace
 
 	using ManagedBufferOwner = Memory::TManagedMemory<Memory::VulkanBufferMemoryPtr, VulkanBufferAllocator>;
 
-	RHIShaderBindingPtr AddManagedSource(RHIShaderBindingSetPtr& bindings, const std::string& name, bool uniform)
+	RHIShaderBindingPtr AddManagedSource(RHIShaderBindingSetPtr& bindings, StringHash name, bool uniform)
 	{
 		auto& driver = Renderer::GetDriver();
 		return uniform ? driver->AddBufferToShaderBindings(bindings, name, sizeof(Values), 1u, EShaderBindingType::UniformBuffer) :
@@ -489,8 +489,9 @@ namespace
 		auto& driver = Renderer::GetDriver();
 		auto commands = Renderer::GetDriverCommands();
 		const std::string name = std::format("ManagedUploadGate_{}_{}", uniform ? "UBO" : "SSBO", static_cast<uint32_t>(release));
+		const auto bindingName = StringHash::Runtime(name);
 		auto inputs = driver->CreateShaderBindings();
-		auto binding = AddManagedSource(inputs, name, uniform);
+		auto binding = AddManagedSource(inputs, bindingName, uniform);
 		if (!binding || !binding->m_vulkan.m_valueBinding) return name + ": managed A allocation failed";
 		TWeakPtr<ManagedBufferOwner> weakA(binding->m_vulkan.m_valueBinding);
 		const VkDescriptorSet originalNative = *inputs->m_vulkan.m_descriptorSet;
@@ -506,7 +507,7 @@ namespace
 			data.fill(0xdeadbeefu);
 			commands->EndCommandList(uploads[i]);
 		}
-		const bool replaced = AddManagedSource(inputs, name, uniform) == binding &&
+		const bool replaced = AddManagedSource(inputs, bindingName, uniform) == binding &&
 			inputs->GetDescriptorRevision() == revision + 1u &&
 			static_cast<VkDescriptorSet>(*inputs->m_vulkan.m_descriptorSet) != originalNative;
 		binding.Clear();
@@ -536,14 +537,15 @@ namespace
 		auto commands = Renderer::GetDriverCommands();
 		auto* nativeDriver = driver.DynamicCast<VulkanGraphicsDriver>();
 		auto device = VulkanApi::GetInstance()->GetMainDevice();
-		const std::string name = uniform ? "ManagedUploadGpu_UBO" : "ManagedUploadGpu_SSBO";
+		const auto bindingName = uniform ? "ManagedUploadGpu_UBO"_h : "ManagedUploadGpu_SSBO"_h;
+		const auto& name = bindingName.ToString();
 		auto pipeline = nativeDriver->GetOrAddComputePipeline(shader->GetComputeShaderRHI());
 		if (!pipeline || !pipeline->IsCompiled() || pipeline->m_layout->m_descriptionSetLayouts.Num() != 2u)
 			return name + ": compute pipeline did not expose two sets";
 		auto blocker = driver->CreateShaderBindings();
-		if (!AddManagedSource(blocker, name, uniform)) return name + ": live allocation blocker failed";
+		if (!AddManagedSource(blocker, bindingName, uniform)) return name + ": live allocation blocker failed";
 		auto inputs = driver->CreateShaderBindings();
-		auto binding = AddManagedSource(inputs, name, uniform);
+		auto binding = AddManagedSource(inputs, bindingName, uniform);
 		if (!binding || !binding->m_vulkan.m_valueBinding) return name + ": managed A allocation failed";
 		const size_t alignment = uniform ? device->GetMinUboOffsetAlignment() : device->GetMinSsboOffsetAlignment();
 		if (binding->GetBufferOffset() % alignment != 0u || (uniform && binding->GetBufferOffset() == 0u) ||
@@ -589,7 +591,7 @@ namespace
 			auto output = driver->CreateBuffer(size, EBufferUsageBit::StorageBuffer_Bit | EBufferUsageBit::BufferTransferSrc_Bit,
 				EMemoryPropertyBit::DeviceLocal);
 			auto outputBindings = driver->CreateShaderBindings();
-			if (!driver->AddBufferToShaderBindings(outputBindings, output, "outputValue", 0u) ||
+			if (!driver->AddBufferToShaderBindings(outputBindings, output, "outputValue"_h, 0u) ||
 				!VulkanApi::IsCompatible(pipeline->m_layout, outputBindings->m_vulkan.m_descriptorSet, 1u))
 				return name + ": output descriptor setup failed";
 			native->BindDescriptorSet(pipeline->m_layout, { source, outputBindings->m_vulkan.m_descriptorSet }, VK_PIPELINE_BIND_POINT_COMPUTE);
@@ -605,7 +607,7 @@ namespace
 		};
 		auto error = record(rawA, InputValues[0], "A after partial word update");
 		if (!error.empty()) return error;
-		if (AddManagedSource(inputs, name, uniform) != binding || inputs->GetDescriptorRevision() != revision + 1u ||
+		if (AddManagedSource(inputs, bindingName, uniform) != binding || inputs->GetDescriptorRevision() != revision + 1u ||
 			static_cast<VkDescriptorSet>(*inputs->m_vulkan.m_descriptorSet) == originalNative)
 			return name + ": replacement B did not preserve binding identity and publish once";
 		TWeakPtr<ManagedBufferOwner> weakB(binding->m_vulkan.m_valueBinding);
@@ -640,18 +642,19 @@ namespace
 		auto& driver = Renderer::GetDriver();
 		auto* nativeDriver = driver.DynamicCast<VulkanGraphicsDriver>();
 		const std::string name = std::format("DescriptorRetentionGate_{}_{}", uniform ? "UBO" : "SSBO", projected ? "projected" : "direct");
+		const auto bindingName = StringHash::Runtime(name);
 		auto inputs = driver->CreateShaderBindings();
 		VulkanComputePipelinePtr pipeline;
 		if (projected)
 		{
 			auto neighbor = CreatePublicationBuffer(InputValues[1]);
-			if (!driver->AddBufferToShaderBindings(inputs, neighbor, "neighbor", 0u) ||
-				!driver->AddBufferToShaderBindings(inputs, neighbor, "unused", 31u))
+			if (!driver->AddBufferToShaderBindings(inputs, neighbor, "neighbor"_h, 0u) ||
+				!driver->AddBufferToShaderBindings(inputs, neighbor, "unused"_h, 31u))
 				return name + ": projection input setup failed";
 			pipeline = nativeDriver->GetOrAddComputePipeline(shader->GetComputeShaderRHI());
 			if (!pipeline || !pipeline->IsCompiled()) return name + ": compute pipeline is unavailable";
 		}
-		auto binding = AddManagedSource(inputs, name, uniform);
+		auto binding = AddManagedSource(inputs, bindingName, uniform);
 		if (!binding || !binding->m_vulkan.m_valueBinding || !inputs->m_vulkan.m_descriptorSet ||
 			!inputs->m_vulkan.m_descriptorSet->IsCompiled()) return name + ": managed A was not published";
 		TWeakPtr<ManagedBufferOwner> weakA(binding->m_vulkan.m_valueBinding);
@@ -668,7 +671,7 @@ namespace
 			retainedA = sets[0];
 			sets.Clear();
 		}
-		if (AddManagedSource(inputs, name, uniform) != binding || inputs->GetDescriptorRevision() != revision + 1u ||
+		if (AddManagedSource(inputs, bindingName, uniform) != binding || inputs->GetDescriptorRevision() != revision + 1u ||
 			inputs->m_vulkan.m_descriptorSet == directA || !inputs->m_vulkan.m_descriptorSet->IsCompiled())
 			return name + ": replacement B did not preserve binding identity and publish once";
 		// Neither a saved m_vulkan value nor the direct set may mask projection ownership.
@@ -691,17 +694,18 @@ namespace
 		auto* nativeDriver = driver.DynamicCast<VulkanGraphicsDriver>();
 		auto device = VulkanApi::GetInstance()->GetMainDevice();
 		const std::string name = std::format("DescriptorRetentionGpu_{}_{}", uniform ? "UBO" : "SSBO", projected ? "projected" : "direct");
+		const auto bindingName = StringHash::Runtime(name);
 		auto pipeline = nativeDriver->GetOrAddComputePipeline(shader->GetComputeShaderRHI());
 		if (!pipeline || !pipeline->IsCompiled() || pipeline->m_layout->m_descriptionSetLayouts.Num() != 2u)
 			return name + ": compute pipeline did not expose two sets";
 		auto blocker = driver->CreateShaderBindings();
-		if (!AddManagedSource(blocker, name, uniform)) return name + ": live allocation blocker failed";
+		if (!AddManagedSource(blocker, bindingName, uniform)) return name + ": live allocation blocker failed";
 		auto inputs = driver->CreateShaderBindings();
 		auto neighbor = CreatePublicationBuffer(InputValues[1]);
-		if (!driver->AddBufferToShaderBindings(inputs, neighbor, "neighbor", 0u) ||
-			(projected && !driver->AddBufferToShaderBindings(inputs, neighbor, "unused", 31u)))
+		if (!driver->AddBufferToShaderBindings(inputs, neighbor, "neighbor"_h, 0u) ||
+			(projected && !driver->AddBufferToShaderBindings(inputs, neighbor, "unused"_h, 31u)))
 			return name + ": input setup failed";
-		auto binding = AddManagedSource(inputs, name, uniform);
+		auto binding = AddManagedSource(inputs, bindingName, uniform);
 		if (!binding || !binding->m_vulkan.m_valueBinding) return name + ": managed A allocation failed";
 		const size_t alignment = uniform ? device->GetMinUboOffsetAlignment() : device->GetMinSsboOffsetAlignment();
 		if (binding->GetBufferOffset() % alignment != 0u || (uniform && binding->GetBufferOffset() == 0u) ||
@@ -765,7 +769,7 @@ namespace
 			auto output = driver->CreateBuffer(size, EBufferUsageBit::StorageBuffer_Bit | EBufferUsageBit::BufferTransferSrc_Bit,
 				EMemoryPropertyBit::DeviceLocal);
 			auto outputBindings = driver->CreateShaderBindings();
-			if (!driver->AddBufferToShaderBindings(outputBindings, output, "outputValue", 0u) ||
+			if (!driver->AddBufferToShaderBindings(outputBindings, output, "outputValue"_h, 0u) ||
 				!VulkanApi::IsCompatible(pipeline->m_layout, outputBindings->m_vulkan.m_descriptorSet, 1u))
 				return name + ": output descriptor setup failed";
 			// Bind the immutable native version, not the RHI entry that will become B.
@@ -782,7 +786,7 @@ namespace
 		};
 		auto error = record(nativeA, InputValues[0], "A");
 		if (!error.empty()) return error;
-		if (AddManagedSource(inputs, name, uniform) != binding || inputs->GetDescriptorRevision() != revision + 1u ||
+		if (AddManagedSource(inputs, bindingName, uniform) != binding || inputs->GetDescriptorRevision() != revision + 1u ||
 			static_cast<VkDescriptorSet>(*inputs->m_vulkan.m_descriptorSet) == directHandleA)
 			return name + ": replacement B did not preserve binding identity and publish once";
 		auto nativeB = inputs->m_vulkan.m_descriptorSet;
@@ -833,14 +837,14 @@ namespace
 		auto neighbor = CreatePublicationTexture(InputValues[1]);
 		auto valueC = CreatePublicationTexture(InputValues[2]);
 		auto neighborBuffer = CreatePublicationBuffer(InputValues[1]);
-		const auto add = [&](RHIShaderBindingSetPtr& set, const char* name, const TVector<RHITexturePtr>& textures, uint32_t index)
+		const auto add = [&](RHIShaderBindingSetPtr& set, StringHash name, const TVector<RHITexturePtr>& textures, uint32_t index)
 		{
 			return storage ? driver->AddStorageImageToShaderBindings(set, name, textures, index) :
 				driver->AddSamplerToShaderBindings(set, name, textures, index);
 		};
 		auto bindings = driver->CreateShaderBindings();
-		if (!driver->AddBufferToShaderBindings(bindings, neighborBuffer, "neighbor", 0u)) return "image neighbor binding failed";
-		auto original = add(bindings, "source", { valueA, neighbor }, 1u);
+		if (!driver->AddBufferToShaderBindings(bindings, neighborBuffer, "neighbor"_h, 0u)) return "image neighbor binding failed";
+		auto original = add(bindings, "source"_h, { valueA, neighbor }, 1u);
 		if (!original) return "initial image binding failed";
 		bindings->RecalculateCompatibility();
 		const PublishedState before(bindings);
@@ -848,7 +852,7 @@ namespace
 		unavailable->m_vulkan.m_image = valueA->m_vulkan.m_image;
 		unavailable->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, unavailable->m_vulkan.m_image);
 		// Native75 rejects this nonnull wrapper safely, but old Add* returns success after changing CPU state.
-		const auto failedAdd = add(bindings, "source", { valueA, neighbor, unavailable }, 1u);
+		const auto failedAdd = add(bindings, "source"_h, { valueA, neighbor, unavailable }, 1u);
 		const bool stateUnchanged = before.Unchanged();
 		if (failedAdd || !stateUnchanged)
 			return std::format("failed image Add: returned binding={}, state unchanged={} (expected false/true)",
@@ -856,29 +860,29 @@ namespace
 		for (uint32_t missingView = 0u; missingView < 2u; ++missingView)
 		{
 			if (missingView != 0u) unavailable->m_vulkan.m_imageView.Clear();
-			if (add(bindings, "source", { unavailable }, 1u) || !before.Unchanged())
+			if (add(bindings, "source"_h, { unavailable }, 1u) || !before.Unchanged())
 				return "unavailable image replacement changed the published state";
-			if (add(bindings, "failedSource", { unavailable }, 2u) || !before.Unchanged())
+			if (add(bindings, "failedSource"_h, { unavailable }, 2u) || !before.Unchanged())
 				return "unavailable image addition left a new-name placeholder";
 		}
 		auto badCopy = RHIShaderBindingPtr::Make();
 		badCopy->m_vulkan = original->m_vulkan;
 		badCopy->SetLayout(original->GetLayout());
 		badCopy->SetTextureBindings({ unavailable, neighbor });
-		if (driver->AddShaderBinding(bindings, badCopy, "source", 1u) || !before.Unchanged() ||
-			driver->AddShaderBinding(bindings, badCopy, "failedCopy", 2u) || !before.Unchanged())
+		if (driver->AddShaderBinding(bindings, badCopy, "source"_h, 1u) || !before.Unchanged() ||
+			driver->AddShaderBinding(bindings, badCopy, "failedCopy"_h, 2u) || !before.Unchanged())
 			return "copying an unavailable texture binding changed the destination";
 		if (!bindings->NeedsStorageBuffer()) return "image publication lost its buffer neighbor's storage requirement";
 
 		auto donor = driver->CreateShaderBindings();
-		auto donorBinding = add(donor, "donor", { valueA, neighbor }, 4u);
+		auto donorBinding = add(donor, "donor"_h, { valueA, neighbor }, 4u);
 		if (!donorBinding) return "image copy donor could not be prepared";
 		const PublishedState donorState(donor);
 		auto copy = driver->CreateShaderBindings();
-		if (!driver->AddBufferToShaderBindings(copy, neighborBuffer, "neighbor", 0u)) return "copy neighbor binding failed";
+		if (!driver->AddBufferToShaderBindings(copy, neighborBuffer, "neighbor"_h, 0u)) return "copy neighbor binding failed";
 		const uint64_t copyRevision = copy->GetDescriptorRevision();
-		auto copied = driver->AddShaderBinding(copy, donorBinding, "copiedSource", 1u);
-		if (!copied || copied == donorBinding || copied->GetLayout().m_name != "copiedSource" ||
+		auto copied = driver->AddShaderBinding(copy, donorBinding, "copiedSource"_h, 1u);
+		if (!copied || copied == donorBinding || copied->GetLayout().m_name != "copiedSource"_h ||
 			copied->GetLayout().m_binding != 1u || copied->GetLayout().m_arrayCount != 2u ||
 			copied->m_vulkan.m_descriptorSetLayout.binding != 1u || copied->m_vulkan.m_descriptorSetLayout.descriptorCount != 2u ||
 			copied->GetTextureBindings() != donorBinding->GetTextureBindings() || !donorState.Unchanged() ||
@@ -888,8 +892,8 @@ namespace
 		// A separate CPU fixture asks the compatible builder to select two entries from a native array of three.
 		// Never mutate A's textures or views, and never dispatch the unavailable selected entry.
 		auto projection = driver->CreateShaderBindings();
-		if (!driver->AddBufferToShaderBindings(projection, neighborBuffer, "neighbor", 0u)) return "projection neighbor failed";
-		auto projectionSource = add(projection, "source", { valueA, neighbor, valueC }, 1u);
+		if (!driver->AddBufferToShaderBindings(projection, neighborBuffer, "neighbor"_h, 0u)) return "projection neighbor failed";
+		auto projectionSource = add(projection, "source"_h, { valueA, neighbor, valueC }, 1u);
 		if (!projectionSource) return "projection source preparation failed";
 		projectionSource->SetTextureBindings({ unavailable, neighbor, valueC });
 		auto* nativeDriver = driver.DynamicCast<VulkanGraphicsDriver>();
@@ -930,13 +934,13 @@ namespace
 			auto oldNative = bindings->m_vulkan.m_descriptorSet;
 			TVector<RHITexturePtr> textures{ valueC };
 			if (count == 2u) textures.Add(neighbor);
-			if (add(bindings, "source", textures, 1u) != original || bindings->GetDescriptorRevision() != revision + 1u ||
+			if (add(bindings, "source"_h, textures, 1u) != original || bindings->GetDescriptorRevision() != revision + 1u ||
 				bindings->m_vulkan.m_descriptorSet == oldNative || original->GetTextureBindings() != textures ||
 				original->m_vulkan.m_descriptorSetLayout.descriptorCount != count || !PublishedHashIsCurrent(bindings))
 				return "successful image replacement did not publish exactly once into the existing binding";
 			size_t matches = 0u;
 			for (const auto& layout : bindings->GetLayoutBindings())
-				if (layout.m_name == "source") { ++matches; if (layout.m_arrayCount != count) return "stale fixed-array layout"; }
+				if (layout.m_name == "source"_h) { ++matches; if (layout.m_arrayCount != count) return "stale fixed-array layout"; }
 			if (matches != 1u) return "fixed-array replacement duplicated the layout name";
 		}
 		error = RecordPublication(cmd, shader, bindings, Expected({ InputValues[2], InputValues[1], InputValues[1] }),
@@ -956,8 +960,8 @@ namespace
 		auto neighbor = CreatePublicationBuffer(InputValues[1]);
 		auto valueC = CreatePublicationBuffer(InputValues[2]);
 		auto bindings = driver->CreateShaderBindings();
-		if (!driver->AddBufferToShaderBindings(bindings, neighbor, "neighbor", 0u)) return "buffer neighbor binding failed";
-		auto original = driver->AddBufferToShaderBindings(bindings, valueA, "source", 1u);
+		if (!driver->AddBufferToShaderBindings(bindings, neighbor, "neighbor"_h, 0u)) return "buffer neighbor binding failed";
+		auto original = driver->AddBufferToShaderBindings(bindings, valueA, "source"_h, 1u);
 		if (!original) return "initial external buffer binding failed";
 		const PublishedState before(bindings);
 		auto unavailable = RHIBufferPtr::Make(EBufferUsageBit::StorageBuffer_Bit, EMemoryPropertyBit::DeviceLocal);
@@ -965,19 +969,19 @@ namespace
 		unavailable->m_vulkan.m_buffer = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(
 			TMemoryPtr<VulkanBufferMemoryPtr>(0u, 0u, sizeof(Values), VulkanBufferMemoryPtr(uncompiled, 0u, sizeof(Values)), UINT32_MAX),
 			TWeakPtr<VulkanBufferAllocator>{});
-		if (driver->AddBufferToShaderBindings(bindings, unavailable, "source", 1u) || !before.Unchanged() ||
-			driver->AddBufferToShaderBindings(bindings, unavailable, "failedSource", 2u) || !before.Unchanged())
+		if (driver->AddBufferToShaderBindings(bindings, unavailable, "source"_h, 1u) || !before.Unchanged() ||
+			driver->AddBufferToShaderBindings(bindings, unavailable, "failedSource"_h, 2u) || !before.Unchanged())
 			return "unavailable external buffer changed published state or left a placeholder";
 
 		auto donor = driver->CreateShaderBindings();
-		auto donorBinding = driver->AddBufferToShaderBindings(donor, valueC, "donor", 4u);
+		auto donorBinding = driver->AddBufferToShaderBindings(donor, valueC, "donor"_h, 4u);
 		if (!donorBinding) return "buffer copy donor could not be prepared";
 		const PublishedState donorState(donor);
 		auto copy = driver->CreateShaderBindings();
-		if (!driver->AddBufferToShaderBindings(copy, neighbor, "neighbor", 0u)) return "buffer copy neighbor failed";
+		if (!driver->AddBufferToShaderBindings(copy, neighbor, "neighbor"_h, 0u)) return "buffer copy neighbor failed";
 		const uint64_t copyRevision = copy->GetDescriptorRevision();
-		auto copied = driver->AddShaderBinding(copy, donorBinding, "copiedSource", 1u);
-		if (!copied || copied == donorBinding || copied->GetLayout().m_name != "copiedSource" ||
+		auto copied = driver->AddShaderBinding(copy, donorBinding, "copiedSource"_h, 1u);
+		if (!copied || copied == donorBinding || copied->GetLayout().m_name != "copiedSource"_h ||
 			copied->GetLayout().m_binding != 1u || copied->m_vulkan.m_descriptorSetLayout.binding != 1u ||
 			copied->m_vulkan.m_valueBinding != donorBinding->m_vulkan.m_valueBinding ||
 			copied->m_vulkan.m_bBindSsboWithOffset != donorBinding->m_vulkan.m_bBindSsboWithOffset ||
@@ -988,22 +992,22 @@ namespace
 		// These managed allocations remain owned until the fence. Only ordinary buffers are replaced after recording A.
 		auto uniformSet = driver->CreateShaderBindings();
 		const uint64_t uniformRevision = uniformSet->GetDescriptorRevision();
-		auto uniform = driver->AddBufferToShaderBindings(uniformSet, "uniformSource", sizeof(Values), 1u, EShaderBindingType::UniformBuffer);
+		auto uniform = driver->AddBufferToShaderBindings(uniformSet, "uniformSource"_h, sizeof(Values), 1u, EShaderBindingType::UniformBuffer);
 		if (!uniform || uniformSet->NeedsStorageBuffer() || uniformSet->GetDescriptorRevision() != uniformRevision + 1u ||
 			!uniform->m_vulkan.m_valueBinding || !PublishedHashIsCurrent(uniformSet)) return "allocating UBO publication failed";
 		const PublishedState uniformState(uniformSet);
-		if (driver->AddSsboToShaderBindings(uniformSet, "uniformSource", sizeof(Values), 1u, 1u, true) || !uniformState.Unchanged())
+		if (driver->AddSsboToShaderBindings(uniformSet, "uniformSource"_h, sizeof(Values), 1u, 1u, true) || !uniformState.Unchanged())
 			return "incompatible SSBO replacement changed a managed UBO owner";
-		if (!driver->AddBufferToShaderBindings(uniformSet, neighbor, "neighbor", 0u)) return "UBO neighbor binding failed";
+		if (!driver->AddBufferToShaderBindings(uniformSet, neighbor, "neighbor"_h, 0u)) return "UBO neighbor binding failed";
 
 		auto allocatedSet = driver->CreateShaderBindings();
 		const uint64_t allocatedRevision = allocatedSet->GetDescriptorRevision();
 		const size_t rangeSize = (std::max)(sizeof(Values), static_cast<size_t>(device->GetMinSsboOffsetAlignment()));
-		auto allocated = driver->AddBufferToShaderBindings(allocatedSet, "allocatedSource", rangeSize, 1u, EShaderBindingType::StorageBuffer);
+		auto allocated = driver->AddBufferToShaderBindings(allocatedSet, "allocatedSource"_h, rangeSize, 1u, EShaderBindingType::StorageBuffer);
 		if (!allocated || !allocatedSet->NeedsStorageBuffer() || allocatedSet->GetDescriptorRevision() != allocatedRevision + 1u ||
 			!allocated->m_vulkan.m_valueBinding || !PublishedHashIsCurrent(allocatedSet)) return "allocating SSBO publication failed";
 		const PublishedState allocatedState(allocatedSet);
-		if (driver->AddBufferToShaderBindings(allocatedSet, "allocatedSource", sizeof(Values), 1u, EShaderBindingType::UniformBuffer) ||
+		if (driver->AddBufferToShaderBindings(allocatedSet, "allocatedSource"_h, sizeof(Values), 1u, EShaderBindingType::UniformBuffer) ||
 			!allocatedState.Unchanged()) return "incompatible UBO replacement changed a managed SSBO owner";
 		// The ordinary allocator aligns to size, so request a range that can legally be bound with an explicit offset.
 		if (allocated->GetBufferOffset() % device->GetMinSsboOffsetAlignment() != 0u)
@@ -1014,8 +1018,8 @@ namespace
 		rangeDonor->m_vulkan = allocated->m_vulkan;
 		rangeDonor->m_vulkan.m_bBindSsboWithOffset = true;
 		auto rangeSet = driver->CreateShaderBindings();
-		if (!driver->AddShaderBinding(rangeSet, rangeDonor, "source", 1u) ||
-			!driver->AddBufferToShaderBindings(rangeSet, neighbor, "neighbor", 0u) || !allocatedState.Unchanged())
+		if (!driver->AddShaderBinding(rangeSet, rangeDonor, "source"_h, 1u) ||
+			!driver->AddBufferToShaderBindings(rangeSet, neighbor, "neighbor"_h, 0u) || !allocatedState.Unchanged())
 			return "offset-bound inspection of an allocated SSBO changed its original binding";
 
 		auto reflected = driver->CreateShaderBindings();
@@ -1025,29 +1029,29 @@ namespace
 		const size_t sourceIndex = layouts.FindIf([](const auto& layout) { return layout.m_binding == 1u; });
 		if (sourceIndex == size_t(-1)) return "debug reflection did not expose the source buffer";
 		const auto reflectedSource = layouts[sourceIndex];
-		if (reflectedSource.m_name.empty() || reflectedSource.m_members.IsEmpty() ||
-			reflectedSource.m_type != EShaderBindingType::StorageBuffer || reflectedSource.m_name == "aliasedSource")
+		if (reflectedSource.m_name.IsEmpty() || reflectedSource.m_members.IsEmpty() ||
+			reflectedSource.m_type != EShaderBindingType::StorageBuffer || reflectedSource.m_name == "aliasedSource"_h)
 			return "source reflection did not retain member names/type";
-		const std::string member = reflectedSource.m_members[0].m_name;
-		if (!reflected->HasBinding(reflectedSource.m_name) || !reflected->HasParameter(reflectedSource.m_name + "." + member))
+		const auto member = reflectedSource.m_members[0].m_name;
+		if (!reflected->HasBinding(reflectedSource.m_name) || !reflected->HasParameter(reflectedSource.m_name, member))
 			return "reflected source metadata was not queryable before aliasing";
 		const uint64_t reflectedRevision = reflected->GetDescriptorRevision();
-		auto ssbo = driver->AddSsboToShaderBindings(reflected, "aliasedSource", sizeof(Values), 1u, 1u, true);
+		auto ssbo = driver->AddSsboToShaderBindings(reflected, "aliasedSource"_h, sizeof(Values), 1u, 1u, true);
 		auto renamedLayout = reflectedSource;
-		renamedLayout.m_name = "aliasedSource";
+		renamedLayout.m_name = "aliasedSource"_h;
 		if (!ssbo || ssbo->GetLayout() != renamedLayout || !ssbo->m_vulkan.m_bBindSsboWithOffset ||
-			reflected->HasBinding(reflectedSource.m_name) || reflected->HasParameter(reflectedSource.m_name + "." + member) ||
-			!reflected->HasBinding("aliasedSource") || !reflected->HasParameter("aliasedSource." + member) ||
+			reflected->HasBinding(reflectedSource.m_name) || reflected->HasParameter(reflectedSource.m_name, member) ||
+			!reflected->HasBinding("aliasedSource"_h) || !reflected->HasParameter("aliasedSource"_h, member) ||
 			reflected->GetDescriptorRevision() != reflectedRevision + 1u || !PublishedHashIsCurrent(reflected))
 			return "AddSsbo did not replace the reflected name while preserving its members/type";
 		size_t slotCount = 0u;
 		for (const auto& layout : reflected->GetLayoutBindings()) if (layout.m_binding == 1u) ++slotCount;
 		if (slotCount != 1u) return "reflected alias left duplicate metadata at binding 1";
-		if (!driver->AddBufferToShaderBindings(reflected, neighbor, "neighbor", 0u)) return "reflected neighbor binding failed";
+		if (!driver->AddBufferToShaderBindings(reflected, neighbor, "neighbor"_h, 0u)) return "reflected neighbor binding failed";
 		const PublishedState reflectedState(reflected);
 		auto wrongType = CreatePublicationBuffer(InputValues[2], EBufferUsageBit::UniformBuffer_Bit);
-		if (driver->AddBufferToShaderBindings(reflected, wrongType, "aliasedSource", 1u) || !reflectedState.Unchanged() ||
-			driver->AddBufferToShaderBindings(reflected, "aliasedSource", sizeof(Values), 1u, EShaderBindingType::UniformBuffer) ||
+		if (driver->AddBufferToShaderBindings(reflected, wrongType, "aliasedSource"_h, 1u) || !reflectedState.Unchanged() ||
+			driver->AddBufferToShaderBindings(reflected, "aliasedSource"_h, sizeof(Values), 1u, EShaderBindingType::UniformBuffer) ||
 			!reflectedState.Unchanged()) return "incompatible buffer request rewrote reflected type or managed owner";
 
 		auto cmd = driver->CreateCommandList(false, ECommandListQueue::Graphics);
@@ -1059,7 +1063,7 @@ namespace
 		if (!error.empty()) return error;
 		const uint64_t revision = bindings->GetDescriptorRevision();
 		auto oldNative = bindings->m_vulkan.m_descriptorSet;
-		if (driver->AddBufferToShaderBindings(bindings, valueC, "source", 1u) != original ||
+		if (driver->AddBufferToShaderBindings(bindings, valueC, "source"_h, 1u) != original ||
 			bindings->GetDescriptorRevision() != revision + 1u || bindings->m_vulkan.m_descriptorSet == oldNative ||
 			!PublishedHashIsCurrent(bindings)) return "corrected external buffer did not publish once into the existing binding";
 		error = RecordPublication(cmd, storageShader, bindings, Expected({ InputValues[2], InputValues[1] }), "buffer C", readbacks);
@@ -1087,14 +1091,14 @@ namespace
 		auto valueA = CreatePublicationTexture(InputValues[0]);
 		auto valueC = CreatePublicationTexture(InputValues[2]);
 		auto bindings = driver->CreateShaderBindings();
-		auto original = driver->AddSamplerToShaderBindings(bindings, "source", valueA, 1u, true, 4u);
+		auto original = driver->AddSamplerToShaderBindings(bindings, "source"_h, valueA, 1u, true, 4u);
 		if (!original || bindings->GetVariableDescriptorCount() != 4u) return "initial variable sampler capacity was not four";
 		const PublishedState before(bindings);
 		TVector<RHITexturePtr> tooMany{ valueA, valueA, valueA, valueA, valueC };
-		if (driver->AddSamplerToShaderBindings(bindings, "another", valueA, 2u, true, 4u) || !before.Unchanged() ||
-			driver->AddSamplerToShaderBindings(bindings, "source", valueA, 1u, false) || !before.Unchanged() ||
-			driver->AddSamplerToShaderBindings(bindings, "source", tooMany, 1u, true, 8u) || !before.Unchanged() ||
-			driver->AddShaderBinding(bindings, original, "another", 2u) || !before.Unchanged())
+		if (driver->AddSamplerToShaderBindings(bindings, "another"_h, valueA, 2u, true, 4u) || !before.Unchanged() ||
+			driver->AddSamplerToShaderBindings(bindings, "source"_h, valueA, 1u, false) || !before.Unchanged() ||
+			driver->AddSamplerToShaderBindings(bindings, "source"_h, tooMany, 1u, true, 8u) || !before.Unchanged() ||
+			driver->AddShaderBinding(bindings, original, "another"_h, 2u) || !before.Unchanged())
 			return "variable name/flag/capacity refusal changed the published set";
 		auto fixedDonor = RHIShaderBindingPtr::Make();
 		fixedDonor->m_vulkan = original->m_vulkan;
@@ -1102,13 +1106,13 @@ namespace
 		auto fixedLayout = original->GetLayout();
 		fixedLayout.m_bVariableDescriptorCount = false;
 		fixedDonor->SetLayout(fixedLayout);
-		if (driver->AddShaderBinding(bindings, fixedDonor, "source", 1u) || !before.Unchanged())
+		if (driver->AddShaderBinding(bindings, fixedDonor, "source"_h, 1u) || !before.Unchanged())
 			return "AddShaderBinding bypassed the published variable flag";
 
 		const uint64_t revision = bindings->GetDescriptorRevision();
 		auto oldNative = bindings->m_vulkan.m_descriptorSet;
 		const TVector<RHITexturePtr> empty;
-		if (driver->AddSamplerToShaderBindings(bindings, "source", empty, 1u, true, 1u) != original ||
+		if (driver->AddSamplerToShaderBindings(bindings, "source"_h, empty, 1u, true, 1u) != original ||
 			bindings->GetDescriptorRevision() != revision + 1u || bindings->GetVariableDescriptorCount() != 4u ||
 			!original->GetTextureBindings().IsEmpty() || original->GetLayout().m_arrayCount != 4u ||
 			original->m_vulkan.m_descriptorSetLayout.descriptorCount != 4u || !PublishedHashIsCurrent(bindings))
@@ -1122,17 +1126,17 @@ namespace
 			emptyLayout->m_descriptorSetLayoutBindings[0].descriptorCount != 4u)
 			return "empty variable set lost its allocated count or native layout";
 		if (!device->IsDescriptorUpdateAfterBindSupported()) return {};
-		if (driver->AddSamplerToShaderBindings(bindings, "source", valueA, 1u, true, 4u) != original)
+		if (driver->AddSamplerToShaderBindings(bindings, "source"_h, valueA, 1u, true, 4u) != original)
 			return "restoring a populated variable sampler failed";
 		// A variable descriptor binding must remain the highest binding; the unused extra is at zero.
 		auto neighbor = CreatePublicationBuffer(InputValues[1]);
-		if (!driver->AddBufferToShaderBindings(bindings, neighbor, "unused", 0u)) return "sparse extra buffer failed";
+		if (!driver->AddBufferToShaderBindings(bindings, neighbor, "unused"_h, 0u)) return "sparse extra buffer failed";
 		const PublishedState beforeAppend(bindings);
 		auto unavailable = RHITexturePtr::Make(ETextureFiltration::Nearest, ETextureClamping::Clamp, false);
 		unavailable->m_vulkan.m_image = valueA->m_vulkan.m_image;
-		driver->UpdateShaderBinding(bindings, "source", unavailable, 3u);
+		driver->UpdateShaderBinding(bindings, "source"_h, unavailable, 3u);
 		if (!beforeAppend.Unchanged()) return "indexed missing-view update changed the published variable set";
-		driver->UpdateShaderBinding(bindings, "source", valueC, 3u);
+		driver->UpdateShaderBinding(bindings, "source"_h, valueC, 3u);
 		const auto& textures = original->GetTextureBindings();
 		if (bindings->GetDescriptorRevision() != beforeAppend.m_revision + 1u ||
 			bindings->m_vulkan.m_descriptorSet != beforeAppend.m_native || bindings->GetVariableDescriptorCount() != 4u ||
@@ -1141,7 +1145,7 @@ namespace
 			return "out-of-order indexed append did not retain A with two partially-bound interior holes";
 		const uint64_t appendRevision = bindings->GetDescriptorRevision();
 		auto appendedNative = bindings->m_vulkan.m_descriptorSet;
-		if (!driver->AddBufferToShaderBindings(bindings, neighbor, "unused", 0u) ||
+		if (!driver->AddBufferToShaderBindings(bindings, neighbor, "unused"_h, 0u) ||
 			bindings->GetDescriptorRevision() != appendRevision + 1u || bindings->m_vulkan.m_descriptorSet == appendedNative ||
 			bindings->GetVariableDescriptorCount() != 4u || !PublishedHashIsCurrent(bindings))
 			return "full rebuild did not preserve a sparse variable array";
@@ -1211,7 +1215,7 @@ void DescriptorPreparationTestComponent::Tick(float)
 	}
 	if (m_shader && m_shader->IsReady() && publicationReady)
 	{
-		m_validation = Tasks::CreateTaskWithResult<ValidationResult>("Native descriptor preparation validation",
+		m_validation = Tasks::CreateTaskWithResult<ValidationResult>("Native descriptor preparation validation"_h,
 			[shader = m_shader, publication = m_publicationShaders]()
 			{
 				ValidationResult result;

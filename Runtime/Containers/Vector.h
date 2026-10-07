@@ -777,5 +777,4 @@ namespace Sailor
 		friend class TVector;
 	};
 
-	SAILOR_API void RunVectorBenchmark();
 }

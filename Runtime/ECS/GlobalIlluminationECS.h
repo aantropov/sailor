@@ -55,7 +55,7 @@ namespace Sailor
 		static constexpr const char* DisplayName = "Global Illumination ECS";
 
 		SAILOR_API void BeginPlay() override;
-		SAILOR_API Tasks::ITaskPtr Tick(float deltaTime) override;
+		SAILOR_API void Tick(float deltaTime) override;
 		SAILOR_API void EndPlay() override;
 		SAILOR_API uint32_t GetOrder() const override { return 175u; }
 

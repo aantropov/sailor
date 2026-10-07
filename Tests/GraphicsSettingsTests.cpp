@@ -8,6 +8,7 @@
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#include <string_view>
 #include <tuple>
 #include <yaml-cpp/yaml.h>
 
@@ -16,9 +17,9 @@ using namespace Sailor::Settings;
 
 namespace
 {
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
-		if (!condition) throw std::runtime_error(message);
+		if (!condition) throw std::runtime_error(std::string(message));
 	}
 
 	void CheckProfile(const GraphicsQualityProfile& actual, const GraphicsQualityProfile& expected)
@@ -180,6 +181,27 @@ graphics:
 		Require(&defaults.GetProfile(static_cast<EGraphicsQuality>(255)) == &defaults.GetProfile(EGraphicsQuality::High),
 			"an invalid quality value retains the High fallback");
 		std::cout << "GraphicsSettings five complete built-in presets passed\n";
+	}
+
+	void TestBorrowedSourceNames()
+	{
+		ProjectGraphicsSettingsLoadResult project;
+		EditorGraphicsSettingsLoadResult editor;
+		{
+			std::string label = "BorrowedSettings.yaml:ignored suffix";
+			const auto source = std::string_view(label).substr(0, label.find(':'));
+			project = ParseProjectGraphicsSettings(YAML::Dump(ProjectDocument()), source);
+			editor = ParseEditorGraphicsSettings("[", source);
+			label.assign(1024, 'x');
+		}
+		Require(project.IsLoaded() && project.m_diagnostic == "Loaded BorrowedSettings.yaml.",
+			"loaded settings must own their bounded source label after its input is destroyed");
+		Require(editor.m_status == EGraphicsSettingsLoadStatus::Invalid &&
+			editor.m_diagnostic.starts_with("BorrowedSettings.yaml is invalid YAML:"),
+			"invalid settings must own their bounded source label after its input is destroyed");
+		Require(ParseProjectGraphicsSettings("[", {}).m_diagnostic.starts_with("ProjectSettings.yaml is invalid YAML:") &&
+			ParseEditorGraphicsSettings("[", {}).m_diagnostic.starts_with("EditorSettings.yaml is invalid YAML:"),
+			"empty source views must retain the project and editor default labels");
 	}
 
 	void TestProfileDiagnostics()
@@ -479,6 +501,7 @@ int main(int argc, char** argv)
 	try
 	{
 		TestPresets();
+		TestBorrowedSourceNames();
 		TestReflectedSerialization();
 		TestProfileDiagnostics();
 		TestDocumentValidation();

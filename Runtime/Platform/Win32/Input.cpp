@@ -1,4 +1,9 @@
 #include "Input.h"
+#include "Core/SpinLock.h"
+#include "Containers/Vector.h"
+#include "Submodules/ImGuiApi.h"
+#include <algorithm>
+#include <utility>
 #if defined(_WIN32)
 #include <windows.h>
 #endif
@@ -10,6 +15,10 @@ InputState GlobalInput::m_rawState;
 
 namespace
 {
+	SpinLock g_nativeInputLock;
+	TVector<Platform::InputEvent> g_pendingNativeInput;
+	TVector<Platform::InputEvent> g_nativeInputBatch;
+
 	bool TryGetMouseButtonIndex(uint32_t button, uint32_t& index)
 	{
 		if (button == 0 || button == VK_LBUTTON)
@@ -134,6 +143,21 @@ void GlobalInput::SetKeyState(uint32_t key, KeyState state)
 	if (key < 256)
 	{
 		m_rawState.m_keyboard[key] = state;
+		switch (key)
+		{
+		case VK_LSHIFT:
+		case VK_RSHIFT:
+			m_rawState.m_keyboard[VK_SHIFT] = std::max(m_rawState.m_keyboard[VK_LSHIFT], m_rawState.m_keyboard[VK_RSHIFT]);
+			break;
+		case VK_LCONTROL:
+		case VK_RCONTROL:
+			m_rawState.m_keyboard[VK_CONTROL] = std::max(m_rawState.m_keyboard[VK_LCONTROL], m_rawState.m_keyboard[VK_RCONTROL]);
+			break;
+		case VK_LMENU:
+		case VK_RMENU:
+			m_rawState.m_keyboard[VK_MENU] = std::max(m_rawState.m_keyboard[VK_LMENU], m_rawState.m_keyboard[VK_RMENU]);
+			break;
+		}
 	}
 }
 
@@ -167,4 +191,59 @@ void GlobalInput::AddMouseWheelDelta(float delta)
 void GlobalInput::Reset()
 {
 	m_rawState = {};
+}
+
+void GlobalInput::QueueNativeEvent(Platform::InputEvent event)
+{
+	g_nativeInputLock.Lock();
+	g_pendingNativeInput.Add(std::move(event));
+	g_nativeInputLock.Unlock();
+}
+
+void GlobalInput::ProcessPendingEvents(bool bAcceptNativeInput)
+{
+	g_nativeInputLock.Lock();
+	std::swap(g_nativeInputBatch, g_pendingNativeInput);
+	g_nativeInputLock.Unlock();
+	if (bAcceptNativeInput)
+	{
+		for (const auto& event : g_nativeInputBatch) ApplyEvent(event);
+	}
+	g_nativeInputBatch.Clear(false);
+}
+
+void GlobalInput::ApplyEvent(const Platform::InputEvent& event)
+{
+	using Type = Platform::InputEvent::Type;
+	switch (event.m_type)
+	{
+	case Type::MousePos:
+		SetCursorPosition(static_cast<int32_t>(event.m_x), static_cast<int32_t>(event.m_y));
+		break;
+	case Type::MouseButton:
+		SetCursorPosition(static_cast<int32_t>(event.m_x), static_cast<int32_t>(event.m_y));
+		if (event.m_button >= 0)
+			SetMouseButtonState(static_cast<uint32_t>(event.m_button), event.m_bIsPressed ? KeyState::Pressed : KeyState::Up);
+		break;
+	case Type::MouseWheel:
+		AddMouseWheelDelta(event.m_y);
+		break;
+	case Type::Key:
+		SetKeyState(event.m_key, event.m_bIsPressed ? KeyState::Pressed : KeyState::Up);
+		break;
+	case Type::Focus:
+		if (event.m_bIsPressed) break;
+		[[fallthrough]];
+	case Type::Reset:
+		std::fill(std::begin(m_rawState.m_keyboard), std::end(m_rawState.m_keyboard), KeyState::Up);
+		std::fill(std::begin(m_rawState.m_mouse), std::end(m_rawState.m_mouse), KeyState::Up);
+		for (auto& position : m_rawState.m_mousePressPosition) position[0] = position[1] = 0;
+		// Keep absolute cursor/wheel coordinates: resetting their origins would
+		// turn focus loss into a movement/scroll delta in the next FrameState.
+		m_rawState.m_mouseWheelDelta = 0.0f;
+		break;
+	default:
+		break;
+	}
+	ImGuiApi::HandleInput(event);
 }

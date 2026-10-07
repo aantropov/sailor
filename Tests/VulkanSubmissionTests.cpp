@@ -1,9 +1,17 @@
 #include "Sailor.h"
+#include "Components/SkyComponent.h"
+#include "FrameGraph/SkyNode.h"
+#include "FrameGraph/MotionBlurNode.h"
 #include "Engine/Frame.h"
 #include "Engine/EngineLoop.h"
+#include "Engine/GameObject.h"
 #include "ECS/LightingECS.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "Support/TempDirectory.h"
+#include "Support/ScopeExit.h"
+#include "Support/ImGuiWorkspaceProbe.h"
+#include "Platform/DynamicLibrary.h"
+#include "Workspace/WorkspacePathEncoding.h"
 #include "EditorEngineProtocolInternal.h"
 #include "EditorEngineWebSocketServer.h"
 #include "Support/EditorProtocolWire.h"
@@ -18,9 +26,12 @@
 #include "FrameGraph/DepthHighZNode.h"
 #include "FrameGraph/RenderSceneNode.h"
 #include "FrameGraph/EditorReadbackNode.h"
+#include "FrameGraph/CopyTextureToRamNode.h"
 #include "Editor/EditorRuntimeBridge.h"
 #include "Submodules/EditorRemote/RemoteViewportMacTransport.h"
 #include "Submodules/ImGuiApi.h"
+#include "Submodules/Editor.h"
+#include "Settings/GraphicsSettings.h"
 #include "GraphicsDriver/Vulkan/VulkanDevice.h"
 #include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
 #include "GraphicsDriver/Vulkan/VulkanImage.h"
@@ -33,6 +44,8 @@
 #include "RHI/CommandList.h"
 #include "RHI/Fence.h"
 #include "RHI/Material.h"
+#include "RHI/Mesh.h"
+#include "RHI/VertexDescription.h"
 #include "RHI/Renderer.h"
 #include "RHI/RenderTarget.h"
 #include "RHI/Surface.h"
@@ -60,6 +73,7 @@
 
 #if defined(__APPLE__)
 #include <dlfcn.h>
+#include <imgui_internal.h>
 
 namespace { std::atomic<uint32_t> deviceIdleCalls{ 0 }; }
 
@@ -77,8 +91,15 @@ using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
 namespace Sailor::Tests { int RunPathTracerCommandTests(int argc, const char** argv); }
-namespace Sailor::Tests { int RunCloudNoiseGpu(int argc, const char** argv); }
+namespace Sailor::Tests { int RunSkyGpu(int argc, const char** argv, bool bTestStars); }
+namespace Sailor::Tests { int RunLandscapeGpu(int argc, const char** argv); }
+namespace Sailor::Tests { int RunRenderContractsGpu(int argc, const char** argv, bool bTestPathTracer = false); }
 namespace Sailor::Tests { void RunLoggingWithoutAppTests(); }
+namespace Sailor::Tests { void RunAnimationShadowCommandTests(); }
+namespace Sailor::Tests { void RunWorldLifecycleCommandTests(); }
+namespace Sailor::Tests { void RunEditorMessageViewTests(); }
+namespace Sailor::Tests { void RunEditorViewportCommandTests(); }
+namespace Sailor::Tests { int RunEditorSimulationTests(int argc, const char** argv); }
 
 extern "C" SAILOR_SHARED_API int32_t SailorProtocolStopLocalHost(bool bShutdownEngine) noexcept;
 extern "C" SAILOR_SHARED_API int32_t SailorProtocolStartLocalHost(const uint8_t* requestData, uint32_t requestSize,
@@ -110,6 +131,14 @@ namespace Sailor::GraphicsDriver::Vulkan
 		}
 
 		static size_t Flight(const VulkanDevice& device) { return device.m_currentFrame; }
+		static VulkanQueuePtr PresentQueue(const VulkanDevice& device) { return device.m_presentQueue; }
+		static PFN_vkQueuePresentKHR ExchangePresent(VulkanQueue& queue, PFN_vkQueuePresentKHR present)
+		{
+			queue.m_lock.Lock();
+			const auto previous = std::exchange(queue.m_queuePresent, present);
+			queue.m_lock.Unlock();
+			return previous;
+		}
 		static void ExchangeRendering(VulkanDevice& device, PFN_vkCmdBeginRendering& begin, PFN_vkCmdEndRendering& end)
 		{
 			std::swap(device.pVkCmdBeginRendering, begin);
@@ -145,11 +174,34 @@ namespace Sailor::GraphicsDriver::Vulkan
 	};
 }
 
+namespace Sailor::RHI
+{
+	class RendererSubmissionTestAccess
+	{
+	public:
+		static RHISceneViewPtr View(Renderer& renderer, WorldPtr world, const RHISceneViewSnapshot& snapshot)
+		{
+			RHISceneViewPtr result;
+			auto& views = renderer.m_cachedSceneViews.At_Lock(world);
+			for (const auto& entry : views)
+			{
+				if (entry.m_first->m_submissionContext == snapshot.m_submissionContext)
+				{
+					result = entry.m_first;
+					break;
+				}
+			}
+			renderer.m_cachedSceneViews.Unlock(world);
+			return result;
+		}
+	};
+}
+
 namespace
 {
-	void Require(bool condition, const char* message)
+	void Require(bool condition, std::string_view message)
 	{
-		if (!condition) throw std::runtime_error(message);
+		if (!condition) throw std::runtime_error(std::string(message));
 	}
 
 	thread_local VkResult nextResult = VK_SUCCESS;
@@ -370,14 +422,19 @@ namespace
 	};
 
 	std::atomic<VkResult> workerSubmitResult{ VK_SUCCESS };
+	std::atomic<uint32_t> workerSubmitCalls{ 0 };
+	uint32_t uploadsBeforeRefusal = 0;
+	std::atomic<VkFence> workerSubmittedFence{ VK_NULL_HANDLE };
 	std::atomic<uint32_t> workerSubmitRefusals{ 0 };
 	std::atomic<bool> workerSubmitWasOffCaller{ false };
 	std::thread::id uploadCaller;
 	PFN_vkQueueSubmit forwardWorkerSubmit = nullptr;
 
-	VKAPI_ATTR VkResult VKAPI_CALL RefuseWorkerUpload(VkQueue queue, uint32_t count, const VkSubmitInfo* info, VkFence fence)
+	VKAPI_ATTR VkResult VKAPI_CALL ObserveWorkerUpload(VkQueue queue, uint32_t count, const VkSubmitInfo* info, VkFence fence)
 	{
-		const auto error = workerSubmitResult.exchange(VK_SUCCESS);
+		const auto submit = ++workerSubmitCalls;
+		workerSubmittedFence.store(fence);
+		const auto error = submit > uploadsBeforeRefusal ? workerSubmitResult.exchange(VK_SUCCESS) : VK_SUCCESS;
 		if (error != VK_SUCCESS)
 		{
 			++workerSubmitRefusals;
@@ -387,19 +444,22 @@ namespace
 		return forwardWorkerSubmit(queue, count, info, fence);
 	}
 
-	class WorkerUploadRefusal
+	class WorkerUploadOverride
 	{
 	public:
-		explicit WorkerUploadRefusal(VkResult error) :
-			m_queue(VulkanSubmissionTestAccess::UploadQueue(*VulkanApi::GetInstance()->GetMainDevice()))
+		explicit WorkerUploadOverride(VkResult error, bool transfer, uint32_t precedingUploads = 0) :
+			m_queue(VulkanSubmissionTestAccess::UploadQueue(*VulkanApi::GetInstance()->GetMainDevice(), transfer))
 		{
 			workerSubmitResult.store(error);
+			uploadsBeforeRefusal = precedingUploads;
+			workerSubmitCalls.store(0);
+			workerSubmittedFence.store(VK_NULL_HANDLE);
 			workerSubmitRefusals.store(0);
 			workerSubmitWasOffCaller.store(false);
 			uploadCaller = std::this_thread::get_id();
-			m_previous = VulkanSubmissionTestAccess::ExchangeSubmit(*m_queue, RefuseWorkerUpload, &forwardWorkerSubmit);
+			m_previous = VulkanSubmissionTestAccess::ExchangeSubmit(*m_queue, ObserveWorkerUpload, &forwardWorkerSubmit);
 		}
-		~WorkerUploadRefusal()
+		~WorkerUploadOverride()
 		{
 			VulkanSubmissionTestAccess::ExchangeSubmit(*m_queue, m_previous);
 			workerSubmitResult.store(VK_SUCCESS);
@@ -577,7 +637,7 @@ namespace
 	template<typename Function>
 	void OnRender(Function function)
 	{
-		auto task = Tasks::CreateTaskWithResult<std::string>("Native frame failure validation", [function = std::move(function)]()
+		auto task = Tasks::CreateTaskWithResult<std::string>("Native frame failure validation"_h, [function = std::move(function)]()
 			{
 				try { function(); return std::string{}; }
 				catch (const std::exception& error) { return std::string(error.what()); }
@@ -605,7 +665,7 @@ namespace
 		TVector<Tasks::TaskPtr<std::string>> uploads;
 		for (uint32_t worker = 0; worker < workers; ++worker)
 		{
-			auto task = Tasks::CreateTaskWithResult<std::string>("Concurrent native upload statistics", [driver, worker]()
+			auto task = Tasks::CreateTaskWithResult<std::string>("Concurrent native upload statistics"_h, [driver, worker]()
 				{
 					try
 					{
@@ -677,7 +737,8 @@ namespace
 		bool hasImage = false;
 	};
 
-	RecordedEditorReadback RecordEditorReadback(Framegraph::EditorReadbackNode& node,
+	template<typename Node>
+	RecordedEditorReadback RecordEditorReadback(Node& node,
 		glm::ivec2 extent, ETextureFormat format, const void* pixels, size_t size, uint64_t generation = 0u)
 	{
 		auto& driver = *Renderer::GetDriver().DynamicCast<VulkanGraphicsDriver>();
@@ -688,12 +749,12 @@ namespace
 		Require(driver.BeginRenderSubmission(flight, result.hasImage), "editor readback must acquire its flight");
 		result.nativeFence = VulkanApi::GetInstance()->GetMainDevice()->GetCurrentFrameFence();
 		result.context = RHIRenderSubmissionContextPtr::Make();
-		result.context->BeginSubmission(1u, flight, 0u, 0u, generation);
+		result.context->BeginSubmission(1u, flight, 0u, generation);
 		RHISceneViewSnapshot scene;
 		scene.m_submissionContext = result.context;
 		result.command = driver.CreateCommandList(false, ECommandListQueue::Graphics);
 		driver.BeginCommandList(result.command, true);
-		node.SetRHIResource("src", texture);
+		node.SetRHIResource("src"_h, texture);
 		node.Process({}, {}, result.command, scene);
 		driver.EndCommandList(result.command);
 		return result;
@@ -705,6 +766,175 @@ namespace
 		auto completion = recorded.context->GetFrameCompletion();
 		return recorded.hasImage ? driver->PresentFrame(Sailor::FrameState{}, { recorded.command }, {}, completion) :
 			driver->SubmitFrameWithoutPresent({ recorded.command }, {}, completion);
+	}
+
+	void TestReadbackPixels()
+	{
+		auto& driver = Renderer::GetDriver();
+		ReadbackFrame frame;
+		frame.m_extent = { 2, 2 };
+		frame.m_bytesPerRow = 11;
+		frame.m_buffer = driver->CreateBuffer(19, EBufferUsageBit::BufferTransferDst_Bit,
+			EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
+		const glm::u8vec4 expected[]{ { 17, 53, 211, 0 }, { 255, 128, 0, 127 },
+			{ 0, 255, 128, 255 }, { 199, 77, 31, 64 } };
+		for (auto format : { ETextureFormat::R8G8B8A8_SRGB, ETextureFormat::B8G8R8A8_SRGB })
+		{
+			frame.m_format = format;
+			auto* bytes = static_cast<uint8_t*>(frame.m_buffer->GetPointer());
+			std::memset(bytes, 0xeb, 19);
+			for (size_t i = 0; i < 4; ++i)
+			{
+				const auto rgba = expected[i];
+				const auto source = format == ETextureFormat::B8G8R8A8_SRGB ? glm::u8vec4(rgba.b, rgba.g, rgba.r, rgba.a) : rgba;
+				std::memcpy(bytes + (i / 2) * 11 + (i % 2) * 4, &source, 4);
+			}
+			TVector<glm::u8vec4> pixels;
+			Require(frame.CopySrgbPixels(pixels) && pixels.Num() == 4, "padded sRGB readback must decode to tight RGBA");
+			Require(frame.PrepareBgraPixels(), "the same decoder must support editor BGRA publication");
+			for (size_t i = 0; i < 4; ++i)
+			{
+				Require(pixels[i] == expected[i], "encoded pixels and alpha must survive without a second gamma conversion");
+				const auto* bgra = frame.GetBgraPixels() + (i / 2) * frame.GetBgraBytesPerRow() + (i % 2) * 4;
+				Require(bgra[0] == expected[i].b && bgra[1] == expected[i].g && bgra[2] == expected[i].r && bgra[3] == expected[i].a,
+					"editor channel order and row pitch must match the original pixels");
+			}
+		}
+		frame.m_extent = { 1, 2 };
+		const uint16_t halfRows[2][4]{ { 0x0000, 0x3800, 0x3c00, 0x3400 }, { 0xbc00, 0x4000, 0x3400, 0x3c00 } };
+		for (size_t y = 0; y < 2; ++y)
+			std::memcpy(static_cast<uint8_t*>(frame.m_buffer->GetPointer()) + y * 11, halfRows[y], 8);
+		frame.m_format = ETextureFormat::R16G16B16A16_SFLOAT;
+		TVector<glm::u8vec4> pixels;
+		Require(frame.CopySrgbPixels(pixels) && pixels.Num() == 2, "half-float rows may begin at unaligned byte offsets");
+		const glm::u8vec4 srgb[]{ { 0, 187, 255, 64 }, { 0, 255, 136, 255 } };
+		for (size_t i = 0; i < 2; ++i)
+		{
+			for (int channel = 0; channel < 3; ++channel)
+				Require(std::abs(int(pixels[i][channel]) - int(srgb[i][channel])) <= 1, "linear half-floats must encode and clamp to sRGB");
+			Require(pixels[i].a == srgb[i].a, "linear alpha must not be gamma encoded");
+		}
+		Require(frame.PrepareBgraPixels() && frame.GetBgraBytesPerRow() == 4,
+			"half-float editor output must remain tightly packed BGRA");
+		const uint8_t bgraHalf[]{ 255, 128, 0, 64, 64, 255, 0, 255 };
+		Require(std::memcmp(frame.GetBgraPixels(), bgraHalf, sizeof(bgraHalf)) == 0,
+			"editor conversion must preserve its linear byte contract");
+		frame.m_extent = { 1, 1 };
+		const uint8_t linear[]{ 128, 128, 128, 128 };
+		std::memcpy(frame.m_buffer->GetPointer(), linear, sizeof(linear));
+		for (auto format : { ETextureFormat::R8G8B8A8_UNORM, ETextureFormat::B8G8R8A8_UNORM })
+		{
+			frame.m_format = format;
+			Require(frame.CopySrgbPixels(pixels) && pixels[0] == glm::u8vec4(187, 187, 187, 128),
+				"linear UNORM output must encode RGB without changing alpha");
+		}
+		frame.m_bytesPerRow = 3;
+		Require(!frame.CopySrgbPixels(pixels), "short rows cannot describe a complete pixel");
+		frame.m_bytesPerRow = 11;
+		frame.m_extent.y = 100;
+		Require(!frame.CopySrgbPixels(pixels), "decoding cannot read past the retained buffer");
+		frame.m_extent.y = 1;
+		frame.m_format = ETextureFormat::D32_SFLOAT;
+		Require(!frame.CopySrgbPixels(pixels) && pixels[0] == glm::u8vec4(187, 187, 187, 128),
+			"unsupported layouts must leave the caller's previous pixels unchanged");
+	}
+
+	void TestTextureCaptures()
+	{
+		Require(!App::HasEditor(), "one-shot capture must also work without the editor");
+		auto node = TRefPtr<Framegraph::CopyTextureToRamNode>::Make();
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		auto request = [&]()
+		{
+			auto task = node->DoOneCapture();
+			scheduler->WaitIdle({ EThreadType::Render });
+			return task;
+		};
+		const uint32_t firstPixels[]{ 0xff123456, 0x77123456, 0x00123456 };
+		auto first = request();
+		auto sameFrame = request();
+		OnRender([&]()
+			{
+				auto recorded = RecordEditorReadback(*node, { 3, 1 }, ETextureFormat::R8G8B8A8_SRGB,
+					firstPixels, sizeof(firstPixels), 11);
+				node->PollCaptures();
+				Require(!first->IsFinished() && !sameFrame->IsFinished(), "recording is not capture completion");
+				Require(SubmitEditorReadback(recorded).m_bSubmitted && recorded.nativeFence->Wait(5000000000ull) == VK_SUCCESS,
+					"capture fixture must copy real GPU pixels");
+				{
+					auto device = VulkanApi::GetInstance()->GetMainDevice();
+					FenceDispatchOverride dispatch(*device);
+					observedFences[0] = *recorded.nativeFence;
+					fenceResults[0] = VK_NOT_READY;
+					node->PollCaptures();
+				}
+			});
+		scheduler->ProcessTasksOnMainThread();
+		Require(!first->IsFinished(), "an unsignalled completion must not publish a mapped capture");
+		OnRender([&]() { node->PollCaptures(); });
+		Require(!first->IsFinished(), "Render must publish the result through the Main task queue");
+		scheduler->ProcessTasksOnMainThread();
+		Require(first->IsFinished() && sameFrame->IsFinished() && first != sameFrame && first->GetResult() == sameFrame->GetResult(),
+			"requests for the same rendered frame may share immutable pixels, not task identity");
+		const auto retained = first->GetResult();
+		Require(retained && retained->m_extent == glm::ivec2(3, 1) && retained->m_bytesPerRow == 12 && retained->m_generation == 11 &&
+			std::memcmp(retained->m_buffer->GetPointer(), firstPixels, sizeof(firstPixels)) == 0,
+			"capture metadata and pixels must describe the requested GPU copy");
+
+		auto next = request();
+		OnRender([&]() { node->PollCaptures(); });
+		scheduler->ProcessTasksOnMainThread();
+		Require(!next->IsFinished(), "an old completed image must not satisfy a new request");
+		const uint32_t nextPixels[]{ 0xffeeeeee, 0xff222222 };
+		OnRender([&]()
+			{
+				auto recorded = RecordEditorReadback(*node, { 1, 2 }, ETextureFormat::B8G8R8A8_UNORM,
+					nextPixels, sizeof(nextPixels), 12);
+				Require(SubmitEditorReadback(recorded).m_bSubmitted && recorded.nativeFence->Wait(5000000000ull) == VK_SUCCESS,
+					"resized capture must complete its own submission");
+				node->PollCaptures();
+			});
+		scheduler->ProcessTasksOnMainThread();
+		Require(next->IsFinished() && next->GetResult() && next->GetResult() != retained && next->GetResult()->m_generation == 12 &&
+			next->GetResult()->m_extent == glm::ivec2(1, 2) && next->GetResult()->m_bytesPerRow == 4 &&
+			std::memcmp(next->GetResult()->m_buffer->GetPointer(), nextPixels, sizeof(nextPixels)) == 0 &&
+			std::memcmp(retained->m_buffer->GetPointer(), firstPixels, sizeof(firstPixels)) == 0,
+			"resize and later GPU work must not overwrite a retained capture");
+
+		auto cancelled = request();
+		OnRender([&]() { node->Clear(); });
+		scheduler->ProcessTasksOnMainThread();
+		Require(cancelled->IsFinished() && !cancelled->GetResult(), "clearing the node must complete queued requests without pixels");
+		auto inFlight = request();
+		OnRender([&]()
+			{
+				auto recorded = RecordEditorReadback(*node, { 1, 2 }, ETextureFormat::B8G8R8A8_UNORM,
+					nextPixels, sizeof(nextPixels));
+				node->Clear();
+				Require(SubmitEditorReadback(recorded).m_bSubmitted && recorded.nativeFence->Wait(5000000000ull) == VK_SUCCESS,
+					"command list ownership must retain copy resources after node cancellation");
+				node->PollCaptures();
+			});
+		scheduler->ProcessTasksOnMainThread();
+		Require(inFlight->IsFinished() && !inFlight->GetResult(), "a cancelled in-flight request must not later receive pixels");
+		auto refused = request();
+		OnRender([&]()
+			{
+				auto recorded = RecordEditorReadback(*node, { 1, 2 }, ETextureFormat::B8G8R8A8_UNORM,
+					nextPixels, sizeof(nextPixels));
+				SubmitOverride failure(VulkanApi::GetInstance()->GetMainDevice()->GetGraphicsQueue(), VK_ERROR_OUT_OF_HOST_MEMORY);
+				Require(!SubmitEditorReadback(recorded).m_bSubmitted, "capture must observe a real refused submission");
+				node->PollCaptures();
+			});
+		scheduler->ProcessTasksOnMainThread();
+		Require(refused->IsFinished() && !refused->GetResult(), "GPU submission failure must not look like capture success");
+		App::GetSubmodule<Renderer>()->FixLostDevice();
+		auto abandoned = request();
+		node.Clear();
+		scheduler->ProcessTasksOnMainThread();
+		Require(abandoned->IsFinished() && !abandoned->GetResult(), "destroying a node must resolve its pending requests");
+		OnRender([]() { TestReadbackPixels(); });
+		std::cout << "Texture captures: request identity, GPU completion, resize, retention, cancellation, rejection and pixel formats passed\n";
 	}
 
 #if defined(__APPLE__)
@@ -887,7 +1117,7 @@ namespace
 		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
 		std::vector<uint32_t> firstPixels(15);
 		for (uint32_t i = 0; i < firstPixels.size(); ++i) firstPixels[i] = 0xff123456u + i;
-		EditorReadbackFramePtr first;
+		ReadbackFramePtr first;
 		OnRender([&]()
 			{
 				auto recorded = RecordEditorReadback(*node, { 5, 3 }, ETextureFormat::R8G8B8A8_UNORM,
@@ -985,10 +1215,10 @@ namespace
 				Require(!node->TakeCompletedFrame(), "an older delayed completion must not publish after a newer capture");
 			});
 
-		std::vector<EditorReadbackFramePtr> readers{ first };
+		std::vector<ReadbackFramePtr> readers{ first };
 		const auto capture = [&](uint32_t width, uint64_t generation = 0u)
 			{
-				EditorReadbackFramePtr frame;
+				ReadbackFramePtr frame;
 				OnRender([&]()
 					{
 						const std::vector<uint32_t> pixels(width * 2u, 0xffabc000u + width);
@@ -1510,7 +1740,7 @@ namespace
 		auto buffer = driver->CreateBuffer(sizeof(data), EBufferUsageBit::UniformBuffer_Bit |
 			EBufferUsageBit::BufferTransferSrc_Bit | EBufferUsageBit::BufferTransferDst_Bit, EMemoryPropertyBit::DeviceLocal);
 		auto bindings = driver->CreateShaderBindings();
-		driver->AddBufferToShaderBindings(bindings, buffer, "immediate", 0u);
+		driver->AddBufferToShaderBindings(bindings, buffer, "immediate"_h, 0u);
 		auto checkData = [&]()
 			{
 				auto readback = driver->CreateBuffer(sizeof(data), EBufferUsageBit::BufferTransferDst_Bit,
@@ -1526,7 +1756,7 @@ namespace
 				const auto* actual = static_cast<const uint32_t*>(readback->GetPointer());
 				Require(std::equal(data.begin(), data.end(), actual), "immediate binding contents mismatch");
 			};
-		Require(driver->UpdateShaderBinding_Immediate(bindings, "immediate", data.data(), sizeof(data)),
+		Require(driver->UpdateShaderBinding_Immediate(bindings, "immediate"_h, data.data(), sizeof(data)),
 			"successful binding upload must report completion");
 		checkData();
 		for (VkResult error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
@@ -1537,7 +1767,7 @@ namespace
 				refused.fill(0xdeadbeefu);
 				{
 					SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device, true), error);
-					Require(!driver->UpdateShaderBinding_Immediate(bindings, "immediate", refused.data(), sizeof(refused)),
+					Require(!driver->UpdateShaderBinding_Immediate(bindings, "immediate"_h, refused.data(), sizeof(refused)),
 						"binding update must propagate submit refusal");
 				}
 				checkData();
@@ -1549,7 +1779,7 @@ namespace
 				fenceWaitResult = lost ? VK_ERROR_DEVICE_LOST : error;
 				captureNextFenceWait = true;
 				capturedFenceCompleted = false;
-				Require(!driver->UpdateShaderBinding_Immediate(bindings, "immediate", data.data(), sizeof(data)) && capturedFenceCompleted,
+				Require(!driver->UpdateShaderBinding_Immediate(bindings, "immediate"_h, data.data(), sizeof(data)) && capturedFenceCompleted,
 					"binding update must propagate accepted wait failure");
 				if (!lost)
 				{
@@ -1763,7 +1993,7 @@ namespace
 						if (secondary) return driver.RenderSecondaryCommandBuffers(command, secondaryCommands, colors, depthInput,
 							area, glm::ivec2(0), true, clearColor, 0.375f, true, true);
 						if (path == MsaaPassPath::MixedColor || path == MsaaPassPath::MixedDepth) return driver.BeginRenderPass(command, colors,
-							resolves, depthInput, area, glm::ivec2(0), true, clearColor, 0.375f, true, true);
+							resolves, depthInput, nullptr, area, glm::ivec2(0), true, clearColor, 0.375f, true, true);
 						return driver.BeginRenderPass(command, colors, depthInput, area, glm::ivec2(0), true, clearColor, 0.375f, true, true);
 					};
 				auto command = driver.CreateCommandList(false, ECommandListQueue::Graphics);
@@ -1810,12 +2040,12 @@ namespace
 				ETextureFiltration::Nearest, ETextureClamping::Clamp, ETextureUsageBit::DepthStencilAttachment_Bit |
 				ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit);
 			auto pyramid = driver.CreateRenderTarget(extent, 1, ETextureFormat::R32_SFLOAT);
-			graph->SetRenderTarget("DepthBuffer", depth);
+			graph->SetRenderTarget("DepthBuffer"_h, depth);
 			Framegraph::FrameGraphNodePtr node = highZ ? Framegraph::FrameGraphNodePtr(TRefPtr<Framegraph::DepthHighZNode>::Make()) :
 				Framegraph::FrameGraphNodePtr(TRefPtr<Framegraph::ClearNode>::Make());
-			node->SetRHIResource(highZ ? "src" : "target", depth);
-			node->SetRHIResource("dst", pyramid);
-			node->SetFloat("clearDepth", 0.375f);
+			node->SetRHIResource(highZ ? "src"_h : "target"_h, depth);
+			node->SetRHIResource("dst"_h, pyramid);
+			node->SetFloat("clearDepth"_h, 0.375f);
 			auto setup = driver.CreateCommandList(false, ECommandListQueue::Graphics);
 			driver.BeginCommandList(setup, true);
 			driver.ImageMemoryBarrier(setup, depth, EImageLayout::TransferDstOptimal);
@@ -1999,8 +2229,8 @@ namespace
 		auto node = TRefPtr<Framegraph::RenderSceneNode>::Make();
 		auto color = driver.CreateRenderTarget(glm::ivec2(31, 19), 1, ETextureFormat::R8G8B8A8_UNORM);
 		auto motion = driver.CreateRenderTarget(glm::ivec2(31, 19), 1, ETextureFormat::R8G8B8A8_UNORM);
-		node->SetRHIResource("color", color);
-		node->SetRHIResource("motionVectors", motion);
+		node->SetRHIResource("color"_h, color);
+		node->SetRHIResource("motionVectors"_h, motion);
 		graph->GetGraph().Add(node);
 		auto input = driver.CreateWaitSemaphore();
 		{
@@ -2099,7 +2329,7 @@ frame: []
 					"a successfully imported graph must retain its warm cache identity without resubmission");
 			}
 			auto graph = repaired->GetRHI();
-			for (const char* name : { "Color", "Motion" })
+			for (const auto name : { "Color"_h, "Motion"_h })
 			{
 				auto target = graph->GetRenderTarget(name);
 				auto surface = graph->GetSurface(name);
@@ -2137,7 +2367,7 @@ frame: []
 		void Process(RHIFrameGraphPtr, RHICommandListPtr, RHICommandListPtr, const RHISceneViewSnapshot& scene) override
 		{
 			shadowMaps.Clear();
-			if (scene.m_rhiLightsData) scene.m_rhiLightsData->GetShaderBindings().TryGet("shadowMaps", shadowMaps);
+			if (scene.m_rhiLightsData) scene.m_rhiLightsData->GetShaderBindings().TryGet("shadowMaps"_h, shadowMaps);
 			++frames;
 		}
 
@@ -2442,7 +2672,7 @@ frame: []
 		auto& driver = *Renderer::GetDriver();
 		auto* engine = App::GetSubmodule<EngineLoop>();
 		{
-			Sailor::FrameState frame;
+			Sailor::FrameState frame(engine->GetWorld().GetRawPtr(), 16, {}, { 32, 24 });
 			engine->ProcessCpuFrame(frame);
 			frame.GetDrawImGuiTask()->Wait();
 			driver.WaitIdle();
@@ -2454,14 +2684,14 @@ frame: []
 				SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), error);
 				const auto before = nativeSubmitAttempts;
 				ImGuiFontProbe::Reinitialize();
-				Sailor::FrameState frame;
+				Sailor::FrameState frame(engine->GetWorld().GetRawPtr(), 32, {}, { 32, 24 });
 				engine->ProcessCpuFrame(frame);
 				frame.GetDrawImGuiTask()->Wait();
 				Require(nativeSubmitAttempts == before + 2 && !ImGuiFontProbe::Backend()->FontTexture &&
 					ImGui::GetIO().Fonts->TexID == 0 && frame.GetDrawImGuiTask()->GetResult()->GetNumRecordedCommands() == 0,
 					"refused startup and next-frame font uploads must publish no texture ID or UI draw commands");
 			}
-			Sailor::FrameState retry;
+			Sailor::FrameState retry(engine->GetWorld().GetRawPtr(), 48, {}, { 32, 24 });
 			engine->ProcessCpuFrame(retry);
 			retry.GetDrawImGuiTask()->Wait();
 			driver.WaitIdle();
@@ -2472,7 +2702,7 @@ frame: []
 			{
 				SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), error);
 				const auto before = nativeSubmitAttempts;
-				Sailor::FrameState warm;
+				Sailor::FrameState warm(engine->GetWorld().GetRawPtr(), 64, {}, { 32, 24 });
 				engine->ProcessCpuFrame(warm);
 				warm.GetDrawImGuiTask()->Wait();
 				Require(nativeSubmitAttempts == before && ImGuiFontProbe::Backend()->FontTexture == font,
@@ -2480,6 +2710,91 @@ frame: []
 			}
 		}
 		std::cout << "ImGui font initialization: startup/frame refusal, no rejected UI draws, next-frame recovery and warm reuse passed\n";
+	}
+
+	void TestMeshInitialization()
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		auto& driver = *Renderer::GetDriver();
+		const std::array<glm::vec2, 4> vertices{ glm::vec2(-1, -1), glm::vec2(1, -1), glm::vec2(1, 1), glm::vec2(-1, 1) };
+		const std::array<uint32_t, 6> indices{ 0, 1, 2, 0, 2, 3 };
+		const auto create = [&](bool generic)
+		{
+			auto task = Tasks::CreateTaskWithResult<RHIMeshPtr>("Native mesh upload"_h, [&, generic]()
+				{
+					auto mesh = driver.CreateMesh();
+					mesh->m_vertexDescription = RHIVertexDescriptionPtr::Make();
+					mesh->m_vertexDescription->SetVertexStride(sizeof(glm::vec2));
+					mesh->m_vertexDescription->AddAttribute(0, 0, EFormat::R32G32_SFLOAT, 0);
+					if (generic) driver.IGraphicsDriver::UpdateMesh(mesh, vertices.data(), sizeof(vertices), indices.data(), sizeof(indices));
+					else driver.UpdateMesh(mesh, vertices.data(), sizeof(vertices), indices.data(), sizeof(indices));
+					return mesh;
+				}, EThreadType::RHI);
+			task->Run();
+			task->Wait();
+			return task->GetResult();
+		};
+		using BufferOwner = Memory::TManagedMemory<Memory::VulkanBufferMemoryPtr, VulkanBufferAllocator>;
+		for (bool generic : { false, true })
+		{
+			for (const auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+			{
+				RHIMeshPtr failed;
+				{
+					WorkerUploadOverride refusal(error, true);
+					failed = create(generic);
+					Require(workerSubmitRefusals.load() == 1 && workerSubmitWasOffCaller.load() &&
+						failed->HasInitializationFailed() && !failed->IsReady(),
+						"mesh upload must expose native rejection before its RHI task returns");
+				}
+				TWeakPtr<BufferOwner> failedVertices(failed->m_vertexBuffer->m_vulkan.m_buffer);
+				TWeakPtr<BufferOwner> failedIndices(failed->m_indexBuffer->m_vulkan.m_buffer);
+				RHIMeshPtr accepted;
+				{
+					FenceDispatchOverride dispatch(*device);
+					WorkerUploadOverride observe(VK_SUCCESS, true);
+					accepted = create(generic);
+					Require(workerSubmitCalls.load() == 1 && workerSubmittedFence.load(), "mesh retry must submit once");
+					observedFences[0] = workerSubmittedFence.load();
+					fenceResults[0] = VK_NOT_READY;
+					driver.TrackResources_ThreadSafe();
+					Require(!accepted->IsReady() && !accepted->HasInitializationFailed(), "accepted mesh upload must remain pending");
+				}
+				Require(device->WaitIdle() == VK_SUCCESS, "accepted mesh upload must complete");
+				driver.TrackResources_ThreadSafe();
+				Require(accepted->IsReady() && !failed->IsReady(), "completion must not resurrect a refused mesh");
+				OnRender([&]()
+					{
+						const auto memory = EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent;
+						auto vertexReadback = driver.CreateBuffer(sizeof(vertices), EBufferUsageBit::BufferTransferDst_Bit, memory);
+						auto indexReadback = driver.CreateBuffer(sizeof(indices), EBufferUsageBit::BufferTransferDst_Bit, memory);
+						Require(driver.CopyBuffer_Immediate(accepted->m_vertexBuffer, vertexReadback, sizeof(vertices)) &&
+							driver.CopyBuffer_Immediate(accepted->m_indexBuffer, indexReadback, sizeof(indices)), "mesh readback must complete");
+						Require(std::memcmp(vertexReadback->GetPointer(), vertices.data(), sizeof(vertices)) == 0 &&
+							std::memcmp(indexReadback->GetPointer(), indices.data(), sizeof(indices)) == 0,
+							"all retried mesh vertices and indices must match their source");
+					});
+				failed.Clear();
+				scheduler->WaitIdle({ EThreadType::RHI, EThreadType::Render });
+				OnRender([&]() { driver.CollectGarbage_RenderThread(); });
+				Require(!failedVertices.TryLock() && !failedIndices.TryLock(), "failed mesh/fence ownership must release both allocations");
+			}
+		}
+		std::cout << "Mesh initialization: both implementations, four native refusals, pending retries, 224 vertex/index bytes and failed allocation release passed\n";
+		{
+			WorkerUploadOverride loss(VK_ERROR_DEVICE_LOST, true);
+			auto failed = create(false);
+			Require(workerSubmitRefusals.load() == 1 && device->IsDeviceLost() && failed->HasInitializationFailed() && !failed->IsReady(),
+				"mesh submission loss must remain terminal");
+			for (bool generic : { false, true })
+			{
+				auto rejected = create(generic);
+				Require(rejected->HasInitializationFailed() && !rejected->IsReady() && workerSubmitCalls.load() == 1,
+					"neither mesh implementation may submit or become ready after terminal loss");
+			}
+		}
+		std::cout << "Mesh initialization: native terminal loss and both failed-owner short-circuits passed\n";
 	}
 
 	void TestImmediateImageContents()
@@ -3026,7 +3341,7 @@ frame: []
 			const auto target = node.m_shadowMap;
 			auto bindings = node.m_shadowMapBinding;
 			Require(target && bindings && target->GetExtent() == glm::ivec2(4096) &&
-				bindings->GetOrAddShaderBinding("shadowMapSampler")->GetTextureBinding() == target,
+				bindings->GetOrAddShaderBinding("shadowMapSampler"_h)->GetTextureBinding() == target,
 				"the same particle node must retry and publish its real shadow image");
 			{
 				SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), error);
@@ -3092,8 +3407,8 @@ frame: []
 					Require(node.InitializeBuffers(instances), "particle initialization retry did not complete");
 					Require(node.m_instances && node.m_particlesFrames && node.m_perInstanceData && node.m_numInstances == 3u &&
 						node.m_particlesDataBinary.IsEmpty(), "successful particle initialization must publish both buffers and consume its CPU source");
-					Require(node.m_perInstanceData->GetOrAddShaderBinding("data")->m_vulkan.m_valueBinding == node.m_instances->m_vulkan.m_buffer &&
-						node.m_perInstanceData->GetOrAddShaderBinding("particlesData")->m_vulkan.m_valueBinding == node.m_particlesFrames->m_vulkan.m_buffer,
+					Require(node.m_perInstanceData->GetOrAddShaderBinding("data"_h)->m_vulkan.m_valueBinding == node.m_instances->m_vulkan.m_buffer &&
+						node.m_perInstanceData->GetOrAddShaderBinding("particlesData"_h)->m_vulkan.m_valueBinding == node.m_particlesFrames->m_vulkan.m_buffer,
 						"particle bindings must retain the published buffers' original allocations");
 				}
 			}
@@ -3102,12 +3417,14 @@ frame: []
 
 	int RunInitializationGpu(int argc, const char** argv)
 	{
-		Tests::TempDirectory workspace("host-initialization");
+		Tests::TempDirectory fixture("host-initialization");
+		const auto workspaceRoot = fixture.Path(Workspace::PathFromUtf8(
+			reinterpret_cast<const char*>(u8"Workspace \u042f \u00e9 \u8239 \U0001f6a2")));
 		int result = 1;
 		try
 		{
-			std::filesystem::create_directory(workspace.Path("Content"));
-			std::string enginePath = std::filesystem::current_path().string();
+			std::filesystem::create_directories(workspaceRoot / "Content");
+			std::string enginePath = Workspace::PathToUtf8(std::filesystem::current_path());
 			for (int i = 1; i + 1 < argc; ++i)
 				if (std::string_view(argv[i]) == "--workspace") enginePath = argv[i + 1];
 			YAML::Node manifest;
@@ -3123,27 +3440,48 @@ frame: []
 			manifest["buildPath"] = "Cache/Build";
 			manifest["logicOutputPath"] = "Binaries";
 			manifest["logicModuleName"] = "MissingInitializationModule";
-			std::ofstream(workspace.Path("workspace.sailor")) << manifest;
-			std::filesystem::copy_file(std::filesystem::path(enginePath) / "Content/Models/DuckGlb/Duck.glb",
-				workspace.Path("Content/Test.glb"));
+			std::ofstream(workspaceRoot / "workspace.sailor") << manifest;
+			const std::string modelName = reinterpret_cast<const char*>(u8"Duck \u042f \u00e9 \u8239 \U0001f6a2.glb");
+			const auto modelPath = workspaceRoot / "Content" / Workspace::PathFromUtf8(modelName);
+			std::filesystem::copy_file(Workspace::PathFromUtf8(enginePath) / "Content/Models/DuckGlb/Duck.glb",
+				modelPath);
 			YAML::Node model;
 			model["assetInfoType"] = "Sailor::ModelAssetInfo";
 			model["fileId"] = "{00000000-0000-0000-0000-000000000120}";
-			model["filename"] = "Test.glb";
-			model["bShouldGenerateMaterials"] = false;
+			model["filename"] = modelName;
+			model["bShouldGenerateMaterials"] = true;
 			model["bShouldKeepCpuBuffers"] = true;
 			model["bGenerateBLAS"] = true;
 			model["unitScale"] = 1;
-			std::ofstream(workspace.Path("Content/Test.glb.asset")) << model;
-			const std::string workspacePath = workspace.Get().string();
-			const std::string output = workspace.Path("command.png").string();
+			auto modelMetadataPath = modelPath;
+			modelMetadataPath += ".asset";
+			std::ofstream(modelMetadataPath) << model;
+			const std::string workspacePath = Workspace::PathToUtf8(workspaceRoot);
+			const auto outputPath = workspaceRoot / Workspace::PathFromUtf8(
+				reinterpret_cast<const char*>(u8"Image \u042f \u00e9 \u8239 \U0001f6a2.png"));
+			const std::string output = Workspace::PathToUtf8(outputPath);
 			std::vector<const char*> commandArguments(argv, argv + argc);
 			commandArguments.insert(commandArguments.end(), { "--workspace", workspacePath.c_str(), "--editor", "--port", "0",
-				"--pathtracer", "--in", "Test.glb",
+				"--pathtracer", "--in", modelName.c_str(),
 				"--out", output.c_str(), "--height", "8", "--samples", "1", "--ambientSamples", "1", "--bounces", "1" });
 			Require(App::Initialize(commandArguments.data(), static_cast<int32_t>(commandArguments.size())) ==
-				EAppInitializationResult::Completed && std::filesystem::is_regular_file(output) &&
-				std::filesystem::file_size(output) > 32u, "an offline command must complete without claiming an interactive session");
+				EAppInitializationResult::Completed && std::filesystem::is_regular_file(outputPath) &&
+				std::filesystem::file_size(outputPath) > 32u, "an offline command must complete without claiming an interactive session");
+			TextureImporter::CpuDecodeRequest image;
+			image.m_filepath = output;
+			FileRevision imageRevision;
+			Require(Utils::TryGetFileRevision(output, imageRevision), "the PNG must have a capturable source revision");
+			image.m_sourceRevisions.Add(output, imageRevision);
+			TextureImporter::ByteCode pixels;
+			int32_t width = 0, height = 0;
+			uint32_t mips = 0;
+			Require(TextureImporter::DecodeTextureCpu(image, pixels, width, height, mips) && height == 8 &&
+				width > 0 && pixels.Num() == static_cast<size_t>(width * height * 4),
+				"the texture importer must decode the actual PNG written through a Unicode filename");
+			const auto canonicalRoot = std::filesystem::canonical(workspaceRoot);
+			Require(App::GetWorkspaceContext().GetRoot() == canonicalRoot &&
+				App::GetWorkspace() == Workspace::PathToUtf8(canonicalRoot) + "/",
+				"standalone command bootstrap must retain the actual Unicode workspace root");
 			App::Start();
 			Require(!App::GetSubmodule<EngineLoop>(), "a completed command must not create or enter a game loop");
 			Require(App::Shutdown() && !App::GetInstance(), "a completed command must release its App before another startup");
@@ -3161,7 +3499,7 @@ frame: []
 
 			std::string initialize;
 			for (int i = 0; i < argc; ++i) Tests::ProtocolWire::AppendBytesField(initialize, 1u, argv[i]);
-			for (const auto& argument : { std::string("--workspace"), workspace.Get().string(),
+			for (const auto& argument : { std::string("--workspace"), workspacePath,
 				std::string("--new-world"), std::string("--port"), std::string("0") })
 			{
 				Tests::ProtocolWire::AppendBytesField(initialize, 1u, argument);
@@ -3188,6 +3526,9 @@ frame: []
 				auto* loop = App::GetSubmodule<EngineLoop>();
 				Require(App::IsRendererInitialized() && App::HasEditor() && loop && loop->GetWorlds().Num() == 1u &&
 					App::GetLoadedWorldPath().empty(), "limited editor mode must still own a renderer and editable empty world");
+				Require(App::GetWorkspaceContext().GetRoot() == canonicalRoot &&
+					App::GetWorkspace() == Workspace::PathToUtf8(canonicalRoot) + "/",
+					"editor protocol bootstrap must preserve the same Unicode workspace as standalone arguments");
 				Require(App::Initialize() == EAppInitializationResult::Ready,
 					"an already initialized editor must retain its successful result");
 				App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Main, EThreadType::Worker,
@@ -3211,7 +3552,7 @@ frame: []
 				Require(SailorProtocolStopLocalHost(true) != 0 && !App::GetInstance(),
 					"editor host shutdown must release its initialized App before retry");
 			}
-			std::cout << "Native initialization outcomes test passed\n";
+			std::cout << "Native initialization outcomes: Unicode workspace, offline output and repeated editor protocol startup passed\n";
 			result = 0;
 		}
 		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
@@ -3281,6 +3622,329 @@ frame: []
 		return result;
 	}
 
+#if defined(__APPLE__)
+	struct ImGuiAllocationProbe
+	{
+		ImGuiMemAllocFunc m_allocate{};
+		ImGuiMemFreeFunc m_free{};
+		void* m_userData{};
+		std::atomic<int64_t> m_liveAllocations{ 0 };
+		std::atomic<uint64_t> m_totalAllocations{ 0 };
+
+		ImGuiAllocationProbe()
+		{
+			ImGuiApi::GetAllocatorFunctions(&m_allocate, &m_free, &m_userData);
+			ImGui::SetAllocatorFunctions(Allocate, Free, this);
+		}
+
+		~ImGuiAllocationProbe()
+		{
+			ImGui::SetAllocatorFunctions(m_allocate, m_free, m_userData);
+		}
+
+		static void* Allocate(size_t size, void* userData)
+		{
+			auto& probe = *static_cast<ImGuiAllocationProbe*>(userData);
+			void* allocation = probe.m_allocate(size, probe.m_userData);
+			if (allocation)
+			{
+				++probe.m_liveAllocations;
+				++probe.m_totalAllocations;
+			}
+			return allocation;
+		}
+
+		static void Free(void* allocation, void* userData)
+		{
+			if (!allocation) return;
+			auto& probe = *static_cast<ImGuiAllocationProbe*>(userData);
+			probe.m_free(allocation, probe.m_userData);
+			--probe.m_liveAllocations;
+		}
+	};
+
+	int RunImGuiLifetimeGpu(int argc, const char** argv)
+	{
+		ImGuiAllocationProbe allocations;
+		struct ShutdownProbe
+		{
+			TWeakPtr<const ImGuiApi::PreparedFrame> m_frame;
+			std::atomic<bool> m_bReaderFinished{ false };
+			bool m_bWasDestroyed = false;
+			bool m_bReadersDrained = false;
+			std::thread::id m_owner = std::this_thread::get_id();
+		} shutdown;
+		int result = 1;
+		try
+		{
+			ImGuiMemAllocFunc allocate{};
+			ImGuiMemFreeFunc free{};
+			void* userData{};
+			ImGuiApi::GetAllocatorFunctions(&allocate, &free, &userData);
+			Require(allocate == ImGuiAllocationProbe::Allocate && free == ImGuiAllocationProbe::Free && userData == &allocations,
+				"the allocation probe must observe the engine's ImGui, not an executable-local copy");
+			Require(!ImGuiApi::GetCurrentContext(), "the process must start without an engine ImGui context");
+
+			std::string initialize;
+			for (int i = 0; i < argc; ++i) Tests::ProtocolWire::AppendBytesField(initialize, 1u, argv[i]);
+			for (const auto argument : { "--editor", "--port", "0", "--world", "", "--new-world" })
+				Tests::ProtocolWire::AppendBytesField(initialize, 1u, argument);
+			Require(ix::initNetSystem(), "ImGui lifetime fixture must initialize local networking");
+			const int port = ix::getFreePort();
+			Require(ix::uninitNetSystem() && port > 0 && port <= 65535, "ImGui lifetime fixture must reserve a local port");
+			const auto start = [&](const std::string& payload)
+			{
+				const auto request = Tests::ProtocolWire::MakeRequest(1u, 10u, payload);
+				constexpr std::string_view token = "0123456789abcdef0123456789abcdef";
+				return static_cast<Protocol::EEditorEngineWebSocketHostStatus>(SailorProtocolStartLocalHost(
+					reinterpret_cast<const uint8_t*>(request.data()), static_cast<uint32_t>(request.size()),
+					static_cast<uint16_t>(port), token.data(), static_cast<uint32_t>(token.size())));
+			};
+
+			std::string invalidInitialize = initialize;
+			// An incomplete offline command fails after renderer setup, before ImGui creation.
+			Tests::ProtocolWire::AppendBytesField(invalidInitialize, 1u, "--pathtracer");
+			Require(start(invalidInitialize) == Protocol::EEditorEngineWebSocketHostStatus::InitializationFailed &&
+				!App::GetInstance() && !ImGuiApi::GetCurrentContext() && allocations.m_liveAllocations == 0,
+				"failed bootstrap must roll back without creating or retaining an ImGui context");
+
+			for (uint32_t cycle = 0; cycle < 24; ++cycle)
+			{
+				Require(start(initialize) == Protocol::EEditorEngineWebSocketHostStatus::Ok,
+					"each native host restart must initialize successfully");
+				auto* context = ImGuiApi::GetCurrentContext();
+				Require(context && allocations.m_liveAllocations > 0, "the native host must allocate a real ImGui context");
+				ImGui::SetCurrentContext(context);
+				ImGui::GetIO().IniFilename = nullptr;
+
+				shutdown.m_bReaderFinished = false;
+				shutdown.m_bWasDestroyed = false;
+				shutdown.m_bReadersDrained = false;
+				ImGuiContextHook hook{};
+				hook.Type = ImGuiContextHookType_Shutdown;
+				hook.UserData = &shutdown;
+				hook.Callback = [](ImGuiContext*, ImGuiContextHook* activeHook)
+				{
+					auto& probe = *static_cast<ShutdownProbe*>(activeHook->UserData);
+					probe.m_bWasDestroyed = true;
+					probe.m_bReadersDrained = probe.m_bReaderFinished && !probe.m_frame.TryLock() &&
+						probe.m_owner == std::this_thread::get_id();
+				};
+				ImGui::AddContextHook(context, &hook);
+
+				auto* imGui = App::GetSubmodule<ImGuiApi>();
+				imGui->NewFrame();
+				ImGui::GetForegroundDrawList()->AddText({ 10, 10 }, IM_COL32_WHITE, "Retained shutdown frame");
+				ImGuiApi::PreparedFramePtr frame;
+				{
+					auto command = Renderer::GetDriver()->CreateCommandList(false, ECommandListQueue::Transfer);
+					auto commands = Renderer::GetDriverCommands();
+					commands->BeginCommandList(command, true);
+					frame = imGui->PrepareFrame(command);
+					commands->EndCommandList(command);
+					Require(frame && frame->DrawData.GetDrawData().TotalVtxCount > 0 &&
+						Renderer::GetDriver()->SubmitCommandList_Immediate(command),
+						"the retained frame must contain real uploaded ImGui geometry");
+				}
+				shutdown.m_frame = frame;
+				std::atomic<bool> bReaderEntered{ false }, bReleaseReader{ false };
+				Tasks::CreateTask("Retain ImGui frame during shutdown"_h,
+					[frame = std::move(frame), &shutdown, &bReaderEntered, &bReleaseReader]()
+					{
+						bReaderEntered = true;
+						bReaderEntered.notify_one();
+						bReleaseReader.wait(false);
+						auto commands = Renderer::GetDriverCommands();
+						auto draw = Renderer::GetDriver()->CreateCommandList(true, ECommandListQueue::Graphics);
+						commands->BeginSecondaryCommandList(draw, false, false, App::GetSubmodule<Renderer>()->GetColorFormat());
+						ImGuiApi::RenderFrame(frame, draw);
+						commands->EndCommandList(draw);
+						shutdown.m_bReaderFinished = frame->DrawData.GetDrawData().TotalVtxCount > 0;
+					}, EThreadType::RHI)->Run();
+				bReaderEntered.wait(false);
+				Tasks::CreateTask("Release ImGui reader from shutdown drain"_h, [&]()
+					{
+						bReleaseReader = true;
+						bReleaseReader.notify_one();
+					}, EThreadType::Main)->Run();
+				Require(SailorProtocolStopLocalHost(true) != 0, "the native host must join its pending ImGui reader");
+				std::cout << "ImGui shutdown cycle " << cycle << ": live allocations=" << allocations.m_liveAllocations
+					<< ", context=" << ImGuiApi::GetCurrentContext() << '\n';
+				Require(shutdown.m_bWasDestroyed && shutdown.m_bReadersDrained && !ImGuiApi::GetCurrentContext() &&
+					allocations.m_liveAllocations == 0 && !shutdown.m_frame.TryLock(),
+					"shutdown must destroy its context on the CPU owner after RHI readers and release all ImGui allocations");
+			}
+			std::cout << "Native ImGui lifetime: 24 host cycles, pending RHI readers and failed bootstrap passed; allocations="
+				<< allocations.m_totalAllocations << '\n';
+			result = 0;
+		}
+		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
+		if (SailorProtocolStopLocalHost(true) == 0) result = 1;
+		return result;
+	}
+
+	int RunImGuiWorkspaceGpu(int argc, const char** argv)
+	{
+		Tests::TempDirectory workspace("imgui-workspace");
+		ImGuiAllocationProbe allocations;
+		// Keep observer storage valid even if a failing loader retains an image until exit.
+		static std::array<Tests::ImGuiWorkspaceProbe, 24> probes;
+		int result = 1;
+		try
+		{
+			std::filesystem::create_directories(workspace.Path("Content"));
+			std::string enginePath = std::filesystem::current_path().string();
+			for (int i = 1; i + 1 < argc; ++i)
+				if (std::string_view(argv[i]) == "--workspace") enginePath = argv[i + 1];
+			YAML::Node manifest;
+			manifest["manifestVersion"] = 1;
+			manifest["workspaceId"] = "00000000-0000-0000-0000-000000000261";
+			manifest["name"] = "ImGui workspace lifetime";
+			manifest["enginePath"] = enginePath;
+			manifest["engineReferenceKind"] = "source";
+			manifest["contentPath"] = "Content";
+			manifest["sourcePath"] = "Source";
+			manifest["generatedProjectPath"] = "Generated";
+			manifest["cachePath"] = "Cache";
+			manifest["buildPath"] = "Cache/Build";
+			manifest["logicOutputPath"] = "Binaries";
+			manifest["logicModuleName"] = "ImGuiWorkspaceFixture";
+			std::ofstream(workspace.Path("workspace.sailor")) << manifest;
+			const auto modulePath = workspace.Path("Binaries") / App::GetBuildConfig() / "libImGuiWorkspaceFixture.dylib";
+			std::filesystem::create_directories(modulePath.parent_path());
+			std::filesystem::copy_file(SAILOR_IMGUI_FIXTURE_PATH, modulePath);
+			std::ofstream(workspace.Path("Content/EditorRenderer.renderer")) <<
+				"renderTargets:\n"
+				"- name: EditorOutput\n  format: B8G8R8A8_UNORM\n  width: 64\n  height: 48\n"
+				"- name: UiDepth\n  format: D32_SFLOAT_S8_UINT\n  width: 64\n  height: 48\n"
+				"frame:\n"
+				"- name: Clear\n  vec4:\n  - clearColor: [0, 0, 0, 1]\n  renderTargets:\n  - target: EditorOutput\n"
+				"- name: Clear\n  float:\n  - clearDepth: 0\n  - clearStencil: 0\n  renderTargets:\n  - target: UiDepth\n"
+				"- name: RenderImGui\n  renderTargets:\n  - color: EditorOutput\n  - depthStencil: UiDepth\n";
+
+			std::string initialize;
+			for (int i = 0; i < argc; ++i) Tests::ProtocolWire::AppendBytesField(initialize, 1u, argv[i]);
+			const std::string workspacePath = workspace.Get().string();
+			for (const auto argument : { "--workspace", workspacePath.c_str(), "--editor", "--port", "0", "--new-world" })
+				Tests::ProtocolWire::AppendBytesField(initialize, 1u, argument);
+			const auto initializeRequest = Tests::ProtocolWire::MakeRequest(1u, 10u, initialize);
+			Require(ix::initNetSystem(), "workspace fixture must initialize networking");
+			const int port = ix::getFreePort();
+			Require(ix::uninitNetSystem() && port > 0 && port <= 65535, "workspace fixture must reserve a local port");
+			constexpr std::string_view token = "0123456789abcdef0123456789abcdef";
+			for (auto& probe : probes)
+			{
+				Require(SailorProtocolStartLocalHost(reinterpret_cast<const uint8_t*>(initializeRequest.data()),
+					static_cast<uint32_t>(initializeRequest.size()), static_cast<uint16_t>(port), token.data(),
+					static_cast<uint32_t>(token.size())) == static_cast<int32_t>(Protocol::EEditorEngineWebSocketHostStatus::Ok),
+					"the native host must load the actual workspace fixture through its manifest");
+				Require(Reflection::TryGetTypeByName("ImGuiWorkspace::FixtureComponent"),
+					"the App module manager must register the fixture's reflected component");
+				auto* context = ImGuiApi::GetCurrentContext();
+				ImGui::SetCurrentContext(context);
+				ImGui::GetIO().IniFilename = nullptr;
+				{
+					Platform::DynamicLibrary module(modulePath);
+					auto configure = reinterpret_cast<void (*)(Tests::ImGuiWorkspaceProbe*)>(module.GetSymbol("ConfigureImGuiWorkspaceProbe"));
+					Require(configure, "the loaded fixture must expose its observer binding");
+					configure(&probe);
+					Require(probe.m_bHasPrivateContext, "the workspace must have a separate ImGui context binding before borrowing the engine's");
+					Require(module.Close() && !probe.m_bWasModuleUnloaded, "only App may retain the module during its session");
+				}
+				App::SetEditorRenderTargetSize(64, 48);
+				const auto start = Tests::ProtocolWire::MakeRequest(2u, 11u);
+				uint8_t* responseData = nullptr;
+				uint32_t responseSize = 0;
+				const auto status = SailorProtocolInvoke(reinterpret_cast<const uint8_t*>(start.data()),
+					static_cast<uint32_t>(start.size()), &responseData, &responseSize);
+				std::string responseBytes;
+				if (responseData) responseBytes.assign(reinterpret_cast<const char*>(responseData), responseSize);
+				SailorProtocolFreeBuffer(responseData);
+				Tests::ProtocolWire::TProtocolResponseWire response;
+				Require(status == static_cast<int32_t>(Protocol::EEditorEngineTransportStatus::Ok) &&
+					Tests::ProtocolWire::ParseResponse(responseBytes, response) && response.m_bSuccess,
+					"the real protocol Start command must enter App::Start");
+				probe.m_callbacksStarted.wait(0);
+				Require(probe.m_frames > 0 && probe.m_callbacksFinished == 0 && !probe.m_bWasModuleUnloaded,
+					"the running engine must reach an in-flight callback implemented by the loaded module");
+				SailorProtocolRequestLocalHostStop();
+				probe.m_bIsCallbackReleased = true;
+				probe.m_bIsCallbackReleased.notify_all();
+				Require(SailorProtocolStopLocalHost(false) != 0 && App::GetInstance(),
+					"stopping the engine loop must retain its App until explicit shutdown");
+				{
+					auto device = VulkanApi::GetInstance()->GetMainDevice();
+					QueueWaitOverride refusal(device->GetGraphicsQueue(), VK_ERROR_OUT_OF_HOST_MEMORY);
+					const auto before = queueWaitCalls;
+					Require(!App::Shutdown() && queueWaitCalls > before, "a refused native GPU drain must leave shutdown retryable");
+					Require(ImGuiApi::GetCurrentContext() == context && allocations.m_liveAllocations > 0 &&
+						!probe.m_bWasModuleUnloaded && !probe.m_bWasComponentDestroyedWithContext,
+						"failed shutdown must retain the context, workspace component and module");
+				}
+				if (&probe == &probes.back())
+				{
+					auto device = VulkanApi::GetInstance()->GetMainDevice();
+					SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), VK_ERROR_OUT_OF_DEVICE_MEMORY);
+					const auto before = nativeSubmitAttempts;
+					ImGuiFontProbe::Reinitialize();
+					Require(nativeSubmitAttempts == before + 1 && !ImGuiFontProbe::Backend()->FontTexture && ImGui::GetIO().Fonts->TexID == 0,
+						"partial backend setup must exercise an actual refused font upload before teardown");
+				}
+				Require(SailorProtocolStopLocalHost(true) != 0 && !App::GetInstance(), "shutdown retry must complete");
+				std::cout << "ImGui workspace: frames=" << probe.m_frames << ", callbacks=" << probe.m_callbacksFinished
+					<< ", copied=" << probe.m_copiedCallbacks << ", borrowed=" << probe.m_borrowedCallbacks
+					<< ", module unloaded=" << probe.m_bWasModuleUnloaded << ", allocations=" << allocations.m_liveAllocations << '\n';
+				Require(probe.m_bIsCallbackDataValid && probe.m_callbacksStarted == probe.m_callbacksFinished &&
+					probe.m_copiedCallbacks > 0 && probe.m_copiedCallbacks == probe.m_borrowedCallbacks &&
+					probe.m_callbacksFinished == probe.m_copiedCallbacks + probe.m_borrowedCallbacks &&
+					probe.m_bWasComponentDestroyedAfterCallbacks &&
+					probe.m_bWasComponentDestroyedWithContext && probe.m_bWasModuleUnloaded && probe.m_bWasUnloadedAfterContext &&
+					!ImGuiApi::GetCurrentContext() && allocations.m_liveAllocations == 0,
+					"callbacks, components, context and module must retire in order without leaked ImGui allocations");
+			}
+			std::cout << "Native ImGui workspace: 24 running sessions, copied/borrowed RHI callbacks, module unload, failed drain/retry and partial backend passed\n";
+			result = 0;
+		}
+		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
+		for (auto& probe : probes)
+		{
+			probe.m_bIsCallbackReleased = true;
+			probe.m_bIsCallbackReleased.notify_all();
+		}
+		if (SailorProtocolStopLocalHost(true) == 0) result = 1;
+		return result;
+	}
+
+	int RunMacHostLifetimeGpu(int argc, const char** argv)
+	{
+		int result = 1;
+		try
+		{
+			std::string initialize;
+			for (int i = 0; i < argc; ++i) Tests::ProtocolWire::AppendBytesField(initialize, 1u, argv[i]);
+			for (const auto argument : { "--editor", "--port", "0", "--world", "", "--new-world" })
+				Tests::ProtocolWire::AppendBytesField(initialize, 1u, argument);
+			const auto request = Tests::ProtocolWire::MakeRequest(1u, 10u, initialize);
+			Require(ix::initNetSystem(), "host lifetime fixture must initialize local networking");
+			const int port = ix::getFreePort();
+			Require(ix::uninitNetSystem() && port > 0 && port <= 65535, "host lifetime fixture must reserve a local port");
+			constexpr std::string_view token = "0123456789abcdef0123456789abcdef";
+			Require(SailorProtocolStartLocalHost(reinterpret_cast<const uint8_t*>(request.data()),
+				static_cast<uint32_t>(request.size()), static_cast<uint16_t>(port), token.data(), static_cast<uint32_t>(token.size())) ==
+				static_cast<int32_t>(Protocol::EEditorEngineWebSocketHostStatus::Ok), "host lifetime fixture must start the real native protocol host");
+			Require(App::IsRendererInitialized() && App::HasEditor(), "host lifetime requires an initialized editor runtime");
+			Tests::CheckMacAppHostLifetime();
+			Tests::CheckMacAppViewportUpdates();
+			Tests::CheckMacHostShutdown([]() { return SailorProtocolStopLocalHost(true) != 0; });
+			std::cout << "Native host lifetime test passed\n";
+			result = 0;
+		}
+		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
+		if (SailorProtocolStopLocalHost(true) == 0) result = 1;
+		return result;
+	}
+#endif
+
 	int RunEditorProtocolHost(const std::filesystem::path& directory)
 	{
 		int result = 1;
@@ -3305,7 +3969,12 @@ frame: []
 			const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(90);
 			while (!std::filesystem::exists(directory / "stop") && std::chrono::steady_clock::now() < deadline)
 			{
-				App::GetMainWindow()->ProcessSystemMessages();
+				// The UI loop outlives App when EngineService sends Shutdown over the socket.
+#if defined(__APPLE__)
+				Win32::Window::ProcessMacMsgs();
+#elif defined(_WIN32)
+				Win32::Window::ProcessWin32Msgs();
+#endif
 				std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			}
 			Require(std::filesystem::exists(directory / "stop"), "the managed integration fixture did not stop its host");
@@ -3359,7 +4028,7 @@ frame: []
 				scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 				scheduler->ProcessTasksOnMainThread();
 			};
-		EditorReadbackFramePtr previousGeneration;
+		ReadbackFramePtr previousGeneration;
 		for (size_t scenario = 0; scenario < 11; ++scenario)
 		{
 			const size_t firstTarget = scenario < 4 ? scenario : 0;
@@ -3384,13 +4053,13 @@ frame: []
 			TRefPtr<Framegraph::EditorReadbackNode> node;
 			for (auto& candidate : graph->GetGraph())
 				if (auto capture = candidate.DynamicCast<Framegraph::EditorReadbackNode>()) { node = capture; ++producers; }
-			Require(producers == (multiple ? 2u : 1u) && (multiple || !authored || node->GetTag() == "CaptureForInspector"),
+			Require(producers == (multiple ? 2u : 1u) && (multiple || !authored || node->GetTag() == "CaptureForInspector"_h),
 				"authored capture tags must be preserved without adding a duplicate producer");
 			Require(renderer->EnsureFrameGraph() && graph == renderer->GetFrameGraph()->GetRHI(),
 				"repeated EnsureFrameGraph must preserve the active producer and graph");
 			if (surface)
-				Require(graph->GetSurface("EditorOutput")->NeedsResolve() &&
-					graph->GetSurface("EditorOutput")->GetTarget()->GetMsaaSamples() == EMsaaSamples::Samples_4,
+				Require(graph->GetSurface("EditorOutput"_h)->NeedsResolve() &&
+					graph->GetSurface("EditorOutput"_h)->GetTarget()->GetMsaaSamples() == EMsaaSamples::Samples_4,
 					"surface coverage must exercise actual multisampling, not two single-sample aliases");
 			if (previousGeneration)
 			{
@@ -3408,8 +4077,8 @@ frame: []
 				for (int x = 0; x < extent.x; ++x)
 					Require(std::memcmp(source.GetCpuBytes() + y * source.m_bytesPerRow + x * 4, &color, sizeof(color)) == 0,
 						"capture must preserve actual pixels and source priority, including resolved surfaces");
-			const auto retained = source;
 			{
+				const auto retained = source;
 				auto device = VulkanApi::GetInstance()->GetMainDevice();
 				FenceDispatchOverride fences(*device);
 				SubmitOverride submits(device->GetGraphicsQueue(), VK_ERROR_OUT_OF_HOST_MEMORY);
@@ -3433,7 +4102,7 @@ frame: []
 					{
 						++nextColor;
 						const uint32_t expectedColor = 0xff000000u | (nextColor * 0x00010101u);
-						OnRender([&]() { graph->GetGraph()[0]->SetVec4("clearColor", glm::vec4(glm::vec3(nextColor / 255.0f), 1.0f)); });
+						OnRender([&]() { graph->GetGraph()[0]->SetVec4("clearColor"_h, glm::vec4(glm::vec3(nextColor / 255.0f), 1.0f)); });
 						EditorRemote::MacRendererFrameSource next;
 						for (uint32_t attempt = 0; attempt < 12; ++attempt)
 						{
@@ -3443,6 +4112,16 @@ frame: []
 						}
 						Require(next.m_readback && std::memcmp(next.GetCpuBytes(), &expectedColor, 4) == 0,
 							"new App-frame capture must contain the newly rendered color");
+						if (nextColor == 1)
+						{
+							// Let the producer advance while the consumer still holds its current frame.
+							for (uint32_t attempt = 0; attempt < 12 && renderer->GetEditorReadback() == next.m_readback; ++attempt)
+								pushFrame();
+							const auto unpresented = renderer->GetEditorReadback();
+							Require(unpresented && unpresented->m_frameIndex > next.m_readback->m_frameIndex &&
+								std::memcmp(unpresented->GetBgraPixels(), &expectedColor, 4) == 0,
+								"producer must be able to publish another completed capture before the consumer presents its current one");
+						}
 						OnRender([&]() { final = node->GetStats(); });
 						if (nextColor == 5) warm = final;
 						if (nextColor > 5)
@@ -3465,9 +4144,9 @@ frame: []
 					{
 						before = node->GetStats();
 						if (scenario == 0)
-							for (const char* name : { "EditorOutput", "Main", "BackBuffer", "Secondary" }) graph->SetRenderTarget(name, {});
-						else if (scenario == 5) node->SetRHIResource("src", graph->GetSurface("Main")->GetTarget());
-						else node->SetRHIResource_Unresolved("src", "LateOutput");
+							for (const auto name : { "EditorOutput"_h, "Main"_h, "BackBuffer"_h, "Secondary"_h }) graph->SetRenderTarget(name, {});
+						else if (scenario == 5) node->SetRHIResource("src"_h, graph->GetSurface("Main"_h)->GetTarget());
+						else node->SetRHIResource_Unresolved("src"_h, "LateOutput"_h);
 					});
 				// Existing pending captures may still finish; no new capture may be recorded.
 				for (uint32_t frame = 0; frame < 4; ++frame) pushFrame();
@@ -3479,7 +4158,7 @@ frame: []
 					"missing or unresolved sources and raw MSAA images must retain the last completed image without copying");
 				if (scenario == 6)
 				{
-					OnRender([&]() { graph->SetRenderTarget("LateOutput", graph->GetRenderTarget("Secondary")); });
+					OnRender([&]() { graph->SetRenderTarget("LateOutput"_h, graph->GetRenderTarget("Secondary"_h)); });
 					for (uint32_t frame = 0; frame < 12 && renderer->GetEditorReadback() == last; ++frame) pushFrame();
 					Require(EditorRuntime::TryAcquireEditorReadbackFrameSource(source) && source.m_readback != last,
 						"a per-frame source must become readable when its resource is installed");
@@ -3539,12 +4218,995 @@ frame: []
 	}
 #endif
 
+	void TestPreparedCursor()
+	{
+		auto* imGui = App::GetSubmodule<ImGuiApi>();
+		auto& io = ImGui::GetIO();
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		std::atomic<uint32_t> reads{ 0 };
+		std::atomic<bool> bValid{ true };
+		std::jthread nativeReader([&](std::stop_token stop)
+		{
+			while (!stop.stop_requested())
+			{
+				const auto cursor = ImGuiApi::GetRequestedMouseCursor();
+				if (cursor && (*cursor < ImGuiMouseCursor_None || *cursor >= ImGuiMouseCursor_COUNT)) bValid = false;
+				reads.fetch_add(1, std::memory_order_relaxed);
+				std::this_thread::yield();
+			}
+		});
+		const auto prepare = [&](ImGuiMouseCursor cursor)
+		{
+			imGui->NewFrame();
+			ImGui::SetMouseCursor(cursor);
+			auto command = driver->CreateCommandList(false, ECommandListQueue::Transfer);
+			commands->BeginCommandList(command, true);
+			const auto frame = imGui->PrepareFrame(command);
+			commands->EndCommandList(command);
+			Require(frame && driver->SubmitCommandList_Immediate(command), "cursor publication must accompany a real prepared frame");
+		};
+		for (int cursor = ImGuiMouseCursor_None; cursor < ImGuiMouseCursor_COUNT; ++cursor)
+		{
+			prepare(cursor);
+			Require(ImGuiApi::GetRequestedMouseCursor() == cursor, "every prepared cursor shape must survive the UI handoff");
+#if defined(_WIN32)
+			if (cursor == ImGuiMouseCursor_TextInput || cursor == ImGuiMouseCursor_Hand || cursor == ImGuiMouseCursor_None)
+			{
+				SetCursor(LoadCursor(nullptr, IDC_ARROW));
+				const auto window = App::GetMainWindow()->GetHWND();
+				Require(SendMessage(window, WM_SETCURSOR, reinterpret_cast<WPARAM>(window), MAKELPARAM(HTCLIENT, WM_MOUSEMOVE)) == TRUE,
+					"the native client cursor message must consume the prepared shape");
+				const auto expected = cursor == ImGuiMouseCursor_None ? nullptr
+					: LoadCursor(nullptr, cursor == ImGuiMouseCursor_Hand ? IDC_HAND : IDC_IBEAM);
+				Require(GetCursor() == expected, "WM_SETCURSOR must restore the requested shape instead of the class arrow");
+			}
+#endif
+		}
+		io.MouseDrawCursor = true;
+		prepare(ImGuiMouseCursor_Hand);
+		Require(ImGuiApi::GetRequestedMouseCursor() == ImGuiMouseCursor_None, "a software cursor must hide the native cursor");
+		io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+		prepare(ImGuiMouseCursor_TextInput);
+		Require(!ImGuiApi::GetRequestedMouseCursor(), "NoMouseCursorChange must relinquish the native cursor even in software mode");
+		io.MouseDrawCursor = false;
+		io.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
+		prepare(ImGuiMouseCursor_Arrow);
+		nativeReader.request_stop();
+		nativeReader.join();
+		Require(bValid && reads != 0, "the UI may read cursor snapshots while the frame owner prepares ImGui");
+		std::cout << "Input cursor: prepared shapes, software hiding, native override and concurrent UI reads passed\n";
+	}
+
+	void TestImGuiModifierSides(ImGuiApi& imGui)
+	{
+		using Win32::GlobalInput;
+		using Type = Platform::InputEvent::Type;
+		auto& io = ImGui::GetIO();
+		const bool bOriginalMacBehaviors = io.ConfigMacOSXBehaviors;
+		struct Modifier { uint32_t key[2]; ImGuiKey physical[2]; ImGuiKey aggregate; };
+		for (bool bMacBehaviors : { false, true })
+		{
+			io.ConfigMacOSXBehaviors = bMacBehaviors;
+			Modifier modifiers[] = {
+				{ { VK_LSHIFT, VK_RSHIFT }, { ImGuiKey_LeftShift, ImGuiKey_RightShift }, ImGuiKey_ModShift },
+				{ { VK_LCONTROL, VK_RCONTROL }, { ImGuiKey_LeftCtrl, ImGuiKey_RightCtrl }, ImGuiKey_ModCtrl },
+				{ { VK_LMENU, VK_RMENU }, { ImGuiKey_LeftAlt, ImGuiKey_RightAlt }, ImGuiKey_ModAlt },
+				{ { VK_LWIN, VK_RWIN }, { ImGuiKey_LeftSuper, ImGuiKey_RightSuper }, ImGuiKey_ModSuper }
+			};
+			if (bMacBehaviors)
+			{
+				// ImGui remaps Ctrl and Super for Mac shortcuts, including their physical keys.
+				std::swap(modifiers[1].physical, modifiers[3].physical);
+				std::swap(modifiers[1].aggregate, modifiers[3].aggregate);
+			}
+			for (const auto& modifier : modifiers)
+			{
+				for (uint32_t first : { 0u, 1u })
+				{
+					const uint32_t second = 1u - first;
+					GlobalInput::ApplyEvent({ Type::Reset });
+					GlobalInput::ApplyEvent({ Type::Focus, 0.0f, 0.0f, 0, -1, true });
+					GlobalInput::ApplyEvent({ Type::Key, 0.0f, 0.0f, modifier.key[first], -1, true });
+					imGui.NewFrame();
+					Require(ImGui::IsKeyDown(modifier.physical[first]) && !ImGui::IsKeyDown(modifier.physical[second]) &&
+						ImGui::IsKeyDown(modifier.aggregate), "ImGui must receive both the physical key and its aggregate modifier");
+					ImGui::EndFrame();
+					GlobalInput::ApplyEvent({ Type::Key, 0.0f, 0.0f, modifier.key[second], -1, true });
+					GlobalInput::ApplyEvent({ Type::Key, 0.0f, 0.0f, modifier.key[first], -1, false });
+					imGui.NewFrame();
+					Require(!ImGui::IsKeyDown(modifier.physical[first]) && ImGui::IsKeyDown(modifier.physical[second]) &&
+						ImGui::IsKeyDown(modifier.aggregate), "ImGui must preserve a held modifier when its sibling is released");
+					ImGui::EndFrame();
+					GlobalInput::ApplyEvent({ Type::Key, 0.0f, 0.0f, modifier.key[second], -1, false });
+					imGui.NewFrame();
+					Require(!ImGui::IsKeyDown(modifier.physical[0]) && !ImGui::IsKeyDown(modifier.physical[1]) &&
+						!ImGui::IsKeyDown(modifier.aggregate), "ImGui must release the aggregate with its last physical key");
+					ImGui::EndFrame();
+				}
+			}
+			std::cout << "Input modifiers: both sides and release orders passed (Mac shortcuts=" << bMacBehaviors << ")\n";
+		}
+		io.ConfigMacOSXBehaviors = bOriginalMacBehaviors;
+		GlobalInput::ApplyEvent({ Type::Reset });
+	}
+
+	void TestInputOwner()
+	{
+		using Win32::GlobalInput;
+		using Type = Platform::InputEvent::Type;
+		using EditorRemote::InputKind;
+		using EditorRemote::InputModifier;
+		ImGui::SetCurrentContext(ImGuiApi::GetCurrentContext());
+		auto* imGui = App::GetSubmodule<ImGuiApi>();
+		auto& io = ImGui::GetIO();
+		io.ConfigInputTrickleEventQueue = false;
+		GlobalInput::ProcessPendingEvents(false);
+		GlobalInput::Reset();
+		GlobalInput::ApplyEvent({ Type::Reset });
+		const auto previous = GlobalInput::GetInputState();
+		std::jthread producer([]
+		{
+			GlobalInput::QueueNativeEvent({ Type::Focus, 0.0f, 0.0f, 0, -1, true });
+			GlobalInput::QueueNativeEvent({ Type::MouseButton, -12.0f, 33.0f, 0, 0, true });
+			GlobalInput::QueueNativeEvent({ Type::Key, 0.0f, 0.0f, 'W', -1, true });
+			GlobalInput::QueueNativeEvent({ Type::MouseWheel, 0.5f, 3.0f });
+			std::string text = "\xC3\xA9\xE8\x88\xB9";
+			GlobalInput::QueueNativeEvent({ Type::Text, 0.0f, 0.0f, 0, -1, false, text });
+			text.assign(4096, 'x');
+			GlobalInput::QueueNativeEvent({ Type::CharacterUtf16, 0.0f, 0.0f, 0x0416 });
+		});
+		producer.join();
+		Require(!GlobalInput::GetInputState().IsKeyDown('W'), "the native producer must not mutate gameplay or ImGui before Main");
+		GlobalInput::ProcessPendingEvents(true);
+		auto current = GlobalInput::GetInputState();
+		current.TrackForChanges(previous);
+		imGui->NewFrame();
+		Require(current.IsKeyPressed('W') && current.IsButtonClick(VK_LBUTTON) && ImGui::IsKeyDown(ImGuiKey_W) && io.MouseDown[0],
+			"one Main-side delivery must update both gameplay and the live engine ImGui context");
+		Require(current.GetButtonPressCursorPos(VK_LBUTTON) == glm::ivec2(-12, 33) && io.MousePos.x == -12 && io.MousePos.y == 33,
+			"a button event must carry its position without relying on an earlier move");
+		Require(current.GetMouseWheelDelta() == 3.0f && io.MouseWheel == 3.0f && io.MouseWheelH == 0.5f,
+			"the same normalized wheel event must reach gameplay and ImGui");
+		Require(io.InputQueueCharacters.Size == 3 && io.InputQueueCharacters[0] == 0xE9 &&
+			io.InputQueueCharacters[1] == 0x8239 && io.InputQueueCharacters[2] == 0x0416,
+			"queued UTF-8 must outlive the producer buffer and agree with decoded native UTF-16 input");
+		ImGui::EndFrame();
+
+		GlobalInput::QueueNativeEvent({ Type::Focus });
+		GlobalInput::ProcessPendingEvents(true);
+		imGui->NewFrame();
+		Require(!GlobalInput::GetInputState().IsKeyDown('W') && !GlobalInput::GetInputState().IsButtonDown(VK_LBUTTON) &&
+			!ImGui::IsKeyDown(ImGuiKey_W) && !io.MouseDown[0], "focus loss must release both consumers in the same frame");
+		ImGui::EndFrame();
+
+		GlobalInput::ApplyEvent({ Type::Focus, 0.0f, 0.0f, 0, -1, true });
+		GlobalInput::ApplyEvent({ Type::Key, 0.0f, 0.0f, 0x0D, -1, true, {}, true });
+		GlobalInput::ApplyEvent({ Type::Key, 0.0f, 0.0f, VK_MENU, -1, true });
+		imGui->NewFrame();
+		Require(GlobalInput::GetInputState().IsKeyDown(0x0D) && ImGui::IsKeyDown(ImGuiKey_KeypadEnter) &&
+			!ImGui::IsKeyDown(ImGuiKey_Enter) && io.KeyAlt, "native keypad Enter and modifier mappings must survive normalization");
+		ImGui::EndFrame();
+		GlobalInput::ApplyEvent({ Type::Reset });
+
+		TestImGuiModifierSides(*imGui);
+
+		App::SetEditorRenderTargetSize(64, 48);
+		EditorRuntime::ApplyPendingEditorViewportOnEngineThread();
+		Require(App::UpsertEditorRemoteViewport(1, 0, 0, 64, 48, true, true), "remote input fixture must register its applied viewport");
+		EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread();
+		GlobalInput::ApplyEvent({ Type::Focus, 0.0f, 0.0f, 0, -1, true });
+		const auto beforeRemote = GlobalInput::GetInputState();
+		bool bWasAccepted = false;
+		std::jthread protocol([&]
+		{
+			bWasAccepted = App::SendEditorRemoteViewportInput(1, static_cast<uint32_t>(InputKind::Key),
+				0, 0, 0, 0, 'A', 0, 0, true, true, false) &&
+				App::SendEditorRemoteViewportInput(1, static_cast<uint32_t>(InputKind::PointerButton),
+				27, 19, 0, 0, 0, 0, static_cast<uint32_t>(InputModifier::MouseLeft), true, true, true) &&
+				App::SendEditorRemoteViewportInput(1, static_cast<uint32_t>(InputKind::PointerWheel),
+				27, 19, 0,
+#if defined(_WIN32)
+				240,
+#else
+				2,
+#endif
+				0, 0, static_cast<uint32_t>(InputModifier::MouseLeft), false, true, true);
+		});
+		protocol.join();
+		Require(bWasAccepted && !GlobalInput::GetInputState().IsKeyDown('A'), "remote protocol delivery must also wait for Main");
+		GlobalInput::QueueNativeEvent({ Type::Focus });
+		GlobalInput::ProcessPendingEvents(false);
+		EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread();
+		current = GlobalInput::GetInputState();
+		current.TrackForChanges(beforeRemote);
+		imGui->NewFrame();
+		Require(current.IsKeyDown('A') && ImGui::IsKeyDown(ImGuiKey_A) && current.IsButtonDown(VK_LBUTTON) && io.MouseDown[0] &&
+			io.MousePos.x == 27 && io.MousePos.y == 19 && current.GetButtonPressCursorPos(VK_LBUTTON) == glm::ivec2(27, 19),
+			"remote click coordinates and keys must survive hidden-native-window callbacks");
+		Require(current.GetMouseWheelDelta() == 2.0f && io.MouseWheel == 2.0f,
+			"remote wheel units must agree in the world and ImGui frame on both platforms");
+		ImGui::EndFrame();
+		Require(App::SendEditorRemoteViewportInput(1, static_cast<uint32_t>(InputKind::Focus),
+			0, 0, 0, 0, 0, 0, 0, false, false, false), "remote focus loss must be accepted by the live session");
+		EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread();
+		imGui->NewFrame();
+		Require(!GlobalInput::GetInputState().IsKeyDown('A') && !ImGui::IsKeyDown(ImGuiKey_A) && !io.MouseDown[0],
+			"remote focus loss must use the same release contract as native input");
+		ImGui::EndFrame();
+		Require(App::DestroyEditorRemoteViewport(1), "input fixture must release its viewport");
+		EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread();
+		TestPreparedCursor();
+		std::cout << "Input owner: real ImGui, owned Unicode, native/remote parity, hidden source and focus delivery passed\n";
+	}
+
+	void TestRemoteInputSessions()
+	{
+		using Win32::GlobalInput;
+		using EditorRemote::InputKind;
+		using EditorRemote::InputModifier;
+		constexpr uint64_t A = 41, B = 42;
+		auto* imGui = App::GetSubmodule<ImGuiApi>();
+		auto& io = ImGui::GetIO();
+		io.ConfigInputTrickleEventQueue = false;
+		const auto upsert = [](uint64_t id, uint32_t width = 64, bool bFocused = false)
+		{
+			App::SetEditorRenderTargetSize(width, 48);
+			EditorRuntime::ApplyPendingEditorViewportOnEngineThread();
+			Require(App::UpsertEditorRemoteViewport(id, 0, 0, width, 48, true, bFocused), "input fixture must register the applied viewport");
+		};
+		const auto send = [](uint64_t id, InputKind kind, uint32_t key = 0, bool bPressed = false,
+			bool bFocused = false, bool bCaptured = false, InputModifier modifiers = InputModifier::None,
+			float x = 27, float y = 19)
+		{
+			Require(App::SendEditorRemoteViewportInput(id, static_cast<uint32_t>(kind), x, y, 0, 0,
+				key, 0, static_cast<uint32_t>(modifiers), bPressed, bFocused, bCaptured), "live session must accept input");
+		};
+		const auto held = [](uint32_t key, ImGuiKey guiKey)
+		{
+			return GlobalInput::GetInputState().IsKeyDown(key) && ImGui::IsKeyDown(guiKey);
+		};
+		const auto checkFrame = [&](auto condition, std::string_view message)
+		{
+			EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread();
+			imGui->NewFrame();
+			const bool bPassed = condition();
+			ImGui::EndFrame();
+			Require(bPassed, message);
+		};
+		uint32_t failures = 0;
+		const auto run = [&](std::string_view name, auto test)
+		{
+			upsert(A, 64, true);
+			upsert(B);
+			send(A, InputKind::Focus, 0, false, true);
+			send(A, InputKind::Key, 'W', true);
+			send(A, InputKind::PointerButton, 0, true, true, true, InputModifier::MouseLeft);
+			checkFrame([&] { return held('W', ImGuiKey_W) && io.MouseDown[0]; }, "fixture must hold W and a mouse button in A");
+			try
+			{
+				test();
+				std::cout << "[PASS] Remote input: " << name << '\n';
+			}
+			catch (const std::exception& error)
+			{
+				++failures;
+				std::cerr << "[FAIL] Remote input: " << name << ": " << error.what() << '\n';
+			}
+			App::DestroyEditorRemoteViewport(A);
+			App::DestroyEditorRemoteViewport(B);
+			EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread();
+			GlobalInput::ApplyEvent({ Platform::InputEvent::Type::Reset });
+		};
+		run("inactive destroy", [&]
+		{
+			Require(App::DestroyEditorRemoteViewport(B), "inactive B must be destroyed");
+			checkFrame([&] { return held('W', ImGuiKey_W) && io.MouseDown[0]; }, "destroying B must not release A");
+		});
+		run("stale packet after accepted input", [&]
+		{
+			send(A, InputKind::Key, 'D', true);
+			send(B, InputKind::Key, 'X', true);
+			Require(App::DestroyEditorRemoteViewport(B), "B must invalidate its queued packet");
+			checkFrame([&] { return held('W', ImGuiKey_W) && held('D', ImGuiKey_D) &&
+				!GlobalInput::GetInputState().IsKeyDown('X') && !ImGui::IsKeyDown(ImGuiKey_X); },
+				"a stale packet must be discarded without clearing accepted input");
+		});
+		run("unrelated focus and capture loss", [&]
+		{
+			send(B, InputKind::Focus);
+			send(B, InputKind::Capture);
+			checkFrame([&] { return held('W', ImGuiKey_W) && io.MouseDown[0]; }, "B's release events must not reset A");
+		});
+		run("focus transfer and late release", [&]
+		{
+			send(B, InputKind::Focus, 0, false, true);
+			send(B, InputKind::Key, 'D', true);
+			send(A, InputKind::Focus);
+			send(A, InputKind::Capture);
+			checkFrame([&] { return held('D', ImGuiKey_D) && !GlobalInput::GetInputState().IsKeyDown('W') &&
+				!ImGui::IsKeyDown(ImGuiKey_W) && !io.MouseDown[0]; }, "focus transfer must release A without letting its late events reset B");
+		});
+		run("unfocused hover", [&]
+		{
+			send(B, InputKind::PointerMove, 0, false, false, false, InputModifier::None, 91, 73);
+			checkFrame([&] { return held('W', ImGuiKey_W) && io.MouseDown[0] &&
+				GlobalInput::GetInputState().GetCursorPos() == glm::ivec2(27, 19) && io.MousePos.x == 27 && io.MousePos.y == 19; },
+				"hovering an unfocused viewport must not take over active input");
+		});
+		run("inactive resize", [&]
+		{
+			upsert(B, 80);
+			checkFrame([&] { return held('W', ImGuiKey_W) && io.MouseDown[0]; }, "resizing B must not reset A");
+		});
+		run("current resize and new generation", [&]
+		{
+			send(A, InputKind::Key, 'X', true);
+			upsert(A, 80, true);
+			send(A, InputKind::Key, 'D', true);
+			checkFrame([&] { return held('D', ImGuiKey_D) && !GlobalInput::GetInputState().IsKeyDown('W') &&
+				!GlobalInput::GetInputState().IsKeyDown('X') && !ImGui::IsKeyDown(ImGuiKey_W) && !ImGui::IsKeyDown(ImGuiKey_X); },
+				"resize must discard old-generation input and preserve the new keydown");
+		});
+		run("same-ID replacement", [&]
+		{
+			send(A, InputKind::Key, 'X', true);
+			Require(App::DestroyEditorRemoteViewport(A), "old A must be destroyed");
+			upsert(A, 64, true);
+			send(A, InputKind::Key, 'D', true);
+			checkFrame([&] { return held('D', ImGuiKey_D) && !GlobalInput::GetInputState().IsKeyDown('X') &&
+				!ImGui::IsKeyDown(ImGuiKey_X); }, "reusing a viewport ID must not admit the old session's packet");
+		});
+		run("ordered reset and renewed focus", [&]
+		{
+			send(A, InputKind::Key, 'D', true);
+			upsert(A, 64, false);
+			send(A, InputKind::Focus, 0, false, true);
+			send(A, InputKind::Key, 'E', true);
+			checkFrame([&] { return held('E', ImGuiKey_E) && !GlobalInput::GetInputState().IsKeyDown('D') &&
+				!ImGui::IsKeyDown(ImGuiKey_D); }, "a reset must run between earlier input and renewed focus, not before the whole batch");
+		});
+		run("owner destroy without new input", [&]
+		{
+			Require(App::DestroyEditorRemoteViewport(A), "active A must be destroyed");
+			checkFrame([&] { return !GlobalInput::GetInputState().IsKeyDown('W') && !ImGui::IsKeyDown(ImGuiKey_W) &&
+				!GlobalInput::GetInputState().IsButtonDown(VK_LBUTTON) && !io.MouseDown[0]; }, "owner invalidation must release input even without a new packet");
+		});
+		for (InputKind release : { InputKind::Focus, InputKind::Capture })
+			run(release == InputKind::Focus ? "owner focus loss" : "owner capture loss", [&]
+			{
+				send(A, release);
+				checkFrame([&] { return !GlobalInput::GetInputState().IsKeyDown('W') && !ImGui::IsKeyDown(ImGuiKey_W) &&
+					!GlobalInput::GetInputState().IsButtonDown(VK_LBUTTON) && !io.MouseDown[0]; }, "the actual owner's loss must release both consumers");
+			});
+		run("authoritative modifier state", [&]
+		{
+			send(A, InputKind::Key, VK_SHIFT, true);
+			checkFrame([&] { return held(VK_SHIFT, ImGuiKey_ModShift); }, "explicit modifier keydown must reach both consumers");
+			send(A, InputKind::PointerMove, 0, false, false, true, InputModifier::MouseLeft);
+			checkFrame([&] { return !GlobalInput::GetInputState().IsKeyDown(VK_SHIFT) && !io.KeyShift && held('W', ImGuiKey_W); },
+				"pointer modifiers must reconcile actual key state, not a second stale cache");
+		});
+		run("physical modifier synchronization", [&]
+		{
+			constexpr uint32_t keys[] = { VK_LSHIFT, VK_RSHIFT, VK_LCONTROL, VK_RCONTROL, VK_LMENU, VK_RMENU, VK_LWIN, VK_RWIN };
+			constexpr ImGuiKey guiKeys[] = { ImGuiKey_LeftShift, ImGuiKey_RightShift, ImGuiKey_LeftCtrl, ImGuiKey_RightCtrl,
+				ImGuiKey_LeftAlt, ImGuiKey_RightAlt, ImGuiKey_LeftSuper, ImGuiKey_RightSuper };
+			for (auto key : keys)
+			{
+				send(A, InputKind::Key, key, true);
+				checkFrame([&] { return GlobalInput::GetInputState().IsKeyDown(key); }, "physical modifier must reach gameplay");
+				send(A, InputKind::PointerMove, 0, false, false, true, InputModifier::MouseLeft);
+				checkFrame([&]
+				{
+					return std::none_of(std::begin(keys), std::end(keys), [&](auto code) { return GlobalInput::GetInputState().IsKeyDown(code); }) &&
+						std::none_of(std::begin(guiKeys), std::end(guiKeys), [](auto code) { return ImGui::IsKeyDown(code); }) &&
+						!io.KeyShift && !io.KeyCtrl && !io.KeyAlt && !io.KeySuper && held('W', ImGuiKey_W);
+				}, "an authoritative modifier release must clear physical and aggregate state together");
+			}
+		});
+		run("concurrent input during resize and replacement", [&]
+		{
+			std::atomic<uint32_t> accepted{ 0 };
+			std::atomic<uint32_t> credits{ 0 }, attempts{ 0 };
+			std::jthread producer([&](std::stop_token stop)
+			{
+				bool bPressed = false;
+				while (!stop.stop_requested())
+				{
+					if (credits == 0)
+					{
+						std::this_thread::yield();
+						continue;
+					}
+					--credits;
+					bPressed = !bPressed;
+					if (App::SendEditorRemoteViewportInput(A, static_cast<uint32_t>(InputKind::Key),
+						0, 0, 0, 0, 'X', 0, 0, bPressed, false, false)) ++accepted;
+					App::SendEditorRemoteViewportInput(B, static_cast<uint32_t>(InputKind::Key),
+						0, 0, 0, 0, 'Y', 0, 0, bPressed, false, false);
+					++attempts;
+					attempts.notify_one();
+				}
+			});
+			for (uint32_t iteration = 0; iteration < 16; ++iteration)
+			{
+				// Issue a bounded burst for each lifecycle transition.
+				const auto previousAttempts = attempts.load();
+				credits += 128;
+				attempts.wait(previousAttempts);
+				if ((iteration % 2) == 0) Require(App::DestroyEditorRemoteViewport(A), "concurrent source must release its old session");
+				upsert(A, (iteration % 2) == 0 ? 64 : 80, true);
+				send(A, InputKind::Focus, 0, false, true);
+				send(A, InputKind::Key, 'D', true);
+				checkFrame([&] { return held('D', ImGuiKey_D) && !GlobalInput::GetInputState().IsKeyDown('Y') &&
+					!ImGui::IsKeyDown(ImGuiKey_Y); }, "current input must survive concurrent producers and reject inactive session keys");
+			}
+			producer.request_stop();
+			producer.join();
+			Require(accepted != 0, "the concurrent producer must publish actual session input");
+			std::cout << "Remote input concurrent publications: " << accepted << '\n';
+			send(A, InputKind::Focus);
+			checkFrame([&] { return !GlobalInput::GetInputState().IsKeyDown('D') && !GlobalInput::GetInputState().IsKeyDown('X') &&
+				!ImGui::IsKeyDown(ImGuiKey_D) && !ImGui::IsKeyDown(ImGuiKey_X); }, "focus loss must release the final producer state");
+		});
+		Require(failures == 0, "remote input session ownership regressions failed");
+	}
+
+	class SubmissionHistoryMaterial final : public RHIMaterial
+	{
+	public:
+		SubmissionHistoryMaterial() : RHIMaterial(RenderState{}, {}, {}) {}
+		size_t GetHistorySize() const
+		{
+			m_versionLock.Lock();
+			const auto count = m_publishedVersions.Num();
+			m_versionLock.Unlock();
+			return count;
+		}
+	};
+
+	class SubmissionObservedResources final : public RHIFrameGraphSubmissionResource
+	{
+	public:
+		void ResetForSubmission() override { ++m_numResets; }
+		void InvalidateSubmission() override { ++m_numInvalidations; }
+		uint32_t m_numResets = 0, m_numInvalidations = 0;
+	};
+
+	thread_local VkFence refusedRendererAcquire = VK_NULL_HANDLE;
+	thread_local SubmissionHistoryMaterial* acquireMaterial = nullptr;
+	thread_local size_t acquireHistorySize = 0;
+	thread_local uint32_t refusedAcquires = 0;
+	VKAPI_ATTR VkResult VKAPI_CALL RefuseRendererAcquire(VkDevice device, uint32_t count, const VkFence* fences,
+		VkBool32 all, uint64_t timeout)
+	{
+		if (count == 1 && fences[0] == refusedRendererAcquire)
+		{
+			const auto actual = vkWaitForFences(device, count, fences, all, 5000000000ull);
+			if (actual != VK_SUCCESS) return actual;
+			acquireMaterial->SetBindings(RHIShaderBindingSetPtr::Make());
+			acquireHistorySize = acquireMaterial->GetHistorySize();
+			++refusedAcquires;
+			return VK_TIMEOUT;
+		}
+		return vkWaitForFences(device, count, fences, all, timeout);
+	}
+
+	class SubmissionLifecycleNode final : public Framegraph::RHINodeDefault
+	{
+	public:
+		Tasks::TaskPtr<> Prepare(RHIFrameGraphPtr, RHISceneViewSnapshot& snapshot) override
+		{
+			m_snapshot = &snapshot;
+			m_view = RendererSubmissionTestAccess::View(*App::GetSubmodule<Renderer>(),
+				App::GetSubmodule<EngineLoop>()->GetWorld().GetRawPtr(), snapshot);
+			Require(m_view.IsValid(), "the observer must find the actual submission view");
+			m_token = m_view->GetOrCreateSubmissionCompletionToken();
+			m_completion = snapshot.m_submissionContext->GetOrCreateFrameCompletion();
+			m_resources = snapshot.m_submissionContext->GetOrAddFrameGraphResources<SubmissionObservedResources>(
+				this, snapshot.m_cameraIndex, 0);
+			m_previousMotion = snapshot.m_previousMotionFrame;
+			m_generation = snapshot.m_submissionContext->GetResourceGeneration();
+			m_version = m_material->GetVersion();
+			m_material->SetBindings(RHIShaderBindingSetPtr::Make());
+			return Tasks::CreateTask("Prepare retained submission snapshot"_h, [this, &snapshot]()
+				{
+					m_bStarted.store(true);
+					m_bStarted.notify_one();
+					m_bReleased.wait(false);
+					m_bPrepared = snapshot.m_submissionContext &&
+						m_material->GetVersionForSubmission(snapshot.m_submissionContext->GetSubmissionId()) == m_version;
+				}, EThreadType::Worker);
+		}
+
+		void Process(RHIFrameGraphPtr, RHICommandListPtr transfer, RHICommandListPtr command, const RHISceneViewSnapshot& snapshot) override
+		{
+			++m_numProcessed;
+			m_transferCommand = transfer;
+			m_bCapturedVersionMatches = m_material->GetVersionForSubmission(
+				snapshot.m_submissionContext->GetSubmissionId()) == m_version;
+			if (m_readback)
+			{
+				m_recordedCommand = command;
+				command->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+				Renderer::GetDriverCommands()->UpdateBuffer(command, m_readback, &m_payload, sizeof(m_payload));
+				command->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
+			}
+		}
+
+		TRefPtr<SubmissionHistoryMaterial> m_material;
+		RHIMaterialVersionPtr m_version;
+		const RHISceneViewSnapshot* m_snapshot = nullptr;
+		RHIFencePtr m_completion;
+		RHISceneViewPtr m_view;
+		RHISubmissionCompletionTokenPtr m_token;
+		TRefPtr<SubmissionObservedResources> m_resources;
+		TSharedPtr<const RHIMotionHistoryFrame> m_previousMotion;
+		RHIBufferPtr m_readback;
+		RHICommandListPtr m_recordedCommand;
+		RHICommandListPtr m_transferCommand;
+		uint64_t m_generation = 0;
+		uint32_t m_payload = 0;
+		std::atomic<bool> m_bStarted{ false }, m_bReleased{ false };
+		bool m_bPrepared = false;
+		bool m_bCapturedVersionMatches = false;
+		uint32_t m_numProcessed = 0;
+	};
+
+	void TestRendererSubmissionOwnership()
+	{
+		auto* renderer = App::GetSubmodule<Renderer>();
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		auto* engine = App::GetSubmodule<EngineLoop>();
+		Require(renderer->EnsureFrameGraph(), "submission ownership requires the real graph");
+		auto graph = renderer->GetFrameGraph()->GetRHI();
+		const auto nodes = graph->GetGraph();
+		auto world = engine->GetWorld();
+		auto node = TRefPtr<SubmissionLifecycleNode>::Make();
+		node->SetTag("SubmissionLifecycle"_h);
+		node->m_material = TRefPtr<SubmissionHistoryMaterial>::Make();
+		node->m_material->SetBindings(RHIShaderBindingSetPtr::Make());
+		Tests::ScopeExit cleanup([&]()
+			{
+				node->m_bReleased.store(true);
+				node->m_bReleased.notify_one();
+				renderer->WaitIdle();
+				graph->GetGraph() = nodes;
+				renderer->RemoveSceneView(world.GetRawPtr());
+			});
+		graph->GetGraph().Clear();
+		graph->GetGraph().Add(node);
+		FrameState frame(world.GetRawPtr(), 16, {}, { 32, 24 });
+		engine->ProcessCpuFrame(frame);
+		frame.GetDrawImGuiTask()->Wait();
+		Require(renderer->PushFrame(frame), "real PushFrame must accept the observed submission");
+		node->m_bStarted.wait(false);
+		Require(!node->m_previousMotion, "a graph without MotionBlur must not prepare temporal scene data");
+		Require(node->m_numProcessed == 0 && node->m_material->GetHistorySize() == 2,
+			"pending preparation must retain the captured material version and delay recording");
+		auto borrowed = renderer->GetOrAddSceneView(world.GetRawPtr());
+		Require(borrowed->m_snapshots.IsEmpty() || &borrowed->m_snapshots[0] != node->m_snapshot,
+			"an active preparation snapshot must not return to the scene-view cache");
+		node->m_bReleased.store(true);
+		node->m_bReleased.notify_one();
+		scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+		scheduler->ProcessTasksOnMainThread();
+		Require(node->m_bPrepared && node->m_bCapturedVersionMatches && node->m_numProcessed == 1,
+			"preparation and recording must observe the same captured material exactly once");
+		Require(node->m_completion && node->m_completion->Wait(5000000000ull) == EFenceStatus::Finished,
+			"the observed submission must complete actual GPU work");
+		Require(node->m_material->GetHistorySize() == 1,
+			"material capture must close at execution end while the completed render task is still retained");
+		auto recycled = renderer->GetOrAddSceneView(world.GetRawPtr());
+		Require(!recycled->m_snapshots.IsEmpty() && &recycled->m_snapshots[0] == node->m_snapshot &&
+			!recycled->m_submissionContext,
+			"completion must clear and return the original view after its borrowers finish");
+		std::cout << "Renderer submission: held preparation, captured material revision, one record, native completion and scene-view return passed\n";
+	}
+
+	enum class RendererFailure { None, Upload, MainSubmit, Present, GraphRefresh, GraphUpload };
+	thread_local RendererFailure rendererFailure = RendererFailure::None;
+	thread_local SubmissionLifecycleNode* rendererNode = nullptr;
+	thread_local VkCommandBuffer refusedRendererUpload = VK_NULL_HANDLE;
+	thread_local VkFence rendererFlightFence = VK_NULL_HANDLE;
+	thread_local uint32_t rendererRefusals = 0, rendererPresents = 0, rendererFrameSubmits = 0;
+
+	VKAPI_ATTR VkResult VKAPI_CALL RendererSubmit(VkQueue queue, uint32_t count, const VkSubmitInfo* info, VkFence fence)
+	{
+		bool refuse = rendererFailure == RendererFailure::MainSubmit && fence == rendererFlightFence;
+		VkCommandBuffer upload = refusedRendererUpload;
+		if (rendererFailure == RendererFailure::GraphUpload && rendererNode->m_transferCommand)
+			upload = *rendererNode->m_transferCommand->m_vulkan.m_commandBuffer;
+		else if (rendererFailure == RendererFailure::GraphUpload) upload = VK_NULL_HANDLE;
+		if (rendererFailure == RendererFailure::Upload || rendererFailure == RendererFailure::GraphUpload)
+		{
+			for (uint32_t i = 0; i < count; ++i)
+			for (uint32_t j = 0; j < info[i].commandBufferCount; ++j)
+				refuse |= info[i].pCommandBuffers[j] == upload;
+		}
+		if (refuse)
+		{
+			++rendererRefusals;
+			return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+		}
+		const auto result = vkQueueSubmit(queue, count, info, fence);
+		if (fence == rendererFlightFence && result == VK_SUCCESS) ++rendererFrameSubmits;
+		return result;
+	}
+
+	VKAPI_ATTR VkResult VKAPI_CALL RendererPresent(VkQueue queue, const VkPresentInfoKHR* info)
+	{
+		// Consume the real presentation wait before reporting a recoverable failure.
+		const auto result = vkQueuePresentKHR(queue, info);
+		++rendererPresents;
+		return rendererFailure == RendererFailure::Present &&
+			(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR) ? VK_ERROR_OUT_OF_DATE_KHR : result;
+	}
+
+	class RendererQueueOverride
+	{
+	public:
+		RendererQueueOverride(VulkanDevice& device, RendererFailure failure, VkCommandBuffer upload, SubmissionLifecycleNode* node) :
+			m_graphics(device.GetGraphicsQueue()), m_upload(VulkanSubmissionTestAccess::UploadQueue(device, true)),
+			m_compute(VulkanSubmissionTestAccess::ComputeQueue(device)), m_present(VulkanSubmissionTestAccess::PresentQueue(device))
+		{
+			rendererFailure = failure;
+			rendererNode = node;
+			refusedRendererUpload = upload;
+			rendererFlightFence = *VulkanSubmissionTestAccess::FlightFence(device);
+			rendererRefusals = rendererPresents = rendererFrameSubmits = 0;
+			m_graphicsSubmit = VulkanSubmissionTestAccess::ExchangeSubmit(*m_graphics, RendererSubmit);
+			if (m_upload != m_graphics) m_uploadSubmit = VulkanSubmissionTestAccess::ExchangeSubmit(*m_upload, RendererSubmit);
+			if (m_compute != m_graphics && m_compute != m_upload)
+				m_computeSubmit = VulkanSubmissionTestAccess::ExchangeSubmit(*m_compute, RendererSubmit);
+			m_presentFrame = VulkanSubmissionTestAccess::ExchangePresent(*m_present, RendererPresent);
+		}
+		~RendererQueueOverride()
+		{
+			VulkanSubmissionTestAccess::ExchangeSubmit(*m_graphics, m_graphicsSubmit);
+			if (m_upload != m_graphics) VulkanSubmissionTestAccess::ExchangeSubmit(*m_upload, m_uploadSubmit);
+			if (m_compute != m_graphics && m_compute != m_upload)
+				VulkanSubmissionTestAccess::ExchangeSubmit(*m_compute, m_computeSubmit);
+			VulkanSubmissionTestAccess::ExchangePresent(*m_present, m_presentFrame);
+			rendererFailure = RendererFailure::None;
+			rendererNode = nullptr;
+			rendererFlightFence = VK_NULL_HANDLE;
+		}
+	private:
+		VulkanQueuePtr m_graphics, m_upload, m_compute, m_present;
+		PFN_vkQueueSubmit m_graphicsSubmit = nullptr, m_uploadSubmit = nullptr, m_computeSubmit = nullptr;
+		PFN_vkQueuePresentKHR m_presentFrame = nullptr;
+	};
+
+	void TestRendererSubmissionOutcomes()
+	{
+		auto* renderer = App::GetSubmodule<Renderer>();
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		auto* engine = App::GetSubmodule<EngineLoop>();
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto world = engine->GetWorld();
+		auto& window = App::GetMainWindow();
+		const auto originalExtent = window->GetRenderArea();
+		renderer->RefreshFrameGraph();
+		Require(renderer->EnsureFrameGraph(), "outcome tests require a fresh real graph");
+		auto graph = renderer->GetFrameGraph()->GetRHI();
+		auto originalNodes = graph->GetGraph();
+		TRefPtr<SubmissionLifecycleNode> node;
+		// Keep node identities stable while their flight-local resource keys exist.
+		TVector<TRefPtr<SubmissionLifecycleNode>> observers;
+		TUniquePtr<RendererQueueOverride> dispatch;
+		Tests::ScopeExit cleanup([&]()
+			{
+				if (node) { node->m_bReleased.store(true); node->m_bReleased.notify_one(); }
+				renderer->WaitIdle();
+				OnRender([&]() { dispatch.Clear(); });
+				graph->GetGraph() = originalNodes;
+				window->SetRenderArea(originalExtent);
+				renderer->RefreshFrameGraph();
+				renderer->EnsureFrameGraph();
+				renderer->RemoveSceneView(world.GetRawPtr());
+			});
+		FrameState previous(world.GetRawPtr(), 0, {}, { 32, 24 });
+		auto motionHistory = TRefPtr<Framegraph::MotionBlurNode>::Make();
+		motionHistory->SetRHIResource_Unresolved("color"_h, "UnusedMotionOutput"_h);
+		const auto run = [&](RendererFailure failure, bool history, bool present = true)
+		{
+			node = TRefPtr<SubmissionLifecycleNode>::Make();
+			observers.Add(node);
+			node->SetTag("SubmissionOutcome"_h);
+			node->m_material = TRefPtr<SubmissionHistoryMaterial>::Make();
+			node->m_material->SetBindings(RHIShaderBindingSetPtr::Make());
+			node->m_payload = 0x71a00000u + static_cast<uint32_t>(previous.GetTime());
+			node->m_readback = Renderer::GetDriver()->CreateBuffer(sizeof(uint32_t), EBufferUsageBit::BufferTransferDst_Bit,
+				EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
+			*static_cast<uint32_t*>(node->m_readback->GetPointer()) = 0;
+			graph->GetGraph().Clear();
+			graph->GetGraph().Add(motionHistory);
+			graph->GetGraph().Add(node);
+			FrameState frame(world.GetRawPtr(), previous.GetTime() + 16, {}, { 32, 24 }, &previous);
+			engine->ProcessCpuFrame(frame);
+			frame.GetDrawImGuiTask()->Wait();
+			Require(renderer->PushFrame(frame), "Renderer must acquire the observed outcome frame");
+			node->m_bStarted.wait(false);
+			Require(node->m_previousMotion.IsValid() == history && node->m_token->IsPending(),
+				"preparation must see the previous frame's motion result and a pending resource token");
+			OnRender([&]()
+				{
+					dispatch = TUniquePtr<RendererQueueOverride>::Make(*device, failure,
+						*frame.GetCommandBuffer(0)->m_vulkan.m_commandBuffer, node.GetRawPtr());
+				});
+			if (failure == RendererFailure::GraphRefresh) renderer->RefreshFrameGraph();
+			node->m_bReleased.store(true);
+			node->m_bReleased.notify_one();
+			scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+			scheduler->ProcessTasksOnMainThread();
+			uint32_t refused = 0, presented = 0, submitted = 0;
+			OnRender([&]()
+				{
+					refused = rendererRefusals;
+					presented = rendererPresents;
+					submitted = rendererFrameSubmits;
+					dispatch.Clear();
+				});
+			const bool uploadFailed = failure == RendererFailure::Upload;
+			const bool graphUploadFailed = failure == RendererFailure::GraphUpload;
+			const bool mainFailed = failure == RendererFailure::MainSubmit;
+			const bool invalidated = uploadFailed || graphUploadFailed || mainFailed || failure == RendererFailure::Present;
+			const bool recorded = !uploadFailed && failure != RendererFailure::GraphRefresh;
+			Require(refused == uint32_t(uploadFailed || graphUploadFailed || mainFailed) && submitted == uint32_t(!mainFailed) &&
+				presented == uint32_t(present && !mainFailed), "the native queue must take exactly the selected outcome");
+			Require(node->m_bPrepared && node->m_numProcessed == uint32_t(recorded) &&
+				node->m_resources->m_numInvalidations == uint32_t(invalidated),
+				"Renderer must record and invalidate each submission exactly once when required");
+			Require(!node->m_token->IsPending() && node->m_token->IsSuccessful() == (failure == RendererFailure::None),
+				"resource completion must distinguish upload, submit, present and skipped-graph outcomes");
+			Require(node->m_material->GetHistorySize() == 1 && !node->m_view->m_submissionContext,
+				"every outcome must close material capture and clear the returned view");
+			const auto expectedFence = uploadFailed || graphUploadFailed || mainFailed ? EFenceStatus::Failed : EFenceStatus::Finished;
+			Require(node->m_completion->Wait(5000000000ull) == expectedFence,
+				"frame completion must distinguish refused work from submitted but unpresented work");
+			if (mainFailed) Require(Renderer::GetDriver()->FixLostDevice(window.GetRawPtr()), "main-submit refusal must recover real synchronization");
+			OnRender([&]() { Require(device->WaitIdle() == VK_SUCCESS, "accepted native work must drain before readback"); });
+			Require(*static_cast<const uint32_t*>(node->m_readback->GetPointer()) ==
+				(recorded && !mainFailed && !graphUploadFailed ? node->m_payload : 0u), "readback must match work actually submitted by Renderer");
+			previous = std::move(frame);
+			std::cout << "Renderer outcome=" << static_cast<uint32_t>(failure) << " present=" << present <<
+				": exact dispatch, resource token, invalidation, material capture, motion input and GPU payload passed\n";
+			return node;
+		};
+
+		run(RendererFailure::None, false);
+		run(RendererFailure::Upload, true);
+		run(RendererFailure::None, false);
+		run(RendererFailure::GraphUpload, true);
+		run(RendererFailure::None, false);
+		run(RendererFailure::MainSubmit, true);
+		run(RendererFailure::None, false);
+		run(RendererFailure::Present, true);
+		// The outdated swapchain still allows an editor frame with no acquired image.
+		run(RendererFailure::None, false, false);
+		Require(Renderer::GetDriver()->FixLostDevice(window.GetRawPtr()), "present refusal must recover the actual swapchain");
+		auto retained = run(RendererFailure::None, true);
+		run(RendererFailure::GraphRefresh, true);
+		window->SetRenderArea({ 96, 64 });
+		Require(renderer->EnsureFrameGraph(), "resize and graph refresh must create a replacement graph");
+		auto oldGraph = graph;
+		oldGraph->GetGraph() = originalNodes;
+		graph = renderer->GetFrameGraph()->GetRHI();
+		originalNodes = graph->GetGraph();
+		motionHistory = TRefPtr<Framegraph::MotionBlurNode>::Make();
+		motionHistory->SetRHIResource_Unresolved("color"_h, "UnusedMotionOutput"_h);
+		Require(graph != oldGraph && graph->GetSceneRenderExtent() != oldGraph->GetSceneRenderExtent(),
+			"refresh must replace the graph and its render extent");
+		auto replacement = run(RendererFailure::None, false);
+		Require(replacement->m_generation > retained->m_generation && retained->m_recordedCommand &&
+			retained->m_completion->Wait(5000000000ull) == EFenceStatus::Finished &&
+			*static_cast<const uint32_t*>(retained->m_readback->GetPointer()) == retained->m_payload,
+			"new graph resources must not invalidate retained commands, completion or pixels from an older generation");
+		run(RendererFailure::None, true);
+
+		FrameState refusedFrame(world.GetRawPtr(), previous.GetTime() + 16, {}, { 32, 24 }, &previous);
+		engine->ProcessCpuFrame(refusedFrame);
+		refusedFrame.GetDrawImGuiTask()->Wait();
+		PFN_vkGetFenceStatus status = vkGetFenceStatus;
+		PFN_vkWaitForFences wait = RefuseRendererAcquire;
+		OnRender([&]()
+			{
+				refusedRendererAcquire = *VulkanSubmissionTestAccess::FlightFence(*device);
+				acquireMaterial = node->m_material.GetRawPtr();
+				acquireHistorySize = refusedAcquires = 0;
+				VulkanSubmissionTestAccess::ExchangeFenceDispatch(*device, status, wait);
+			});
+		bool accepted = false;
+		size_t heldVersions = 0;
+		uint32_t refusals = 0;
+		{
+			Tests::ScopeExit restoreWait([&]()
+				{
+					OnRender([&]()
+						{
+							heldVersions = acquireHistorySize;
+							refusals = refusedAcquires;
+							VulkanSubmissionTestAccess::ExchangeFenceDispatch(*device, status, wait);
+							refusedRendererAcquire = VK_NULL_HANDLE;
+							acquireMaterial = nullptr;
+						});
+				});
+			accepted = renderer->PushFrame(refusedFrame);
+		}
+		Require(!accepted && refusals == 1 && heldVersions == 2 && node->m_material->GetHistorySize() == 1,
+			"failed acquisition must close the captured material revision before returning");
+		auto returned = renderer->GetOrAddSceneView(world.GetRawPtr());
+		Require(returned == node->m_view && !returned->m_submissionContext,
+			"failed acquisition must return its cleared scene view without recording another frame");
+		std::cout << "Renderer acquisition refusal: held material revision, early capture close and cleared view return passed\n";
+	}
+
+	class SkyPublicationNode : public Framegraph::SkyNode
+	{
+	public:
+		void Process(RHIFrameGraphPtr, RHICommandListPtr, RHICommandListPtr, const RHISceneViewSnapshot&) override
+		{
+			parameters = GetSkyParams();
+			++frames;
+		}
+
+		SkyParameters parameters;
+		uint32_t frames = 0;
+	};
+
+	void TestSingleActiveWorld()
+	{
+		ImGui::SetCurrentContext(ImGuiApi::GetCurrentContext());
+		auto* engine = App::GetSubmodule<EngineLoop>();
+		auto* editor = App::GetSubmodule<Editor>();
+		auto& driver = Renderer::GetDriver();
+		auto* renderer = App::GetSubmodule<Renderer>();
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		Require(renderer->EnsureFrameGraph(), "world switching requires the renderer graph");
+		auto graph = renderer->GetFrameGraph()->GetRHI();
+		const auto originalNodes = graph->GetGraph();
+		auto observer = TRefPtr<SkyPublicationNode>::Make();
+		observer->SetTag("Sky"_h);
+		graph->GetGraph().Clear();
+		graph->GetGraph().Add(observer);
+		auto active = engine->GetWorld();
+		auto candidate = engine->CreateEmptyWorld("Dormant scene candidate", EngineLoop::EditorWorldMask);
+		auto activeSky = active->Instantiate("Active sky")->AddComponent<SkyComponent>();
+		auto candidateSky = candidate->Instantiate("Dormant sky")->AddComponent<SkyComponent>();
+		activeSky->SetCloudsDensity(0.25f);
+		candidateSky->SetCloudsDensity(0.75f);
+		const auto submit = [&](Sailor::FrameState& frame, SkyParameters expected)
+		{
+			const auto before = observer->frames;
+			Require(renderer->PushFrame(frame), "the renderer must accept the active world's frame");
+			scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+			scheduler->ProcessTasksOnMainThread();
+			OnRender([&]()
+			{
+				Require(observer->frames == before + 1 && observer->parameters == expected,
+					"PushFrame must publish its world's sky before processing that frame's graph");
+			});
+		};
+		const auto activeFrame = active->GetCurrentFrame();
+		const auto candidateFrame = candidate->GetCurrentFrame();
+		Require(engine->GetWorld() == active && engine->GetWorlds().Num() == 2,
+			"creating a candidate must retain the current active world");
+		Sailor::FrameState first(active.GetRawPtr(), 16, {}, { 32, 24 });
+		engine->ProcessCpuFrame(first);
+		first.GetDrawImGuiTask()->Wait();
+		Require(active->GetCurrentFrame() == activeFrame + 1 && candidate->GetCurrentFrame() == candidateFrame &&
+			!candidate->GetCommandList() && first.GetCommandBuffer(0) == active->GetCommandList(),
+			"one frame must tick only the active world and retain its update list, not a dormant candidate's list");
+		submit(first, activeSky->GetSkyParameters());
+		auto abandoned = engine->CreateEmptyWorld("Abandoned scene candidate", EngineLoop::EditorWorldMask);
+		Require(engine->ExitWorld(abandoned.GetRawPtr()), "a dormant candidate must be removable");
+		engine->ProcessPendingWorldExits();
+		Require(engine->GetWorld() == active && candidate->GetCurrentFrame() == candidateFrame,
+			"discarding a dormant candidate must not replace or tick the active world");
+		const auto retainedUpdates = first.GetCommandBuffer(0);
+		const auto retainedImGui = first.GetDrawImGuiTask();
+		editor->SetWorld(candidate.GetRawPtr());
+		Require(engine->ExitWorld(active.GetRawPtr()) && engine->GetWorld() == active,
+			"requesting an exit must defer retirement until the drain point");
+		engine->ProcessPendingWorldExits();
+		Require(engine->GetWorld() == candidate && active->GetGameObjects().IsEmpty() &&
+			candidate->GetCurrentFrame() == candidateFrame,
+			"retirement must clear the old world and promote the candidate without an extra tick");
+		App::SetRenderStatsMode(Settings::ERenderStatsMode::RenderStatsAndQueries);
+		Sailor::FrameState next(candidate.GetRawPtr(), 32, {}, { 32, 24 });
+		engine->ProcessCpuFrame(next);
+		next.GetDrawImGuiTask()->Wait();
+		Require(candidate->GetCurrentFrame() == candidateFrame + 1 && next.GetCommandBuffer(0) == candidate->GetCommandList() &&
+			next.GetCommandBuffer(0) != retainedUpdates && first.GetCommandBuffer(0) == retainedUpdates &&
+			first.GetDrawImGuiTask() == retainedImGui,
+			"the replacement frame must retain its own updates without changing the previous frame's commands or UI task");
+		submit(next, candidateSky->GetSkyParameters());
+		App::SetRenderStatsMode(Settings::ERenderStatsMode::None);
+		editor->SetWorld(nullptr);
+		Require(engine->ExitWorld(candidate.GetRawPtr()), "the last active world must be removable");
+		engine->ProcessPendingWorldExits();
+		Require(!engine->GetWorld() && engine->GetWorlds().IsEmpty(), "the empty loop must expose no active world");
+		Sailor::FrameState empty;
+		engine->ProcessCpuFrame(empty);
+		empty.GetDrawImGuiTask()->Wait();
+		Require(!empty.GetWorld() && !empty.GetCommandBuffer(0) && empty.GetCommandBuffer(1),
+			"a frame without a world may prepare UI but must not reuse another world's update commands");
+		Require(driver->SubmitCommandList_Immediate(empty.GetCommandBuffer(1)), "the empty frame's UI update must submit");
+		graph->GetGraph() = originalNodes;
+		std::cout << "Sky PushFrame: active-world parameters precede graph execution and follow deferred world promotion passed\n";
+		std::cout << "EngineLoop: one active world, dormant candidates, deferred promotion and retained frame commands passed\n";
+	}
+
+	void TestGpuTimingNames()
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		std::array<StringHash, 2> names{ "Independent model-test buffer upload"_h, {} };
+		{
+			std::string source = "prefix:Submitted GPU scope:suffix";
+			names[1] = StringHash::Runtime(std::string_view(source).substr(7, 19));
+			source.assign(1024, 'x');
+		}
+		const std::vector<uint32_t> data(32768, 0x7a4b921eu);
+		const size_t size = data.size() * sizeof(uint32_t);
+		auto source = driver->CreateBuffer_Immediate(data.data(), size, EBufferUsageBit::BufferTransferSrc_Bit);
+		std::array<RHIBufferPtr, 2> readbacks;
+		for (auto& readback : readbacks)
+		{
+			readback = driver->CreateBuffer(size, EBufferUsageBit::BufferTransferDst_Bit,
+				EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
+			Require(source && readback, "GPU timing fixture must allocate its copy buffers");
+		}
+		Require(driver->BeginGpuFrameTimeQuery(1) && driver->StartGpuTracking(),
+			"GPU timing fixture requires native timestamp queries");
+		auto command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+		commands->BeginCommandList(command, true);
+		const auto range = driver->BeginGpuFrameTimeRange(command);
+		Require(range != IGraphicsDriver::InvalidGpuFrameTimeRange, "the native frame range must begin");
+		auto& native = command->m_vulkan.m_commandBuffer;
+		native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+		for (size_t i = 0; i < names.size(); ++i)
+		{
+			const auto query = commands->BeginGpuTimestamp(command, names[i]);
+			Require(query != InvalidGpuTimestampQuery, "literal and dynamic timing identifiers must record native queries");
+			native->CopyBuffer(*source->m_vulkan.m_buffer->Get(), *readbacks[i]->m_vulkan.m_buffer->Get(), size);
+			commands->EndGpuTimestamp(command, query);
+		}
+		native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
+		driver->EndGpuFrameTimeRange(command, range);
+		commands->EndCommandList(command);
+		driver->FinishGpuTracking();
+		driver->EndGpuFrameTimeQuery();
+		Require(driver->SubmitCommandList_Immediate(command), "the measured copies must finish on the GPU");
+		driver->CommitGpuFrameTimeQuery();
+		Require(driver->BeginGpuFrameTimeQuery(1), "the next frame must poll the completed queries");
+		const auto result = driver->TakeGpuTimingResult();
+		driver->CancelGpuFrameTimeQuery();
+		Require(result && result->m_bValid && result->m_timings.Num() == names.size(),
+			"native readback must publish both timing scopes");
+		for (size_t i = 0; i < names.size(); ++i)
+		{
+			Require(result->m_timings[i].m_name == names[i] && result->m_timings[i].m_queue == ECommandListQueue::Graphics,
+				"native query results must retain their label identity and queue");
+			Require(std::equal(data.begin(), data.end(), static_cast<const uint32_t*>(readbacks[i]->GetPointer())),
+				"each measured native copy must preserve its buffer contents");
+		}
+		Require(result->m_timings[0].m_name.ToString() == "Independent model-test buffer upload" &&
+			result->m_timings[1].m_name.ToString() == "Submitted GPU scope",
+			"native results must retain readable literal and bounded dynamic names after source destruction");
+		std::cout << "Native GPU timing names: literal and bounded dynamic labels survived submission and readback\n";
+	}
+
 	int RunFenceGpu(int argc, const char** argv, std::string_view mode)
 	{
 		std::vector<const char*> arguments(argv, argv + argc);
 		const bool editorReadback = mode.starts_with("--gpu-editor-readback") || mode.starts_with("--gpu-metal-");
 		if (editorReadback) arguments.insert(arguments.end(), { "--editor", "--port", "0" });
-		if (mode == "--gpu-imgui-fonts") arguments.insert(arguments.end(), { "--editor", "--port", "0", "--world", "", "--new-world" });
+		if (mode == "--gpu-imgui-fonts" || mode == "--gpu-engine-loop" || mode == "--gpu-input-owner" ||
+			mode == "--gpu-editor-messages" || mode == "--gpu-editor-events" || mode == "--gpu-input-sessions")
+			arguments.insert(arguments.end(), { "--editor", "--port", "0", "--world", "", "--new-world" });
 		App::Initialize(arguments.data(), static_cast<int>(arguments.size()));
 		int result = 1;
 		try
@@ -3552,8 +5214,22 @@ frame: []
 			Require(App::IsRendererInitialized(), "fence test requires an initialized renderer");
 			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 			if (mode == "--gpu-submission-statistics") TestConcurrentSubmissionStatistics();
+			else if (mode == "--gpu-engine-loop")
+			{
+				TestRendererSubmissionOwnership();
+				TestRendererSubmissionOutcomes();
+				TestSingleActiveWorld();
+				Tests::RunAnimationShadowCommandTests();
+				Tests::RunWorldLifecycleCommandTests();
+			}
+			else if (mode == "--gpu-input-owner") TestInputOwner();
+			else if (mode == "--gpu-input-sessions") TestRemoteInputSessions();
+			else if (mode == "--gpu-editor-messages") Tests::RunEditorMessageViewTests();
+			else if (mode == "--gpu-editor-events") Tests::RunEditorViewportCommandTests();
 			else if (mode == "--gpu-imgui-fonts") TestImGuiFontInitialization();
+			else if (mode == "--gpu-meshes") TestMeshInitialization();
 			else if (mode == "--gpu-editor-readback") TestEditorReadback();
+			else if (mode == "--gpu-texture-capture") TestTextureCaptures();
 #if defined(__APPLE__)
 			else if (mode == "--gpu-metal-export") OnRender([]() { TestMetalTextureExport(); });
 			else if (mode == "--gpu-metal-retirement") OnRender([]() { TestMetalTextureRetirement(); });
@@ -3562,6 +5238,7 @@ frame: []
 			else OnRender([&]()
 				{
 					if (mode == "--gpu-extended-submit") TestExtendedSubmission(false);
+					else if (mode == "--gpu-timing-names") TestGpuTimingNames();
 					else if (mode == "--gpu-frame-completion") TestFrameCompletionReuse();
 					else if (mode == "--gpu-extended-submit-lost") TestExtendedSubmission(true);
 #if defined(_WIN32)
@@ -3599,6 +5276,11 @@ frame: []
 		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
 		App::Stop();
 		if (!App::Shutdown()) result = 1;
+		if (mode == "--gpu-input-owner" && ImGuiApi::GetRequestedMouseCursor())
+		{
+			std::cerr << "ImGui shutdown must release the native cursor override\n";
+			result = 1;
+		}
 		return result;
 	}
 
@@ -3664,13 +5346,51 @@ frame: []
 
 namespace Sailor::Tests
 {
-	void RequireWorkerImageInitializationRefusal(const std::function<void()>& load, VkResult error)
+	void RequireNoTransferSubmission(const std::function<void()>& record)
+	{
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+		WorkerUploadOverride observe(VK_SUCCESS, true);
+		record();
+		scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+		Require(workerSubmitCalls.load() == 0, "a transform-only update must not submit GPU transfers");
+	}
+
+	void RequireMainMeshUploadRefusal(const std::function<void()>& record, VkResult error, uint32_t precedingUploads)
 	{
 		App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
-		WorkerUploadRefusal refusal(error);
+		WorkerUploadOverride refusal(error, true, precedingUploads);
+		record();
+		Require(workerSubmitRefusals.load() == 1 && !workerSubmitWasOffCaller.load(),
+			"the terrain fixture must reject a real mesh transfer on the world caller after its accepted prefix");
+	}
+
+	void RequirePendingMeshUpload(const std::function<void()>& load, const std::function<void()>& checkPending)
+	{
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		FenceDispatchOverride dispatch(*device);
+		{
+			WorkerUploadOverride observe(VK_SUCCESS, true);
+			load();
+			scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+			Require(workerSubmitCalls.load() == 1 && workerSubmittedFence.load(),
+				"the model must submit its real transfer command without waiting for the GPU");
+			observedFences[0] = workerSubmittedFence.load();
+		}
+		fenceResults[0] = VK_NOT_READY;
+		Renderer::GetDriver()->TrackResources_ThreadSafe();
+		checkPending();
+	}
+
+	void RequireWorkerUploadRefusal(const std::function<void()>& load, VkResult error, bool transfer)
+	{
+		App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+		WorkerUploadOverride refusal(error, transfer);
 		load();
 		Require(workerSubmitRefusals.load() == 1 && workerSubmitWasOffCaller.load(),
-			"the texture task must reach exactly one native initialization refusal off the calling thread");
+			"the upload task must reach exactly one native initialization refusal off the calling thread");
 	}
 
 	void RequireTexturePixels(RHITexturePtr texture, const std::vector<uint32_t>& expected)
@@ -3735,7 +5455,8 @@ int main(int argc, const char** argv)
 	for (int i = 1; i < argc; ++i)
 	{
 		const std::string_view mode(argv[i]);
-		if (mode == "--gpu-cloud-noise") return Tests::RunCloudNoiseGpu(argc, argv);
+		if (mode == "--gpu-cloud-noise" || mode == "--gpu-cloud-noise-msaa2" || mode == "--gpu-sky-stars")
+			return Tests::RunSkyGpu(argc, argv, mode == "--gpu-sky-stars");
 		if (mode == "--gpu-msaa-cache") return RunAttachmentGpu(argc, argv, true);
 		if (mode == "--gpu-render-targets") return RunAttachmentGpu(argc, argv, false);
 		if (mode == "--gpu-editor-protocol-host" && i + 1 < argc) return RunEditorProtocolHost(argv[i + 1]);
@@ -3755,9 +5476,12 @@ int main(int argc, const char** argv)
 		}
 #endif
 		if (mode == "--gpu-bootstrap-submit") return RunBootstrapGpu(argc, argv, false, false);
+		if (mode == "--gpu-editor-simulation") return Tests::RunEditorSimulationTests(argc, argv);
+		if (mode == "--gpu-render-contracts" || mode == "--gpu-render-contracts-msaa2") return Tests::RunRenderContractsGpu(argc, argv);
 #if defined(__APPLE__)
 		if (mode == "--gpu-capabilities") return RunBootstrapGpu(argc, argv, false, false, true);
 		if (mode == "--gpu-app-bootstrap") return RunAppBootstrapGpu(argc, argv);
+		if (mode == "--gpu-landscape") return Tests::RunLandscapeGpu(argc, argv);
 		if (mode == "--gpu-pathtracer-khr")
 		{
 			auto& overrides = Tests::GetVulkanCapabilityOverrides();
@@ -3782,6 +5506,7 @@ int main(int argc, const char** argv)
 		}
 #endif
 		if (mode == "--gpu-initialization") return RunInitializationGpu(argc, argv);
+		if (mode == "--gpu-pathtracer-images" || mode == "--gpu-pathtracer-images-msaa2") return Tests::RunRenderContractsGpu(argc, argv, true);
 		if (mode == "--gpu-pathtracer" || mode == "--gpu-pathtracer-1x" || mode == "--gpu-gi-shutdown")
 			return Tests::RunPathTracerCommandTests(argc, argv);
 		if (mode == "--gpu-bootstrap-submit-lost") return RunBootstrapGpu(argc, argv, false, true);
@@ -3791,7 +5516,21 @@ int main(int argc, const char** argv)
 		if (mode == "--gpu-shutdown-idle") return RunShutdownGpu(argc, argv, true);
 		if (mode == "--gpu-host-shutdown-acquire") return RunShutdownGpu(argc, argv, false, true);
 		if (mode == "--gpu-host-shutdown-idle") return RunShutdownGpu(argc, argv, true, true);
+#if defined(__APPLE__)
+		if (mode == "--gpu-mac-host-lifetime") return RunMacHostLifetimeGpu(argc, argv);
+		if (mode == "--gpu-imgui-lifetime") return RunImGuiLifetimeGpu(argc, argv);
+		if (mode == "--gpu-imgui-workspace") return RunImGuiWorkspaceGpu(argc, argv);
+#else
+		if (mode == "--gpu-imgui-lifetime" || mode == "--gpu-imgui-workspace") return 77;
+#endif
 		if (mode == "--gpu-editor-readback" || mode == "--gpu-editor-readback-refused" || mode == "--gpu-editor-readback-lost" ||
+			mode == "--gpu-texture-capture" ||
+			mode == "--gpu-timing-names" ||
+			mode == "--gpu-engine-loop" ||
+			mode == "--gpu-input-owner" ||
+			mode == "--gpu-input-sessions" ||
+			mode == "--gpu-editor-messages" ||
+			mode == "--gpu-editor-events" ||
 			mode == "--gpu-submission-statistics" ||
 			mode == "--gpu-frame-completion" ||
 			mode == "--gpu-fence-poll-loss" || mode == "--gpu-fence-wait-loss" || mode == "--gpu-fence-completion" ||
@@ -3800,7 +5539,7 @@ int main(int argc, const char** argv)
 			mode == "--gpu-immediate-image-create" || mode == "--gpu-immediate-image-create-lost" ||
 			mode == "--gpu-immediate-images" ||
 			mode == "--gpu-textures" || mode == "--gpu-cubemaps" || mode == "--gpu-cubemap-pending" ||
-			mode == "--gpu-imgui-fonts" ||
+			mode == "--gpu-imgui-fonts" || mode == "--gpu-meshes" ||
 			mode == "--gpu-extended-submit" || mode == "--gpu-extended-submit-lost" ||
 			mode == "--gpu-immediate-buffer-create-lost" || mode == "--gpu-immediate-buffer-copy-lost")
 			return RunFenceGpu(argc, argv, mode);

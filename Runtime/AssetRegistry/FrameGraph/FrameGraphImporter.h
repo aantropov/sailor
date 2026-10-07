@@ -51,8 +51,6 @@ namespace Sailor
 		// Main-thread configuration lookup; does not instantiate GPU resources or resolve viewport sizes.
 		SAILOR_API bool GetEnvironmentMap(std::string& outPath, std::string& outDiagnostic);
 
-		SAILOR_API static void RegisterFrameGraphNode(const std::string& nodeName, std::function<FrameGraphNodePtr(void)> factoryMethod);
-
 	protected:
 
 		friend class FrameGraphImporterTestAccess;

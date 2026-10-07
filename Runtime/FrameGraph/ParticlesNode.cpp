@@ -19,10 +19,6 @@ using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 using namespace Sailor::Framegraph::Experimental;
 
-#ifndef _SAILOR_IMPORT_
-const char* ParticlesNode::m_name = "ExperimentalParticles";
-#endif
-
 bool ParticlesNode::InitializeBuffers(const TVector<PerInstanceData>& instances)
 {
 	auto& driver = Renderer::GetDriver();
@@ -32,8 +28,8 @@ bool ParticlesNode::InitializeBuffers(const TVector<PerInstanceData>& instances)
 	if (!framesBuffer) return false;
 
 	auto bindings = driver->CreateShaderBindings();
-	driver->AddBufferToShaderBindings(bindings, instanceBuffer, "data", 0);
-	driver->AddBufferToShaderBindings(bindings, framesBuffer, "particlesData", 1);
+	driver->AddBufferToShaderBindings(bindings, instanceBuffer, "data"_h, 0);
+	driver->AddBufferToShaderBindings(bindings, framesBuffer, "particlesData"_h, 1);
 
 	m_instances = std::move(instanceBuffer);
 	m_particlesFrames = std::move(framesBuffer);
@@ -54,7 +50,7 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 	auto modelImporter = App::GetSubmodule<ModelImporter>();
 
 	std::string m_particlesPath;
-	if (!m_particlesHeader.m_bIsLoaded && TryGetString("particlesData", m_particlesPath))
+	if (!m_particlesHeader.m_bIsLoaded && TryGetString("particlesData"_h, m_particlesPath))
 	{
 		std::string yamlParticlesData;
 		if (assetRegistry->ReadContentText(m_particlesPath, yamlParticlesData))
@@ -86,7 +82,7 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 		if (!m_shadowMap) return;
 
 		m_shadowMapBinding = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
-		Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_shadowMapBinding, "shadowMapSampler", m_shadowMap, 0);
+		Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_shadowMapBinding, "shadowMapSampler"_h, m_shadowMap, 0);
 	}
 
 	if (m_mesh == nullptr || m_material == nullptr || m_shadowMaterial == nullptr)
@@ -95,13 +91,13 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 		TVector<MaterialPtr> materials;
 
 		std::string particleModel;
-		if (!TryGetString("particleModel", particleModel))
+		if (!TryGetString("particleModel"_h, particleModel))
 		{
 			return;
 		}
 
 		std::string particleShadowMaterial;
-		if (!TryGetString("particleShadowMaterial", particleShadowMaterial))
+		if (!TryGetString("particleShadowMaterial"_h, particleShadowMaterial))
 		{
 			return;
 		}
@@ -155,9 +151,9 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 		TVector<PerInstanceData> instances;
 
 		RHIShaderBindingPtr shaderBinding;
-		if (m_material->GetBindings()->GetShaderBindings().ContainsKey("material"))
+		if (m_material->GetBindings()->GetShaderBindings().ContainsKey("material"_h))
 		{
-			shaderBinding = m_material->GetBindings()->GetShaderBindings()["material"];
+			shaderBinding = m_material->GetBindings()->GetShaderBindings()["material"_h];
 		}
 
 		instances.Reserve(m_particlesHeader.m_n * m_particlesHeader.m_traceFrames);
@@ -187,12 +183,20 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 		if (!InitializeBuffers(instances)) return;
 	}
 
-	RHI::RHISurfacePtr colorAttachment = GetRHIResource("color").DynamicCast<RHI::RHISurface>();
-	RHI::RHITexturePtr depthAttachment = GetRHIResource("depthStencil").DynamicCast<RHI::RHITexture>();
-	if (!depthAttachment)
+	const auto colorSurface = GetRHIResource("color"_h, frameGraph.GetRawPtr()).DynamicCast<RHISurface>();
+	const auto colorAttachment = GetTargetAttachment("color"_h, frameGraph.GetRawPtr());
+	const auto colorResolve = colorSurface && colorSurface->NeedsResolve() ? colorSurface->GetResolved() : RHITexturePtr{};
+	auto depthResource = GetRHIResource("depthStencil"_h, frameGraph.GetRawPtr());
+	if (!depthResource) depthResource = frameGraph->GetResource("DepthBuffer"_h);
+	const auto depthSurface = depthResource.DynamicCast<RHISurface>();
+	RHITexturePtr depthAttachment = depthSurface ? depthSurface->GetResolved() : depthResource.DynamicCast<RHITexture>();
+	RHITexturePtr depthResolve;
+	if (depthSurface && depthSurface->NeedsResolve() && (!colorSurface || colorSurface->NeedsResolve()))
 	{
-		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
+		depthResolve = depthAttachment;
+		depthAttachment = depthSurface->GetTarget();
 	}
+	if (!colorAttachment) return;
 
 	auto textureSamplers = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
 	TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData, m_material->GetBindings(), m_shadowMapBinding, textureSamplers });
@@ -260,22 +264,34 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 	}
 	//
 
+	commands->ImageMemoryBarrier(commandList, colorAttachment, EImageLayout::ColorAttachmentOptimal);
+	if (colorResolve) commands->ImageMemoryBarrier(commandList, colorResolve, EImageLayout::ColorAttachmentOptimal);
+	if (depthAttachment)
+	{
+		const auto depthLayout = IsDepthStencilFormat(depthAttachment->GetFormat()) ?
+			EImageLayout::DepthStencilAttachmentOptimal : EImageLayout::DepthAttachmentOptimal;
+		commands->ImageMemoryBarrier(commandList, depthAttachment, depthLayout);
+		if (depthResolve) commands->ImageMemoryBarrier(commandList, depthResolve, depthLayout);
+	}
 	if (!commands->BeginRenderPass(commandList,
-		TVector<RHI::RHISurfacePtr>{ colorAttachment },
+		TVector<RHITexturePtr>{ colorAttachment },
+		TVector<RHITexturePtr>{ colorResolve },
 		depthAttachment,
-		glm::vec4(0, 0, colorAttachment->GetTarget()->GetExtent().x, colorAttachment->GetTarget()->GetExtent().y),
+		depthResolve,
+		glm::vec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y),
 		glm::ivec2(0, 0),
 		false,
 		glm::vec4(0.0f),
 		0.0f,
+		!colorSurface || colorSurface->NeedsResolve(),
 		true))
 	{
 		commands->EndDebugRegion(commandList);
 		return;
 	}
 
-	const auto viewport = glm::ivec4(0, colorAttachment->GetTarget()->GetExtent().y, colorAttachment->GetTarget()->GetExtent().x, -colorAttachment->GetTarget()->GetExtent().y);
-	const auto scissors = glm::uvec4(0, 0, colorAttachment->GetTarget()->GetExtent().x, colorAttachment->GetTarget()->GetExtent().y);
+	const auto viewport = glm::ivec4(0, colorAttachment->GetExtent().y, colorAttachment->GetExtent().x, -colorAttachment->GetExtent().y);
+	const auto scissors = glm::uvec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y);
 
 	commands->BindMaterial(commandList, m_material);
 	commands->SetViewport(commandList, (float)viewport.x, (float)viewport.y,

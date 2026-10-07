@@ -5,38 +5,24 @@ using namespace Sailor;
 #include <wtypes.h>
 #include <shellapi.h>
 #include <windows.h>
-#include <vector>
 #include <string>
-
-static const char** ConvertToAnsi(LPWSTR* szArglist, int nArgs)
-{
-	std::vector<std::string> ansiArgs;
-	ansiArgs.reserve(nArgs);
-
-	for (int i = 0; i < nArgs; ++i)
-	{
-		const int len = WideCharToMultiByte(CP_ACP, 0, szArglist[i], -1, NULL, 0, NULL, NULL);
-		std::string str(len, '\0');
-		WideCharToMultiByte(CP_ACP, 0, szArglist[i], -1, &str[0], len, NULL, NULL);
-		ansiArgs.push_back(str);
-	}
-
-	const char** result = new const char* [nArgs];
-	for (int i = 0; i < nArgs; ++i)
-	{
-		result[i] = _strdup(ansiArgs[i].c_str());
-	}
-
-	return result;
-}
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int32_t)
 {
 	int32_t nArgs = 0;
-	LPWSTR* szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
-	const char** ansiArgs = ConvertToAnsi(szArglist, nArgs);
+	LPWSTR* wideArguments = CommandLineToArgvW(GetCommandLineW(), &nArgs);
+	if (!wideArguments) return 1;
 
-	const auto initialization = App::Initialize(ansiArgs, nArgs);
+	TVector<std::string> argumentStorage;
+	argumentStorage.Reserve(static_cast<size_t>(nArgs));
+	for (int32_t i = 0; i < nArgs; ++i) argumentStorage.Add(Utils::wchar_to_UTF8(wideArguments[i]));
+	LocalFree(wideArguments);
+
+	TVector<const char*> arguments;
+	arguments.Reserve(static_cast<size_t>(nArgs));
+	for (const auto& argument : argumentStorage) arguments.Add(argument.c_str());
+
+	const auto initialization = App::Initialize(arguments.GetData(), nArgs);
 	if (initialization == EAppInitializationResult::Ready)
 	{
 		App::Start();
@@ -44,18 +30,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int32_t)
 	const int32_t exitCode = initialization == EAppInitializationResult::Failed ? 1 : App::GetExitCode();
 	App::Stop();
 	const bool bShutdown = App::Shutdown();
-
-	for (int i = 0; i < nArgs; ++i)
-	{
-		free((void*)ansiArgs[i]);
-	}
-
-	delete[] ansiArgs;
-
-	if (szArglist)
-	{
-		LocalFree(szArglist);
-	}
 
 	return bShutdown ? exitCode : 1;
 }

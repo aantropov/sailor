@@ -173,9 +173,45 @@ namespace
 	}
 }
 
-#ifndef _SAILOR_IMPORT_
-const char* CPUPathTracerNode::m_name = "CPUPathTracerNode";
-#endif
+CPUPathTracerNode::~CPUPathTracerNode()
+{
+	Clear();
+}
+
+CPUPathTracerNode::CaptureTask CPUPathTracerNode::DoOneCapture(uint32_t cameraIndex)
+{
+	auto result = Tasks::CreateTask<ImagePtr, ImagePtr>("CPU path tracer capture result"_h,
+		[](ImagePtr image) { return image; }, EThreadType::Main);
+	Tasks::CreateTask("Request CPU path tracer image"_h,
+		[self = ToRefPtr<CPUPathTracerNode>(), cameraIndex, result]() mutable
+		{
+			self->m_imageRequests.Add({ cameraIndex, result });
+		}, EThreadType::Render)->Run();
+	return result;
+}
+
+void CPUPathTracerNode::CompleteImageRequests(uint32_t cameraIndex, uint64_t frame, const CameraState* camera)
+{
+	TSharedPtr<Image> image;
+	for (size_t i = 0; i < m_imageRequests.Num();)
+	{
+		auto& request = m_imageRequests[i];
+		if (request.m_cameraIndex != cameraIndex) { ++i; continue; }
+		if (camera && !image)
+		{
+			image = TSharedPtr<Image>::Make();
+			image->m_pixels = camera->m_accumulatedImage;
+			image->m_extent = camera->m_extent;
+			image->m_cameraIndex = cameraIndex;
+			image->m_frame = frame;
+			image->m_imageRevision = camera->m_imageRevision;
+			image->m_accumulatedSamples = camera->m_accumulatedSamples;
+		}
+		request.m_task->SetArgs(ImagePtr(image));
+		request.m_task->Run();
+		m_imageRequests.RemoveAt(i);
+	}
+}
 
 bool CPUPathTracerNode::AccumulationKey::operator==(const AccumulationKey& rhs) const
 {
@@ -291,12 +327,9 @@ void CPUPathTracerNode::QueueEnvironmentReadback(CameraState& camera, TRefPtr<Su
 		if (!cubemap) return;
 		readback.m_mipLevel = 0;
 		auto mip = cubemap;
-		while (mip->GetExtent().x > 64)
+		while (readback.m_mipLevel + 1 < cubemap->GetMipLevels() && mip->GetExtent().x > 64)
 		{
-			auto next = cubemap->GetMipLevel(readback.m_mipLevel + 1);
-			if (!next) break;
-			++readback.m_mipLevel;
-			mip = next;
+			mip = cubemap->GetMipLevel(++readback.m_mipLevel);
 		}
 		readback.m_extent = uvec2(mip->GetExtent());
 		readback.m_faceBuffers.Resize(6);
@@ -323,10 +356,15 @@ void CPUPathTracerNode::QueueEnvironmentReadback(CameraState& camera, TRefPtr<Su
 	camera.m_lastQueuedFrame = sceneView.m_frame;
 }
 
+void CPUPathTracerNode::SetFloat(StringHash name, float value)
+{
+	BaseFrameGraphNode::SetFloat(name, value);
+	if (name == "enabled"_h) m_bIsEnabled.store(value > 0.5f, std::memory_order_relaxed);
+}
+
 bool CPUPathTracerNode::IsEnabled(RHI::ESceneViewRenderMode mode) const
 {
-	const float* enabled = nullptr;
-	return !IsSceneViewDebugVisualization(mode) && m_floatParams.Find("enabled", enabled) && *enabled > 0.5f;
+	return !IsSceneViewDebugVisualization(mode) && m_bIsEnabled.load(std::memory_order_relaxed);
 }
 
 void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
@@ -334,22 +372,27 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	SAILOR_PROFILE_FUNCTION();
 	ResetDrawCallStats();
 
-	auto getFloatParam = [this](const char* name, float defaultValue) -> float
+	auto getFloatParam = [this](StringHash name, float defaultValue) -> float
 	{
-		const std::string key = name;
-		return m_floatParams.ContainsKey(key) ? m_floatParams[key] : defaultValue;
+		const float* value = nullptr;
+		return m_floatParams.Find(name, value) ? *value : defaultValue;
 	};
 
 	if (!IsEnabled(sceneView.m_renderMode) || !sceneView.m_submissionContext || !sceneView.m_camera)
 	{
+		CompleteImageRequests(sceneView.m_cameraIndex, sceneView.m_frame);
 		return;
 	}
 
-	auto colorResource = GetRHIResource("color");
+	auto colorResource = GetRHIResource("color"_h, frameGraph.GetRawPtr());
 	const auto dstSurface = colorResource.DynamicCast<RHISurface>();
 	const auto dst = dstSurface ? dstSurface->GetResolved() : colorResource.DynamicCast<RHITexture>();
 	const bool bUseMsaaTarget = dstSurface && dstSurface->NeedsResolve();
-	if (!dst) return;
+	if (!dst)
+	{
+		CompleteImageRequests(sceneView.m_cameraIndex, sceneView.m_frame);
+		return;
+	}
 
 	auto& driver = Renderer::GetDriver();
 	auto commands = Renderer::GetDriverCommands();
@@ -360,21 +403,22 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		camera.m_accumulatedImage.Clear();
 		camera.m_accumulatedSamples = 0;
 		camera.m_bHasAccumulationState = false;
+		CompleteImageRequests(sceneView.m_cameraIndex, sceneView.m_frame);
 		return;
 	}
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdTransfer);
 	auto resources = sceneView.m_submissionContext->GetOrAddFrameGraphResources<SubmissionResources>(this, sceneView.m_cameraIndex, 0);
-	const auto environment = frameGraph->GetSampler("g_rawEnvCubemap").DynamicCast<RHICubemap>();
-	const auto diffuseEnvironment = frameGraph->GetSampler("g_irradianceCubemap").DynamicCast<RHICubemap>();
+	const auto environment = frameGraph->GetSampler("g_rawEnvCubemap"_h).DynamicCast<RHICubemap>();
+	const auto diffuseEnvironment = frameGraph->GetSampler("g_irradianceCubemap"_h).DynamicCast<RHICubemap>();
 	ApplyCompletedReadback(camera, environment, diffuseEnvironment);
 	QueueEnvironmentReadback(camera, resources, commandList, sceneView, environment, diffuseEnvironment);
 
-	const uint32_t spp = (std::max)(1u, (uint32_t)std::lround(getFloatParam("samplesPerFrame", 1.0f)));
-	const uint32_t maxBounces = (std::max)(0u, (uint32_t)std::lround(getFloatParam("maxBounces", 2.0f)));
-	const uint64_t maxAccumulatedSamples = (uint64_t)(std::max)(0.0f, getFloatParam("maxAccumulatedSamples", 0.0f));
-	const float blend = glm::clamp(getFloatParam("blend", 1.0f), 0.0f, 1.0f);
-	const float rayBiasBase = (std::max)(0.0f, getFloatParam("rayBiasBase", getFloatParam("shadowBias", 0.0f)));
-	const float rayBiasScale = (std::max)(0.0f, getFloatParam("rayBiasScale", 3e-4f));
+	const uint32_t spp = (std::max)(1u, (uint32_t)std::lround(getFloatParam("samplesPerFrame"_h, 1.0f)));
+	const uint32_t maxBounces = (std::max)(0u, (uint32_t)std::lround(getFloatParam("maxBounces"_h, 2.0f)));
+	const uint64_t maxAccumulatedSamples = (uint64_t)(std::max)(0.0f, getFloatParam("maxAccumulatedSamples"_h, 0.0f));
+	const float blend = glm::clamp(getFloatParam("blend"_h, 1.0f), 0.0f, 1.0f);
+	const float rayBiasBase = (std::max)(0.0f, getFloatParam("rayBiasBase"_h, getFloatParam("shadowBias"_h, 0.0f)));
+	const float rayBiasScale = (std::max)(0.0f, getFloatParam("rayBiasScale"_h, 3e-4f));
 #ifdef __APPLE__
 	constexpr uint64_t maxPixels = 225000ull;
 	const float targetAspect = (std::max)(0.1f, (float)dst->GetExtent().x / (float)(std::max)(1, dst->GetExtent().y));
@@ -433,6 +477,7 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		{
 			if (!camera.m_pathTracer.InitializeSceneSnapshot(tracedScene->m_instances, tracedScene->m_materials, tracedScene->m_lights))
 			{
+				CompleteImageRequests(sceneView.m_cameraIndex, sceneView.m_frame);
 				commands->EndDebugRegion(commandList);
 				return;
 			}
@@ -440,6 +485,7 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		}
 		if (!camera.m_pathTracer.RenderPreparedScene(params))
 		{
+			CompleteImageRequests(sceneView.m_cameraIndex, sceneView.m_frame);
 			commands->EndDebugRegion(commandList);
 			return;
 		}
@@ -448,6 +494,7 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		const glm::uvec2 imageExtent = camera.m_pathTracer.GetLastRenderedExtent();
 		if (image.Num() == 0 || imageExtent.x == 0 || imageExtent.y == 0)
 		{
+			CompleteImageRequests(sceneView.m_cameraIndex, sceneView.m_frame);
 			commands->EndDebugRegion(commandList);
 			return;
 		}
@@ -463,6 +510,8 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 			camera.m_accumulatedSamples = (std::min)(camera.m_accumulatedSamples, maxAccumulatedSamples);
 		}
 	}
+
+	CompleteImageRequests(sceneView.m_cameraIndex, sceneView.m_frame, &camera);
 
 	if (resources->m_imageRevision != camera.m_imageRevision)
 	{
@@ -529,8 +578,8 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	{
 		resources->m_shaderBindings = driver->CreateShaderBindings();
 		driver->FillShadersLayout(resources->m_shaderBindings, { m_pShader->GetDebugVertexShaderRHI(), m_pShader->GetDebugFragmentShaderRHI() }, 1);
-		driver->AddBufferToShaderBindings(resources->m_shaderBindings, "data", 32, 1, RHI::EShaderBindingType::UniformBuffer);
-		driver->AddSamplerToShaderBindings(resources->m_shaderBindings, "currentSampler", resources->m_runtimeTexture, 0);
+		driver->AddBufferToShaderBindings(resources->m_shaderBindings, "data"_h, 32, 1, RHI::EShaderBindingType::UniformBuffer);
+		driver->AddSamplerToShaderBindings(resources->m_shaderBindings, "currentSampler"_h, resources->m_runtimeTexture, 0);
 		resources->m_shaderBindings->RecalculateCompatibility();
 	}
 
@@ -548,9 +597,9 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		return;
 	}
 
-	driver->UpdateShaderBinding(resources->m_shaderBindings, "currentSampler", resources->m_runtimeTexture, 0);
-	commands->SetMaterialParameter(commandList, resources->m_shaderBindings, "data.fitScaleOffset", glm::vec4(1.0f, 1.0f, 0.0f, 0.0f));
-	commands->SetMaterialParameter(commandList, resources->m_shaderBindings, "data.blend", blend);
+	driver->UpdateShaderBinding(resources->m_shaderBindings, "currentSampler"_h, resources->m_runtimeTexture, 0);
+	commands->SetMaterialParameter(commandList, resources->m_shaderBindings, "data"_h, "fitScaleOffset"_h, glm::vec4(1.0f, 1.0f, 0.0f, 0.0f));
+	commands->SetMaterialParameter(commandList, resources->m_shaderBindings, "data"_h, "blend"_h, blend);
 	commands->MemoryBarrier(commandList, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
 		static_cast<EAccessFlags>(EAccessBit::UniformRead_Bit));
 
@@ -651,6 +700,8 @@ bool CPUPathTracerNode::GetLastRenderedImage(TVector<glm::u8vec4>& outImage, glm
 
 void CPUPathTracerNode::Clear()
 {
+	for (auto& request : m_imageRequests) request.m_task->Run();
+	m_imageRequests.Clear();
 	m_cameras.Clear();
 	m_lastCameraIndex = 0;
 	m_overlayMaterial.Clear();

@@ -9,10 +9,10 @@
 
 namespace Sailor::Framegraph
 {
-	class PostProcessNode final : public TFrameGraphNode<PostProcessNode>
+	class PostProcessNode : public TFrameGraphNode<PostProcessNode>
 	{
 	public:
-		SAILOR_API static const char* GetName() { return m_name; }
+		SAILOR_API static StringHash GetName() { return "PostProcess"_h; }
 
 		SAILOR_API void PreloadShader();
 		SAILOR_API bool IsShaderReady() const;
@@ -32,8 +32,6 @@ namespace Sailor::Framegraph
 			uint64_t m_shaderGeneration = 0;
 			uint64_t m_uploadedParameterRevision = 0;
 		};
-
-		SAILOR_SHARED_API static const char* m_name;
 
 		ShaderSetPtr m_pShader{};
 		RHI::RHIMaterialPtr m_postEffectMaterial{};

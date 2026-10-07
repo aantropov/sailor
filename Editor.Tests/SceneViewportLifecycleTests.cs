@@ -8,6 +8,36 @@ namespace Editor.Tests;
 public sealed class SceneViewportLifecycleTests
 {
     [Fact]
+    public void HostChange_HandsOffImmediately_WithoutWaitingForLayout()
+    {
+        var backend = new FakeSceneViewportBackend();
+        var sut = new SceneViewportLifecycleAdapter(backend, 7);
+
+        sut.SetNativeHost((nint)42, 2);
+        Assert.Equal(["bind:42"], backend.Operations);
+        Assert.Equal(2, backend.BoundHostScale);
+
+        sut.SetNativeHost(0);
+        Assert.Equal(["bind:42", "bind:0"], backend.Operations);
+        Assert.Empty(backend.UpdatedViewportIds);
+    }
+
+    [Fact]
+    public void HostReconnect_BeforeLayout_IsStillDetachedByDestroy()
+    {
+        var backend = new FakeSceneViewportBackend();
+        var sut = new SceneViewportLifecycleAdapter(backend, 7);
+
+        sut.SetNativeHost((nint)42);
+        sut.Destroy();
+        sut.SetNativeHost((nint)43);
+        sut.Destroy();
+
+        Assert.Equal(["bind:42", "bind:0", "destroy", "bind:43", "bind:0", "destroy"], backend.Operations);
+        Assert.Empty(backend.UpdatedViewportIds);
+    }
+
+    [Fact]
     public void Sync_BindsHost_UpdatesViewport_AndTracksRenderTarget()
     {
         var backend = new FakeSceneViewportBackend();

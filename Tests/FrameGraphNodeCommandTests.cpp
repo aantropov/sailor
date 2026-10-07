@@ -4,8 +4,10 @@
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "Components/CameraComponent.h"
+#include "Components/SkyComponent.h"
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
+#include "ECS/LightingECS.h"
 #include "FrameGraph/AtmosphericFogNode.h"
 #include "FrameGraph/BlitNode.h"
 #include "FrameGraph/ClearNode.h"
@@ -15,7 +17,9 @@
 #include "FrameGraph/EnvironmentNode.h"
 #include "FrameGraph/LinearizeDepthNode.h"
 #include "FrameGraph/LightCullingNode.h"
+#include "FrameGraph/ParticlesNode.h"
 #include "FrameGraph/PostProcessNode.h"
+#include "FrameGraph/MotionBlurNode.h"
 #include "FrameGraph/RHIFrameGraph.h"
 #include "FrameGraph/RenderImGuiNode.h"
 #include "FrameGraph/RenderSceneNode.h"
@@ -32,11 +36,15 @@
 #include "RHI/Cubemap.h"
 #include "RHI/Fence.h"
 #include "RHI/Mesh.h"
+#include "RHI/PackedDrawCommands.hpp"
 #include "RHI/RenderTarget.h"
 #include "RHI/SceneView.h"
 #include "RHI/Shader.h"
 #include "RHI/Surface.h"
 #include "RHI/VertexDescription.h"
+#if defined(__APPLE__)
+#include "Support/VulkanCapabilityOverrides.h"
+#endif
 
 #include <algorithm>
 #include <array>
@@ -63,12 +71,16 @@ using namespace Sailor::GraphicsDriver::Vulkan;
 
 namespace Sailor::Tests
 {
+	void RunShaderInterfaceCommandTests();
+	void RunPostProcessingCommandTests();
+	void RunGIResolveCommandTests();
+	void RunEditorReadbackCommandTests();
 	void RequireRejectedNativeSubmission(RHICommandListPtr command);
 	void RequireAttachmentInitializationRefusal(const std::function<void()>& record,
 		uint32_t precedingSubmits = 0, VkResult error = VK_ERROR_OUT_OF_HOST_MEMORY);
 	void RequireImageInitializationRefusal(const std::function<void()>& record,
 		uint32_t precedingSubmits, uint32_t refusals, VkResult error);
-	void RequireWorkerImageInitializationRefusal(const std::function<void()>& load, VkResult error);
+	void RequireWorkerUploadRefusal(const std::function<void()>& load, VkResult error, bool transfer = false);
 	void RequireRejectedGraphicsSubmission(const std::function<bool()>& submit);
 }
 
@@ -234,6 +246,11 @@ namespace
 	class PassCommandRecorder : public VulkanGraphicsDriver
 	{
 	public:
+		void BeginDebugRegion(RHICommandListPtr command, StringHash title, const glm::vec4& color) override
+		{
+			BeginDebugRegion(std::move(command), title.ToString(), color);
+		}
+
 		void BeginDebugRegion(RHICommandListPtr, const std::string& title, const glm::vec4&) override
 		{
 			m_regions.push_back(title);
@@ -250,7 +267,7 @@ namespace
 			const TVector<RHITexturePtr>& color, RHITexturePtr depth, glm::ivec4, glm::ivec2,
 			bool, glm::vec4, float, bool, bool) override
 		{
-			Require(m_regions.size() == 2 && m_regions.back() == RenderImGuiNode::GetName(),
+			Require(m_regions.size() == 2 && m_regions.back() == RenderImGuiNode::GetName().ToString(),
 				"ImGui commands must be nested inside their own debug region");
 			Require(secondary.Num() == 1 && color.Num() == 1 && color[0] && depth,
 				"ImGui must record one complete secondary with both attachments");
@@ -268,7 +285,7 @@ namespace
 		bool BeginRenderPass(RHICommandListPtr, const TVector<RHITexturePtr>& colors, RHITexturePtr depth,
 			glm::ivec4, glm::ivec2, bool, glm::vec4, float, bool, bool) override
 		{
-			Require(m_regions.size() == 2 && m_regions.back() == LinearizeDepthNode::GetName() && !m_inRenderPass,
+			Require(m_regions.size() == 2 && m_regions.back() == LinearizeDepthNode::GetName().ToString() && !m_inRenderPass,
 				"linear depth must begin its render pass inside the matching debug region");
 			Require(colors.Num() == 1 && colors[0] && !depth, "linear depth must use one color target and sample depth separately");
 			m_inRenderPass = true;
@@ -327,7 +344,7 @@ namespace
 	{
 	public:
 		ObservedImGuiTask(Function function, std::latch& observed, std::latch& resume) :
-			Tasks::Task<RHICommandListPtr>("Delayed ImGui producer", std::move(function), EThreadType::RHI),
+			Tasks::Task<RHICommandListPtr>("Delayed ImGui producer"_h, std::move(function), EThreadType::RHI),
 			m_observed(observed), m_resume(resume)
 		{
 		}
@@ -366,8 +383,8 @@ namespace
 			auto node = TRefPtr<RenderImGuiNode>::Make();
 			auto color = RHIRenderTargetPtr::Make(ETextureFiltration::Nearest, ETextureClamping::Clamp, false);
 			auto depth = RHIRenderTargetPtr::Make(ETextureFiltration::Nearest, ETextureClamping::Clamp, false);
-			node->SetRHIResource("color", color);
-			node->SetRHIResource("depthStencil", depth);
+			node->SetRHIResource("color"_h, color);
+			node->SetRHIResource("depthStencil"_h, depth);
 			auto secondary = RHICommandListPtr::Make(ECommandListQueue::Graphics);
 			secondary->RecordDrawCallStats(3);
 			secondary->RecordDrawCallStats(5);
@@ -385,12 +402,12 @@ namespace
 			producerStarted.wait();
 			RHISceneViewSnapshot scene;
 			scene.m_drawImGui = producer;
-			auto record = Tasks::CreateTaskWithResult<std::string>("Record delayed ImGui pass", [&]() -> std::string
+			auto record = Tasks::CreateTaskWithResult<std::string>("Record delayed ImGui pass"_h, [&]() -> std::string
 				{
 					try
 					{
 						precedingPassRecorded = true;
-						recorder.m_commands->BeginDebugRegion({}, "Frame", {});
+						recorder.m_commands->BeginDebugRegion({}, "Frame"_h, {});
 						node->Process(graph, {}, {}, scene);
 						Require(recorder.m_commands->m_regions == std::vector<std::string>{ "Frame" },
 							"ImGui must leave its enclosing debug region open");
@@ -426,7 +443,7 @@ namespace
 			if (!empty)
 			{
 				recorder.m_commands->m_acceptSecondary = false;
-				recorder.m_commands->BeginDebugRegion({}, "Frame", {});
+				recorder.m_commands->BeginDebugRegion({}, "Frame"_h, {});
 				node->Process(graph, {}, {}, scene);
 				recorder.m_commands->EndDebugRegion({});
 				Require(recorder.m_commands->m_draws == 1 && node->GetDrawCallStats().m_numBatches == 0 &&
@@ -444,12 +461,12 @@ namespace
 		auto node = TRefPtr<RenderImGuiNode>::Make();
 		auto attachment = RHIRenderTargetPtr::Make(ETextureFiltration::Nearest, ETextureClamping::Clamp, false);
 		RHISceneViewSnapshot scene;
-		scene.m_drawImGui = Tasks::CreateTaskWithResult<RHICommandListPtr>("Unused ImGui producer", []() { return RHICommandListPtr{}; });
+		scene.m_drawImGui = Tasks::CreateTaskWithResult<RHICommandListPtr>("Unused ImGui producer"_h, []() { return RHICommandListPtr{}; });
 		for (uint32_t mask = 0; mask < 3; ++mask)
 		{
-			node->SetRHIResource("color", mask & 1 ? attachment : RHIRenderTargetPtr{});
-			node->SetRHIResource("depthStencil", mask & 2 ? attachment : RHIRenderTargetPtr{});
-			recorder.m_commands->BeginDebugRegion({}, "Frame", {});
+			node->SetRHIResource("color"_h, mask & 1 ? attachment : RHIRenderTargetPtr{});
+			node->SetRHIResource("depthStencil"_h, mask & 2 ? attachment : RHIRenderTargetPtr{});
+			recorder.m_commands->BeginDebugRegion({}, "Frame"_h, {});
 			node->Process(graph, {}, {}, scene);
 			Require(recorder.m_commands->m_regions == std::vector<std::string>{ "Frame" },
 				"a skipped ImGui pass must not leave an extra debug region open");
@@ -493,8 +510,8 @@ namespace
 			auto node = TRefPtr<LinearizeDepthProbe>::Make(shader, depth);
 			if (named)
 			{
-				node->SetRHIResource_Unresolved("depthStencil", "Depth");
-				node->SetRHIResource_Unresolved("target", "LinearDepth");
+				node->SetRHIResource_Unresolved("depthStencil"_h, "Depth"_h);
+				node->SetRHIResource_Unresolved("target"_h, "LinearDepth"_h);
 			}
 			struct Case { bool depth, target, ready, bind; };
 			for (const auto test : { Case{ true, true, true, true }, Case{ false, true, true, true },
@@ -503,18 +520,18 @@ namespace
 			{
 				if (named)
 				{
-					graph->SetRenderTarget("Depth", test.depth ? depth : RHIRenderTargetPtr{});
-					graph->SetRenderTarget("LinearDepth", test.target ? target : RHIRenderTargetPtr{});
+					graph->SetRenderTarget("Depth"_h, test.depth ? depth : RHIRenderTargetPtr{});
+					graph->SetRenderTarget("LinearDepth"_h, test.target ? target : RHIRenderTargetPtr{});
 				}
 				else
 				{
-					node->SetRHIResource("depthStencil", test.depth ? depth : RHIRenderTargetPtr{});
-					node->SetRHIResource("target", test.target ? target : RHIRenderTargetPtr{});
+					node->SetRHIResource("depthStencil"_h, test.depth ? depth : RHIRenderTargetPtr{});
+					node->SetRHIResource("target"_h, test.target ? target : RHIRenderTargetPtr{});
 				}
 				node->m_pLinearizeDepthShader = test.ready ? shader : pendingShader;
 				auto& commands = *recorder.m_commands;
 				commands.m_acceptBindings = test.bind;
-				commands.BeginDebugRegion({}, "Frame", {});
+				commands.BeginDebugRegion({}, "Frame"_h, {});
 				const auto regionsBefore = commands.m_regionStarts;
 				const auto passesBefore = commands.m_renderPasses;
 				const auto drawsBefore = commands.m_draws;
@@ -566,6 +583,35 @@ void main() {
 		Require(App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(id, compiled, { "INVERT" }) && compiled && compiled->IsReady(),
 			"post-process shader permutation must compile before recording");
 		return name;
+	}
+
+	void TestShaderSourceLifetime(const std::filesystem::path& workspace)
+	{
+		const auto path = workspace / "Content" / "RetainedShaderSource.shader";
+		YAML::Node shader;
+		shader["glslCommon"] = "#version 450\n";
+		shader["glslCompute"] = "layout(local_size_x = 1) in; void main() {}";
+		std::ofstream output(path);
+		output << shader;
+		output.close();
+		Require(static_cast<bool>(output), "shader source lifetime fixture must be written");
+		const auto id = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(path.string());
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		scheduler->WaitIdle({ EThreadType::Worker, EThreadType::Render, EThreadType::RHI });
+		auto* compiler = App::GetSubmodule<ShaderCompiler>();
+		const auto source = compiler->LoadShaderAsset(id);
+		Require(bool(source), "a registered shader source must load");
+		auto compilation = compiler->CompileAllPermutations(id);
+		Require(bool(compilation), "shader compilation must return its completion task");
+		compilation->Wait();
+		Require(compilation->GetResult(), "the source lifetime fixture must compile successfully");
+		Require(bool(source), "a loaded shader source must remain alive after compilation evicts its cache entry");
+		Require(source->ContainsCompute() && source->GetGlslComputeCode() == shader["glslCompute"].as<std::string>(),
+			"the retained source must preserve its parsed shader contents");
+		const auto reloaded = compiler->LoadShaderAsset(id);
+		Require(reloaded && reloaded != source && reloaded->GetGlslComputeCode() == source->GetGlslComputeCode(),
+			"the evicted source must reload independently while its previous owner remains valid");
+		std::cout << "Shader source lifetime: retained source survives real compilation and cache eviction passed\n";
 	}
 
 	std::array<ShaderSetPtr, 4> WriteDepthReadbackShader(const std::filesystem::path& workspace)
@@ -717,20 +763,20 @@ frame:
 		Require(App::GetSubmodule<FrameGraphImporter>()->LoadFrameGraph_Immediate(id, instance) && instance,
 			"the real importer must build the attachment graph");
 		auto graph = instance->GetRHI();
-		auto node = graph->GetGraphNode("Bindings");
-		const auto surface = graph->GetSurface("StaticSurface");
-		const auto texture = graph->GetRenderTarget("StaticTexture");
+		auto node = graph->GetGraphNode("Bindings"_h);
+		const auto surface = graph->GetSurface("StaticSurface"_h);
+		const auto texture = graph->GetRenderTarget("StaticTexture"_h);
 		Require(node && surface && texture, "imported graph must contain native surfaces and targets");
-		Require(node->GetRHIResource("color") == surface && node->GetRHIResource("sourceSampler") == texture &&
-			node->GetResolvedAttachment("color") == surface->GetResolved(),
+		Require(node->GetRHIResource("color"_h) == surface && node->GetRHIResource("sourceSampler"_h) == texture &&
+			node->GetResolvedAttachment("color"_h) == surface->GetResolved(),
 			"static graph binding must retain the surface rather than discard its multisampled target");
-		Require(!node->GetRHIResource("externalSampler", graph.GetRawPtr()), "unpublished external input must remain unresolved");
-		graph->SetSampler("DynamicInput", texture);
-		Require(node->GetSampledAttachment("externalSampler", graph.GetRawPtr()) == texture,
+		Require(!node->GetRHIResource("externalSampler"_h, graph.GetRawPtr()), "unpublished external input must remain unresolved");
+		graph->SetSampler("DynamicInput"_h, texture);
+		Require(node->GetSampledAttachment("externalSampler"_h, graph.GetRawPtr()) == texture,
 			"external graph input must resolve when its producer publishes it");
-		graph->SetSampler("DynamicInput", surface->GetResolved());
-		Require(node->GetSampledAttachment("externalSampler", graph.GetRawPtr()) == surface->GetResolved() &&
-			node->GetRHIResource("sourceSampler") == texture,
+		graph->SetSampler("DynamicInput"_h, surface->GetResolved());
+		Require(node->GetSampledAttachment("externalSampler"_h, graph.GetRawPtr()) == surface->GetResolved() &&
+			node->GetRHIResource("sourceSampler"_h) == texture,
 			"external replacement must refresh independently of fixed graph bindings");
 		std::cout << "FrameGraph static surface/target binding and external publication passed\n";
 	}
@@ -802,8 +848,9 @@ frame:
 		return { registry->GetOrLoadFile(graphPath.string()), registry->GetOrLoadFile(invalidPath.string()) };
 	}
 
-	void TestGraphLoadFailures(const std::filesystem::path& workspace, FileId validId)
+	TVector<FileId> TestGraphLoadFailures(const std::filesystem::path& workspace, FileId validId)
 	{
+		TVector<FileId> repairedGraphs;
 		auto importer = App::GetSubmodule<FrameGraphImporter>();
 		auto registry = App::GetSubmodule<AssetRegistry>();
 		FrameGraphPtr previous;
@@ -813,7 +860,7 @@ frame:
 		valid["frame"].push_back(YAML::Load("{name: ExperimentalParticles, tag: Particles}"));
 
 		for (const std::string failure : { "missing-file", "unknown-node", "texture-decode", "sampler-path", "sampler-id",
-			"zero-width", "invalid-divisor", "invalid-mips" })
+			"zero-width", "invalid-divisor", "invalid-mips", "color-depth", "color-sampler", "depth-color", "depth-coverage" })
 		{
 			auto description = YAML::Clone(valid);
 			const auto path = workspace / "Content" / (failure + ".renderer");
@@ -844,6 +891,14 @@ frame:
 			else if (failure == "zero-width") description["renderTargets"][0]["width"] = 0;
 			else if (failure == "invalid-divisor") description["renderTargets"][0]["height"] = "RenderHeight/0";
 			else if (failure == "invalid-mips") description["renderTargets"][0]["maxMipLevel"] = -1;
+			else if (failure == "color-depth") description["renderTargets"][0]["format"] = "D32_SFLOAT";
+			else if (failure == "color-sampler") description["frame"][1]["renderTargets"][0]["color"] = "ById";
+			else if (failure == "depth-color") description["frame"][2]["renderTargets"] = YAML::Load("[{depthStencil: Main}]");
+			else if (failure == "depth-coverage")
+			{
+				description["renderTargets"].push_back(YAML::Load("{name: SmallDepth, width: 8, height: 7, format: D32_SFLOAT}"));
+				description["frame"][2]["renderTargets"] = YAML::Load("[{color: Main}, {depthStencil: SmallDepth}]");
+			}
 			auto write = [&](const YAML::Node& data)
 				{
 					std::ofstream output(path);
@@ -856,7 +911,8 @@ frame:
 			if (failure == "missing-file") std::filesystem::rename(path, unavailable);
 			auto parsed = importer->LoadFrameGraphAsset(id);
 			const bool invalidDescription = failure == "missing-file" || failure == "zero-width" ||
-				failure == "invalid-divisor" || failure == "invalid-mips";
+				failure == "invalid-divisor" || failure == "invalid-mips" || failure == "color-depth" ||
+				failure == "color-sampler" || failure == "depth-color" || failure == "depth-coverage";
 			Require(invalidDescription ? !parsed : static_cast<bool>(parsed),
 				"invalid descriptions must fail to load; invalid build dependencies must still parse");
 			for (uint32_t attempt = 0; attempt < 2; ++attempt)
@@ -891,14 +947,16 @@ frame:
 			Require(instance->GetRHI() != repaired->GetRHI(), "instantiation must still create an independent graph");
 			for (auto graph : { repaired->GetRHI(), instance->GetRHI() })
 			{
-				Require(graph->GetGraph().Num() == 3 && graph->GetGraph()[0]->GetTag() == "Clear" &&
-					graph->GetGraph()[1]->GetTag() == "Composite" && graph->GetGraph()[2]->GetTag() == "Particles" &&
-					graph->GetSampler("ById") && graph->GetSampler("ByPath") && graph->GetSampler("Both"),
+				Require(graph->GetGraph().Num() == 3 && graph->GetGraph()[0]->GetTag() == "Clear"_h &&
+					graph->GetGraph()[1]->GetTag() == "Composite"_h && graph->GetGraph()[2]->GetTag() == "Particles"_h &&
+					graph->GetSampler("ById"_h) && graph->GetSampler("ByPath"_h) && graph->GetSampler("Both"_h),
 					"a repaired graph must retain every ordered pass and static sampler, including ExperimentalParticles");
 			}
 			FrameGraphImporterTestAccess::ReleaseInstance(*importer, instance);
+			repairedGraphs.Add(id);
 			std::cout << "FrameGraph load failure: " << failure << ", rejection, retained output and repair retry passed\n";
 		}
+		return repairedGraphs;
 	}
 
 	void TestRelativeAttachmentDimensions(const std::filesystem::path& workspace)
@@ -944,11 +1002,11 @@ renderTargets:
 		auto graph = instance->GetRHI();
 		const glm::ivec2 renderSize((std::max)(1u, render.m_width / 4), (std::max)(1u, render.m_height / 4));
 		const glm::ivec2 viewportSize((std::max)(1, viewport.x / 4), (std::max)(1, viewport.y / 4));
-		Require(graph->GetRenderTarget("Render")->GetExtent() == renderSize &&
-			graph->GetSurface("Viewport")->GetTarget()->GetExtent() == viewportSize &&
-			graph->GetSurface("Viewport")->GetResolved()->GetExtent() == viewportSize,
+		Require(graph->GetRenderTarget("Render"_h)->GetExtent() == renderSize &&
+			graph->GetSurface("Viewport"_h)->GetTarget()->GetExtent() == viewportSize &&
+			graph->GetSurface("Viewport"_h)->GetResolved()->GetExtent() == viewportSize,
 			"the importer must allocate texture and Surface images using their resolved declaration sizes");
-		Require(graph->GetRenderTarget("Render")->GetMipLevels() == ((std::max)(renderSize.x, renderSize.y) > 1 ? 2u : 1u),
+		Require(graph->GetRenderTarget("Render"_h)->GetMipLevels() == ((std::max)(renderSize.x, renderSize.y) > 1 ? 2u : 1u),
 			"the authored positive mip limit must reach the native render target");
 		FrameGraphImporterTestAccess::ReleaseInstance(*importer, instance);
 		std::cout << "FrameGraph relative dimensions: variables, divisors, image extents and overflow passed\n";
@@ -1160,11 +1218,14 @@ renderTargets:
   - {name: Color, width: 8, height: 8, format: R32G32B32A32_SFLOAT}
   - {name: Motion, width: 8, height: 8, format: R32G32B32A32_SFLOAT}
   - {name: Other, width: 8, height: 8, format: R32G32B32A32_SFLOAT}
+  - {name: Particles, width: 8, height: 8, format: R32G32B32A32_SFLOAT}
 frame:
   - {name: Clear, tag: ClearColor, renderTargets: [{target: Color}]}
   - {name: RenderScene, tag: First, renderTargets: [{color: Color}, {motionVectors: Motion}]}
   - {name: RenderScene, tag: Second, renderTargets: [{color: Other}]}
   - {name: RenderScene, tag: External, renderTargets: [{color: Remote}, {motionVectors: Motion}]}
+  - {name: Clear, tag: ClearParticles, renderTargets: [{target: Particles}]}
+  - {name: ExperimentalParticles, tag: Particles, renderTargets: [{color: Particles}]}
 )yaml";
 		output.close();
 		Require(static_cast<bool>(output), "the static MSAA graph fixture must be written");
@@ -1177,25 +1238,32 @@ frame:
 		for (auto instance : { firstInstance, secondInstance })
 		{
 			auto graph = instance->GetRHI();
-			auto first = graph->GetGraphNode("First");
-			auto color = first->GetTargetAttachment("color", graph.GetRawPtr());
-			auto motion = first->GetTargetAttachment("motionVectors", graph.GetRawPtr());
+			auto first = graph->GetGraphNode("First"_h);
+			auto color = first->GetTargetAttachment("color"_h, graph.GetRawPtr());
+			auto motion = first->GetTargetAttachment("motionVectors"_h, graph.GetRawPtr());
 			Require(color->GetMsaaSamples() == samples && motion->GetMsaaSamples() == samples,
 				"static MSAA attachments must be ready when the importer returns, before the first Process");
-			Require(color == graph->GetGraphNode("ClearColor")->GetTargetAttachment("target", graph.GetRawPtr()) && color != motion &&
-				color != graph->GetGraphNode("Second")->GetTargetAttachment("color", graph.GetRawPtr()),
+			Require(color == graph->GetGraphNode("ClearColor"_h)->GetTargetAttachment("target"_h, graph.GetRawPtr()) && color != motion &&
+				color != graph->GetGraphNode("Second"_h)->GetTargetAttachment("color"_h, graph.GetRawPtr()),
 				"static binding must share declared aliases without sharing independent outputs");
-			Require(!graph->GetGraphNode("External")->GetRHIResource("color", graph.GetRawPtr()),
+			Require(!graph->GetGraphNode("External"_h)->GetRHIResource("color"_h, graph.GetRawPtr()),
 				"binding static targets must not require an unpublished external color");
-			auto original = first->GetResolvedAttachment("color", graph.GetRawPtr());
-			graph->SetRenderTarget("Color", graph->GetRenderTarget("Other"));
-			Require(first->GetTargetAttachment("color", graph.GetRawPtr()) == color &&
-				first->GetResolvedAttachment("color", graph.GetRawPtr()) == original,
+			auto particles = graph->GetGraphNode("Particles"_h)->GetTargetAttachment("color"_h, graph.GetRawPtr());
+			Require(particles->GetMsaaSamples() == samples && particles != color && particles != motion &&
+				particles == graph->GetGraphNode("ClearParticles"_h)->GetTargetAttachment("target"_h, graph.GetRawPtr()),
+				"imported particle output and Clear must share their own live MSAA image before Process");
+			auto original = first->GetResolvedAttachment("color"_h, graph.GetRawPtr());
+			graph->SetRenderTarget("Color"_h, graph->GetRenderTarget("Other"_h));
+			Require(first->GetTargetAttachment("color"_h, graph.GetRawPtr()) == color &&
+				first->GetResolvedAttachment("color"_h, graph.GetRawPtr()) == original,
 				"static bindings must retain their image when a publication name is replaced");
 		}
-		Require(firstInstance->GetRHI()->GetGraphNode("First")->GetTargetAttachment("color", firstInstance->GetRHI().GetRawPtr()) !=
-			secondInstance->GetRHI()->GetGraphNode("First")->GetTargetAttachment("color", secondInstance->GetRHI().GetRawPtr()),
+		Require(firstInstance->GetRHI()->GetGraphNode("First"_h)->GetTargetAttachment("color"_h, firstInstance->GetRHI().GetRawPtr()) !=
+			secondInstance->GetRHI()->GetGraphNode("First"_h)->GetTargetAttachment("color"_h, secondInstance->GetRHI().GetRawPtr()),
 			"separate imported graphs must not share implicit MSAA images");
+		Require(firstInstance->GetRHI()->GetGraphNode("Particles"_h)->GetTargetAttachment("color"_h, firstInstance->GetRHI().GetRawPtr()) !=
+			secondInstance->GetRHI()->GetGraphNode("Particles"_h)->GetTargetAttachment("color"_h, secondInstance->GetRHI().GetRawPtr()),
+			"separate imported particle graphs must not share implicit MSAA images");
 		FrameGraphImporterTestAccess::ReleaseInstance(*importer, firstInstance);
 		FrameGraphImporterTestAccess::ReleaseInstance(*importer, secondInstance);
 		std::cout << "FrameGraph static MSAA binding: import-time attachments, aliases and independent instances passed\n";
@@ -1210,10 +1278,10 @@ frame:
 		auto firstOutput = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
 		auto secondOutput = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
 		auto unused = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
-		graph->SetRenderTarget("External", firstOutput);
-		graph->SetRenderTarget("Unused", unused);
-		first->SetRHIResource_Unresolved("color", "External");
-		second->SetRHIResource("color", secondOutput);
+		graph->SetRenderTarget("External"_h, firstOutput);
+		graph->SetRenderTarget("Unused"_h, unused);
+		first->SetRHIResource_Unresolved("color"_h, "External"_h);
+		second->SetRHIResource("color"_h, secondOutput);
 		graph->GetGraph().Add(first);
 		graph->GetGraph().Add(second);
 		const auto prepare = [&]()
@@ -1224,75 +1292,75 @@ frame:
 			Require(transfers.IsEmpty() && graphics.IsEmpty() && !ready, "an empty view must not record a camera");
 		};
 		prepare();
-		auto firstLive = first->GetTargetAttachment("color", graph.GetRawPtr());
-		auto secondLive = second->GetTargetAttachment("color", graph.GetRawPtr());
+		auto firstLive = first->GetTargetAttachment("color"_h, graph.GetRawPtr());
+		auto secondLive = second->GetTargetAttachment("color"_h, graph.GetRawPtr());
 		const bool msaa = App::GetSubmodule<Renderer>()->GetMsaaSamples() != EMsaaSamples::Samples_1;
 		Require(firstLive != secondLive && firstLive->GetMsaaSamples() == App::GetSubmodule<Renderer>()->GetMsaaSamples(),
 			"same-format color outputs in separate passes need distinct native targets");
-		Require(first->GetResolvedAttachment("color", graph.GetRawPtr()) == firstOutput &&
-			second->GetSampledAttachment("color", graph.GetRawPtr()) == secondOutput && graph->GetResource("Unused") == unused,
+		Require(first->GetResolvedAttachment("color"_h, graph.GetRawPtr()) == firstOutput &&
+			second->GetSampledAttachment("color"_h, graph.GetRawPtr()) == secondOutput && graph->GetResource("Unused"_h) == unused,
 			"MSAA preparation must retain resolve identities and leave unrelated targets alone");
 		prepare();
-		Require(first->GetTargetAttachment("color", graph.GetRawPtr()) == firstLive &&
-			second->GetTargetAttachment("color", graph.GetRawPtr()) == secondLive, "unchanged outputs must reuse their MSAA targets");
+		Require(first->GetTargetAttachment("color"_h, graph.GetRawPtr()) == firstLive &&
+			second->GetTargetAttachment("color"_h, graph.GetRawPtr()) == secondLive, "unchanged outputs must reuse their MSAA targets");
 
-		auto previous = first->GetRHIResource("color", graph.GetRawPtr());
-		graph->SetRenderTarget("External", unused);
+		auto previous = first->GetRHIResource("color"_h, graph.GetRawPtr());
+		graph->SetRenderTarget("External"_h, unused);
 		prepare();
-		Require(first->GetResolvedAttachment("color", graph.GetRawPtr()) == unused &&
-			first->GetTargetAttachment("color", graph.GetRawPtr()) != firstLive &&
-			second->GetTargetAttachment("color", graph.GetRawPtr()) == secondLive, "external replacement must change only its own target");
+		Require(first->GetResolvedAttachment("color"_h, graph.GetRawPtr()) == unused &&
+			first->GetTargetAttachment("color"_h, graph.GetRawPtr()) != firstLive &&
+			second->GetTargetAttachment("color"_h, graph.GetRawPtr()) == secondLive, "external replacement must change only its own target");
 		if (msaa) Require(previous.NumRefs() == 1, "the graph must release a retired MSAA surface");
-		previous = first->GetRHIResource("color", graph.GetRawPtr());
-		graph->SetRenderTarget("External", {});
+		previous = first->GetRHIResource("color"_h, graph.GetRawPtr());
+		graph->SetRenderTarget("External"_h, {});
 		prepare();
-		Require(!first->GetRHIResource("color", graph.GetRawPtr()), "a withdrawn input must not retain its former surface");
+		Require(!first->GetRHIResource("color"_h, graph.GetRawPtr()), "a withdrawn input must not retain its former surface");
 		if (msaa) Require(previous.NumRefs() == 1, "withdrawal must release the graph's MSAA surface");
-		graph->SetRenderTarget("External", firstOutput);
+		graph->SetRenderTarget("External"_h, firstOutput);
 		prepare();
-		Require(first->GetResolvedAttachment("color", graph.GetRawPtr()) == firstOutput, "a restored input must be usable again");
-		graph->SetRenderTarget("External", secondOutput);
+		Require(first->GetResolvedAttachment("color"_h, graph.GetRawPtr()) == firstOutput, "a restored input must be usable again");
+		graph->SetRenderTarget("External"_h, secondOutput);
 		prepare();
-		Require(first->GetTargetAttachment("color", graph.GetRawPtr()) == secondLive, "aliases of one output must share its live target");
+		Require(first->GetTargetAttachment("color"_h, graph.GetRawPtr()) == secondLive, "aliases of one output must share its live target");
 
 		auto declared = driver->CreateSurface(secondOutput);
 		auto clear = TRefPtr<ClearNode>::Make();
-		clear->SetRHIResource("target", declared);
+		clear->SetRHIResource("target"_h, declared);
 		graph->Clear();
 		graph->GetGraph().Add(clear);
 		graph->GetGraph().Add(second);
 		prepare();
-		Require(second->GetTargetAttachment("color", graph.GetRawPtr()) == declared->GetTarget(),
+		Require(second->GetTargetAttachment("color"_h, graph.GetRawPtr()) == declared->GetTarget(),
 			"a resolved output must reuse the Surface supplied to its clear pass");
-		clear->SetVec4("clearColor", glm::vec4(0.5f));
+		clear->SetVec4("clearColor"_h, glm::vec4(0.5f));
 		prepare();
-		Require(second->GetTargetAttachment("color", graph.GetRawPtr()) == declared->GetTarget(),
+		Require(second->GetTargetAttachment("color"_h, graph.GetRawPtr()) == declared->GetTarget(),
 			"changing a clear value must retain the prepared static attachments");
-		second->SetRHIResource("color", unused);
+		second->SetRHIResource("color"_h, unused);
 		prepare();
-		Require(second->GetResolvedAttachment("color", graph.GetRawPtr()) == unused,
+		Require(second->GetResolvedAttachment("color"_h, graph.GetRawPtr()) == unused,
 			"a static resource setter must update an already prepared graph");
 		auto alias = driver->CreateSurface(unused);
-		graph->SetSurface("Alias", alias);
+		graph->SetSurface("Alias"_h, alias);
 		prepare();
-		Require(second->GetTargetAttachment("color", graph.GetRawPtr()) == alias->GetTarget(),
+		Require(second->GetTargetAttachment("color"_h, graph.GetRawPtr()) == alias->GetTarget(),
 			"publishing an explicit Surface must update its prepared resolved alias");
-		second->SetRHIResource_Unresolved("color", "Changed");
-		graph->SetRenderTarget("Changed", firstOutput);
+		second->SetRHIResource_Unresolved("color"_h, "Changed"_h);
+		graph->SetRenderTarget("Changed"_h, firstOutput);
 		prepare();
-		Require(second->GetResolvedAttachment("color", graph.GetRawPtr()) == firstOutput,
+		Require(second->GetResolvedAttachment("color"_h, graph.GetRawPtr()) == firstOutput,
 			"switching a static input to external must join external refresh");
-		second->SetRHIResource("color", unused);
+		second->SetRHIResource("color"_h, unused);
 		prepare();
-		graph->SetRenderTarget("Changed", secondOutput);
+		graph->SetRenderTarget("Changed"_h, secondOutput);
 		prepare();
-		Require(second->GetResolvedAttachment("color", graph.GetRawPtr()) == unused,
+		Require(second->GetResolvedAttachment("color"_h, graph.GetRawPtr()) == unused,
 			"switching an external input back to static must stop following its old name");
 		auto replacement = TRefPtr<RenderSceneNode>::Make();
-		replacement->SetRHIResource("color", firstOutput);
+		replacement->SetRHIResource("color"_h, firstOutput);
 		graph->GetGraph()[1] = replacement;
 		prepare();
-		Require(replacement->GetTargetAttachment("color", graph.GetRawPtr())->GetMsaaSamples() ==
+		Require(replacement->GetTargetAttachment("color"_h, graph.GetRawPtr())->GetMsaaSamples() ==
 			App::GetSubmodule<Renderer>()->GetMsaaSamples(), "replacing a node at the same index must rebuild its bindings");
 		graph->GetGraph().RemoveLast();
 		prepare();
@@ -1300,20 +1368,48 @@ frame:
 		graph->Clear();
 		Require(graph->ResolveResource(secondOutput) == secondOutput, "clearing the graph must discard its MSAA associations");
 		std::cout << "FrameGraph MSAA ownership: independent outputs, reuse, replacement, withdrawal, aliases and Clear passed\n";
+
+		auto color = driver->CreateSurface(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
+		auto motion = RHISurfacePtr::Make(unused, unused, false);
+		first->SetRHIResource("color"_h, color);
+		first->SetRHIResource("motionVectors"_h, motion);
+		second->SetRHIResource("color"_h, motion);
+		graph->GetGraph().Add(first);
+		graph->GetGraph().Add(second);
+		graph->SetSurface("Motion"_h, motion);
+		prepare();
+		auto preparedMotion = graph->ResolveResource(unused).DynamicCast<RHISurface>();
+		Require(preparedMotion && preparedMotion->GetTarget()->GetMsaaSamples() == color->GetTarget()->GetMsaaSamples() &&
+			preparedMotion->GetResolved() == unused && second->GetTargetAttachment("color"_h, graph.GetRawPtr()) == unused,
+			"promoting a secondary MRT must preserve an explicitly single-sample primary use of the same output");
+		prepare();
+		Require(graph->ResolveResource(unused) == preparedMotion, "unchanged mixed-sample bindings must reuse their prepared image");
+		first->SetRHIResource("motionVectors"_h, {});
+		prepare();
+		Require(graph->ResolveResource(unused) == motion,
+			"removing the MSAA consumer must restore the authored single-sample alias");
+		if (msaa) Require(preparedMotion.NumRefs() == 1, "removing the MSAA consumer must retire its promoted Surface");
+		graph->SetSurface("Motion"_h, {});
+		second->SetRHIResource("color"_h, {});
+		prepare();
+		Require(graph->ResolveResource(unused) == unused, "withdrawing the last Surface owner must remove its alias");
+		graph->Clear();
+		std::cout << "FrameGraph mixed sample ownership: primary policy, secondary promotion, reuse, consumer removal and alias withdrawal passed\n";
 	}
 
 	RHIBufferPtr ReadColor(RHICommandListPtr command, RHITexturePtr texture);
+	RHIBufferPtr ReadDepth(RHICommandListPtr command, RHIRenderTargetPtr texture, const std::array<ShaderSetPtr, 4>& shaders);
 
 	void TestSceneMrt(ShaderSetPtr shader, bool colorIsSurface, bool motionIsSurface, bool late, bool forceSingleSample = false,
-		bool clearThroughNode = false)
+		bool clearThroughNode = false, bool largerDepth = false, bool independentMotionSamples = false)
 	{
 		auto driver = Renderer::GetDriver().DynamicCast<VulkanGraphicsDriver>();
 		auto commands = Renderer::GetDriverCommands();
 		const bool msaa = !forceSingleSample && VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT;
 		auto graph = TRefPtr<TestGraph>::Make();
 		const bool surfaces[] = { colorIsSurface, motionIsSurface };
-		const char* names[] = { "Color", "Motion" };
-		const char* inputs[] = { "color", "motionVectors" };
+		const StringHash names[] = { "Color"_h, "Motion"_h };
+		const StringHash inputs[] = { "color"_h, "motionVectors"_h };
 		std::array<RHITexturePtr, 2> targets;
 		std::array<RHIRenderTargetPtr, 2> outputs;
 		std::array<RHIResourcePtr, 2> resources;
@@ -1325,11 +1421,15 @@ frame:
 				if (surfaces[i])
 				{
 					auto surface = driver->CreateSurface(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
-					if (forceSingleSample) surface = RHISurfacePtr::Make(surface->GetResolved(), surface->GetResolved(), false);
+					const bool singleSample = independentMotionSamples && i == 1 ? !forceSingleSample : forceSingleSample;
+					if (singleSample) surface = RHISurfacePtr::Make(surface->GetResolved(), surface->GetResolved(), false);
 					resources[i] = surface;
 					outputs[i] = surface->GetResolved();
 					targets[i] = surface->GetTarget();
 					graph->SetSurface(names[i], surface);
+					if (independentMotionSamples && i == 1)
+						targets[i] = msaa ? driver->GetOrAddMsaaFramebufferRenderTarget(surface->GetResolved()->GetFormat(), glm::ivec2(Side), i) :
+							RHITexturePtr(surface->GetResolved());
 				}
 				else
 				{
@@ -1341,19 +1441,22 @@ frame:
 			}
 		};
 		publishOutputs();
-		auto depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::D32_SFLOAT_S8_UINT,
+		auto depth = driver->CreateRenderTarget(glm::ivec2(largerDepth ? Side * 2 : Side, Side), 1, EFormat::D32_SFLOAT_S8_UINT,
 			ETextureFiltration::Nearest, ETextureClamping::Clamp, ETextureUsageBit::DepthStencilAttachment_Bit);
-		graph->SetRenderTarget("SceneDepth", depth);
+		const RHITexturePtr depthTarget = msaa ?
+			driver->GetOrAddMsaaFramebufferRenderTarget(depth->GetFormat(), depth->GetExtent()) : RHITexturePtr(depth);
+		graph->SetRenderTarget("SceneDepth"_h, depth);
 		auto view = RHISceneViewPtr::Make();
 		view->m_snapshots.Resize(1);
 		auto& scene = view->m_snapshots[0];
 		scene.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
 		scene.m_submissionContext->BeginSubmission(162, 0);
+		scene.m_camera = TUniquePtr<CameraData>::Make();
 		scene.m_frameBindings = driver->CreateShaderBindings();
 		scene.m_rhiLightsData = driver->CreateShaderBindings();
 		auto node = TRefPtr<SceneNode>::Make();
-		node->SetString("Tag", "MotionMrt");
-		node->SetString("GPUCulling", "false");
+		node->SetString("Tag"_h, "MotionMrt");
+		node->SetString("GPUCulling"_h, "false");
 		for (uint32_t i = 0; i < 2; ++i)
 		{
 			if (late) node->SetRHIResource_Unresolved(inputs[i], names[i]);
@@ -1361,12 +1464,12 @@ frame:
 			if (clearThroughNode)
 			{
 				clears[i] = TRefPtr<ClearNode>::Make();
-				if (late) clears[i]->SetRHIResource_Unresolved("target", names[i]);
-				else clears[i]->SetRHIResource("target", resources[i]);
+				if (late) clears[i]->SetRHIResource_Unresolved("target"_h, names[i]);
+				else clears[i]->SetRHIResource("target"_h, resources[i]);
 			}
 		}
-		if (late) node->SetRHIResource_Unresolved("depthStencil", "SceneDepth");
-		else node->SetRHIResource("depthStencil", depth);
+		if (late) node->SetRHIResource_Unresolved("depthStencil"_h, "SceneDepth"_h);
+		else node->SetRHIResource("depthStencil"_h, depth);
 		if (clearThroughNode)
 		{
 			World cameraWorld("ClearSceneCamera", 0);
@@ -1377,7 +1480,7 @@ frame:
 			cameraWorld.Clear();
 			scene.m_camera = TUniquePtr<CameraData>::Make(data);
 			scene.m_bGlobalIlluminationEnabled = false;
-			graph->SetRenderTarget("Main", outputs[0]);
+			graph->SetRenderTarget("Main"_h, outputs[0]);
 			for (auto clear : clears) graph->GetGraph().Add(clear);
 			graph->GetGraph().Add(node);
 		}
@@ -1405,16 +1508,16 @@ frame:
 				if (frame == 2)
 				{
 					publishOutputs();
-					graph->SetRenderTarget("Main", outputs[0]);
+					graph->SetRenderTarget("Main"_h, outputs[0]);
 					if (!late)
 						for (uint32_t i = 0; i < 2; ++i) node->SetRHIResource(inputs[i], resources[i]);
 				}
 				for (uint32_t i = 0; i < 2; ++i)
 				{
-					const std::string clearName = std::string("Clear") + names[i];
+					const auto clearName = StringHash::Runtime("Clear" + names[i].ToString());
 					graph->SetRenderTarget(clearName, outputs[i]);
-					if (late) clears[i]->SetRHIResource_Unresolved("target", frame % 2 ? clearName : names[i]);
-					else clears[i]->SetRHIResource("target", frame % 2 ? RHIResourcePtr(outputs[i]) : resources[i]);
+					if (late) clears[i]->SetRHIResource_Unresolved("target"_h, frame % 2 ? clearName : names[i]);
+					else clears[i]->SetRHIResource("target"_h, frame % 2 ? RHIResourcePtr(outputs[i]) : resources[i]);
 				}
 			}
 			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
@@ -1435,7 +1538,7 @@ frame:
 						commands->ClearImage(draw, targets[i], glm::vec4(-16));
 						commands->ImageMemoryBarrier(draw, targets[i], EImageLayout::ColorAttachmentOptimal);
 					}
-					clears[i]->SetVec4("clearColor", background[i] + glm::vec4(0.125f * frame));
+					clears[i]->SetVec4("clearColor"_h, background[i] + glm::vec4(0.125f * frame));
 					continue;
 				}
 				if (frame == 0)
@@ -1470,6 +1573,12 @@ frame:
 				for (uint32_t i = 0; i < 2; ++i)
 				{
 					targets[i] = node->GetTargetAttachment(inputs[i], graph.GetRawPtr());
+					if (independentMotionSamples && i == 1)
+					{
+						const auto prepared = graph->ResolveResource(outputs[i]).DynamicCast<RHISurface>();
+						targets[i] = !msaa ? RHITexturePtr(outputs[i]) : prepared && prepared->NeedsResolve() ?
+							RHITexturePtr(prepared->GetTarget()) : driver->GetOrAddMsaaFramebufferRenderTarget(outputs[i]->GetFormat(), glm::ivec2(Side), i);
+					}
 					if (frame % 2) Require(targets[i] == previousTargets[i], "an unchanged MRT output must reuse its live image");
 					else if (frame) Require(targets[i] != previousTargets[i], "a replaced MRT output needs its own live image");
 					previousTargets[i] = targets[i];
@@ -1485,6 +1594,8 @@ frame:
 			}
 			const auto descriptors = std::array{ recordedColor, recordedMotion };
 			bool valid = recordedColorCount == 2 && node->GetDrawCallStats().m_numBatches == 1;
+			valid = valid && recordedDepth.imageView == static_cast<VkImageView>(*depthTarget->m_vulkan.m_imageView) &&
+				recordedDepth.resolveImageView == (msaa ? static_cast<VkImageView>(*depth->m_vulkan.m_imageView) : VK_NULL_HANDLE);
 			for (uint32_t i = 0; i < 2 && valid; ++i)
 			{
 				const auto& descriptor = descriptors[i];
@@ -1499,8 +1610,10 @@ frame:
 				commands->EndCommandList(draw);
 				upload->m_vulkan.m_commandBuffer->Reset();
 				draw->m_vulkan.m_commandBuffer->Reset();
-				throw std::runtime_error("RenderScene MRT dropped or replaced a native color/motion attachment: count=" +
-					std::to_string(recordedColorCount) + ", batches=" + std::to_string(node->GetDrawCallStats().m_numBatches));
+				throw std::runtime_error("RenderScene MRT dropped or replaced a native color/motion/depth attachment: count=" +
+					std::to_string(recordedColorCount) + ", batches=" + std::to_string(node->GetDrawCallStats().m_numBatches) +
+					", independentMotion=" + std::to_string(independentMotionSamples) + ", singleSample=" + std::to_string(forceSingleSample) +
+					", late=" + std::to_string(late));
 			}
 			std::array<RHIBufferPtr, 4> readback;
 			for (uint32_t i = 0; i < 2; ++i)
@@ -1533,8 +1646,8 @@ frame:
 					}
 			}
 		}
-		std::cout << (clearThroughNode ? "ClearSceneMRT " : "RenderScene MRT ") << (msaa ? "2x" : "1x") << " colorSurface=" << colorIsSurface <<
-			" motionSurface=" << motionIsSurface << " late=" << late << ": " << frames << " frames / live and resolved images and native descriptors passed\n";
+		std::cout << (independentMotionSamples ? "MixedSamplesMRT " : largerDepth ? "LargeDepthMRT " : clearThroughNode ? "ClearSceneMRT " : "RenderScene MRT ") << (msaa ? "2x" : "1x") << " colorSurface=" << colorIsSurface <<
+			" motionSurface=" << motionIsSurface << " late=" << late << " clearNode=" << clearThroughNode << ": " << frames << " frames / live and resolved images and native descriptors passed\n";
 	}
 
 	void ClearColor(RHICommandListPtr command, RHITexturePtr texture, glm::vec4 color)
@@ -1558,7 +1671,8 @@ frame:
 			texture = resolved;
 			commands->ImageMemoryBarrier(command, texture, EImageLayout::TransferSrcOptimal);
 		}
-		auto buffer = driver->CreateBuffer(Side * Side * sizeof(glm::vec4), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+		const auto extent = texture->GetExtent();
+		auto buffer = driver->CreateBuffer(size_t(extent.x) * extent.y * sizeof(glm::vec4), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
 		commands->CopyImageToBuffer(command, texture, buffer);
 		return buffer;
 	}
@@ -1577,6 +1691,54 @@ frame:
 			"fullscreen upload and draw must submit");
 		Require(finished->Wait(5000000000ull) == EFenceStatus::Finished && uploaded->Wait(5000000000ull) == EFenceStatus::Finished,
 			"fullscreen pixel readback must finish");
+	}
+
+	void TestCubemapMipViews()
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		for (uint32_t levels : { 1u, 2u, 4u })
+		{
+			auto cube = driver->CreateCubemap(glm::ivec2(Side), levels, EFormat::R32G32B32A32_SFLOAT,
+				ETextureFiltration::Nearest, ETextureClamping::Clamp,
+				ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit);
+			Require(cube && cube->GetMipLevels() == levels && cube->m_vulkan.m_image->m_mipLevels == levels &&
+				cube->m_vulkan.m_imageView->m_subresourceRange.levelCount == levels,
+				"cubemap mip count must include its base level and match the native image/view");
+			Require(cube->GetMipLevel(0) == cube, "cubemap level zero must retain the base resource");
+			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(upload, true);
+			commands->BeginCommandList(draw, true);
+			struct Readback { RHIBufferPtr m_buffer; glm::vec4 m_color; uint32_t m_side; };
+			TVector<Readback> readbacks;
+			for (uint32_t mip = 0; mip < cube->GetMipLevels(); ++mip)
+			{
+				auto level = cube->GetMipLevel(mip);
+				Require(level && level->GetMipLevels() == (mip == 0 ? levels : 1u) && level->GetMipLevel(0) == level,
+					"a cubemap mip view must expose its own base and visible mip count");
+				for (uint32_t face = 0; face < 6; ++face)
+				{
+					auto texture = level->GetFace(face);
+					const auto& range = texture->m_vulkan.m_imageView->m_subresourceRange;
+					const uint32_t side = Side >> mip;
+					Require(texture == cube->GetFace(face, mip) && texture->GetExtent() == glm::ivec2(side) &&
+						range.baseMipLevel == mip && range.levelCount == 1 && range.baseArrayLayer == face && range.layerCount == 1,
+						"cubemap faces must address the requested native mip/layer and extent");
+					const glm::vec4 color(float(face + 1) / 8, float(mip + 1) / 8, 0.25f, 1);
+					ClearColor(draw, texture, color);
+					readbacks.Add(Readback{ ReadColor(draw, texture), color, side });
+				}
+			}
+			CompleteCommands(upload, draw);
+			for (const auto& readback : readbacks)
+			{
+				const auto pixels = static_cast<const glm::vec4*>(readback.m_buffer->GetPointer());
+				for (uint32_t i = 0; i < readback.m_side * readback.m_side; ++i)
+					Require(pixels[i] == readback.m_color, "each cubemap face/mip must retain its own GPU-written pixels");
+			}
+			std::cout << "Cubemap mip views: levels=" << levels << ", base identity, native ranges and all six faces per mip passed\n";
+		}
 	}
 
 	class SkyCommandProbe : public SkyNode
@@ -1610,8 +1772,16 @@ frame:
 		}
 
 		bool HasNoStarsOrPendingLoad() const { return m_bStarsRequested && !m_starsMesh && !m_loadMeshTask; }
+		RHIMeshPtr GetStarsMesh() const { return m_starsMesh; }
+		RHIMeshPtr WaitForStars()
+		{
+			if (!m_loadMeshTask) return m_starsMesh;
+			m_loadMeshTask->Wait();
+			return m_loadMeshTask->GetResult();
+		}
 
 		using SkyNode::AreCloudsResourcesReady;
+		using SkyNode::ParseStarsMesh;
 
 		void LoadClouds()
 		{
@@ -1667,7 +1837,7 @@ frame:
 		}
 	};
 
-	void TestSkyWithoutStars(const std::filesystem::path& workspace)
+	void TestSkyWithoutStars(const std::filesystem::path& workspace, VkResult uploadError = VK_SUCCESS)
 	{
 		auto registry = App::GetSubmodule<AssetRegistry>();
 		std::string colors;
@@ -1711,8 +1881,17 @@ frame:
 		}
 		restore();
 		Require(TRefPtr<SkyCommandProbe>::Make()->LoadStars(), "a new sky node must load a repaired catalogue");
+		RHIMeshPtr rejectedMesh;
+		if (uploadError != VK_SUCCESS)
+		{
+			node = TRefPtr<SkyCommandProbe>::Make();
+			Tests::RequireWorkerUploadRefusal([&]() { node->LoadStars(); }, uploadError, true);
+			rejectedMesh = node->WaitForStars();
+			Require(rejectedMesh && rejectedMesh->HasInitializationFailed() && !rejectedMesh->IsReady(),
+				"native star upload refusal must retain terminal failure, not publish readiness");
+		}
 		node->LoadShaders();
-		auto task = Tasks::CreateTaskWithResult<std::string>("Sky without a star mesh", [&]() -> std::string
+		auto task = Tasks::CreateTaskWithResult<std::string>("Sky without a star mesh"_h, [&]() -> std::string
 		{
 			try
 			{
@@ -1720,14 +1899,15 @@ frame:
 				auto commands = Renderer::GetDriverCommands();
 				auto graph = TRefPtr<TestGraph>::Make();
 				node->SetEmptyClouds();
-				graph->SetSampler("g_ditherPatternSampler", driver->GetDefaultTexture());
-				graph->SetSampler("g_noiseSampler", driver->GetDefaultTexture());
+				graph->SetSampler("g_ditherPatternSampler"_h, driver->GetDefaultTexture());
+				graph->SetSampler("g_noiseSampler"_h, driver->GetDefaultTexture());
 				auto color = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R16G16B16A16_SFLOAT);
 				auto depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::D32_SFLOAT);
 				auto linearDepth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32_SFLOAT);
-				graph->SetRenderTarget("DepthBuffer", depth);
-				node->SetRHIResource("color", color);
-				node->SetRHIResource("linearDepth", linearDepth);
+				graph->SetRenderTarget("DepthBuffer"_h, depth);
+				node->SetRHIResource("color"_h, color);
+				node->SetRHIResource("linearDepth"_h, linearDepth);
+				RHIMeshPtr recovered;
 				for (uint32_t frame = 0; frame < 8; ++frame)
 				{
 					auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
@@ -1745,13 +1925,48 @@ frame:
 					frameData.m_view = frameData.m_projection = frameData.m_invProjection = glm::mat4(1);
 					frameData.m_viewportSize = glm::ivec2(Side);
 					frameData.m_cameraZNearZFar = glm::vec2(0.1f, 1000);
-					auto binding = driver->AddBufferToShaderBindings(scene.m_frameBindings, "frameData", sizeof(frameData), 0, EShaderBindingType::UniformBuffer);
+					auto binding = driver->AddBufferToShaderBindings(scene.m_frameBindings, "frameData"_h, sizeof(frameData), 0, EShaderBindingType::UniformBuffer);
 					commands->UpdateShaderBinding(upload, binding, &frameData, sizeof(frameData));
 					node->Process(graph, upload, draw, scene);
 					auto pixels = ReadColor(draw, color);
 					CompleteCommands(upload, draw);
 					Require(node->GetDrawCallStats().m_numBatches >= 5, "an absent star mesh must not stop sky, sun or cloud composition");
-					Require(node->HasNoStarsOrPendingLoad(), "an empty catalogue must not retry every frame after its input is repaired");
+					if (uploadError == VK_SUCCESS)
+					{
+						Require(node->HasNoStarsOrPendingLoad(), "an empty catalogue must not retry every frame after its input is repaired");
+					}
+					else if (frame == 0)
+					{
+						Require(!node->GetStarsMesh(), "Sky must release the rejected star mesh before requesting its replacement");
+					}
+					else if (frame == 1)
+					{
+						recovered = node->WaitForStars();
+						Require(recovered && recovered != rejectedMesh && !recovered->HasInitializationFailed(),
+							"the same Sky node must retry the unchanged catalogue with a new mesh owner");
+						driver->WaitIdle();
+						driver->TrackResources_ThreadSafe();
+						Require(recovered->IsReady(), "the replacement star mesh must become ready after native completion");
+						const auto expected = SkyCommandProbe::ParseStarsMesh(colors, catalogue);
+						const size_t vertexBytes = expected.m_first.Num() * sizeof(VertexP3C4);
+						const size_t indexBytes = expected.m_second.Num() * sizeof(uint32_t);
+						auto vertices = driver->CreateBuffer(vertexBytes, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+						auto indices = driver->CreateBuffer(indexBytes, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+						Require(driver->CopyBuffer_Immediate(recovered->m_vertexBuffer, vertices, vertexBytes) &&
+							driver->CopyBuffer_Immediate(recovered->m_indexBuffer, indices, indexBytes),
+							"the recovered star mesh must support complete vertex/index readback");
+						const auto actual = static_cast<const VertexP3C4*>(vertices->GetPointer());
+						for (size_t i = 0; i < expected.m_first.Num(); ++i)
+							Require(actual[i].m_position == expected.m_first[i].m_position && actual[i].m_color == expected.m_first[i].m_color,
+								"every recovered star position and color must match the authored catalogue");
+						Require(std::memcmp(indices->GetPointer(), expected.m_second.GetData(), indexBytes) == 0,
+							"every recovered star index must match the authored catalogue");
+					}
+					else
+					{
+						Require(node->GetStarsMesh() == recovered && node->GetDrawCallStats().m_numBatches >= 6,
+							"later Sky frames must draw and reuse the recovered star mesh");
+					}
 					const auto values = static_cast<const uint16_t*>(pixels->GetPointer());
 					for (uint32_t pixel = 0; pixel < Side * Side; ++pixel)
 						for (uint32_t component = 0; component < 3; ++component)
@@ -1761,7 +1976,7 @@ frame:
 						}
 				}
 				SkyParameters captured;
-				Require(graph->GetSampler("g_skyCubemap") && node->GetEnvironmentSkyParams(captured),
+				Require(graph->GetSampler("g_skyCubemap"_h) && node->GetEnvironmentSkyParams(captured),
 					"the starless sky must still publish its completed environment capture");
 				return {};
 			}
@@ -1770,10 +1985,34 @@ frame:
 		task->Run();
 		task->Wait();
 		if (!task->GetResult().empty()) throw std::runtime_error(task->GetResult());
-		std::cout << "Starless sky: missing/empty mounted assets, repaired mesh, eight frames without retry, native pixels and environment capture passed\n";
+		if (uploadError == VK_SUCCESS)
+			std::cout << "Starless sky: missing/empty mounted assets, repaired mesh, eight frames without retry, native pixels and environment capture passed\n";
+		else
+			std::cout << "Star upload refusal " << uploadError << ": same-node recovery, all vertex/index values, eight sky frames and warm mesh reuse passed\n";
 	}
 
 
+
+	ShaderSetPtr WriteCullingIndexReadbackShader(const std::filesystem::path& workspace)
+	{
+		const auto path = workspace / "Content" / "CullingIndexReadback.shader";
+		YAML::Node shader;
+		shader["glslCommon"] = "#version 450\n";
+		shader["glslCompute"] = "layout(local_size_x = 1) in;\n"
+			"layout(set = 0, binding = 1, std430) readonly buffer Indices { uint values[]; } indices;\n"
+			"layout(set = 1, binding = 0, std430) writeonly buffer Output { uint values[]; } outputValues;\n"
+			"layout(push_constant) uniform Range { uint first; } range;\n"
+			"void main() { uint i = gl_GlobalInvocationID.x; outputValues.values[i] = indices.values[range.first + i]; }\n";
+		std::ofstream output(path);
+		output << shader;
+		output.close();
+		Require(static_cast<bool>(output), "culling index readback shader must be written");
+		const auto id = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(path.string());
+		ShaderSetPtr result;
+		Require(App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(id, result) && result->IsReady(),
+			"culling index readback shader must compile");
+		return result;
+	}
 
 	ShaderSetPtr WriteIndexedStorageShader(const std::filesystem::path& workspace, size_t stride)
 	{
@@ -1807,6 +2046,7 @@ frame:
 		Require(pipeline && pipeline->IsCompiled(), "indexed storage needs a compiled compute pipeline");
 		const size_t stride = (elementSize + 15) / 16 * 16;
 		using Allocation = Memory::TManagedMemory<VulkanBufferMemoryPtr, VulkanBufferAllocator>;
+		TVector<TSharedPtr<Allocation>> zeroBasedReservations;
 		uint32_t relocatedBuffers = 0, offsetRanges = 0;
 		for (uint32_t method = 0; method < 3; ++method)
 			for (bool projected : { false, true })
@@ -1815,19 +2055,27 @@ frame:
 				const uint32_t count = method == 0 ? 1 : 3;
 				const size_t size = stride * count;
 				auto blocker = driver->CreateShaderBindings();
-				Require(static_cast<bool>(driver->AddSsboToShaderBindings(blocker, "blocker", stride, 5, 0, false)),
+				Require(static_cast<bool>(driver->AddSsboToShaderBindings(blocker, "blocker"_h, stride, 5, 0, false)),
 					"indexed storage fixture must keep a neighboring allocation live");
 				auto inputs = driver->CreateShaderBindings();
 				const auto allocate = [&]()
 				{
 					return method == 0 ?
-						driver->AddBufferToShaderBindings(inputs, "indexed", elementSize, 0, EShaderBindingType::StorageBuffer) :
-						driver->AddSsboToShaderBindings(inputs, "indexed", elementSize, count, 0, withOffset);
+						driver->AddBufferToShaderBindings(inputs, "indexed"_h, elementSize, 0, EShaderBindingType::StorageBuffer) :
+						driver->AddSsboToShaderBindings(inputs, "indexed"_h, elementSize, count, 0, withOffset);
 				};
 				auto binding = allocate();
 				Require(binding && binding->m_vulkan.m_valueBinding, "indexed storage must allocate a managed range");
+				// Establish a nonzero VkDeviceMemory placement instead of relying on earlier tests' allocations.
+				for (uint32_t attempt = 0; attempt < 8192; ++attempt)
+				{
+					auto range = *binding->m_vulkan.m_valueBinding->Get();
+					if ((*range.m_buffer->GetMemoryPtr()).m_offset != 0) break;
+					zeroBasedReservations.Add(binding->m_vulkan.m_valueBinding);
+					binding = allocate();
+				}
 				if (projected)
-					Require(static_cast<bool>(driver->AddShaderBinding(inputs, blocker->GetOrAddShaderBinding("blocker"), "unused", 31)),
+					Require(static_cast<bool>(driver->AddShaderBinding(inputs, blocker->GetOrAddShaderBinding("blocker"_h), "unused"_h, 31)),
 						"an extra binding must require descriptor projection");
 				const auto prepare = [&]()
 				{
@@ -1866,8 +2114,8 @@ frame:
 				const auto rangeA = *binding->m_vulkan.m_valueBinding->Get();
 				TWeakPtr<Allocation> weakA(binding->m_vulkan.m_valueBinding);
 				const auto revisionA = inputs->GetDescriptorRevision();
-				Require(!driver->AddBufferToShaderBindings(inputs, "indexed", size, 0, EShaderBindingType::UniformBuffer) &&
-					inputs->GetDescriptorRevision() == revisionA && inputs->GetOrAddShaderBinding("indexed") == binding &&
+				Require(!driver->AddBufferToShaderBindings(inputs, "indexed"_h, size, 0, EShaderBindingType::UniformBuffer) &&
+					inputs->GetDescriptorRevision() == revisionA && inputs->GetOrAddShaderBinding("indexed"_h) == binding &&
 					prepare() == nativeA,
 					"a rejected indexed-buffer replacement must retain the published range and revision");
 				auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
@@ -1888,7 +2136,7 @@ frame:
 					auto output = driver->CreateBuffer(size, EBufferUsageBit::StorageBuffer_Bit | EBufferUsageBit::BufferTransferSrc_Bit,
 						EMemoryPropertyBit::DeviceLocal);
 					auto outputBindings = driver->CreateShaderBindings();
-					Require(static_cast<bool>(driver->AddBufferToShaderBindings(outputBindings, output, "outputValue", 0)),
+					Require(static_cast<bool>(driver->AddBufferToShaderBindings(outputBindings, output, "outputValue"_h, 0)),
 						"indexed readback output must bind");
 					auto native = draw->m_vulkan.m_commandBuffer;
 					native->BindPipeline(pipeline);
@@ -1959,7 +2207,7 @@ frame:
 		auto output = driver->CreateBuffer(size, EBufferUsageBit::StorageBuffer_Bit | EBufferUsageBit::BufferTransferSrc_Bit,
 			EMemoryPropertyBit::DeviceLocal);
 		auto bindings = driver->CreateShaderBindings();
-		Require(static_cast<bool>(driver->AddBufferToShaderBindings(bindings, output, "outputValue", 0)),
+		Require(static_cast<bool>(driver->AddBufferToShaderBindings(bindings, output, "outputValue"_h, 0)),
 			"descriptor readback output must bind");
 		auto native = draw->m_vulkan.m_commandBuffer;
 		native->BindPipeline(pipeline);
@@ -2016,13 +2264,13 @@ frame:
 					auto inputs = driver->CreateShaderBindings();
 					const auto prepare = [&](uint32_t seed)
 					{
-						auto binding = driver->AddSsboToShaderBindings(inputs, "source", 16, 2, 0, true);
+						auto binding = driver->AddSsboToShaderBindings(inputs, "source"_h, 16, 2, 0, true);
 						Require(static_cast<bool>(binding), "pool lifetime input must prepare");
 						std::array<uint32_t, 8> words;
 						for (uint32_t i = 0; i < words.size(); ++i) words[i] = seed + i * 17;
 						commands->UpdateShaderBinding(upload, binding, words.data(), sizeof(words));
 						if (projected)
-							Require(static_cast<bool>(driver->AddShaderBinding(inputs, binding, "unused", 31)),
+							Require(static_cast<bool>(driver->AddShaderBinding(inputs, binding, "unused"_h, 31)),
 								"pool lifetime projection must have an extra binding");
 						auto sets = nativeDriver->GetCompatibleDescriptorSets(pipeline->m_layout, { inputs });
 						Require(sets.Num() == 1 && sets[0] && sets[0]->IsCompiled() &&
@@ -2084,7 +2332,7 @@ frame:
 		TVector<Tasks::TaskPtr<std::string>> tasks;
 		for (uint32_t worker = 0; worker < workers; ++worker)
 		{
-			auto task = Tasks::CreateTaskWithResult<std::string>("Concurrent descriptor publication", [&, worker]() -> std::string
+			auto task = Tasks::CreateTaskWithResult<std::string>("Concurrent descriptor publication"_h, [&, worker]() -> std::string
 			{
 				threadIds[worker] = GetCurrentThreadId();
 				ready.count_down();
@@ -2101,13 +2349,13 @@ frame:
 						commands->BeginCommandList(draw, true);
 						const auto prepare = [&](uint32_t seed)
 						{
-							auto binding = driver->AddSsboToShaderBindings(inputs, "source", 16, 2, 0, true);
+							auto binding = driver->AddSsboToShaderBindings(inputs, "source"_h, 16, 2, 0, true);
 							Require(static_cast<bool>(binding), "concurrent storage preparation must succeed");
 							std::array<uint32_t, 8> words;
 							for (uint32_t i = 0; i < words.size(); ++i) words[i] = seed + i * 17;
 							commands->UpdateShaderBinding(upload, binding, words.data(), sizeof(words));
 							if (iteration % 2)
-								Require(static_cast<bool>(driver->AddShaderBinding(inputs, binding, "unused", 31)),
+								Require(static_cast<bool>(driver->AddShaderBinding(inputs, binding, "unused"_h, 31)),
 									"concurrent projection must have an extra binding");
 							auto sets = nativeDriver->GetCompatibleDescriptorSets(pipeline->m_layout, { inputs });
 							Require(sets.Num() == 1 && sets[0] && sets[0]->IsCompiled() &&
@@ -2122,7 +2370,7 @@ frame:
 						if (iteration % 8 == 0)
 						{
 							const auto published = inputs->m_vulkan.m_descriptorSet;
-							Require(!driver->AddBufferToShaderBindings(inputs, "source", 32, 0, EShaderBindingType::UniformBuffer) &&
+							Require(!driver->AddBufferToShaderBindings(inputs, "source"_h, 32, 0, EShaderBindingType::UniformBuffer) &&
 								inputs->GetDescriptorRevision() == revision && inputs->m_vulkan.m_descriptorSet == published,
 								"a rejected concurrent replacement must not publish a revision");
 						}
@@ -2192,18 +2440,18 @@ frame:
 			for (bool replacement : { false, true })
 			{
 				auto bindings = driver->CreateShaderBindings();
-				if (replacement) Require(bool(driver->AddSamplerToShaderBindings(bindings, "source", driver->GetDefaultTexture(), 0)),
+				if (replacement) Require(bool(driver->AddSamplerToShaderBindings(bindings, "source"_h, driver->GetDefaultTexture(), 0)),
 					"average sampling must work before min/max replacement");
 				const auto previous = bindings->m_vulkan.m_descriptorSet;
 				const auto revision = bindings->GetDescriptorRevision();
-				const bool prepared = bool(driver->AddSamplerToShaderBindings(bindings, "source", texture, 0));
+				const bool prepared = bool(driver->AddSamplerToShaderBindings(bindings, "source"_h, texture, 0));
 				Require(prepared == device->IsSamplerFilterMinmaxSupported(),
 					"min/max preparation must fail when the sampler is unavailable, not use average filtering");
 				if (!prepared)
 				{
 					Require(bindings->m_vulkan.m_descriptorSet == previous && bindings->GetDescriptorRevision() == revision,
 						"rejected sampler preparation must preserve the published set and revision");
-					Require(bool(driver->AddSamplerToShaderBindings(bindings, "source", driver->GetDefaultTexture(), 0)),
+					Require(bool(driver->AddSamplerToShaderBindings(bindings, "source"_h, driver->GetDefaultTexture(), 0)),
 						"a rejected min/max request must allow an ordinary sampling retry");
 				}
 			}
@@ -2229,7 +2477,7 @@ frame:
 						ETextureType::Texture2D, EFormat::R32G32B32A32_SFLOAT);
 					Require(static_cast<bool>(texture), "overlay test pixels must upload");
 					auto bindings = driver->CreateShaderBindings();
-					driver->AddSamplerToShaderBindings(bindings, "colorSampler", texture, 0);
+					driver->AddSamplerToShaderBindings(bindings, "colorSampler"_h, texture, 0);
 					const RenderState state{ false, false, 0, false, ECullMode::None, mode, EFillMode::Fill, 0, false };
 					auto material = driver->CreateMaterial(mesh->m_vertexDescription, EPrimitiveTopology::TriangleList, state, shader, bindings);
 					auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
@@ -2270,7 +2518,7 @@ frame:
 
 		BackgroundPause()
 		{
-			task = Tasks::CreateTask("Hold cloud generation", [&]()
+			task = Tasks::CreateTask("Hold cloud generation"_h, [&]()
 			{
 				entered.count_down();
 				release.wait();
@@ -2294,6 +2542,7 @@ frame:
 
 	void TestGeneratedCloudNoise(const std::filesystem::path& workspace)
 	{
+		const auto depthReadback = WriteDepthReadbackShader(workspace);
 		Require(std::filesystem::equivalent(AssetRegistry::GetCacheFolder(), workspace / "Cache"),
 			"cloud noise must use the temporary workspace cache");
 		const std::array names{ "PerlinWorleyCloudsNoiseLow.bin", "PerlinWorleyCloudsNoiseHigh.bin" };
@@ -2316,7 +2565,7 @@ frame:
 		node->LoadClouds();
 		const auto onRender = [](const std::function<void()>& action)
 		{
-			auto task = Tasks::CreateTaskWithResult<std::string>("Cloud noise GPU contracts", [&]() -> std::string
+			auto task = Tasks::CreateTaskWithResult<std::string>("Cloud noise GPU contracts"_h, [&]() -> std::string
 			{
 				try { action(); return {}; }
 				catch (const std::exception& error) { return error.what(); }
@@ -2328,6 +2577,7 @@ frame:
 
 		TRefPtr<TestGraph> graph;
 		RHIRenderTargetPtr color, depth, linearDepth;
+		RHISurfacePtr depthSurface;
 		RHISceneViewSnapshot scene;
 		UboFrameData frameData{};
 		frameData.m_view = glm::rotate(glm::mat4(1), glm::radians(-45.0f), Math::vec3_Right);
@@ -2340,17 +2590,17 @@ frame:
 		{
 			auto& driver = Renderer::GetDriver();
 			graph = TRefPtr<TestGraph>::Make();
-			graph->SetSampler("g_ditherPatternSampler", driver->GetDefaultTexture());
-			graph->SetSampler("g_noiseSampler", driver->GetDefaultTexture());
+			graph->SetSampler("g_ditherPatternSampler"_h, driver->GetDefaultTexture());
+			graph->SetSampler("g_noiseSampler"_h, driver->GetDefaultTexture());
 			color = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R16G16B16A16_SFLOAT);
 			depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::D32_SFLOAT);
 			linearDepth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32_SFLOAT);
-			graph->SetRenderTarget("DepthBuffer", depth);
-			node->SetRHIResource("color", color);
-			node->SetRHIResource("linearDepth", linearDepth);
+			graph->SetRenderTarget("DepthBuffer"_h, depth);
+			node->SetRHIResource("color"_h, color);
+			node->SetRHIResource("linearDepth"_h, linearDepth);
 			node->PrepareCloudReadback();
 			scene.m_frameBindings = driver->CreateShaderBindings();
-			driver->AddBufferToShaderBindings(scene.m_frameBindings, "frameData", sizeof(frameData), 0, EShaderBindingType::UniformBuffer);
+			driver->AddBufferToShaderBindings(scene.m_frameBindings, "frameData"_h, sizeof(frameData), 0, EShaderBindingType::UniformBuffer);
 			auto params = node->GetSkyParams();
 			params.m_cloudsCoverage = 0.8f;
 			params.m_sunShaftsIntensity = 0;
@@ -2358,27 +2608,46 @@ frame:
 			TestSkyOverlayBlending(node->GetBlitShader(), graph, scene.m_frameBindings);
 		});
 
-		std::vector<glm::vec4> clouds;
-		const auto render = [&](bool expectClouds = false, VkResult uploadError = VK_SUCCESS, uint32_t refusedUploads = 2)
+		std::vector<glm::vec4> clouds, compositePixels;
+		const auto render = [&](bool expectClouds = false, VkResult uploadError = VK_SUCCESS, uint32_t refusedUploads = 2,
+			float sceneDepth = 100000.0f, bool checkDepthIndependence = false)
 		{
 			onRender([&]()
 			{
 				auto& driver = Renderer::GetDriver();
 				auto commands = Renderer::GetDriverCommands();
+				CaptureAttachments capture;
 				auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 				auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 				commands->BeginCommandList(upload, true);
 				commands->BeginCommandList(draw, true);
 				ClearColor(draw, color, glm::vec4(-1, -1, -1, 1));
-				ClearColor(draw, linearDepth, glm::vec4(frameData.m_cameraZNearZFar.y));
+				ClearColor(draw, linearDepth, glm::vec4(sceneDepth));
 				commands->ImageMemoryBarrier(draw, linearDepth, EImageLayout::ShaderReadOnlyOptimal);
 				commands->ImageMemoryBarrier(draw, depth, EImageLayout::TransferDstOptimal);
 				commands->ClearDepthStencil(draw, depth, 1.0f, 0);
-				commands->UpdateShaderBinding(upload, scene.m_frameBindings->GetOrAddShaderBinding("frameData"), &frameData, sizeof(frameData));
+				if (checkDepthIndependence)
+				{
+					if (depthSurface && depthSurface->NeedsResolve())
+					{
+						commands->ImageMemoryBarrier(draw, depthSurface->GetTarget(), EImageLayout::TransferDstOptimal);
+						commands->ClearDepthStencil(draw, depthSurface->GetTarget(), 0.375f, 0);
+					}
+					if (auto decoy = graph->GetRenderTarget("DepthBuffer"_h); decoy && decoy != depth)
+					{
+						commands->ImageMemoryBarrier(draw, decoy, EImageLayout::TransferDstOptimal);
+						commands->ClearDepthStencil(draw, decoy, 0.625f, 0);
+					}
+				}
+				commands->UpdateShaderBinding(upload, scene.m_frameBindings->GetOrAddShaderBinding("frameData"_h), &frameData, sizeof(frameData));
 				Require(!expectClouds || node->AreCloudsResourcesReady(), "cloud comparison requires completed uploads before recording");
 				if (uploadError != VK_SUCCESS)
 					Tests::RequireImageInitializationRefusal([&]() { node->Process(graph, upload, draw, scene); }, 0, refusedUploads, uploadError);
 				else node->Process(graph, upload, draw, scene);
+				const bool bNoDepthAttachment = recordedDepth.imageView == VK_NULL_HANDLE && recordedDepth.resolveImageView == VK_NULL_HANDLE;
+				const auto depthPixels = checkDepthIndependence ? ReadDepth(draw, depth, depthReadback) : RHIBufferPtr{};
+				const auto liveDepthPixels = checkDepthIndependence && depthSurface && depthSurface->NeedsResolve() ?
+					ReadDepth(draw, depthSurface->GetTarget(), depthReadback) : RHIBufferPtr{};
 				auto output = ReadColor(draw, color);
 				auto texture = node->GetCloudsTexture();
 				const auto extent = texture->GetExtent();
@@ -2387,10 +2656,25 @@ frame:
 				commands->CopyImageToBuffer(draw, texture, pixels);
 				commands->ImageMemoryBarrier(draw, texture, texture->GetDefaultLayout());
 				CompleteCommands(upload, draw);
+				if (checkDepthIndependence)
+				{
+					Require(bNoDepthAttachment, "Sky overlay must not bind unused hardware depth");
+					const auto* values = static_cast<const glm::vec2*>(depthPixels->GetPointer());
+					for (uint32_t i = 0; i < Side * Side; ++i)
+						Require(values[i].x == 1.0f, "Sky overlay must preserve resolved depth");
+					if (liveDepthPixels)
+					{
+						values = static_cast<const glm::vec2*>(liveDepthPixels->GetPointer());
+						for (uint32_t i = 0; i < Side * Side * uint32_t(depthSurface->GetTarget()->GetMsaaSamples()); ++i)
+							Require(values[i].x == 0.375f, "Sky overlay must preserve every unused MSAA depth sample");
+					}
+				}
 				const auto composite = static_cast<const uint16_t*>(output->GetPointer());
+				compositePixels.resize(Side * Side);
 				for (uint32_t i = 0; i < Side * Side * 4; ++i)
 				{
 					const float value = glm::unpackHalf1x16(composite[i]);
+					compositePixels[i / 4][i % 4] = value;
 					if (!std::isfinite(value) || value < 0 || (i % 4 == 3 && value > 1))
 						throw std::runtime_error("sky composition while noise loads: component=" + std::to_string(i) +
 							", value=" + std::to_string(value) + ", draws=" + std::to_string(node->GetDrawCallStats().m_numBatches));
@@ -2421,7 +2705,7 @@ frame:
 				commands->BeginCommandList(upload, true);
 				commands->BeginCommandList(draw, true);
 				Tests::RequireAttachmentInitializationRefusal([&]() { node->Process(graph, upload, draw, scene); }, 0, error);
-				Require(draw->GetNumRecordedCommands() == 0 && !graph->GetSampler("g_skyCubemap"),
+				Require(draw->GetNumRecordedCommands() == 0 && !graph->GetSampler("g_skyCubemap"_h),
 					"refused fallback noise must not draw the sky or publish an environment");
 				CompleteCommands(upload, draw);
 			}
@@ -2511,6 +2795,88 @@ frame:
 		if (maximum <= 0.05f || maximum - minimum <= 0.05f)
 			throw std::runtime_error("real cloud opacity range [" + std::to_string(minimum) + ", " + std::to_string(maximum) + "]");
 
+		for (bool named : { false, true })
+		for (bool surface : { false, true })
+		{
+			onRender([&]()
+			{
+				if (named)
+				{
+					node->SetRHIResource_Unresolved("color"_h, "SkyOutput"_h);
+					node->SetRHIResource_Unresolved("linearDepth"_h, "SkyDepth"_h);
+				}
+			});
+			VulkanDescriptorSetPtr previous;
+			for (uint32_t frame = 0; frame < 6; ++frame)
+			{
+				onRender([&]()
+				{
+					auto& driver = Renderer::GetDriver();
+					if (frame == 0 || frame == 3)
+						color = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R16G16B16A16_SFLOAT);
+					if (frame == 2 || frame == 4)
+						linearDepth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32_SFLOAT);
+					const auto publish = [&](StringHash slot, StringHash name, RHIRenderTargetPtr texture)
+					{
+						const auto resource = surface ? RHIResourcePtr(driver->CreateSurface(texture)) : RHIResourcePtr(texture);
+						if (!named) node->SetRHIResource(slot, resource);
+						else if (surface) graph->SetSurface(name, resource.DynamicCast<RHISurface>());
+						else graph->SetRenderTarget(name, texture);
+					};
+					publish("color"_h, "SkyOutput"_h, color);
+					publish("linearDepth"_h, "SkyDepth"_h, linearDepth);
+				});
+				const bool bIsOccluded = frame == 2 || frame == 3;
+				render(true, VK_SUCCESS, 2, bIsOccluded ? 10.0f : frameData.m_cameraZNearZFar.y);
+				if (bIsOccluded)
+					Require(std::all_of(clouds.begin(), clouds.end(), [](auto pixel) { return pixel == glm::vec4(0); }),
+						"replaced near depth must occlude every cloud pixel");
+				else Require(clouds == reference, "restored far depth must reproduce all cloud pixels");
+				onRender([&]()
+				{
+					auto bindings = node->GetShaderBindings();
+					Require(bindings->GetOrAddShaderBinding("linearDepth"_h)->GetTextureBinding() == linearDepth,
+						"Sky must bind the current resolved depth input");
+					if (frame % 2 == 1)
+						Require(previous == bindings->m_vulkan.m_descriptorSet,
+							"unchanged Sky samplers must reuse their native descriptor set");
+					previous = bindings->m_vulkan.m_descriptorSet;
+				});
+			}
+			std::cout << "Sky resources named=" << named << " surface=" << surface
+				<< ": six frames, output/depth replacement, all cloud pixels and warm descriptors passed\n";
+		}
+
+		const auto compositeReference = compositePixels;
+		enum class SkyDepth { Target, Surface, SurfaceOnly, SurfaceDecoy, Absent };
+		for (auto input : { SkyDepth::Target, SkyDepth::Surface, SkyDepth::SurfaceOnly, SkyDepth::SurfaceDecoy, SkyDepth::Absent })
+		{
+			for (uint32_t frame = 0; frame < 6; ++frame)
+			{
+				onRender([&]()
+				{
+					if (frame % 2 == 0)
+					{
+						auto& driver = Renderer::GetDriver();
+						const auto usage = ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferDst_Bit;
+						depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::D32_SFLOAT,
+							ETextureFiltration::Nearest, ETextureClamping::Clamp, usage);
+						depthSurface = input != SkyDepth::Target && input != SkyDepth::Absent ? driver->CreateSurface(depth) : RHISurfacePtr{};
+						graph->SetSurface("DepthBuffer"_h, depthSurface);
+						const auto target = input == SkyDepth::SurfaceDecoy ? driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::D32_SFLOAT,
+							ETextureFiltration::Nearest, ETextureClamping::Clamp, usage) : depth;
+						graph->SetRenderTarget("DepthBuffer"_h, input == SkyDepth::SurfaceOnly || input == SkyDepth::Absent ? RHIRenderTargetPtr{} : target);
+					}
+				});
+				render(true, VK_SUCCESS, 2, frameData.m_cameraZNearZFar.y, true);
+				Require(clouds == reference && compositePixels == compositeReference,
+					"hardware depth publication must not affect Sky's cloud or final HDR pixels");
+			}
+			std::cout << "Sky overlay depth " << magic_enum::enum_name(input)
+				<< ": six frames, replacement/reuse, no native depth attachment, untouched depth and HDR/cloud parity passed\n";
+		}
+		onRender([&]() { graph->SetSurface("DepthBuffer"_h, {}); graph->SetRenderTarget("DepthBuffer"_h, depth); depthSurface.Clear(); });
+
 		std::array<RHITexturePtr, 2> withoutWorley;
 		std::array<TVector<uint8_t>, 2> perlinOnly;
 		for (uint32_t n = 0; n < sizes.size(); ++n)
@@ -2571,7 +2937,7 @@ frame:
 		SkyParameters captured, replacement;
 		onRender([&]()
 		{
-			previousSky = graph->GetSampler("g_skyCubemap");
+			previousSky = graph->GetSampler("g_skyCubemap"_h);
 			Require(previousSky && node->GetEnvironmentSkyParams(captured), "capture refusal needs a completed sky environment");
 			replacement = node->GetSkyParams();
 			replacement.m_sunIlluminance *= 0.5f;
@@ -2583,7 +2949,7 @@ frame:
 			onRender([&]()
 			{
 				SkyParameters visible;
-				Require(graph->GetSampler("g_skyCubemap") == previousSky && node->GetEnvironmentSkyParams(visible) &&
+				Require(graph->GetSampler("g_skyCubemap"_h) == previousSky && node->GetEnvironmentSkyParams(visible) &&
 					visible.GetEnvironmentKey() == captured.GetEnvironmentKey(),
 					"failed sky capture initialization must retain the old cubemap and its matching lighting parameters");
 			});
@@ -2592,11 +2958,470 @@ frame:
 		onRender([&]()
 		{
 			SkyParameters visible;
-			Require(graph->GetSampler("g_skyCubemap") != previousSky && node->GetEnvironmentSkyParams(visible) &&
+			Require(graph->GetSampler("g_skyCubemap"_h) != previousSky && node->GetEnvironmentSkyParams(visible) &&
 				visible.GetEnvironmentKey() == replacement.GetEnvironmentKey(),
 				"the unchanged pending sky capture must finish and publish its matching lighting parameters");
 		});
 		std::cout << "Sky capture initialization: native refusal, retained cubemap/lighting pair and same-capture recovery passed\n";
+	}
+
+	class EnvironmentCommandProbe : public EnvironmentNode
+	{
+	public:
+		uint32_t NumCachedEnvironments() const { return m_numCachedEnvironments; }
+	};
+
+	class SkyRendererAccess : public Renderer
+	{
+	public:
+		using Renderer::UpdateSkyParameters;
+		using Renderer::m_previousRenderFrame;
+	};
+
+	void TestSkyQueuedFrameOrder()
+	{
+		auto* renderer = App::GetSubmodule<Renderer>();
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+		World world("Queued sky frame", 0);
+		auto sky = world.Instantiate("Sky")->AddComponent<SkyComponent>();
+		auto graph = TRefPtr<TestGraph>::Make();
+		auto node = TRefPtr<SkyNode>::Make();
+		node->SetTag("Sky"_h);
+		graph->GetGraph().Add(node);
+		(renderer->*&SkyRendererAccess::UpdateSkyParameters)(&world, graph);
+		scheduler->WaitIdle({ EThreadType::Render });
+		const auto first = sky->GetSkyParameters();
+		std::latch releasePreparation(1);
+		auto preparation = Tasks::CreateTask("Delayed sky frame preparation"_h,
+			[&]() { releasePreparation.wait(); }, EThreadType::RHI);
+		bool previousFrameMatched = false;
+		auto previousFrame = Tasks::CreateTask("Observe previous sky frame"_h,
+			[&]() { previousFrameMatched = node->GetSkyParams() == first; }, EThreadType::Render);
+		previousFrame->Join(preparation);
+		auto& previous = renderer->*&SkyRendererAccess::m_previousRenderFrame;
+		auto saved = previous;
+		previous = previousFrame;
+		preparation->Run();
+		previousFrame->Run();
+		sky->SetCloudsDensity(first.m_cloudsDensity + 0.1f);
+		(renderer->*&SkyRendererAccess::UpdateSkyParameters)(&world, graph);
+		auto pending = Tasks::CreateTaskWithResult<bool>("Observe sky while RHI preparation is pending"_h,
+			[&]() { return node->GetSkyParams() == first; }, EThreadType::Render);
+		pending->Run();
+		pending->Wait();
+		releasePreparation.count_down();
+		scheduler->WaitIdle({ EThreadType::RHI, EThreadType::Render });
+		previous = saved;
+		const bool currentMatched = node->GetSkyParams() == sky->GetSkyParameters();
+		world.Clear();
+		Require(pending->GetResult() && previousFrameMatched && currentMatched,
+			"new sky parameters must not overtake the previous frame waiting for RHI preparation");
+		std::cout << "Sky frame ordering: delayed RHI preparation retains the previous sky until its Render task completes passed\n";
+	}
+
+	void TestSkyWorldOwnership()
+	{
+		auto* renderer = App::GetSubmodule<Renderer>();
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+		World first("First sky world", 0), second("Second sky world", 0), empty("No sky world", 0);
+		auto otherOwner = first.Instantiate("Other sky", InstanceId("00000000000000000003"));
+		auto chosenOwner = first.Instantiate("Chosen sky", InstanceId("00000000000000000002"));
+		auto other = otherOwner->AddComponent<SkyComponent>();
+		auto chosen = chosenOwner->AddComponent<SkyComponent>();
+		auto secondSky = second.Instantiate("Second sky")->AddComponent<SkyComponent>();
+		chosen->SetCloudsDensity(0.25f);
+		other->SetCloudsDensity(0.75f);
+		secondSky->SetCloudsDensity(0.5f);
+		auto graph = TRefPtr<TestGraph>::Make();
+		auto node = TRefPtr<SkyNode>::Make();
+		node->SetTag("Sky"_h);
+		graph->GetGraph().Add(node);
+		std::vector<Tasks::TaskPtr<bool>> observations;
+		const auto observe = [&](TRefPtr<SkyNode> observed, SkyParameters expected)
+		{
+			auto task = Tasks::CreateTaskWithResult<bool>("Observe selected sky"_h,
+				[observed, expected]() { return observed->GetSkyParams() == expected; }, EThreadType::Render);
+			task->Run();
+			observations.push_back(task);
+		};
+		const auto publish = [&](World& world, uint32_t expectedTasks)
+		{
+			const auto before = scheduler->GetNumTasks(EThreadType::Render);
+			(renderer->*&SkyRendererAccess::UpdateSkyParameters)(&world, graph);
+			Require(scheduler->GetNumTasks(EThreadType::Render) == before + expectedTasks,
+				"sky publication must enqueue exactly one changed snapshot and no unchanged work");
+		};
+		std::latch entered(1), release(1);
+		auto hold = Tasks::CreateTask("Hold Render during sky ownership changes"_h, [&]()
+		{
+			entered.count_down();
+			release.wait();
+		}, EThreadType::Render);
+		hold->Run();
+		entered.wait();
+		try
+		{
+			publish(first, 1);
+			observe(node, chosen->GetSkyParameters());
+			const auto beforeTicks = scheduler->GetNumTasks(EThreadType::Render);
+			for (uint32_t frame = 0; frame < 120; ++frame)
+			{
+				other->Tick(0);
+				chosen->EditorTick(0);
+				publish(first, 0);
+			}
+			Require(scheduler->GetNumTasks(EThreadType::Render) == beforeTicks,
+				"unchanged component ticks must not queue render work");
+			other->SetCloudsDensity(0.9f);
+			publish(first, 0);
+			chosen->SetCloudsDensity(0.3f);
+			const auto captured = chosen->GetSkyParameters();
+			publish(first, 1);
+			chosen->SetCloudsDensity(0.4f);
+			observe(node, captured);
+			chosen->SetCloudsDensity(0.3f);
+			const auto beforeRemoval = scheduler->GetNumTasks(EThreadType::Render);
+			Require(otherOwner->RemoveComponent(other), "a nonselected sky must be removable");
+			Require(scheduler->GetNumTasks(EThreadType::Render) == beforeRemoval,
+				"nonselected EndPlay must not enqueue a global reset");
+			publish(first, 0);
+			observe(node, captured);
+			publish(second, 1);
+			const auto beforeTeardown = scheduler->GetNumTasks(EThreadType::Render);
+			first.Clear();
+			Require(first.GetECS<LightingECS>()->GetNumSkies() == 0 &&
+				scheduler->GetNumTasks(EThreadType::Render) == beforeTeardown,
+				"old-world teardown must unregister its skies without resetting the new world");
+			publish(second, 0);
+			observe(node, secondSky->GetSkyParameters());
+			auto replacement = TRefPtr<SkyNode>::Make();
+			replacement->SetTag("Sky"_h);
+			graph->GetGraph().Clear();
+			graph->GetGraph().Add(replacement);
+			publish(second, 1);
+			observe(replacement, secondSky->GetSkyParameters());
+			observe(node, secondSky->GetSkyParameters());
+			node.Clear();
+			publish(empty, 1);
+			publish(empty, 0);
+			observe(replacement, SkyParameters{});
+			publish(second, 1);
+			observe(replacement, secondSky->GetSkyParameters());
+			graph->GetGraph().Clear();
+			publish(second, 0);
+			graph->GetGraph().Add(replacement);
+			publish(second, 1);
+			observe(replacement, secondSky->GetSkyParameters());
+		}
+		catch (...)
+		{
+			release.count_down();
+			hold->Wait();
+			scheduler->WaitIdle({ EThreadType::Render });
+			first.Clear();
+			second.Clear();
+			empty.Clear();
+			throw;
+		}
+		release.count_down();
+		hold->Wait();
+		for (const auto& observation : observations)
+		{
+			observation->Wait();
+			Require(observation->GetResult(), "queued sky snapshots must retain their owner, values and order across teardown");
+		}
+		second.Clear();
+		empty.Clear();
+		std::cout << "Sky ownership: selected world, 120 unchanged frames, copied values, nonselected removal, old-world teardown, graph replacement and default restoration passed\n";
+	}
+
+	std::vector<glm::vec3> ReadEnvironmentSamples(const std::array<RHITexturePtr, 4>& maps)
+	{
+		std::vector<glm::vec3> samples;
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		for (const auto& texture : maps)
+		{
+			float peak = 0;
+			auto cube = texture.DynamicCast<RHICubemap>();
+			Require(cube && cube->GetFormat() == EFormat::R16G16B16A16_SFLOAT, "the completed sky bundle must contain HDR cubemaps");
+			for (uint32_t mip = 0; mip < cube->m_vulkan.m_image->m_mipLevels; ++mip)
+			{
+				const auto size = glm::max(cube->GetExtent() >> static_cast<int32_t>(mip), glm::ivec2(1));
+				for (uint32_t face = 0; face < 6; ++face)
+				{
+					auto buffer = driver->CreateBuffer(size_t(size.x) * size.y * 8, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+					auto command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					commands->BeginCommandList(command, true);
+					commands->ImageMemoryBarrier(command, cube, EImageLayout::TransferSrcOptimal);
+					command->m_vulkan.m_commandBuffer->CopyImageToBuffer(*buffer->m_vulkan.m_buffer->Get(),
+						cube->m_vulkan.m_image, size.x, size.y, 1, mip, face);
+					commands->ImageMemoryBarrier(command, cube, EImageLayout::ShaderReadOnlyOptimal);
+					commands->MemoryBarrier(command, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+						static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+					commands->EndCommandList(command);
+					Require(driver->SubmitCommandList_Immediate(command), "sky subresource readback must complete");
+					const auto pixels = static_cast<const uint16_t*>(buffer->GetPointer());
+					for (uint32_t i = 0; i < uint32_t(size.x * size.y); ++i)
+						for (uint32_t channel = 0; channel < 3; ++channel)
+							peak = std::max(peak, glm::unpackHalf1x16(pixels[i * 4 + channel]));
+					for (uint32_t index : { 0u, uint32_t(size.y / 2 * size.x + size.x / 2), uint32_t(size.x * size.y - 1) })
+					{
+						const glm::vec3 pixel(glm::unpackHalf1x16(pixels[index * 4]), glm::unpackHalf1x16(pixels[index * 4 + 1]),
+							glm::unpackHalf1x16(pixels[index * 4 + 2]));
+						Require(Math::AllFinite(pixel) && glm::all(glm::greaterThanEqual(pixel, glm::vec3(0))),
+							"every sampled sky face and mip must contain finite nonnegative radiance");
+						samples.push_back(pixel);
+					}
+				}
+			}
+			Require(peak > 0 && peak < 60000, "the linear radiance fixture must be nonblack and below half-float saturation");
+			std::cout << "Sky environment readback peak: " << peak << '\n';
+		}
+		return samples;
+	}
+
+	void TestSkyEnvironmentPublication()
+	{
+		const auto onRender = [](const std::function<void()>& action)
+		{
+			auto task = Tasks::CreateTaskWithResult<std::string>("Sky environment publication"_h, [&]() -> std::string
+			{
+				try { action(); return {}; }
+				catch (const std::exception& error) { return error.what(); }
+			}, EThreadType::Render);
+			task->Run();
+			task->Wait();
+			Require(task->GetResult().empty(), task->GetResult().c_str());
+		};
+		auto* renderer = App::GetSubmodule<Renderer>();
+		Require(renderer->EnsureFrameGraph(), "the real SkyComponent handoff needs the renderer's frame graph");
+		auto productionGraph = renderer->GetFrameGraph()->GetRHI();
+		const auto originalNodes = productionGraph->GetGraph();
+		auto sky = TRefPtr<SkyCommandProbe>::Make();
+		auto environment = TRefPtr<EnvironmentCommandProbe>::Make();
+		sky->LoadShaders();
+		sky->SetTag("Sky"_h);
+		environment->SetTag("Environment"_h);
+		auto graph = TRefPtr<TestGraph>::Make();
+		graph->GetGraph().Add(sky);
+		graph->GetGraph().Add(environment);
+		const StringHash names[] = { "g_rawEnvCubemap"_h, "g_envCubemap"_h, "g_irradianceCubemap"_h, "g_sheenEnvCubemap"_h };
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto color = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R16G16B16A16_SFLOAT);
+		auto depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::D32_SFLOAT);
+		auto linearDepth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32_SFLOAT);
+		RHISceneViewSnapshot scene;
+		scene.m_frameBindings = driver->CreateShaderBindings();
+		UboFrameData frame{};
+		frame.m_view = frame.m_projection = frame.m_invProjection = glm::mat4(1);
+		frame.m_viewportSize = glm::ivec2(Side);
+		frame.m_cameraZNearZFar = glm::vec2(0.1f, 1000);
+		auto frameBinding = driver->AddBufferToShaderBindings(scene.m_frameBindings, "frameData"_h, sizeof(frame), 0, EShaderBindingType::UniformBuffer);
+		World skyWorld("Sky publication", 0);
+		auto componentOwner = skyWorld.Instantiate("Sky");
+		auto componentPtr = componentOwner->AddComponent<SkyComponent>();
+		auto& component = *componentPtr;
+		component.SetCloudsCoverage(0);
+		const auto maps = [&]()
+		{
+			std::array<RHITexturePtr, 4> result;
+			for (uint32_t i = 0; i < result.size(); ++i) result[i] = graph->GetSampler(names[i]);
+			return result;
+		};
+		const auto process = [&](bool drawSky, bool filter, int refusedStage = -1, VkResult error = VK_SUCCESS)
+		{
+			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(upload, true);
+			commands->BeginCommandList(draw, true);
+			if (drawSky)
+			{
+				ClearColor(draw, color, glm::vec4(-1));
+				ClearColor(draw, linearDepth, glm::vec4(1000));
+				commands->ImageMemoryBarrier(draw, linearDepth, EImageLayout::ShaderReadOnlyOptimal);
+				commands->ImageMemoryBarrier(draw, depth, EImageLayout::TransferDstOptimal);
+				commands->ClearDepthStencil(draw, depth, 1.0f, 0);
+				commands->UpdateShaderBinding(upload, frameBinding, &frame, sizeof(frame));
+				sky->Process(graph, upload, draw, scene);
+			}
+			if (filter)
+			{
+				if (refusedStage < 0) environment->Process(graph, upload, draw, scene);
+				else Tests::RequireAttachmentInitializationRefusal([&]() { environment->Process(graph, upload, draw, scene); }, refusedStage, error);
+			}
+			CompleteCommands(upload, draw);
+			driver->TrackResources_ThreadSafe();
+		};
+		const auto handoff = [&](float intensity)
+		{
+			SkyParameters before;
+			onRender([&]() { before = sky->GetSkyParams(); });
+			std::latch entered(1), release(1);
+			bool unchanged = false;
+			auto hold = Tasks::CreateTask("Hold sky handoff"_h, [&]()
+			{
+				entered.count_down();
+				release.wait();
+				unchanged = sky->GetSkyParams() == before;
+			}, EThreadType::Render);
+			hold->Run();
+			entered.wait();
+			component.SetSunIlluminance(glm::vec3(intensity));
+			component.Tick(0);
+			(renderer->*&SkyRendererAccess::UpdateSkyParameters)(&skyWorld, productionGraph);
+			const auto captured = component.GetSkyParameters();
+			component.SetAmbient(captured.m_ambient + 17);
+			release.count_down();
+			hold->Wait();
+			onRender([&]()
+			{
+				Require(unchanged && sky->GetSkyParams() == captured,
+					"SkyComponent must enqueue a value snapshot without mutating render-owned state while its task is pending");
+			});
+			component.SetAmbient(captured.m_ambient);
+			return captured;
+		};
+		onRender([&]()
+		{
+			productionGraph->GetGraph().Clear();
+			productionGraph->GetGraph().Add(sky);
+			sky->SetEmptyClouds();
+			graph->SetSampler("g_ditherPatternSampler"_h, driver->GetDefaultTexture());
+			graph->SetSampler("g_noiseSampler"_h, driver->GetDefaultTexture());
+			graph->SetRenderTarget("DepthBuffer"_h, depth);
+			sky->SetRHIResource("color"_h, color);
+			sky->SetRHIResource("linearDepth"_h, linearDepth);
+		});
+		try
+		{
+			onRender([&]() { process(false, true); }); // Warm BRDF independently of a completed sky.
+			const auto first = handoff(100);
+			onRender([&]()
+			{
+				for (uint32_t i = 0; i < 7; ++i) process(true, false);
+				SkyParameters captured;
+				Require(sky->GetEnvironmentSkyParams(captured) && captured == first, "the first complete capture must keep its queued parameters");
+				for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+				for (int stage = 0; stage < 3; ++stage)
+				{
+					process(false, true, stage, error);
+					Require(!environment->GetEnvironmentSkyParams(captured) && !maps()[0],
+						"failed first filtering must not publish sky parameters without their environment maps");
+				}
+				process(false, true);
+			});
+			std::array<RHITexturePtr, 4> retained;
+			std::vector<glm::vec3> originalPixels;
+			onRender([&]() { retained = maps(); originalPixels = ReadEnvironmentSamples(retained); });
+			const auto second = handoff(200);
+			onRender([&]()
+			{
+				for (uint32_t i = 0; i < 6; ++i)
+				{
+					process(true, true);
+					SkyParameters captured, filtered;
+					Require(sky->GetEnvironmentSkyParams(captured) && captured == first &&
+						environment->GetEnvironmentSkyParams(filtered) && filtered == first && maps() == retained,
+						"unfinished faces must retain the previous sky and filtered environment pair");
+				}
+				process(true, false);
+				for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+				for (int stage = 0; stage < 3; ++stage)
+				{
+					process(false, true, stage, error);
+					SkyParameters filtered;
+					Require(environment->GetEnvironmentSkyParams(filtered) && filtered == first && maps() == retained,
+						"failed replacement filtering must preserve the previous completed parameters and maps together");
+				}
+				process(false, true);
+				SkyParameters filtered;
+				Require(environment->GetEnvironmentSkyParams(filtered) && filtered == second && maps() != retained,
+					"successful replacement must publish its sky parameters and complete map bundle together");
+				const auto pixels = ReadEnvironmentSamples(maps());
+				Require(pixels.size() == originalPixels.size(), "repeated sky captures must keep the same subresources");
+				float energy = 0;
+				for (size_t i = 0; i < pixels.size(); ++i)
+				{
+					energy += glm::length(originalPixels[i]);
+					if (!glm::all(glm::lessThanEqual(glm::abs(pixels[i] - 2.0f * originalPixels[i]),
+						glm::max(glm::vec3(0.01f), glm::abs(pixels[i]) * 0.01f))))
+						throw std::runtime_error("sky radiance must double at sample " + std::to_string(i) +
+							": previous=" + std::to_string(originalPixels[i].r) + ", current=" + std::to_string(pixels[i].r));
+				}
+				Require(energy > 1, "a black fallback cannot satisfy the sky radiance comparison");
+				Require(ReadEnvironmentSamples(retained) == originalPixels, "later filtering must not overwrite retained GPU maps");
+				const auto beforeInvalidation = maps();
+				sky->MarkDirty();
+				for (uint32_t i = 0; i < 7; ++i)
+				{
+					process(true, true);
+					if (i < 6) Require(maps() == beforeInvalidation, "explicit sky invalidation must retain the previous pair while capturing faces");
+				}
+				const auto afterInvalidation = maps();
+				Require(afterInvalidation[0] != beforeInvalidation[0] && environment->NumCachedEnvironments() == 2,
+					"explicit sky invalidation must complete a new raw capture without growing the filtered cache");
+				for (uint32_t i = 1; i < afterInvalidation.size(); ++i)
+					Require(afterInvalidation[i] == beforeInvalidation[i], "an unchanged completed sky key must reuse all three filtered maps");
+				Require(environment->GetEnvironmentSkyParams(filtered) && filtered == second &&
+					ReadEnvironmentSamples(afterInvalidation) == pixels,
+					"cache restoration must publish matching parameters and preserve all sampled radiance");
+			});
+			for (uint32_t state = 3; state <= 7; ++state)
+			{
+				const auto expected = handoff(100.0f * state);
+				onRender([&]()
+				{
+					for (uint32_t i = 0; i < 7; ++i) process(true, true);
+					SkyParameters filtered;
+					Require(environment->GetEnvironmentSkyParams(filtered) && filtered == expected &&
+						environment->NumCachedEnvironments() == std::min(state, 4u),
+						"completed successive skies must publish the current parameters within a four-entry cache");
+				});
+			}
+			onRender([&]()
+			{
+				for (const auto& map : retained) Require(map.NumRefs() == 1, "evicted maps must be owned only by the explicit retained consumer");
+				Require(ReadEnvironmentSamples(retained) == originalPixels, "eviction must not invalidate the retained consumer's images");
+				const auto beforeFallback = maps();
+				SkyParameters previous;
+				Require(environment->GetEnvironmentSkyParams(previous), "the fallback transition must start with a completed sky");
+				graph->GetGraph().RemoveAt(0);
+				environment->MarkDirty();
+				for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+				for (int stage = 0; stage < 4; ++stage)
+				{
+					process(false, true, stage, error);
+					SkyParameters filtered;
+					Require(environment->GetEnvironmentSkyParams(filtered) && filtered == previous && maps() == beforeFallback,
+						"a refused constant fallback must not withdraw the parameters of the still-published sky maps");
+				}
+				process(false, true);
+				SkyParameters filtered;
+				Require(!environment->GetEnvironmentSkyParams(filtered) && environment->NumCachedEnvironments() == 1,
+					"a completed constant fallback must replace the sky bundle and withdraw analytic sun parameters");
+				for (const auto& pixel : ReadEnvironmentSamples(maps()))
+					Require(glm::all(glm::lessThan(glm::abs(pixel - glm::vec3(0.03f)), glm::vec3(0.0001f))),
+						"the constant fallback must initialize all four maps, six faces and every mip");
+				graph->GetGraph().Add(sky);
+				environment->MarkDirty();
+				process(false, true);
+				Require(environment->GetEnvironmentSkyParams(filtered) && filtered == previous && maps()[0] == beforeFallback[0],
+					"returning from constant fallback must restore the actual completed sky source and parameters");
+			});
+			std::cout << "Sky environment publication: real component RenderQueue handoff, pending faces, twenty native refusals, paired parameters/maps, HDR scaling, explicit invalidation, bounded retirement and constant fallback passed\n";
+		}
+		catch (...)
+		{
+			onRender([&]() { productionGraph->GetGraph() = originalNodes; });
+			skyWorld.Clear();
+			throw;
+		}
+		onRender([&]() { productionGraph->GetGraph() = originalNodes; });
+		skyWorld.Clear();
 	}
 
 	void TestAuthoredEnvironmentReload(const std::filesystem::path& workspace)
@@ -2631,14 +3456,14 @@ frame:
 		auto importer = App::GetSubmodule<TextureImporter>();
 		Require(registry->GetOrLoadFile(path.string()) == id, "the authored HDR must register");
 		auto node = TRefPtr<EnvironmentNode>::Make();
-		node->SetString("EnvironmentMap", path.filename().string());
+		node->SetString("EnvironmentMap"_h, path.filename().string());
 		auto graph = RHIFrameGraphPtr::Make();
-		constexpr const char* names[] = { "g_rawEnvCubemap", "g_envCubemap", "g_irradianceCubemap", "g_sheenEnvCubemap" };
+		const StringHash names[] = { "g_rawEnvCubemap"_h, "g_envCubemap"_h, "g_irradianceCubemap"_h, "g_sheenEnvCubemap"_h };
 		auto retained = RHIFrameGraphPtr::Make();
 		constexpr uint32_t levels[] = { EnvironmentNode::EnvMapLevels, EnvironmentNode::EnvMapLevels, 1, EnvironmentNode::SheenEnvMapLevels };
 		const auto onRender = [](const std::function<void()>& action)
 		{
-			auto task = Tasks::CreateTaskWithResult<std::string>("Authored environment regression", [&]() -> std::string
+			auto task = Tasks::CreateTaskWithResult<std::string>("Authored environment regression"_h, [&]() -> std::string
 			{
 				try { action(); return {}; }
 				catch (const std::exception& error) { return error.what(); }
@@ -2689,7 +3514,7 @@ frame:
 						{
 							const glm::vec3 actual(glm::vec4(glm::unpackHalf2x16(pixels[2 * i]), glm::unpackHalf2x16(pixels[2 * i + 1])));
 							if (!glm::all(glm::lessThan(glm::abs(actual - expected), glm::vec3(0.02f))))
-								throw std::runtime_error(std::string(names[channel]) + " must match the current authored HDR; actual red " +
+								throw std::runtime_error(names[channel].ToString() + " must match the current authored HDR; actual red " +
 									std::to_string(actual.r) + ", expected " + std::to_string(expected.r));
 						}
 					}
@@ -2707,32 +3532,32 @@ frame:
 				commands->BeginCommandList(upload, true);
 				commands->BeginCommandList(draw, true);
 				Tests::RequireAttachmentInitializationRefusal([&]() { node->Process(graph, upload, draw, {}); }, 0, error);
-				Require(!graph->GetSampler("g_brdfSampler") && !graph->GetSampler(names[0]) &&
+				Require(!graph->GetSampler("g_brdfSampler"_h) && !graph->GetSampler(names[0]) &&
 					draw->GetNumRecordedCommands() == 0 && upload->GetNumRecordedCommands() == 0,
 					"a refused BRDF target must not publish a sampler or record dependent environment work");
 				CompleteCommands(upload, draw);
 			}
-			node->SetString("EnvironmentMap", "MissingEnvironmentFixture.hdr");
+			node->SetString("EnvironmentMap"_h, "MissingEnvironmentFixture.hdr");
 			process();
-			Require(graph->GetSampler("g_brdfSampler").IsValid() && !graph->GetSampler(names[0]),
+			Require(graph->GetSampler("g_brdfSampler"_h).IsValid() && !graph->GetSampler(names[0]),
 				"the BRDF must be ready before isolating the cold source upload");
-			node->SetString("EnvironmentMap", path.filename().string());
+			node->SetString("EnvironmentMap"_h, path.filename().string());
 		});
 		for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
 		{
-			Tests::RequireWorkerImageInitializationRefusal([&]() { onRender(process); }, error);
+			Tests::RequireWorkerUploadRefusal([&]() { onRender(process); }, error);
 			onRender([&]()
 			{
-				for (const char* name : names) Require(!graph->GetSampler(name), "failed source upload must not publish dependent environment maps");
+				for (const auto name : names) Require(!graph->GetSampler(name), "failed source upload must not publish dependent environment maps");
 			});
 		}
 		onRender([&]()
 		{
 			for (uint32_t frame = 0; frame < 16 && !graph->GetSampler(names[0]); ++frame) process();
 			checkPixels(graph, { 4, 0.5f, 0.25f });
-			Require(graph->GetSampler("g_brdfSampler").IsValid(), "the same Environment node must retry its BRDF target");
+			Require(graph->GetSampler("g_brdfSampler"_h).IsValid(), "the same Environment node must retry its BRDF target");
 			std::cout << "Environment BRDF target: native refusal, no dependent publication and same-node HDR pixel recovery passed\n";
-			for (const char* name : names) retained->SetSampler(name, graph->GetSampler(name));
+			for (const auto name : names) retained->SetSampler(name, graph->GetSampler(name));
 		});
 		const auto texture = importer->GetLoadedTexture(id);
 		Require(texture && texture->GetRHI(), "the unchanged Environment node must retry its failed TextureImporter source");
@@ -2758,7 +3583,7 @@ frame:
 				commands->BeginCommandList(upload, true);
 				commands->BeginCommandList(draw, true);
 				Tests::RequireAttachmentInitializationRefusal([&]() { node->Process(graph, upload, draw, {}); }, stage, error);
-				for (const char* name : names)
+				for (const auto name : names)
 					Require(graph->GetSampler(name) == retained->GetSampler(name),
 						"a refused raw, specular, irradiance or sheen replacement must retain the entire published bundle");
 				CompleteCommands(upload, draw);
@@ -2768,7 +3593,7 @@ frame:
 			{
 				process();
 				if (graph->GetSampler(names[0]) == previousRaw)
-					for (const char* name : names)
+					for (const auto name : names)
 						Require(graph->GetSampler(name) == retained->GetSampler(name), "pending upload must retain the entire previous environment");
 			}
 			Require(graph->GetSampler(names[0]) != previousRaw, "completed HDR upload must replace the environment");
@@ -2777,14 +3602,14 @@ frame:
 			std::cout << "Environment image initialization: all four native refusals, retained HDR bundle and unchanged-source pixel recovery passed\n";
 			std::array<RHITexturePtr, 4> stable;
 			for (uint32_t channel = 0; channel < stable.size(); ++channel) stable[channel] = graph->GetSampler(names[channel]);
-			const auto brdf = graph->GetSampler("g_brdfSampler");
+			const auto brdf = graph->GetSampler("g_brdfSampler"_h);
 			for (uint32_t repeat = 0; repeat < 32; ++repeat)
 			{
 				node->MarkDirty();
 				process();
 				for (uint32_t channel = 0; channel < stable.size(); ++channel)
 					Require(graph->GetSampler(names[channel]) == stable[channel], "unchanged HDR invalidation must reuse raw and filtered resources");
-				Require(graph->GetSampler("g_brdfSampler") == brdf, "HDR invalidation must not regenerate the independent BRDF LUT");
+				Require(graph->GetSampler("g_brdfSampler"_h) == brdf, "HDR invalidation must not regenerate the independent BRDF LUT");
 			}
 			checkPixels(graph, { 0.25f, 2, 0.5f });
 		});
@@ -2812,7 +3637,7 @@ frame:
 			checkPixels(retained, { 4, 0.5f, 0.25f });
 			SkyParameters sky;
 			Require(!node->GetEnvironmentSkyParams(sky), "authored HDR must not publish unrelated analytic Sky lighting");
-			node->SetString("EnvironmentMap", "");
+			node->SetString("EnvironmentMap"_h, "");
 			node->MarkDirty();
 			std::array<RHITexturePtr, 4> authored;
 			for (uint32_t i = 0; i < authored.size(); ++i) authored[i] = graph->GetSampler(names[i]);
@@ -2840,12 +3665,12 @@ frame:
 				process();
 				Require(graph->GetSampler(names[0]) == fallback, "constant fallback must reuse its raw cubemap");
 			}
-			node->SetString("EnvironmentMap", path.filename().string());
+			node->SetString("EnvironmentMap"_h, path.filename().string());
 			node->MarkDirty();
 			for (uint32_t frame = 0u; frame < 16u && graph->GetSampler(names[0]) == fallback; ++frame) process();
 			checkPixels(graph, { 4, 0.5f, 0.25f });
 		});
-		const std::array localNames{ "g_localEnvCubemap", "g_localSheenEnvCubemap" };
+		const std::array localNames{ "g_localEnvCubemap"_h, "g_localSheenEnvCubemap"_h };
 		const auto publishLocal = [&](uint32_t samples, glm::vec3 radiance)
 		{
 			LocalReflectionImage image;
@@ -2863,7 +3688,7 @@ frame:
 		{
 			auto& driver = Renderer::GetDriver();
 			auto commands = Renderer::GetDriverCommands();
-			for (const char* name : localNames)
+			for (const auto name : localNames)
 			{
 				auto cube = graph->GetSampler(name);
 				Require(cube.IsValid(), "both local reflection maps must publish together");
@@ -2951,12 +3776,12 @@ frame:
 		{
 			auto graph = TRefPtr<TestGraph>::Make();
 			auto node = TRefPtr<RenderSceneNode>::Make();
-			node->SetRHIResource("color", driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT));
+			node->SetRHIResource("color"_h, driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT));
 			graph->GetGraph().Add(node);
 			TVector<RHICommandListPtr> transfers, graphics;
 			RHISemaphorePtr ready;
 			Require(graph->Process(RHISceneViewPtr::Make(), transfers, graphics, {}, ready), "lifetime fixture must prepare its graph");
-			auto target = node->GetTargetAttachment("color", graph.GetRawPtr());
+			auto target = node->GetTargetAttachment("color"_h, graph.GetRawPtr());
 			ClearColor(draw, target, glm::vec4(0.375f));
 			pixels = ReadColor(draw, target);
 			graph->Clear();
@@ -2980,16 +3805,16 @@ frame:
 		auto buffer = driver->CreateBuffer(count * sizeof(glm::vec2), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
 		std::fill_n(static_cast<glm::vec2*>(buffer->GetPointer()), count, glm::vec2(std::numeric_limits<float>::quiet_NaN()));
 		auto bindings = driver->CreateShaderBindings();
-		Require(driver->AddSamplerToShaderBindings(bindings, "depthSampler", texture->GetDepthAspect(), 0).IsValid(),
+		Require(driver->AddSamplerToShaderBindings(bindings, "depthSampler"_h, texture->GetDepthAspect(), 0).IsValid(),
 			"readback must bind the real depth view");
 		if (stencil)
 		{
 			auto stencilView = RHITexturePtr::Make(ETextureFiltration::Nearest, ETextureClamping::Clamp, false);
 			stencilView->m_vulkan = texture->GetStencilAspect()->m_vulkan;
-			Require(driver->AddSamplerToShaderBindings(bindings, "stencilSampler", stencilView, 1).IsValid(),
+			Require(driver->AddSamplerToShaderBindings(bindings, "stencilSampler"_h, stencilView, 1).IsValid(),
 				"readback must bind the integer stencil view");
 		}
-		Require(driver->AddBufferToShaderBindings(bindings, buffer, "outputValues", 2).IsValid(), "depth readback storage must bind");
+		Require(driver->AddBufferToShaderBindings(bindings, buffer, "outputValues"_h, 2).IsValid(), "depth readback storage must bind");
 		commands->MemoryBarrier(command, static_cast<EAccessFlags>(EAccessBit::HostWrite_Bit), static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit));
 		commands->ImageMemoryBarrierForComputeSampling(command, texture);
 		commands->Dispatch(command, shaders[(samples > 1 ? 1 : 0) | (stencil ? 2 : 0)]->GetComputeShaderRHI(),
@@ -2998,9 +3823,1264 @@ frame:
 		return buffer;
 	}
 
-	void TestCustomDepthSilhouette(ShaderSetPtr shader, const std::array<ShaderSetPtr, 4>& depthReadback,
-		bool paged, bool instanced, bool skinned, EMobilityType mobility)
+	void TestDepthPrepassCulling(ShaderSetPtr sourceShader, ShaderSetPtr indexReadback,
+		const std::array<ShaderSetPtr, 4>& depthReadback, bool named, bool surface, bool paged)
 	{
+		constexpr uint32_t Count = Renderer::GPUCullingGroupSize + 3;
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto graph = TRefPtr<TestGraph>::Make();
+		auto mesh = graph->GetFullscreenNdcQuad();
+		mesh->m_bounds = Math::AABB(glm::vec3(0), glm::vec3(1, 1, 0));
+		const RenderState state(true, true, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, "Opaque"_h.GetHash(), true);
+		auto material = driver->CreateMaterial(mesh->m_vertexDescription, EPrimitiveTopology::TriangleList, state, sourceShader);
+		Require(material && material->GetVersion(), "culling fixture needs a complete source material");
+		RHISceneViewProxy source;
+		for (uint32_t i = 0; i < Count; ++i)
+		{
+			glm::mat4 model(1);
+			model[3] = glm::vec4(i % 5 < 3 ? 0 : 1000, 0, -2, 1);
+			source.m_meshes.Add(mesh);
+			source.m_meshModelMatrices.Add(model);
+			source.m_overrideMaterials.Add(material);
+			source.m_renderQueueTags.Add("Opaque"_h.GetHash());
+		}
+		RHISceneInstanceRecord record;
+		record.m_producerKey = 1;
+		record.m_mobility = EMobilityType::Static;
+		record.m_worldMatrix = glm::mat4(1);
+		record.m_worldBounds = Math::AABB(glm::vec3(500, 0, -2), glm::vec3(502, 2, 2));
+		record.m_topology = RHISceneProxyResourcePtr::Make(std::move(source));
+		auto scene = RHIScenePtr::Make();
+		scene->AddInstance(record);
+		RHISceneViewSnapshot snapshot;
+		snapshot.m_sceneVersions = TSharedPtr<const TVector<RHISceneVersionPtr>>::Make(TVector<RHISceneVersionPtr>{ scene->PublishVersion() });
+		snapshot.ForEachSceneProxy(record.m_mobility, [&](const RHIVisibleSceneProxy& proxy) { snapshot.m_proxies.Add(proxy); });
+		snapshot.m_camera = TUniquePtr<CameraData>::Make();
+		snapshot.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
+		auto depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::D32_SFLOAT, ETextureFiltration::Nearest,
+			ETextureClamping::Clamp, ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::Sampled_Bit);
+		auto depthSurface = driver->CreateSurface(depth);
+		auto node = TRefPtr<DepthNode>::Make();
+		node->SetString("Tag"_h, "Opaque");
+		node->SetString("ClearDepth"_h, "true");
+		node->SetString("VirtualizeInstancePayloads"_h, paged ? "true" : "false");
+		node->SetRHIResource("depthStencil"_h, depthSurface);
+		if (named) node->SetRHIResource_Unresolved("depthHighZ"_h, "SelectedHighZ"_h);
+		RHITexturePtr highZ;
+		struct Recorded
+		{
+			RHICommandListPtr m_upload, m_draw;
+			RHIRenderSubmissionContextPtr m_context;
+			RHIBufferPtr m_indices, m_indirect, m_depth;
+			TVector<uint32_t> m_candidates, m_visible;
+			uint32_t m_firstInstance = 0, m_samples = 0;
+			float m_expectedDepth = 0;
+		};
+		const auto complete = [&](const Recorded& recorded)
+		{
+			CompleteCommands(recorded.m_upload, recorded.m_draw);
+			const auto& indirect = *static_cast<const DrawIndexedIndirectData*>(recorded.m_indirect->GetPointer());
+			if (indirect.m_instanceCount != recorded.m_visible.Num())
+				throw std::runtime_error("depth culling indirect count=" + std::to_string(indirect.m_instanceCount) +
+					", expected=" + std::to_string(recorded.m_visible.Num()));
+			Require(indirect.m_firstInstance == recorded.m_firstInstance && indirect.m_indexCount == mesh->GetIndexCount() &&
+				indirect.m_firstIndex == mesh->GetFirstIndex() && indirect.m_vertexOffset == mesh->GetVertexOffset(),
+				"depth culling must preserve indirect geometry and select the correct index range");
+			const auto* indices = static_cast<const uint32_t*>(recorded.m_indices->GetPointer());
+			for (uint32_t i = 0; i < Count; ++i)
+				Require(indices[i] == recorded.m_candidates[i], "depth culling must retain all immutable candidate IDs");
+			const auto offset = recorded.m_visible.Num() == Count ? 0 : Count;
+			for (uint32_t i = 0; i < recorded.m_visible.Num(); ++i)
+				Require(indices[offset + i] == recorded.m_visible[i], "depth culling must compact exact visible IDs in order");
+			const auto* pixels = static_cast<const glm::vec2*>(recorded.m_depth->GetPointer());
+			for (uint32_t y = 0; y < Side; ++y)
+			for (uint32_t x = 0; x < Side; ++x)
+			for (uint32_t sample = 0; sample < recorded.m_samples; ++sample)
+			{
+				const float expected = x >= Side / 4 && x < 3 * Side / 4 && y >= Side / 4 && y < 3 * Side / 4 ? recorded.m_expectedDepth : 0;
+				Require(std::abs(pixels[(y * Side + x) * recorded.m_samples + sample].x - expected) < 0.00001f,
+					"culling on/off and camera changes must preserve every depth sample");
+			}
+		};
+		Recorded pending;
+		RHIShaderBindingSetPtr warmBindings;
+		for (uint32_t frame = 0; frame < 8; ++frame)
+		{
+			if (frame == 2 || frame == 3) snapshot.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
+			if (frame == 5) node->Clear();
+			if (frame != 1 && frame != 6 && frame != 7)
+			{
+				RHIResourcePtr input;
+				if (frame != 4)
+				{
+					auto target = driver->CreateRenderTarget({ 9 + int(frame), 7 + int(frame) }, 1, EFormat::R32_SFLOAT,
+						ETextureFiltration::Nearest, ETextureClamping::Clamp);
+					highZ = target;
+					input = surface ? RHIResourcePtr(driver->CreateSurface(target)) : RHIResourcePtr(target);
+				}
+				else highZ.Clear();
+				if (!named) node->SetRHIResource("depthHighZ"_h, input);
+				else if (surface) graph->SetSurface("SelectedHighZ"_h, input.DynamicCast<RHISurface>());
+				else graph->SetRenderTarget("SelectedHighZ"_h, input.DynamicCast<RHIRenderTarget>());
+			}
+			node->SetString("GPUCulling"_h, frame == 6 ? "false" : "true");
+			const bool bGpuExpected = frame != 4 && frame != 6;
+			const float cameraX = frame == 2 || frame == 3 || frame == 6 ? 1000.0f : 0.0f;
+			UboFrameData frameData{};
+			frameData.m_view = glm::mat4(1);
+			frameData.m_view[3].x = -cameraX;
+			frameData.m_projection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 100.0f);
+			frameData.m_invProjection = glm::inverse(frameData.m_projection);
+			frameData.m_viewportSize = glm::ivec2(Side);
+			frameData.m_cameraZNearZFar = { 0.1f, 100.0f };
+			snapshot.m_frameBindings = driver->CreateShaderBindings();
+			auto frameBuffer = driver->CreateBuffer(sizeof(frameData), EBufferUsageBit::UniformBuffer_Bit, HostMemory);
+			std::memcpy(frameBuffer->GetPointer(), &frameData, sizeof(frameData));
+			driver->AddBufferToShaderBindings(snapshot.m_frameBindings, frameBuffer, "frame"_h, 0);
+			snapshot.PrepareLods(frameData.m_view, frameData.m_projection);
+			snapshot.m_frame = frame + 1;
+			const uint64_t submission = 302000 + frame;
+			snapshot.m_submissionContext->BeginSubmission(submission, 0, RHIMaterial::BeginSubmissionVersionCapture(submission));
+			auto prepare = node->Prepare(graph, snapshot);
+			prepare->Run();
+			prepare->Wait();
+			RHIMaterial::EndSubmissionVersionCapture(submission);
+			auto resources = node->GetResources(snapshot);
+			Require(resources->m_packet.GetNumDrawInstances() == Count && resources->m_packet.GetGroups().Num() == 1 &&
+				resources->m_customPacket.GetNumInstances() == 0, "all culling candidates must enter the real compact-depth packet");
+			Recorded recorded;
+			recorded.m_context = snapshot.m_submissionContext;
+			recorded.m_upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			recorded.m_draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(recorded.m_upload, true);
+			commands->BeginCommandList(recorded.m_draw, true);
+			if (highZ)
+			{
+				commands->ImageMemoryBarrier(recorded.m_upload, highZ, EImageLayout::TransferDstOptimal);
+				commands->ClearImage(recorded.m_upload, highZ, glm::vec4(frame % 2));
+				commands->ImageMemoryBarrierForComputeSampling(recorded.m_upload, highZ);
+			}
+			node->Process(graph, recorded.m_upload, recorded.m_draw, snapshot);
+			const auto binding = resources->m_perInstanceData->GetOrAddShaderBinding("indices"_h);
+			const uint32_t first = binding->GetStorageInstanceIndex();
+			recorded.m_firstInstance = first + (bGpuExpected ? Count : 0);
+			recorded.m_indirect = resources->m_indirectBuffers[0];
+			recorded.m_candidates = resources->m_packet.m_resolvedInstanceIndices;
+			for (uint32_t i = 0; i < Count; ++i)
+				if (!bGpuExpected || GetSingleMobilityInstance(resources->m_packet, record.m_mobility, i).model[3].x == cameraX)
+					recorded.m_visible.Add(recorded.m_candidates[i]);
+			recorded.m_indices = driver->CreateBuffer(2 * Count * sizeof(uint32_t), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
+			auto outputBindings = driver->CreateShaderBindings();
+			driver->AddBufferToShaderBindings(outputBindings, recorded.m_indices, "outputValues"_h, 0);
+			commands->MemoryBarrier(recorded.m_draw, static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit) | static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+				static_cast<EAccessFlags>(EAccessBit::ShaderRead_Bit));
+			commands->Dispatch(recorded.m_draw, indexReadback->GetComputeShaderRHI(), bGpuExpected ? 2 * Count : Count, 1, 1,
+				{ resources->m_perInstanceData, outputBindings }, &first, sizeof(first));
+			commands->MemoryBarrier(recorded.m_draw, static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit) | static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+				static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+			recorded.m_depth = ReadDepth(recorded.m_draw, depthSurface->GetTarget(), depthReadback);
+			recorded.m_samples = static_cast<uint32_t>(depthSurface->GetTarget()->GetMsaaSamples());
+			const auto projected = frameData.m_projection * glm::vec4(0, 0, -2, 1);
+			recorded.m_expectedDepth = projected.z / projected.w;
+			if (frame == 2) pending = recorded;
+			else
+			{
+				if (frame == 3) complete(pending);
+				complete(recorded);
+				if (bGpuExpected)
+				{
+					const RHIShaderBindingPtr* sampled = nullptr;
+					Require(resources->m_computeMeshCullingBindings &&
+						resources->m_computeMeshCullingBindings->GetShaderBindings().Find("depthHighZ"_h, sampled) &&
+						(*sampled)->GetTextureBinding() == highZ, "culling bindings must retain the current resolved Hi-Z image");
+					if (frame == 0) warmBindings = resources->m_computeMeshCullingBindings;
+					if (frame == 1) Require(warmBindings == resources->m_computeMeshCullingBindings,
+						"unchanged Hi-Z must reuse its culling bindings");
+				}
+			}
+		}
+		std::cout << "Depth prepass culling named=" << named << " surface=" << surface << " paged=" << paged <<
+			": eight frames, 259 candidates, exact GPU indices/counts, depth samples, camera/input replacement and retained commands passed\n";
+	}
+
+	void TestDepthPrepassOcclusion(ShaderSetPtr sourceShader, ShaderSetPtr indexReadback,
+		const std::array<ShaderSetPtr, 4>& depthReadback, bool named, bool paged)
+	{
+		constexpr uint32_t Count = Renderer::GPUCullingGroupSize + 3;
+		constexpr uint32_t Extent = 32;
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto graph = TRefPtr<TestGraph>::Make();
+		auto mesh = graph->GetFullscreenNdcQuad();
+		mesh->m_bounds = Math::AABB(glm::vec3(0), glm::vec3(1, 1, 0));
+		auto* vertices = static_cast<VertexP3N3UV2C4*>(mesh->m_vertexBuffer->GetPointer());
+		for (uint32_t i = 0; i < 4; ++i) vertices[i].m_color = glm::vec4(1);
+		const auto makeMaterial = [&](StringHash tag)
+		{
+			const RenderState state(true, true, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, tag.GetHash(), true);
+			return driver->CreateMaterial(mesh->m_vertexDescription, EPrimitiveTopology::TriangleList, state, sourceShader);
+		};
+		auto opaque = makeMaterial("Opaque"_h);
+		auto masked = makeMaterial("Masked"_h);
+		auto seed = TRefPtr<DepthNode>::Make();
+		auto node = TRefPtr<DepthNode>::Make();
+		auto pyramidNode = TRefPtr<DepthHighZNode>::Make();
+		auto depth = driver->CreateSurface(glm::ivec2(Extent), 1, EFormat::D32_SFLOAT,
+			ETextureFiltration::Nearest, ETextureClamping::Clamp,
+			ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::Sampled_Bit);
+		for (auto pass : { seed, node })
+		{
+			pass->SetRHIResource("depthStencil"_h, depth);
+			pass->SetString("VirtualizeInstancePayloads"_h, paged ? "true" : "false");
+		}
+		seed->SetString("Tag"_h, "Opaque");
+		seed->SetString("ClearDepth"_h, "true");
+		seed->SetString("GPUCulling"_h, "false");
+		node->SetString("Tag"_h, "Masked");
+		pyramidNode->SetRHIResource("src"_h, depth);
+		if (named)
+		{
+			node->SetRHIResource_Unresolved("depthHighZ"_h, "Pyramid"_h);
+			pyramidNode->SetRHIResource_Unresolved("dst"_h, "Pyramid"_h);
+		}
+		auto context = RHIRenderSubmissionContextPtr::Make();
+		auto scene = RHIScenePtr::Make();
+		RenderInstanceHandle handle;
+		RHIRenderTargetPtr pyramid;
+		for (uint32_t frame = 0; frame < 8; ++frame)
+		{
+			if (frame == 0 || frame == 5)
+			{
+				pyramid = driver->CreateRenderTarget(glm::ivec2(Extent / 2), 5, EFormat::R32_SFLOAT,
+					ETextureFiltration::Nearest, ETextureClamping::Clamp);
+				if (named) graph->SetRenderTarget("Pyramid"_h, pyramid);
+				else
+				{
+					node->SetRHIResource("depthHighZ"_h, pyramid);
+					pyramidNode->SetRHIResource("dst"_h, pyramid);
+				}
+			}
+			if (frame == 6) { node->Clear(); pyramidNode->Clear(); }
+			const float cameraX = frame == 3 ? 1000.0f : 0.0f;
+			UboFrameData data{};
+			data.m_view = glm::translate(glm::mat4(1), glm::vec3(-cameraX, 0, 0));
+			data.m_projection = Math::PerspectiveRH(glm::radians(90.0f), 1.0f, 0.1f, 100.0f);
+			data.m_invProjection = glm::inverse(data.m_projection);
+			data.m_viewportSize = glm::ivec2(Extent);
+			data.m_cameraZNearZFar = { 0.1f, 100.0f };
+			auto frameBindings = driver->CreateShaderBindings();
+			auto frameBuffer = driver->CreateBuffer(sizeof(data), EBufferUsageBit::UniformBuffer_Bit, HostMemory);
+			std::memcpy(frameBuffer->GetPointer(), &data, sizeof(data));
+			driver->AddBufferToShaderBindings(frameBindings, frameBuffer, "frame"_h, 0);
+			RHISceneViewProxy source;
+			for (uint32_t i = 0; i <= Count; ++i)
+			{
+				const bool bOccluder = i == Count;
+				const glm::vec3 position = bOccluder ? glm::vec3(frame == 2 || frame == 4 ? 1000 : -2, 0, -4) :
+					i % 4 == 0 ? glm::vec3(-2, 0, -6) : i % 4 == 1 ? glm::vec3(i % 8 == 1 ? 0 : 2, 0, -6) :
+					i % 4 == 2 ? glm::vec3(-0.5f, 0, -2) : glm::vec3(1000, 0, -6);
+				source.m_meshes.Add(mesh);
+				source.m_meshModelMatrices.Add(glm::scale(glm::translate(glm::mat4(1), position),
+					bOccluder ? glm::vec3(2, 4, 1) : glm::vec3(0.25f)));
+				source.m_overrideMaterials.Add(bOccluder ? opaque : masked);
+				source.m_renderQueueTags.Add((bOccluder ? "Opaque"_h : "Masked"_h).GetHash());
+			}
+			RHISceneInstanceRecord record;
+			record.m_producerKey = 1;
+			record.m_mobility = EMobilityType::Static;
+			record.m_worldMatrix = glm::mat4(1);
+			record.m_worldBounds = Math::AABB(glm::vec3(500, 0, -4), glm::vec3(510, 10, 10));
+			record.m_topology = RHISceneProxyResourcePtr::Make(std::move(source));
+			if (frame == 0) handle = scene->AddInstance(record);
+			else Require(scene->UpdateInstance(handle, record, ToMask(ESceneChangeBit::MeshOrLodTopology)),
+				"moving the occluder must publish the updated mesh transforms");
+			RHISceneViewSnapshot snapshot;
+			snapshot.m_sceneVersions = TSharedPtr<const TVector<RHISceneVersionPtr>>::Make(TVector<RHISceneVersionPtr>{ scene->PublishVersion() });
+			snapshot.ForEachSceneProxy(record.m_mobility, [&](const RHIVisibleSceneProxy& proxy) { snapshot.m_proxies.Add(proxy); });
+			snapshot.m_camera = TUniquePtr<CameraData>::Make();
+			snapshot.m_frameBindings = frameBindings;
+			snapshot.m_submissionContext = context;
+			snapshot.m_frame = frame + 1;
+			snapshot.PrepareLods(data.m_view, data.m_projection);
+			const uint64_t submission = 302100 + frame;
+			context->BeginSubmission(submission, 0, RHIMaterial::BeginSubmissionVersionCapture(submission));
+			for (auto pass : { seed, node })
+			{
+				auto prepare = pass->Prepare(graph, snapshot);
+				prepare->Run();
+				prepare->Wait();
+			}
+			RHIMaterial::EndSubmissionVersionCapture(submission);
+			auto resources = node->GetResources(snapshot);
+			if (seed->GetResources(snapshot)->m_packet.GetNumDrawInstances() != 1 ||
+				resources->m_packet.GetNumDrawInstances() != Count || resources->m_packet.GetGroups().Num() != 1)
+				throw std::runtime_error("Hi-Z fixture frame=" + std::to_string(frame) + " seed=" +
+					std::to_string(seed->GetResources(snapshot)->m_packet.GetNumDrawInstances()) + " masked=" +
+					std::to_string(resources->m_packet.GetNumDrawInstances()) + " groups=" + std::to_string(resources->m_packet.GetGroups().Num()));
+			std::array<RHIBufferPtr, 2> depths;
+			for (uint32_t reference = 0; reference < 2; ++reference)
+			{
+				node->SetString("GPUCulling"_h, reference ? "false" : "true");
+				node->SetString("OcclusionCulling"_h, frame == 7 ? "false" : "true");
+				auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				commands->BeginCommandList(upload, true);
+				commands->BeginCommandList(draw, true);
+				// Upload-list culling would see an empty pyramid and miss the occluder.
+				if (frame != 2) ClearColor(upload, pyramid, glm::vec4(0));
+				graph->ResetCurrentDepthPyramids();
+				seed->Process(graph, upload, draw, snapshot);
+				if (frame != 2) pyramidNode->Process(graph, upload, draw, snapshot);
+				node->Process(graph, upload, draw, snapshot);
+				const auto indexBinding = resources->m_perInstanceData->GetOrAddShaderBinding("indices"_h);
+				const uint32_t first = indexBinding->GetStorageInstanceIndex() + (reference ? 0 : Count);
+				auto indices = driver->CreateBuffer(Count * sizeof(uint32_t), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
+				auto outputBindings = driver->CreateShaderBindings();
+				driver->AddBufferToShaderBindings(outputBindings, indices, "outputValues"_h, 0);
+				commands->MemoryBarrier(draw, static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit) | static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+					static_cast<EAccessFlags>(EAccessBit::ShaderRead_Bit));
+				commands->Dispatch(draw, indexReadback->GetComputeShaderRHI(), Count, 1, 1,
+					{ resources->m_perInstanceData, outputBindings }, &first, sizeof(first));
+				commands->MemoryBarrier(draw, static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit), static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+				depths[reference] = ReadDepth(draw, depth->GetTarget(), depthReadback);
+				CompleteCommands(upload, draw);
+				TVector<uint32_t> expected;
+				for (uint32_t i = 0; i < Count; ++i)
+				{
+					const auto center = GetSingleMobilityInstance(resources->m_packet, record.m_mobility, i).model[3];
+					const bool bInFrustum = std::abs(center.x - cameraX) < 10;
+					const bool bOccluded = frame != 2 && frame != 3 && frame != 4 && frame != 7 && center.x == -2;
+					if (reference || (bInFrustum && !bOccluded)) expected.Add(resources->m_packet.m_resolvedInstanceIndices[i]);
+				}
+				const auto& indirect = *static_cast<const DrawIndexedIndirectData*>(resources->m_indirectBuffers[0]->GetPointer());
+				if (indirect.m_instanceCount != expected.Num())
+					throw std::runtime_error("Hi-Z prepass frame=" + std::to_string(frame) + " count=" +
+						std::to_string(indirect.m_instanceCount) + ", expected=" + std::to_string(expected.Num()));
+				const auto* actual = static_cast<const uint32_t*>(indices->GetPointer());
+				for (uint32_t i = 0; i < expected.Num(); ++i)
+					Require(actual[i] == expected[i], "Hi-Z must compact exact visible IDs, retaining foreground and uncovered objects");
+			}
+			const uint32_t samples = static_cast<uint32_t>(depth->GetTarget()->GetMsaaSamples());
+			const auto* actual = static_cast<const glm::vec2*>(depths[0]->GetPointer());
+			const auto* reference = static_cast<const glm::vec2*>(depths[1]->GetPointer());
+			bool bHasDepth = false;
+			for (uint32_t pixel = 0; pixel < Extent * Extent * samples; ++pixel)
+			{
+				Require(std::abs(actual[pixel].x - reference[pixel].x) < 0.00001f,
+					"Hi-Z-culled depth must match unculled drawing in every MSAA sample");
+				bHasDepth |= reference[pixel].x > 0;
+			}
+			Require(bHasDepth, "occlusion readback must contain rasterized geometry");
+		}
+		std::cout << "Depth prepass Hi-Z named=" << named << " paged=" << paged <<
+			": eight frames, exact GPU counts/IDs, moving occluder/camera, stale pyramid, replacement and unculled depth parity passed\n";
+	}
+
+	enum class DefaultDepthPublication { Target, Surface, SurfaceOnly, SurfaceWithDecoy };
+
+	void TestDefaultDepthAttachment(ShaderSetPtr shader, const std::array<ShaderSetPtr, 4>& depthReadback,
+		bool prepass, uint32_t colorKind, DefaultDepthPublication publication, bool named)
+	{
+		CaptureAttachments capture;
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto graph = TRefPtr<TestGraph>::Make();
+		auto mesh = graph->GetFullscreenNdcQuad();
+		auto* vertices = static_cast<VertexP3N3UV2C4*>(mesh->m_vertexBuffer->GetPointer());
+		for (uint32_t i = 0; i < 4; ++i) vertices[i].m_position.z = 0.5f;
+		const RenderState state(true, true, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, true);
+		auto material = driver->CreateMaterial(mesh->m_vertexDescription, EPrimitiveTopology::TriangleList, state, shader);
+		RHIBatch batch(material, mesh);
+		batch.m_textureBindings = driver->CreateShaderBindings();
+		auto depthNode = TRefPtr<DepthNode>::Make();
+		auto sceneNode = TRefPtr<SceneNode>::Make();
+		FrameGraphNodePtr node = prepass ? FrameGraphNodePtr(depthNode) : FrameGraphNodePtr(sceneNode);
+		node->SetString("Tag"_h, "Opaque");
+		node->SetString("GPUCulling"_h, "false");
+		const auto name = named ? "SelectedDepth"_h : "DepthBuffer"_h;
+		if (named) node->SetRHIResource_Unresolved("depthStencil"_h, name);
+		const bool bSurface = publication != DefaultDepthPublication::Target;
+		const bool bSingleSample = !prepass && colorKind == 2;
+		const bool bMsaa = VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT;
+		struct Recorded
+		{
+			RHICommandListPtr m_upload, m_draw;
+			RHIRenderSubmissionContextPtr m_context;
+			RHIBufferPtr m_depth, m_resolved, m_color, m_unusedDepth;
+			glm::ivec2 m_extent;
+			uint32_t m_samples = 1, m_unusedSamples = 1, m_frame = 0;
+			float m_clearDepth = 0;
+			bool m_bAttachmentsMatch = false;
+		};
+		const auto complete = [&](const Recorded& recorded)
+		{
+			CompleteCommands(recorded.m_upload, recorded.m_draw);
+			const auto* live = static_cast<const glm::vec2*>(recorded.m_depth->GetPointer());
+			const auto* resolved = static_cast<const glm::vec2*>(recorded.m_resolved->GetPointer());
+			for (int y = 0; y < recorded.m_extent.y; ++y)
+			for (int x = 0; x < recorded.m_extent.x; ++x)
+			{
+				const uint32_t pixel = y * recorded.m_extent.x + x;
+				const bool bVisible = recorded.m_clearDepth < 0.5f && (prepass || x < 4);
+				const float expected = bVisible ? 0.5f : recorded.m_clearDepth;
+				if (!(std::abs(resolved[pixel].x - expected) < 0.00001f))
+					throw std::runtime_error("default depth frame=" + std::to_string(recorded.m_frame) + " pixel=" +
+						std::to_string(pixel) + " actual=" + std::to_string(resolved[pixel].x) + ", expected=" + std::to_string(expected));
+				for (uint32_t sample = 0; sample < recorded.m_samples; ++sample)
+					if (!(std::abs(live[pixel * recorded.m_samples + sample].x - expected) < 0.00001f))
+						throw std::runtime_error("default live depth frame=" + std::to_string(recorded.m_frame) + " pixel=" +
+							std::to_string(pixel) + " sample=" + std::to_string(sample) + " actual=" +
+							std::to_string(live[pixel * recorded.m_samples + sample].x) + ", expected=" + std::to_string(expected));
+				if (recorded.m_unusedDepth)
+				{
+					const auto* unused = static_cast<const glm::vec2*>(recorded.m_unusedDepth->GetPointer());
+					for (uint32_t sample = 0; sample < recorded.m_unusedSamples; ++sample)
+						Require(unused[pixel * recorded.m_unusedSamples + sample].x == 0.125f,
+							"a forced single-sample pass must leave the live MSAA depth untouched");
+				}
+				if (recorded.m_color)
+				{
+					const auto actual = static_cast<const glm::vec4*>(recorded.m_color->GetPointer())[pixel];
+					Require(actual == (bVisible ? glm::vec4(0.75f, 0.5f, 0.25f, 1) : glm::vec4(-1)),
+						"scene color must obey the selected depth, including rejected geometry");
+				}
+			}
+			Require(recorded.m_bAttachmentsMatch, "default depth must retain the explicit attachment's native target/resolve views");
+		};
+		RHIRenderTargetPtr resolved, target, decoy, color, colorTarget;
+		RHISurfacePtr surface;
+		Recorded pending;
+		for (uint32_t frame = 0; frame < 6; ++frame)
+		{
+			const glm::ivec2 extent(frame < 2 ? 8 : 12, frame < 4 ? 8 : 12);
+			if (frame != 1 && frame != 5)
+			{
+				const auto usage = ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferDst_Bit;
+				resolved = driver->CreateRenderTarget(extent, 1, EFormat::D32_SFLOAT, ETextureFiltration::Nearest, ETextureClamping::Clamp, usage);
+				surface = bSurface ? driver->CreateSurface(resolved) : RHISurfacePtr{};
+				decoy = driver->CreateRenderTarget(extent, 1, EFormat::D32_SFLOAT_S8_UINT, ETextureFiltration::Nearest, ETextureClamping::Clamp, usage);
+				graph->SetSurface(name, surface);
+				graph->SetRenderTarget(name, publication == DefaultDepthPublication::SurfaceOnly ? RHIRenderTargetPtr{} :
+					publication == DefaultDepthPublication::SurfaceWithDecoy ? decoy : resolved);
+				target = bSingleSample ? resolved : surface ? surface->GetTarget() : bMsaa ?
+					driver->GetOrAddMsaaFramebufferRenderTarget(resolved->GetFormat(), extent).DynamicCast<RHIRenderTarget>() : resolved;
+				color = driver->CreateRenderTarget(extent, 1, EFormat::R32G32B32A32_SFLOAT);
+				const auto colorSurface = colorKind == 2 ? RHISurfacePtr::Make(color, color, false) :
+					colorKind == 1 ? driver->CreateSurface(color) : RHISurfacePtr{};
+				colorTarget = colorSurface ? colorSurface->GetTarget() : bMsaa ?
+					driver->GetOrAddMsaaFramebufferRenderTarget(color->GetFormat(), extent).DynamicCast<RHIRenderTarget>() : color;
+				node->SetRHIResource("color"_h, colorSurface ? RHIResourcePtr(colorSurface) : RHIResourcePtr(color));
+			}
+			RHISceneViewSnapshot scene;
+			scene.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
+			scene.m_submissionContext->BeginSubmission(305000 + frame, 0);
+			scene.m_frameBindings = driver->CreateShaderBindings();
+			scene.m_rhiLightsData = driver->CreateShaderBindings();
+			UboFrameData data{};
+			data.m_view = data.m_projection = data.m_invProjection = glm::mat4(1);
+			data.m_viewportSize = extent;
+			auto buffer = driver->CreateBuffer(sizeof(data), EBufferUsageBit::UniformBuffer_Bit, HostMemory);
+			std::memcpy(buffer->GetPointer(), &data, sizeof(data));
+			driver->AddBufferToShaderBindings(scene.m_frameBindings, buffer, "frame"_h, 0);
+			if (prepass)
+			{
+				DepthPrepassNode::PerInstanceData instance{};
+				instance.model = glm::mat4(1);
+				auto& packet = depthNode->GetResources(scene)->m_packet;
+				packet.Add(batch, mesh, instance);
+				packet.Finalize();
+			}
+			else
+			{
+				RenderSceneNode::PerInstanceData instance{};
+				instance.model = glm::mat4(1);
+				auto& packet = sceneNode->GetResources(scene)->m_packet;
+				packet.Add(batch, mesh, instance);
+				packet.Finalize();
+			}
+			Recorded recorded;
+			recorded.m_context = scene.m_submissionContext;
+			recorded.m_extent = extent;
+			recorded.m_frame = frame;
+			recorded.m_clearDepth = frame % 2 ? 0.75f : 0.25f;
+			recorded.m_samples = uint32_t(target->GetMsaaSamples());
+			recorded.m_upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			recorded.m_draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(recorded.m_upload, true);
+			commands->BeginCommandList(recorded.m_draw, true);
+			const auto clearDepth = [&](RHITexturePtr image, float value)
+			{
+				commands->ImageMemoryBarrier(recorded.m_draw, image, EImageLayout::TransferDstOptimal);
+				commands->ClearDepthStencil(recorded.m_draw, image, value, 0);
+				commands->ImageMemoryBarrier(recorded.m_draw, image, image->GetDefaultLayout());
+			};
+			clearDepth(resolved, recorded.m_clearDepth);
+			clearDepth(target, recorded.m_clearDepth);
+			clearDepth(decoy, 1 - recorded.m_clearDepth);
+			if (surface && bMsaa)
+				clearDepth(driver->GetOrAddMsaaFramebufferRenderTarget(resolved->GetFormat(), extent), 1 - recorded.m_clearDepth);
+			if (bMsaa) clearDepth(driver->GetOrAddMsaaFramebufferRenderTarget(decoy->GetFormat(), extent), 1 - recorded.m_clearDepth);
+			if (bSingleSample && surface && surface->NeedsResolve()) clearDepth(surface->GetTarget(), 0.125f);
+			for (auto image : { color, colorTarget }) ClearColor(recorded.m_draw, image, glm::vec4(-1));
+			recordedDepth = {};
+			node->Process(graph, recorded.m_upload, recorded.m_draw, scene);
+			recorded.m_bAttachmentsMatch = node->GetDrawCallStats().m_numInstances == 1 &&
+				recordedDepth.imageView == static_cast<VkImageView>(*target->m_vulkan.m_imageView) &&
+				recordedDepth.resolveImageView == (target != resolved ? static_cast<VkImageView>(*resolved->m_vulkan.m_imageView) : VK_NULL_HANDLE);
+			recorded.m_depth = ReadDepth(recorded.m_draw, target, depthReadback);
+			recorded.m_resolved = ReadDepth(recorded.m_draw, resolved, depthReadback);
+			if (!prepass) recorded.m_color = ReadColor(recorded.m_draw, color);
+			if (bSingleSample && surface && surface->NeedsResolve())
+			{
+				recorded.m_unusedDepth = ReadDepth(recorded.m_draw, surface->GetTarget(), depthReadback);
+				recorded.m_unusedSamples = uint32_t(surface->GetTarget()->GetMsaaSamples());
+			}
+			if (frame == 2) pending = recorded;
+			else
+			{
+				if (frame == 3) complete(pending);
+				complete(recorded);
+			}
+		}
+		std::cout << "Default depth prepass=" << prepass << " colorKind=" << colorKind << " publication=" << magic_enum::enum_name(publication)
+			<< " named=" << named << ": six frames, native views, live/resolved depth, color rejection, resize and retained commands passed\n";
+	}
+
+	void TestParticleHistory(ShaderSetPtr shader)
+	{
+		using Particle = Experimental::ParticlesNode;
+		constexpr uint32_t Particles = 513, Traces = 4, Frames = 3, Instances = Particles * Traces;
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		TVector<Particle::ParticleData> frames;
+		for (uint32_t frame = 0; frame < Frames; ++frame)
+		for (uint32_t particle = 0; particle < Particles; ++particle)
+		{
+			Particle::ParticleData value{};
+			value.m_bIsEnabled = 1;
+			value.m_x1 = value.m_x2 = particle * 0.25f;
+			value.m_y1 = value.m_y2 = frame * 0.5f;
+			value.m_z1 = 1;
+			value.m_z2 = 3;
+			value.m_size2 = 2.0f / 3;
+			value.m_r2 = particle / 1024.0f;
+			value.m_g2 = frame * 0.25f;
+			value.m_b2 = 0.5f;
+			value.m_a2 = 1;
+			frames.Add(value);
+		}
+		auto input = driver->CreateBuffer(frames.Num() * sizeof(Particle::ParticleData), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
+		std::memcpy(input->GetPointer(), frames.GetData(), input->GetSize());
+		auto output = driver->CreateBuffer((Instances + 1) * sizeof(Particle::PerInstanceData), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
+		auto bindings = driver->CreateShaderBindings();
+		driver->AddBufferToShaderBindings(bindings, output, "data"_h, 0);
+		driver->AddBufferToShaderBindings(bindings, input, "particlesData"_h, 1);
+		auto frameBindings = driver->CreateShaderBindings();
+		auto frameBuffer = driver->CreateBuffer(sizeof(UboFrameData), EBufferUsageBit::UniformBuffer_Bit, HostMemory);
+		driver->AddBufferToShaderBindings(frameBindings, frameBuffer, "frame"_h, 0);
+		const Particle::PushConstants constants{ Instances, Frames, 1, Traces, 0.5f };
+		constexpr uint32_t Current[Frames][Traces] = { { 0, 0, 0, 0 }, { 1, 0, 0, 0 }, { 2, 1, 0, 0 } };
+		constexpr uint32_t Previous[Frames][Traces] = { { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 1, 0, 0, 0 } };
+		for (uint32_t time = 0; time < 5; ++time)
+		{
+			auto* actual = static_cast<Particle::PerInstanceData*>(output->GetPointer());
+			for (uint32_t i = 0; i <= Instances; ++i)
+			{
+				actual[i] = {};
+				actual[i].model = glm::mat4(-17);
+				actual[i].color = actual[i].colorOld = glm::vec4(-17);
+				actual[i].materialInstance = 100 + i;
+			}
+			UboFrameData data{};
+			data.m_currentTime = float(time);
+			std::memcpy(frameBuffer->GetPointer(), &data, sizeof(data));
+			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(upload, true);
+			commands->BeginCommandList(draw, true);
+			commands->MemoryBarrier(draw, static_cast<EAccessFlags>(EAccessBit::HostWrite_Bit),
+				static_cast<EAccessFlags>(EAccessBit::ShaderRead_Bit) | static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit));
+			commands->Dispatch(draw, shader->GetComputeShaderRHI(), 256, 1, 1, { bindings, frameBindings }, &constants, sizeof(constants));
+			commands->MemoryBarrier(draw, static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit), static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+			CompleteCommands(upload, draw);
+			for (uint32_t i = 0; i < Instances; ++i)
+			{
+				const uint32_t trace = i % Traces;
+				const auto& current = frames[Current[time % Frames][trace] * Particles + i / Traces];
+				const auto& previous = frames[Previous[time % Frames][trace] * Particles + i / Traces];
+				const float decay = 1.0f / float(1u << trace);
+				glm::mat4 model(1);
+				model[0][0] = model[1][1] = decay;
+				model[2][2] = 2;
+				model[3] = glm::vec4(current.m_x2, current.m_y2, 2, 1);
+				const glm::vec4 color(current.m_r2, current.m_g2, current.m_b2, decay);
+				const glm::vec4 oldColor(previous.m_r2, previous.m_g2, previous.m_b2, decay);
+				for (uint32_t column = 0; column < 4; ++column)
+					Require(glm::all(glm::lessThan(glm::abs(actual[i].model[column] - model[column]), glm::vec4(0.00001f))),
+						"particle history must clamp each trace frame before calculating its transform");
+				Require(actual[i].color == color && actual[i].colorOld == oldColor && actual[i].materialInstance == 100 + i,
+					"particle history must retain first-frame colors, clip wrap, trace decay and material identity");
+			}
+			Require(actual[Instances].model == glm::mat4(-17) && actual[Instances].color == glm::vec4(-17) &&
+				actual[Instances].colorOld == glm::vec4(-17) && actual[Instances].materialInstance == 100 + Instances,
+				"particle compute must not write past the last instance");
+		}
+		std::cout << "Particle history: 513 particles, four trace segments, five times, GPU transforms/colors/decay and trailing sentinel passed\n";
+	}
+
+	class ParticleDrawNode : public Experimental::ParticlesNode
+	{
+	public:
+		void Process(RHIFrameGraphPtr graph, RHICommandListPtr upload, RHICommandListPtr draw,
+			const RHISceneViewSnapshot& scene) override
+		{
+			Experimental::ParticlesNode::Process(graph, upload, draw, scene);
+			m_colorAttachment = recordedColor;
+		}
+
+		VkRenderingAttachmentInfo m_colorAttachment{};
+
+		void Initialize(const std::array<ShaderSetPtr, 3>& shaders)
+		{
+			auto& driver = Renderer::GetDriver();
+			m_mesh = RHIMeshPtr::Make();
+			m_mesh->m_vertexDescription = driver->GetOrAddVertexDescription<VertexP3N3T3B3UV2C4>();
+			std::array<VertexP3N3T3B3UV2C4, 4> vertices{};
+			for (uint32_t i = 0; i < vertices.size(); ++i)
+			{
+				vertices[i].m_position = glm::vec3(i % 2 ? 1 : -1, i / 2 ? 1 : -1, 0);
+				vertices[i].m_texcoord = glm::vec2(i % 2, i / 2);
+				vertices[i].m_normal = glm::vec3(0, 0, 1);
+				vertices[i].m_tangent = glm::vec3(1, 0, 0);
+				vertices[i].m_bitangent = glm::vec3(0, 1, 0);
+				vertices[i].m_color = glm::vec4(1);
+			}
+			const uint32_t indices[] = { 0, 1, 2, 2, 1, 3 };
+			m_mesh->m_vertexBuffer = driver->CreateBuffer(sizeof(vertices), EBufferUsageBit::VertexBuffer_Bit, HostMemory);
+			m_mesh->m_indexBuffer = driver->CreateBuffer(sizeof(indices), EBufferUsageBit::IndexBuffer_Bit, HostMemory);
+			std::memcpy(m_mesh->m_vertexBuffer->GetPointer(), vertices.data(), sizeof(vertices));
+			std::memcpy(m_mesh->m_indexBuffer->GetPointer(), indices, sizeof(indices));
+			auto bindings = driver->CreateShaderBindings();
+			const glm::vec4 emission(0);
+			auto materialBuffer = driver->CreateBuffer(sizeof(emission), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
+			std::memcpy(materialBuffer->GetPointer(), &emission, sizeof(emission));
+			driver->AddBufferToShaderBindings(bindings, materialBuffer, "material"_h, 0);
+			const RenderState state(true, true, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, "Opaque"_h.GetHash(), true);
+			m_material = driver->CreateMaterial(m_mesh->m_vertexDescription, EPrimitiveTopology::TriangleList, state, shaders[0], bindings);
+			m_shadowMaterial = driver->CreateMaterial(m_mesh->m_vertexDescription, EPrimitiveTopology::TriangleList, state, shaders[1], bindings);
+			m_pComputeShader = shaders[2];
+			m_shadowMap = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32_SFLOAT);
+			m_shadowMapBinding = driver->CreateShaderBindings();
+			driver->AddSamplerToShaderBindings(m_shadowMapBinding, "shadowMapSampler"_h, m_shadowMap, 0);
+			m_particlesHeader.m_bIsLoaded = true;
+			m_particlesHeader.m_n = 2;
+			m_particlesHeader.m_frames = 3;
+			m_particlesHeader.m_fps = 1;
+			m_particlesHeader.m_traceFrames = 1;
+			m_particlesHeader.m_traceDecay = 1;
+			m_particlesHeader.m_screenW = m_particlesHeader.m_screenH = Side;
+			for (uint32_t frame = 0; frame < 3; ++frame)
+			for (uint32_t particle = 0; particle < 2; ++particle)
+			{
+				ParticleData data{};
+				data.m_bIsEnabled = 1;
+				data.m_size1 = data.m_size2 = 1.0f / 3;
+				data.m_x1 = data.m_x2 = particle ? 0.5f : -0.5f;
+				data.m_z1 = 0.25f;
+				data.m_z2 = 0.75f;
+				const auto color = Color(frame, particle);
+				data.m_r1 = data.m_r2 = color.r;
+				data.m_g1 = data.m_g2 = color.g;
+				data.m_b1 = data.m_b2 = color.b;
+				data.m_a1 = data.m_a2 = color.a;
+				m_particlesDataBinary.Add(data);
+			}
+			Require(InitializeBuffers({ PerInstanceData{}, PerInstanceData{} }), "particle frames and zeroed instances must upload");
+		}
+
+		static glm::vec4 Color(uint32_t frame, uint32_t particle)
+		{
+			return { (frame + 1) * 0.25f, (particle + 1) * 0.25f, 0.25f, 1 };
+		}
+
+		RHITexturePtr ShadowMap() const { return m_shadowMap; }
+	};
+
+	void TestParticleAttachments(const std::array<ShaderSetPtr, 3>& shaders,
+		const std::array<ShaderSetPtr, 4>& depthReadback, bool colorSurface, bool namedColor, uint32_t depthKind, bool namedDepth,
+		bool forceSingleSample = false)
+	{
+		CaptureAttachments capture;
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto graph = RHIFrameGraphPtr::Make();
+		auto node = TRefPtr<ParticleDrawNode>::Make();
+		node->Initialize(shaders);
+		if (namedColor) node->SetRHIResource_Unresolved("color"_h, "ParticleColor"_h);
+		if (namedDepth && depthKind < 2) node->SetRHIResource_Unresolved("depthStencil"_h, "ParticleDepth"_h);
+		const bool bDepthSurface = depthKind == 1 || depthKind >= 3;
+		RHISceneViewSnapshot scene;
+		scene.m_rhiLightsData = driver->CreateShaderBindings();
+		RHILightShaderData light{};
+		light.m_direction = glm::vec3(0, 0, 1);
+		auto lightBuffer = driver->CreateBuffer(sizeof(light), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
+		std::memcpy(lightBuffer->GetPointer(), &light, sizeof(light));
+		driver->AddBufferToShaderBindings(scene.m_rhiLightsData, lightBuffer, "light"_h, 0);
+		const glm::mat4 identity(1);
+		auto matrixBuffer = driver->CreateBuffer(sizeof(identity), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
+		std::memcpy(matrixBuffer->GetPointer(), &identity, sizeof(identity));
+		driver->AddBufferToShaderBindings(scene.m_rhiLightsData, matrixBuffer, "lightsMatrices"_h, 6);
+		struct Recorded
+		{
+			RHICommandListPtr m_upload, m_draw;
+			RHIBufferPtr m_color, m_depth, m_resolvedDepth, m_shadow, m_unusedDepth;
+			glm::ivec2 m_extent;
+			uint32_t m_frame = 0, m_samples = 1;
+			float m_clearDepth = 0;
+			uint32_t m_unusedSamples = 1;
+			bool m_bAttachmentsMatch = false;
+		};
+		const auto complete = [&](const Recorded& recorded)
+		{
+			CompleteCommands(recorded.m_upload, recorded.m_draw);
+			const auto* color = static_cast<const glm::vec4*>(recorded.m_color->GetPointer());
+			const auto* depth = static_cast<const glm::vec2*>(recorded.m_depth->GetPointer());
+			const auto* resolvedDepth = static_cast<const glm::vec2*>(recorded.m_resolvedDepth->GetPointer());
+			for (int y = 0; y < recorded.m_extent.y; ++y)
+			for (int x = 0; x < recorded.m_extent.x; ++x)
+			{
+				const bool covered = y >= recorded.m_extent.y / 4 && y < 3 * recorded.m_extent.y / 4;
+				const bool visible = covered && recorded.m_clearDepth < 0.5f;
+				const uint32_t particle = x < recorded.m_extent.x / 2 ? 0 : 1;
+				const auto current = ParticleDrawNode::Color(recorded.m_frame, particle);
+				const auto previous = ParticleDrawNode::Color(recorded.m_frame ? recorded.m_frame - 1 : 0, particle);
+				const auto expected = visible ? glm::mix(current, previous, 0.5f) * glm::vec4(0.05f, 0.05f, 0.05f, 1) : glm::vec4(-1);
+				const uint32_t pixel = y * recorded.m_extent.x + x;
+				Require(std::abs(resolvedDepth[pixel].x - (visible ? 0.5f : recorded.m_clearDepth)) < 0.00001f,
+					"particle depth resolve must preserve the selected attachment's pixels");
+				if (!glm::all(glm::lessThan(glm::abs(color[pixel] - expected), glm::vec4(0.00001f))))
+					throw std::runtime_error("particle color pixel=" + std::to_string(pixel) + " actual=" + std::to_string(color[pixel].r) +
+						", expected=" + std::to_string(expected.r) + ", frame=" + std::to_string(recorded.m_frame));
+				for (uint32_t sample = 0; sample < recorded.m_samples; ++sample)
+					Require(std::abs(depth[pixel * recorded.m_samples + sample].x - (visible ? 0.5f : recorded.m_clearDepth)) < 0.00001f,
+						"particle depth must use the selected attachment and preserve every occluded sample");
+				if (recorded.m_unusedDepth)
+				{
+					const auto* unused = static_cast<const glm::vec2*>(recorded.m_unusedDepth->GetPointer());
+					for (uint32_t sample = 0; sample < recorded.m_unusedSamples; ++sample)
+						Require(unused[pixel * recorded.m_unusedSamples + sample].x == 0.125f,
+							"single-sample particles must leave live MSAA depth untouched");
+				}
+			}
+			Require(recorded.m_bAttachmentsMatch, "particle rendering must bind the exact selected native targets and resolve images");
+			const auto* shadow = static_cast<const float*>(recorded.m_shadow->GetPointer());
+			for (uint32_t y = 0; y < Side; ++y)
+			for (uint32_t x = 0; x < Side; ++x)
+				Require(std::abs(shadow[y * Side + x] - (y >= Side / 4 && y < 3 * Side / 4 ? 0.5f : 0.0f)) < 0.00001f,
+					"particle shadow must rasterize the production compute transforms");
+		};
+		RHIResourcePtr colorResource, depthResource;
+		RHIRenderTargetPtr color, depth, colorTarget, depthTarget, decoy;
+		Recorded pending;
+		for (uint32_t frame = 0; frame < 6; ++frame)
+		{
+			if (frame == 5) node->Clear();
+			const glm::ivec2 extent(frame < 2 ? 8 : 12, frame < 4 ? 8 : 12);
+			if (frame != 1)
+			{
+				color = driver->CreateRenderTarget(extent, 1, EFormat::R32G32B32A32_SFLOAT);
+				colorResource = forceSingleSample ? RHIResourcePtr(RHISurfacePtr::Make(color, color, false)) :
+					colorSurface ? RHIResourcePtr(driver->CreateSurface(color)) : RHIResourcePtr(color);
+				const auto depthUsage = ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferDst_Bit;
+				depth = driver->CreateRenderTarget(extent, 1, EFormat::D32_SFLOAT, ETextureFiltration::Nearest, ETextureClamping::Clamp, depthUsage);
+				depthResource = bDepthSurface ? RHIResourcePtr(driver->CreateSurface(depth)) : RHIResourcePtr(depth);
+				decoy = driver->CreateRenderTarget(extent, 1, EFormat::D32_SFLOAT_S8_UINT,
+					ETextureFiltration::Nearest, ETextureClamping::Clamp, depthUsage);
+				graph->SetRenderTarget("DepthBuffer"_h, depthKind == 4 ? RHIRenderTargetPtr{} : depthKind == 2 || depthKind == 3 ? depth : decoy);
+				if (depthKind >= 3) graph->SetSurface("DepthBuffer"_h, depthResource.DynamicCast<RHISurface>());
+				if (!namedColor) node->SetRHIResource("color"_h, colorResource);
+				else if (colorSurface) graph->SetSurface("ParticleColor"_h, colorResource.DynamicCast<RHISurface>());
+				else graph->SetRenderTarget("ParticleColor"_h, color);
+				if (depthKind < 2)
+				{
+					if (!namedDepth) node->SetRHIResource("depthStencil"_h, depthResource);
+					else if (depthKind == 1) graph->SetSurface("ParticleDepth"_h, depthResource.DynamicCast<RHISurface>());
+					else graph->SetRenderTarget("ParticleDepth"_h, depth);
+				}
+				const bool msaa = VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT;
+				colorTarget = colorSurface ? colorResource.DynamicCast<RHISurface>()->GetTarget() : msaa ?
+					driver->GetOrAddMsaaFramebufferRenderTarget(color->GetFormat(), extent).StaticCast<RHIRenderTarget>() : color;
+				depthTarget = forceSingleSample ? depth : bDepthSurface ? depthResource.DynamicCast<RHISurface>()->GetTarget() : msaa ?
+					driver->GetOrAddMsaaFramebufferRenderTarget(depth->GetFormat(), extent).StaticCast<RHIRenderTarget>() : depth;
+			}
+			const std::array<uint32_t, 6> frames{ 1, 2, 0, 1, 0, 2 };
+			UboFrameData frameData{};
+			frameData.m_view = frameData.m_projection = frameData.m_invProjection = identity;
+			frameData.m_viewportSize = extent;
+			frameData.m_currentTime = float(frames[frame]);
+			scene.m_frameBindings = driver->CreateShaderBindings();
+			auto frameBuffer = driver->CreateBuffer(sizeof(frameData), EBufferUsageBit::UniformBuffer_Bit, HostMemory);
+			std::memcpy(frameBuffer->GetPointer(), &frameData, sizeof(frameData));
+			driver->AddBufferToShaderBindings(scene.m_frameBindings, frameBuffer, "frame"_h, 0);
+			Recorded recorded;
+			recorded.m_extent = extent;
+			recorded.m_frame = frames[frame];
+			recorded.m_clearDepth = frame % 2 ? 0.75f : 0.25f;
+			recorded.m_samples = uint32_t(depthTarget->GetMsaaSamples());
+			recorded.m_upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			recorded.m_draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(recorded.m_upload, true);
+			commands->BeginCommandList(recorded.m_draw, true);
+			for (auto target : { color, colorTarget }) ClearColor(recorded.m_draw, target, glm::vec4(-1));
+			for (auto target : { depth, depthTarget, decoy })
+			{
+				commands->ImageMemoryBarrier(recorded.m_draw, target, EImageLayout::TransferDstOptimal);
+				commands->ClearDepthStencil(recorded.m_draw, target, target == decoy ? 1.0f - recorded.m_clearDepth : recorded.m_clearDepth, 0);
+			}
+			if (VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT)
+			{
+				auto target = driver->GetOrAddMsaaFramebufferRenderTarget(decoy->GetFormat(), extent);
+				commands->ImageMemoryBarrier(recorded.m_draw, target, EImageLayout::TransferDstOptimal);
+				commands->ClearDepthStencil(recorded.m_draw, target, 1.0f - recorded.m_clearDepth, 0);
+				if (bDepthSurface)
+				{
+					target = driver->GetOrAddMsaaFramebufferRenderTarget(depth->GetFormat(), extent);
+					commands->ImageMemoryBarrier(recorded.m_draw, target, EImageLayout::TransferDstOptimal);
+					commands->ClearDepthStencil(recorded.m_draw, target, 1.0f - recorded.m_clearDepth, 0);
+					if (forceSingleSample)
+					{
+						target = depthResource.DynamicCast<RHISurface>()->GetTarget();
+						commands->ImageMemoryBarrier(recorded.m_draw, target, EImageLayout::TransferDstOptimal);
+						commands->ClearDepthStencil(recorded.m_draw, target, 0.125f, 0);
+					}
+				}
+			}
+			node->Process(graph, recorded.m_upload, recorded.m_draw, scene);
+			recorded.m_bAttachmentsMatch = node->GetDrawCallStats().m_numBatches == 2 && recordedColorCount == 1 &&
+				recordedColor.imageView == static_cast<VkImageView>(*colorTarget->m_vulkan.m_imageView) &&
+				recordedDepth.imageView == static_cast<VkImageView>(*depthTarget->m_vulkan.m_imageView) &&
+				recordedColor.resolveImageView == (colorTarget != color ? static_cast<VkImageView>(*color->m_vulkan.m_imageView) : VK_NULL_HANDLE) &&
+				recordedDepth.resolveImageView == (depthTarget != depth ? static_cast<VkImageView>(*depth->m_vulkan.m_imageView) : VK_NULL_HANDLE);
+			recorded.m_color = ReadColor(recorded.m_draw, color);
+			recorded.m_shadow = ReadColor(recorded.m_draw, node->ShadowMap());
+			recorded.m_depth = ReadDepth(recorded.m_draw, depthTarget, depthReadback);
+			recorded.m_resolvedDepth = ReadDepth(recorded.m_draw, depth, depthReadback);
+			const auto surface = depthResource.DynamicCast<RHISurface>();
+			if (forceSingleSample && surface && surface->NeedsResolve())
+			{
+				recorded.m_unusedDepth = ReadDepth(recorded.m_draw, surface->GetTarget(), depthReadback);
+				recorded.m_unusedSamples = uint32_t(surface->GetTarget()->GetMsaaSamples());
+			}
+			if (frame == 2) pending = recorded;
+			else
+			{
+				if (frame == 3) complete(pending);
+				complete(recorded);
+			}
+		}
+		std::cout << (depthKind >= 3 || forceSingleSample ? "Particles default depth " : "Particles ") <<
+			"colorSurface=" << colorSurface << " namedColor=" << namedColor << " depthKind=" << depthKind <<
+			" namedDepth=" << namedDepth << " singleSample=" << forceSingleSample <<
+			": six frames, production compute/shadow/color, all pixels/depth samples, resize and retained commands passed\n";
+	}
+
+	void TestParticleGraph(const std::array<ShaderSetPtr, 3>& shaders, uint32_t colorKind, bool named, bool clearResolved)
+	{
+		CaptureAttachments capture;
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		const bool msaa = colorKind != 2 && VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT;
+		auto graph = RHIFrameGraphPtr::Make();
+		auto view = RHISceneViewPtr::Make();
+		view->m_snapshots.Resize(1);
+		auto& scene = view->m_snapshots[0];
+		World cameraWorld("ParticleGraphCamera", 0);
+		auto camera = cameraWorld.Instantiate("Camera")->AddComponent<CameraComponent>();
+		cameraWorld.GetECS<CameraECS>()->Tick(0);
+		auto cameraData = camera->GetData();
+		cameraData.SetProjectionMatrix(cameraData.GetInvViewMatrix());
+		cameraData.SetOwner({});
+		cameraWorld.Clear();
+		scene.m_camera = TUniquePtr<CameraData>::Make(cameraData);
+		scene.m_bGlobalIlluminationEnabled = false;
+		scene.m_shadowMatrices.Add(glm::mat4(1));
+		auto lights = TSharedPtr<TVector<RHILightShaderData>>::Make();
+		RHILightShaderData light{};
+		light.m_direction = glm::vec3(0, 0, 1);
+		lights->Add(light);
+		scene.m_cpuLightsData = lights;
+		const std::array<StringHash, 2> names{ "ParticleA"_h, "ParticleB"_h };
+		const std::array<StringHash, 2> aliases{ "ClearParticleA"_h, "ClearParticleB"_h };
+		std::array<TRefPtr<ParticleDrawNode>, 2> nodes;
+		std::array<TRefPtr<ClearNode>, 2> clears;
+		std::array<RHIRenderTargetPtr, 2> outputs;
+		std::array<RHITexturePtr, 2> previousTargets;
+		auto clearDepth = TRefPtr<ClearNode>::Make();
+		clearDepth->SetFloat("clearDepth"_h, 0.25f);
+		clearDepth->SetFloat("clearStencil"_h, 0);
+		for (uint32_t i = 0; i < nodes.size(); ++i)
+		{
+			nodes[i] = TRefPtr<ParticleDrawNode>::Make();
+			nodes[i]->Initialize(shaders);
+			clears[i] = TRefPtr<ClearNode>::Make();
+			if (named)
+			{
+				nodes[i]->SetRHIResource_Unresolved("color"_h, names[i]);
+				clears[i]->SetRHIResource_Unresolved("target"_h, clearResolved ? aliases[i] : names[i]);
+			}
+		}
+		const auto populateGraph = [&]
+		{
+			for (auto clear : clears) graph->GetGraph().Add(clear);
+			for (auto node : nodes)
+			{
+				graph->GetGraph().Add(clearDepth);
+				graph->GetGraph().Add(node);
+			}
+		};
+		populateGraph();
+		struct Recorded
+		{
+			TVector<RHICommandListPtr> m_transfers, m_graphics;
+			RHICommandListPtr m_readback;
+			RHISemaphorePtr m_ready;
+			std::array<RHIBufferPtr, 4> m_colors;
+			glm::ivec2 m_extent{};
+			uint32_t m_frame = 0;
+			bool m_bAttachmentsMatch = true;
+			bool m_bComputeInputReady = true;
+		};
+		const auto background = [](uint32_t image, uint32_t frame)
+		{
+			return glm::vec4(-1.0f - image - 0.125f * frame);
+		};
+		const auto complete = [&](const Recorded& recorded)
+		{
+			auto ready = recorded.m_ready;
+			for (size_t i = 0; i < recorded.m_transfers.Num(); ++i)
+				for (auto command : { recorded.m_transfers[i], recorded.m_graphics[i] })
+				{
+					auto next = driver->CreateWaitSemaphore();
+					Require(driver->SubmitCommandList(command, RHIFencePtr::Make(), next, ready), "particle graph commands must submit");
+					ready = next;
+				}
+			auto finished = RHIFencePtr::Make();
+			Require(driver->SubmitCommandList(recorded.m_readback, finished, nullptr, ready) &&
+				finished->Wait(5000000000ull) == EFenceStatus::Finished, "particle graph readback must finish");
+			for (uint32_t image = 0; image < recorded.m_colors.size(); ++image)
+			{
+				const auto* pixels = static_cast<const glm::vec4*>(recorded.m_colors[image]->GetPointer());
+				for (int y = 0; y < recorded.m_extent.y; ++y)
+				for (int x = 0; x < recorded.m_extent.x; ++x)
+				{
+					const uint32_t time = recorded.m_frame % 3;
+					const uint32_t particle = x < recorded.m_extent.x / 2 ? 0 : 1;
+					const auto current = ParticleDrawNode::Color(time, particle);
+					const auto previous = ParticleDrawNode::Color(time ? time - 1 : 0, particle);
+					const auto expected = y >= recorded.m_extent.y / 4 && y < 3 * recorded.m_extent.y / 4 ?
+						glm::mix(current, previous, 0.5f) * glm::vec4(0.05f, 0.05f, 0.05f, 1) : background(image / 2, recorded.m_frame);
+					const uint32_t pixel = y * recorded.m_extent.x + x;
+					if (!glm::all(glm::lessThan(glm::abs(pixels[pixel] - expected), glm::vec4(0.00001f))))
+						throw std::runtime_error("particle graph colorKind=" + std::to_string(colorKind) + " named=" + std::to_string(named) +
+							" clearResolved=" + std::to_string(clearResolved) + " frame=" + std::to_string(recorded.m_frame) +
+							" image=" + std::to_string(image) + " pixel=" + std::to_string(pixel) +
+							" actual=" + std::to_string(pixels[pixel].r) + ", expected=" + std::to_string(expected.r));
+				}
+			}
+			Require(recorded.m_bAttachmentsMatch, "particle draws must bind distinct graph-owned live/resolve pairs with LOAD/STORE");
+			Require(recorded.m_bComputeInputReady, "particle compute must read frame uniforms after their native transfer-to-uniform dependency");
+		};
+		Recorded pending;
+		for (uint32_t frame = 0; frame < 6; ++frame)
+		{
+			if (frame == 4)
+			{
+				graph->Clear();
+				populateGraph();
+			}
+			const glm::ivec2 extent(frame < 2 ? 8 : 12, frame < 4 ? 8 : 12);
+			const bool replace = frame != 1 && frame != 5;
+			if (replace)
+			{
+				auto depth = driver->CreateRenderTarget(extent, 1, EFormat::D32_SFLOAT, ETextureFiltration::Nearest,
+					ETextureClamping::Clamp, ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::TextureTransferDst_Bit);
+				auto depthSurface = msaa ? driver->CreateSurface(depth) : RHISurfacePtr::Make(depth, depth, false);
+				clearDepth->SetRHIResource("target"_h, depthSurface);
+				for (uint32_t i = 0; i < nodes.size(); ++i)
+				{
+					outputs[i] = driver->CreateRenderTarget(extent, 1, EFormat::R32G32B32A32_SFLOAT);
+					RHIResourcePtr resource = outputs[i];
+					if (colorKind)
+					{
+						auto surface = colorKind == 2 ? RHISurfacePtr::Make(outputs[i], outputs[i], false) : driver->CreateSurface(outputs[i]);
+						resource = surface;
+						graph->SetSurface(names[i], surface);
+					}
+					graph->SetRenderTarget(names[i], outputs[i]);
+					graph->SetRenderTarget(aliases[i], outputs[i]);
+					if (!named)
+					{
+						nodes[i]->SetRHIResource("color"_h, resource);
+						clears[i]->SetRHIResource("target"_h, clearResolved ? RHIResourcePtr(outputs[i]) : resource);
+					}
+					nodes[i]->SetRHIResource("depthStencil"_h, depthSurface);
+				}
+				graph->SetRenderTarget("Main"_h, outputs[0]);
+			}
+			for (uint32_t i = 0; i < clears.size(); ++i) clears[i]->SetVec4("clearColor"_h, background(i, frame));
+			auto poison = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(poison, true);
+			ClearColor(poison, driver->GetOrAddMsaaFramebufferRenderTarget(EFormat::R32G32B32A32_SFLOAT, extent), glm::vec4(-16));
+			commands->EndCommandList(poison);
+			auto initialized = driver->CreateWaitSemaphore();
+			Require(driver->SubmitCommandList(poison, RHIFencePtr::Make(), initialized), "particle graph poison must submit");
+			scene.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
+			scene.m_submissionContext->BeginSubmission(304 + frame, frame % 2);
+			view->m_currentTime = float(frame % 3);
+			scene.m_currentTime = view->m_currentTime;
+			Recorded recorded;
+			recorded.m_frame = frame;
+			recorded.m_extent = extent;
+			const auto process = [&]
+			{
+				Require(graph->Process(view, recorded.m_transfers, recorded.m_graphics, initialized, recorded.m_ready),
+					"Clear and Particles must execute through the frame graph");
+			};
+#if defined(__APPLE__)
+			const auto inputs = Tests::CaptureVulkanComputeInputs(process);
+			const auto frameMemory = *scene.m_frameBindings->GetOrAddShaderBinding("frameData"_h)->m_vulkan.m_valueBinding->Get();
+			VkCommandBuffer copiedOn = VK_NULL_HANDLE;
+			bool uniformReady = false;
+			uint32_t dispatches = 0;
+			for (const auto& event : inputs)
+			{
+				using Kind = Tests::VulkanComputeInputEvent::Kind;
+				if (event.m_kind == Kind::Copy && event.m_buffer == *frameMemory.m_buffer &&
+					event.m_offset <= frameMemory.m_offset && event.m_offset + event.m_size >= frameMemory.m_offset + sizeof(UboFrameData))
+				{
+					copiedOn = event.m_command;
+					uniformReady = false;
+				}
+				if (event.m_command != copiedOn) continue;
+				const bool coversUniform = event.m_buffer == VK_NULL_HANDLE || (event.m_buffer == *frameMemory.m_buffer &&
+					event.m_offset <= frameMemory.m_offset && (event.m_size == VK_WHOLE_SIZE ||
+						event.m_offset + event.m_size >= frameMemory.m_offset + sizeof(UboFrameData)));
+				if (event.m_kind == Kind::Barrier &&
+					coversUniform &&
+					(event.m_sourceStage & (VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_ALL_COMMANDS_BIT)) &&
+					(event.m_destinationStage & (VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_ALL_COMMANDS_BIT)) &&
+					(event.m_sourceAccess & (VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_MEMORY_WRITE_BIT)) &&
+					(event.m_destinationAccess & (VK_ACCESS_UNIFORM_READ_BIT | VK_ACCESS_MEMORY_READ_BIT))) uniformReady = true;
+				if (event.m_kind == Kind::Dispatch)
+				{
+					++dispatches;
+					recorded.m_bComputeInputReady &= uniformReady;
+				}
+			}
+			recorded.m_bComputeInputReady &= dispatches == nodes.size();
+#else
+			process();
+#endif
+			Require(recorded.m_graphics.Num() == 1 && recorded.m_transfers.Num() == 1,
+				"particle fixture must retain its graph draw commands until explicit submission");
+			recorded.m_readback = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(recorded.m_readback, true);
+			for (uint32_t i = 0; i < nodes.size(); ++i)
+			{
+				auto target = nodes[i]->GetTargetAttachment("color"_h, graph.GetRawPtr());
+				if (!replace) Require(target == previousTargets[i], "unchanged particle output must reuse its live image");
+				else if (frame) Require(target != previousTargets[i], "replaced particle output must own a different live image");
+				previousTargets[i] = target;
+				const auto& attachment = nodes[i]->m_colorAttachment;
+				recorded.m_bAttachmentsMatch &= nodes[i]->GetDrawCallStats().m_numBatches == 2 &&
+					target->GetMsaaSamples() == (msaa ? App::GetSubmodule<Renderer>()->GetMsaaSamples() : EMsaaSamples::Samples_1) &&
+					attachment.imageView == static_cast<VkImageView>(*target->m_vulkan.m_imageView) &&
+					attachment.resolveImageView == (msaa ? static_cast<VkImageView>(*outputs[i]->m_vulkan.m_imageView) : VK_NULL_HANDLE) &&
+					attachment.resolveMode == (msaa ? VK_RESOLVE_MODE_AVERAGE_BIT : VK_RESOLVE_MODE_NONE) &&
+					attachment.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && attachment.storeOp == VK_ATTACHMENT_STORE_OP_STORE;
+				recorded.m_colors[i * 2] = ReadColor(recorded.m_readback, outputs[i]);
+				recorded.m_colors[i * 2 + 1] = target == outputs[i] ? recorded.m_colors[i * 2] : ReadColor(recorded.m_readback, target);
+			}
+			recorded.m_bAttachmentsMatch &= previousTargets[0] != previousTargets[1];
+			commands->MemoryBarrier(recorded.m_readback, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit), static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+			commands->EndCommandList(recorded.m_readback);
+			if (frame == 2) pending = recorded;
+			else
+			{
+				if (frame == 3) complete(pending);
+				complete(recorded);
+			}
+		}
+		std::cout << "Particle graph colorKind=" << colorKind << " named=" << named << " clearResolved=" << clearResolved <<
+			": six frames, two distinct outputs, live/resolved pixels, resize, graph Clear and retained commands passed\n";
+	}
+
+	template<typename Instance>
+	void TestPagedArenaUploadFlights(std::string_view pass)
+	{
+		constexpr uint32_t NumRanges = 10000u;
+		constexpr uint32_t InstancesPerRange = 4u;
+		constexpr uint32_t NumInstances = NumRanges * InstancesPerRange;
+		constexpr uint32_t PageSize = TPackedDrawArenaPage<Instance>::NumInstances;
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto mesh = RHIMeshPtr::Make();
+		mesh->m_vertexDescription = driver->GetOrAddVertexDescription<VertexP3N3UV2C4>();
+		mesh->m_vertexBuffer = driver->CreateBuffer(sizeof(VertexP3N3UV2C4) * 3u, EBufferUsageBit::VertexBuffer_Bit, HostMemory);
+		mesh->m_indexBuffer = driver->CreateBuffer(sizeof(uint32_t) * 3u, EBufferUsageBit::IndexBuffer_Bit, HostMemory);
+		RHIBatch batch;
+		batch.m_mesh = mesh;
+		TPackedDrawPagedArenaCache<Instance> arena;
+		TVector<Instance> instances;
+		TVector<uint64_t> keys;
+		instances.Resize(InstancesPerRange);
+		keys.Resize(InstancesPerRange);
+		auto replace = [&](uint32_t range, uint32_t revision)
+		{
+			for (uint32_t i = 0; i < InstancesPerRange; ++i)
+			{
+				instances[i] = {};
+				instances[i].model = glm::translate(glm::mat4(1), glm::vec3(range, i, revision));
+				instances[i].sphereBounds = glm::vec4(range, i, revision, 1);
+				keys[i] = range * InstancesPerRange + i;
+			}
+			Require(arena.ReplaceRange(range, revision, instances, keys), "upload fixture range must publish");
+		};
+		arena.BeginUpdate(1, 1, 1);
+		for (uint32_t range = 0; range < NumRanges; ++range) replace(range, 1);
+		auto payload = arena.EndUpdate();
+		const auto original = payload;
+
+		struct Flight
+		{
+			TPackedDrawPacket<Instance> m_packet;
+			RHIShaderBindingSetPtr m_bindings;
+			RHIBufferPtr m_storage, m_indices, m_indirect;
+		};
+		std::array<Flight, 3> flights;
+		for (auto& flight : flights)
+		{
+			const auto usage = EBufferUsageBit::StorageBuffer_Bit | EBufferUsageBit::BufferTransferDst_Bit;
+			flight.m_storage = driver->CreateBuffer(sizeof(Instance) * NumInstances, usage, HostMemory);
+			flight.m_indices = driver->CreateBuffer(sizeof(uint32_t) * NumInstances, usage, HostMemory);
+			flight.m_bindings = driver->CreateShaderBindings();
+			Require(driver->AddBufferToShaderBindings(flight.m_bindings, flight.m_storage, "data"_h, 0).IsValid() &&
+				driver->AddBufferToShaderBindings(flight.m_bindings, flight.m_indices, "indices"_h, 1).IsValid(),
+				"upload fixture buffers must bind");
+		}
+		auto verifyStorage = [&](const Flight& flight, const auto& expected)
+		{
+			const auto* actual = static_cast<const Instance*>(flight.m_storage->GetPointer());
+			for (uint32_t i = 0; i < NumInstances; ++i)
+				Require(actual[i] == expected->m_arenaPages[i / PageSize]->m_instances[i % PageSize],
+					"completed GPU storage must match the retained payload, including untouched pages");
+		};
+		auto upload = [&](uint32_t flightIndex, std::string_view stage, uint32_t expectedPages)
+		{
+			auto& flight = flights[flightIndex];
+			auto& packet = flight.m_packet;
+			packet.Reset();
+			packet.UseSharedArenaPayload(EMobilityType::Static, payload);
+			for (uint32_t range = 0; range < NumRanges; ++range)
+			{
+				if (!payload->FindRange(range)) continue;
+				for (uint32_t i = 0; i < InstancesPerRange; ++i)
+					Require(packet.AddArenaView(batch, mesh, range, range * InstancesPerRange + i),
+						"each live range must produce its view indices");
+			}
+			packet.Finalize();
+			auto command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(command, true);
+			const uint64_t expectedBytes = uint64_t(expectedPages) * PageSize * sizeof(Instance);
+			const auto record = [&]
+			{
+				return RHIRecordPackedDrawPacketImpl(packet, command, command,
+					[](const RHIBatch&, TVector<RHIShaderBindingSetPtr>&) {}, flight.m_bindings, flight.m_indirect,
+					glm::ivec4(0, 0, 8, 8), glm::uvec4(0, 0, 8, 8), glm::vec2(0, 1), {}, nullptr, {}, {}, false,
+					[] { return false; }); // Exercise production uploads without a framebuffer or shader draw.
+			};
+#if defined(__APPLE__)
+			decltype(record()) stats;
+			const auto writes = Tests::CaptureVulkanBufferWrites([&] { stats = record(); });
+			const auto memory = *flight.m_storage->m_vulkan.m_buffer->Get();
+			uint64_t writtenBytes = 0;
+			for (const auto& write : writes)
+			{
+				if (write.m_buffer != *memory.m_buffer) continue;
+				const auto begin = std::max(write.m_offset, VkDeviceSize(memory.m_offset));
+				const auto end = std::min(write.m_offset + write.m_size, VkDeviceSize(memory.m_offset + memory.m_size));
+				if (end > begin) writtenBytes += end - begin;
+			}
+			Require(writtenBytes == expectedBytes, "native instance transfers must contain only changed pages for this flight");
+			std::cout << "ArenaNativeUpload " << pass << ' ' << stage << ": bytes=" << writtenBytes << '\n';
+#else
+			const auto stats = record();
+#endif
+			Require(stats.m_numBatches == 0, "upload-only fixture must not record draws");
+			Require(packet.m_metrics.m_instanceUploadBytes == expectedBytes &&
+				packet.m_metrics.m_dirtyInstanceRanges == expectedPages,
+				"recorded instance uploads must contain exactly the changed pages for this flight");
+			Require(packet.m_metrics.m_bReusedInstancePayload == (expectedPages == 0),
+				"unchanged flight payload must reuse its uploaded storage");
+			uint32_t lastEnd = 0;
+			for (const auto& range : packet.m_instanceUploads)
+			{
+				Require(range.m_offset >= lastEnd && range.m_offset % PageSize == 0 && range.m_count == PageSize,
+					"recorded page uploads must be ordered, non-overlapping and aligned");
+				lastEnd = range.m_offset + range.m_count;
+			}
+			commands->MemoryBarrier(command, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+				static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+			commands->EndCommandList(command);
+			auto finished = RHIFencePtr::Make();
+			Require(driver->SubmitCommandList(command, finished) && finished->Wait(5000000000ull) == EFenceStatus::Finished,
+				"arena upload must complete before host inspection");
+			verifyStorage(flight, payload);
+			const auto* indices = static_cast<const uint32_t*>(flight.m_indices->GetPointer());
+			for (uint32_t i = 0; i < packet.GetNumInstances(); ++i)
+				Require(indices[i] == packet.GetInstanceIndices()[i], "GPU indices must follow the current view after deletion and re-add");
+			std::cout << "ArenaUpload " << pass << ' ' << stage << ": bytes=" << expectedBytes
+				<< " ranges=" << expectedPages << '\n';
+		};
+		for (uint32_t i = 0; i < flights.size(); ++i) upload(i, "initial", NumInstances / PageSize);
+		arena.BeginUpdate(1, 2, 2);
+		replace(17, 2);
+		payload = arena.EndUpdate();
+		upload(0, "sparse", 1);
+		arena.BeginUpdate(1, 3, 3);
+		replace(8001, 3);
+		payload = arena.EndUpdate();
+		upload(1, "skipped-flight", 2);
+		upload(0, "next-page", 1);
+		upload(1, "unchanged", 0);
+		arena.BeginUpdate(1, 4, 4);
+		arena.RemoveRange(1000);
+		payload = arena.EndUpdate();
+		upload(1, "delete", 0);
+		arena.BeginUpdate(1, 5, 5);
+		replace(1000, 5);
+		payload = arena.EndUpdate();
+		upload(1, "re-add", 1);
+		arena.BeginUpdate(1, 6, 6);
+		for (uint32_t range = 0; range < NumRanges; ++range) replace(range, 6);
+		payload = arena.EndUpdate();
+		upload(1, "dense", NumInstances / PageSize);
+		Require(flights[2].m_packet.GetSharedPayload(EMobilityType::Static) == original,
+			"unused flight must retain its own payload generation");
+		verifyStorage(flights[2], original);
+		upload(2, "retained-flight", NumInstances / PageSize);
+		flights[1].m_packet.InvalidateUploadedState();
+		upload(1, "invalidated-flight", NumInstances / PageSize);
+	}
+
+	enum class DepthAttachmentBinding { Target, NamedTarget, Surface, NamedSurface };
+
+	void TestCustomDepthSilhouette(ShaderSetPtr shader, const std::array<ShaderSetPtr, 4>& depthReadback,
+		bool paged, bool instanced, bool skinned, EMobilityType mobility,
+		DepthAttachmentBinding depthBinding = DepthAttachmentBinding::Target)
+	{
+		CaptureAttachments capture;
 		auto& driver = Renderer::GetDriver();
 		auto commands = Renderer::GetDriverCommands();
 		auto graph = TRefPtr<TestGraph>::Make();
@@ -3026,7 +5106,7 @@ frame:
 			auto buffer = driver->CreateBuffer(sizeof(settings), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
 			std::memcpy(buffer->GetPointer(), &settings, sizeof(settings));
 			auto result = driver->CreateShaderBindings();
-			Require(driver->AddBufferToShaderBindings(result, buffer, "material", 0).IsValid(), "custom material parameters must bind");
+			Require(driver->AddBufferToShaderBindings(result, buffer, "material"_h, 0).IsValid(), "custom material parameters must bind");
 			return result;
 		};
 		const RenderState state(true, true, 0, true, ECullMode::None, EBlendMode::None, EFillMode::Fill, "Masked"_h.GetHash(), true);
@@ -3034,12 +5114,7 @@ frame:
 		Require(material && material->GetVersion(), "custom masked material must have a complete version");
 		mesh->m_bakedVolumeScale = glm::vec3(2, 3, 4);
 		RHISceneViewProxy source;
-		source.m_staticMeshEcs = 1;
-		source.m_mobility = mobility;
-		source.m_worldMatrix = glm::mat4(1);
-		source.m_worldAabb = Math::AABB(glm::vec3(0), glm::vec3(3));
-		source.m_shadowCaster = RHIShadowCasterProxyPtr::Make();
-		source.m_shadowCaster->m_worldAabb = source.m_worldAabb;
+		auto shadowCaster = TSharedPtr<RHIShadowCasterProxy>::Make();
 		glm::mat4 second(1);
 		second[3].x = -1;
 		if (instanced)
@@ -3075,7 +5150,7 @@ frame:
 			{
 				RHIShadowMeshProxy caster;
 				caster.m_mesh = mesh;
-				caster.m_worldMatrix = transform;
+				caster.m_localMatrix = transform;
 				caster.m_renderQueueTag = "Masked"_h.GetHash();
 				caster.m_customDepthMaterial = material;
 				caster.m_customDepthShader = shader;
@@ -3083,15 +5158,16 @@ frame:
 #if defined(__APPLE__)
 				caster.m_materialTextureSamplers = { 0 };
 #endif
-				source.m_shadowCaster->m_meshes.Add(std::move(caster));
+				shadowCaster->m_meshes.Add(std::move(caster));
 			}
 		}
+		source.m_shadowCaster = std::move(shadowCaster);
 		auto topology = RHISceneProxyResourcePtr::Make(std::move(source));
 		RHISceneInstanceRecord record;
 		record.m_producerKey = 1;
 		record.m_mobility = mobility;
 		record.m_worldMatrix = glm::mat4(1);
-		record.m_worldBounds = topology->m_proxy.m_worldAabb;
+		record.m_worldBounds = Math::AABB(glm::vec3(0), glm::vec3(3));
 		record.m_topology = topology;
 		record.m_topologyRevision = topology->m_mainRevision;
 		record.m_shadowRevision = topology->m_shadowRevision;
@@ -3102,16 +5178,16 @@ frame:
 		previousRecord.m_worldMatrix[3].y = -0.125f;
 		const auto handle = scene->AddInstance(previousRecord);
 		RHISceneViewSnapshot previousSnapshot;
-		previousSnapshot.m_sceneVersions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make();
-		previousSnapshot.m_sceneVersions->Add(scene->PublishVersion());
+		previousSnapshot.m_sceneVersions = TSharedPtr<const TVector<RHISceneVersionPtr>>::Make(
+			TVector<RHISceneVersionPtr>{ scene->PublishVersion() });
 		auto previousFrame = TSharedPtr<RHIMotionHistoryFrame>::Make();
 		previousFrame->m_sceneVersions = previousSnapshot.m_sceneVersions;
 		previousFrame->m_mobilityRevisions[static_cast<size_t>(mobility)] = previousSnapshot.GetMobilityRevision(mobility);
 		Require(scene->UpdateInstance(handle, record, ToMask(ESceneChangeBit::Transform)), "fixture must publish its current transform");
 		RHISceneViewSnapshot snapshot;
 		snapshot.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
-		snapshot.m_sceneVersions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make();
-		snapshot.m_sceneVersions->Add(scene->PublishVersion());
+		snapshot.m_sceneVersions = TSharedPtr<const TVector<RHISceneVersionPtr>>::Make(
+			TVector<RHISceneVersionPtr>{ scene->PublishVersion() });
 		snapshot.m_camera = TUniquePtr<CameraData>::Make();
 		snapshot.m_frameBindings = driver->CreateShaderBindings();
 		snapshot.m_rhiLightsData = driver->CreateShaderBindings();
@@ -3123,7 +5199,7 @@ frame:
 		{
 			auto buffer = driver->CreateBuffer(sizeof(frameData), EBufferUsageBit::UniformBuffer_Bit, HostMemory);
 			std::memcpy(buffer->GetPointer(), &frameData, sizeof(frameData));
-			driver->AddBufferToShaderBindings(snapshot.m_frameBindings, buffer, binding ? "previousFrame" : "frame", binding);
+			driver->AddBufferToShaderBindings(snapshot.m_frameBindings, buffer, binding ? "previousFrame"_h : "frame"_h, binding);
 		}
 		if (skinned)
 		{
@@ -3132,7 +5208,7 @@ frame:
 			auto buffer = driver->CreateBuffer(sizeof(bone), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
 			std::memcpy(buffer->GetPointer(), &bone, sizeof(bone));
 			snapshot.m_boneMatrices = driver->CreateShaderBindings();
-			driver->AddBufferToShaderBindings(snapshot.m_boneMatrices, buffer, "bones", 0);
+			driver->AddBufferToShaderBindings(snapshot.m_boneMatrices, buffer, "bones"_h, 0);
 		}
 		snapshot.ForEachSceneProxy(mobility, [&](const RHIVisibleSceneProxy& proxy) { snapshot.m_proxies.Add(proxy); });
 		RHIUpdateShadowMapCommand shadowPass;
@@ -3156,22 +5232,47 @@ frame:
 		auto shadow = TRefPtr<ShadowCacheProbe>::Make();
 		for (FrameGraphNodePtr node : { FrameGraphNodePtr(depth), FrameGraphNodePtr(main), FrameGraphNodePtr(shadow) })
 		{
-			node->SetString("Tag", "Masked");
-			node->SetString("GPUCulling", "false");
-			node->SetString("VirtualizeInstancePayloads", paged ? "true" : "false");
+			node->SetString("Tag"_h, "Masked");
+			node->SetString("GPUCulling"_h, "false");
+			node->SetString("VirtualizeInstancePayloads"_h, paged ? "true" : "false");
 		}
-		depth->SetString("ClearDepth", "true");
-		depth->SetRHIResource("depthStencil", prepassDepth);
-		main->SetRHIResource("color", color);
-		main->SetRHIResource("depthStencil", mainDepth);
+		depth->SetString("ClearDepth"_h, "true");
+		const bool bNamedDepth = depthBinding == DepthAttachmentBinding::NamedTarget || depthBinding == DepthAttachmentBinding::NamedSurface;
+		const bool bDepthSurface = depthBinding == DepthAttachmentBinding::Surface || depthBinding == DepthAttachmentBinding::NamedSurface;
+		const auto bindDepth = [&](FrameGraphNodePtr node, RHIRenderTargetPtr target, StringHash name)
+		{
+			RHIResourcePtr attachment = bDepthSurface ? RHIResourcePtr(driver->CreateSurface(target)) : RHIResourcePtr(target);
+			Require(attachment.IsValid(), "custom-depth attachment must initialize");
+			if (bNamedDepth)
+			{
+				if (bDepthSurface) graph->SetSurface(name, attachment.DynamicCast<RHISurface>());
+				else graph->SetRenderTarget(name, target);
+			}
+			else node->SetRHIResource("depthStencil"_h, attachment);
+		};
+		if (bNamedDepth)
+		{
+			depth->SetRHIResource_Unresolved("depthStencil"_h, "SelectedDepth"_h);
+			main->SetRHIResource_Unresolved("depthStencil"_h, "SelectedMainDepth"_h);
+		}
+		bindDepth(depth, prepassDepth, "SelectedDepth"_h);
+		bindDepth(main, mainDepth, "SelectedMainDepth"_h);
+		main->SetRHIResource("color"_h, color);
 		for (uint32_t frame = 0; frame < 4; ++frame)
 		{
 			if (frame == 2) material->SetBindings(materialBindings(0));
+			if (frame == 2 && depthBinding != DepthAttachmentBinding::Target)
+			{
+				prepassDepth = depthTarget();
+				mainDepth = depthTarget();
+				bindDepth(depth, prepassDepth, "SelectedDepth"_h);
+				bindDepth(main, mainDepth, "SelectedMainDepth"_h);
+			}
 			snapshot.m_frame = frame + 1;
 			if (frame == 2) snapshot.m_previousMotionFrame = previousFrame;
 			const uint64_t submissionId = 177000 + frame;
 			const uint64_t materialRevision = RHIMaterial::BeginSubmissionVersionCapture(submissionId);
-			snapshot.m_submissionContext->BeginSubmission(submissionId, 0, 0, materialRevision);
+			snapshot.m_submissionContext->BeginSubmission(submissionId, 0, materialRevision);
 			std::array<const void*, 3> arenaPages{};
 			for (uint32_t camera = 0; camera < 3; ++camera)
 			{
@@ -3217,7 +5318,7 @@ frame:
 				Require(mainPacket.GetNumInstances() == 2 && depthPacket.GetNumInstances() == 2 && shadowPacket.GetNumInstances() == 2,
 					"each prepared packet must retain both authored instances");
 				const RHIShaderBindingPtr* materialBinding = nullptr;
-				Require(material->GetVersion()->GetBindingsRaw()->GetShaderBindings().Find("material", materialBinding),
+				Require(material->GetVersion()->GetBindingsRaw()->GetShaderBindings().Find("material"_h, materialBinding),
 					"fixture material must retain its storage binding");
 				RenderSceneNode::PerInstanceData expectedMain;
 				expectedMain.model = glm::mat4(1);
@@ -3268,9 +5369,9 @@ frame:
 					auto refusedDepth = driver->CreateRenderTarget(extent, 1, EFormat::D32_SFLOAT,
 						ETextureFiltration::Nearest, ETextureClamping::Clamp, ETextureUsageBit::DepthStencilAttachment_Bit);
 					auto refusedColor = driver->CreateRenderTarget(extent, 1, EFormat::R32G32B32A32_SFLOAT);
-					depth->SetRHIResource("depthStencil", refusedDepth);
-					main->SetRHIResource("depthStencil", refusedDepth);
-					main->SetRHIResource("color", refusedColor);
+					depth->SetRHIResource("depthStencil"_h, refusedDepth);
+					main->SetRHIResource("depthStencil"_h, refusedDepth);
+					main->SetRHIResource("color"_h, refusedColor);
 					for (FrameGraphNodePtr node : { FrameGraphNodePtr(depth), FrameGraphNodePtr(main) })
 					{
 						auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
@@ -3282,20 +5383,39 @@ frame:
 							"a refused depth or scene pass must not report packed draws");
 						CompleteCommands(upload, draw);
 					}
-					depth->SetRHIResource("depthStencil", prepassDepth);
-					main->SetRHIResource("depthStencil", mainDepth);
-					main->SetRHIResource("color", color);
+					depth->SetRHIResource("depthStencil"_h, prepassDepth);
+					main->SetRHIResource("depthStencil"_h, mainDepth);
+					main->SetRHIResource("color"_h, color);
 				}
 				auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 				auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 				commands->BeginCommandList(upload, true);
 				commands->BeginCommandList(draw, true);
 				depth->Process(graph, upload, draw, snapshot);
+				RHITexturePtr liveDepth = prepassDepth;
+				if (bDepthSurface)
+				{
+					liveDepth = depth->GetTargetAttachment("depthStencil"_h, graph.GetRawPtr());
+					const bool bResolve = liveDepth != prepassDepth;
+					Require(recordedDepth.imageView == static_cast<VkImageView>(*liveDepth->m_vulkan.m_imageView) &&
+						recordedDepth.resolveImageView == (bResolve ? static_cast<VkImageView>(*prepassDepth->m_vulkan.m_imageView) : VK_NULL_HANDLE),
+						"depth prepass must use both views of the authored Surface, not a cached replacement target");
+				}
 				auto depthPixels = ReadDepth(draw, prepassDepth, depthReadback);
-				commands->BeginRenderPass(draw, TVector<RHITexturePtr>{ color }, mainDepth,
+				auto liveDepthPixels = liveDepth == prepassDepth ? depthPixels : ReadDepth(draw, liveDepth.DynamicCast<RHIRenderTarget>(), depthReadback);
+				const auto liveMainDepth = main->GetTargetAttachment("depthStencil"_h, graph.GetRawPtr());
+				const RHITexturePtr mainDepthResolve = liveMainDepth != mainDepth ? mainDepth : RHITexturePtr{};
+				commands->BeginRenderPass(draw, TVector<RHITexturePtr>{ color }, TVector<RHITexturePtr>{ nullptr }, liveMainDepth, mainDepthResolve,
 					glm::ivec4(0, 0, Side, Side), glm::ivec2(0), true, glm::vec4(0), 0, true, true);
 				commands->EndRenderPass(draw);
 				main->Process(graph, upload, draw, snapshot);
+				if (bDepthSurface)
+					Require(recordedDepth.imageView == static_cast<VkImageView>(*liveMainDepth->m_vulkan.m_imageView) &&
+						recordedDepth.resolveImageView == (mainDepthResolve ? static_cast<VkImageView>(*mainDepth->m_vulkan.m_imageView) : VK_NULL_HANDLE),
+						"main pass must use both views of the authored depth Surface");
+				auto mainDepthPixels = ReadDepth(draw, mainDepth, depthReadback);
+				auto liveMainDepthPixels = liveMainDepth == mainDepth ? mainDepthPixels :
+					ReadDepth(draw, liveMainDepth.DynamicCast<RHIRenderTarget>(), depthReadback);
 				auto mainPixels = ReadColor(draw, color);
 				shadow->Process(graph, upload, draw, snapshot);
 				auto shadowPixels = ReadColor(draw, snapshot.m_shadowMapsToUpdate[0].m_shadowMap);
@@ -3303,6 +5423,9 @@ frame:
 				Require(depth->GetDrawCallStats().m_numInstances == 2 && main->GetDrawCallStats().m_numInstances == 2 &&
 					shadow->GetDrawCallStats().m_numInstances == 2, "all three real passes must draw both fixture instances");
 				const auto depths = static_cast<const glm::vec2*>(depthPixels->GetPointer());
+				const auto liveDepths = static_cast<const glm::vec2*>(liveDepthPixels->GetPointer());
+				const auto mainDepths = static_cast<const glm::vec2*>(mainDepthPixels->GetPointer());
+				const auto liveMainDepths = static_cast<const glm::vec2*>(liveMainDepthPixels->GetPointer());
 				const auto colors = static_cast<const glm::vec4*>(mainPixels->GetPointer());
 				const auto shadows = static_cast<const glm::vec4*>(shadowPixels->GetPointer());
 				const uint32_t column = (frame < 2 ? 6 : 5) + (skinned ? 1 : 0);
@@ -3320,6 +5443,13 @@ frame:
 						}
 						Require((colors[pixel].r > 0.1f) == covered, "main-pass pixels must show the authored displacement, cutoff and skinning");
 						Require((depths[pixel].x > 0.1f) == covered, "masked custom depth must match the main-pass silhouette");
+						Require((mainDepths[pixel].x > 0.1f) == covered, "main-pass resolved depth must match its color silhouette");
+						for (uint32_t sample = 0; sample < static_cast<uint32_t>(liveDepth->GetMsaaSamples()); ++sample)
+							Require((liveDepths[pixel * static_cast<uint32_t>(liveDepth->GetMsaaSamples()) + sample].x > 0.1f) == covered,
+								"each sample of the authored live depth target must retain the rendered silhouette");
+						for (uint32_t sample = 0; sample < static_cast<uint32_t>(liveMainDepth->GetMsaaSamples()); ++sample)
+							Require((liveMainDepths[pixel * static_cast<uint32_t>(liveMainDepth->GetMsaaSamples()) + sample].x > 0.1f) == covered,
+								"each sample of the main-pass depth target must retain the rendered silhouette");
 						Require((shadows[pixel].r > 0.1f) == covered, "packed custom shadow pixels must match the main-pass silhouette");
 					}
 			}
@@ -3328,6 +5458,7 @@ frame:
 		}
 		std::cout << "Custom masked depth paged=" << paged << " instanced=" << instanced << " skinned=" << skinned
 			<< " mobility=" << static_cast<uint32_t>(mobility)
+			<< " depthBinding=" << magic_enum::enum_name(depthBinding)
 			<< ": main/depth/shadow silhouettes, concurrent empty/visible cameras, shared arenas and material replacement passed\n";
 	}
 
@@ -3340,7 +5471,7 @@ frame:
 		auto bindings = driver->CreateShaderBindings();
 		auto buffer = driver->CreateBuffer(sizeof(glm::vec4), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
 		std::memset(buffer->GetPointer(), 0, sizeof(glm::vec4));
-		Require(driver->AddBufferToShaderBindings(bindings, buffer, "material", 0).IsValid(), "transparent fixture parameters must bind");
+		Require(driver->AddBufferToShaderBindings(bindings, buffer, "material"_h, 0).IsValid(), "transparent fixture parameters must bind");
 		const RenderState state(false, false, 0, false, ECullMode::None, EBlendMode::AlphaBlending,
 			EFillMode::Fill, "Translucent"_h.GetHash(), false);
 		auto material = driver->CreateMaterial(mesh->m_vertexDescription, EPrimitiveTopology::TriangleList, state, shader, bindings);
@@ -3350,10 +5481,7 @@ frame:
 		for (auto mobility : { EMobilityType::Static, EMobilityType::Stationary, EMobilityType::Dynamic })
 		{
 			RHISceneViewProxy source;
-			source.m_staticMeshEcs = ++id;
-			source.m_mobility = mobility;
-			source.m_worldMatrix = glm::translate(glm::mat4(1), glm::vec3(0, 0, -static_cast<float>(id)));
-			source.m_worldAabb = Math::AABB(glm::vec3(0, 0, -static_cast<float>(id)), glm::vec3(1));
+			++id;
 			if (instanced)
 			{
 				RHIInstancedMeshGroup group;
@@ -3365,14 +5493,14 @@ frame:
 			else
 			{
 				source.m_meshes = { mesh };
-				source.m_meshModelMatrices = { source.m_worldMatrix };
+				source.m_meshModelMatrices = { glm::mat4(1) };
 				source.m_overrideMaterials = { material };
 			}
 			RHISceneInstanceRecord record;
 			record.m_producerKey = id;
 			record.m_mobility = mobility;
-			record.m_worldMatrix = source.m_worldMatrix;
-			record.m_worldBounds = source.m_worldAabb;
+			record.m_worldMatrix = glm::translate(glm::mat4(1), glm::vec3(0, 0, -static_cast<float>(id)));
+			record.m_worldBounds = Math::AABB(glm::vec3(0, 0, -static_cast<float>(id)), glm::vec3(1));
 			record.m_topology = RHISceneProxyResourcePtr::Make(std::move(source));
 			scene->AddInstance(record);
 		}
@@ -3384,13 +5512,13 @@ frame:
 		cameraWorld.Clear();
 		RHISceneViewSnapshot snapshot;
 		snapshot.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
-		snapshot.m_sceneVersions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make();
-		snapshot.m_sceneVersions->Add(scene->PublishVersion());
+		snapshot.m_sceneVersions = TSharedPtr<const TVector<RHISceneVersionPtr>>::Make(
+			TVector<RHISceneVersionPtr>{ scene->PublishVersion() });
 		snapshot.m_camera = TUniquePtr<CameraData>::Make(cameraData);
 		auto node = TRefPtr<SceneNode>::Make();
-		node->SetString("Tag", "Translucent");
-		node->SetString("Sorting", "BackToFront");
-		node->SetString("VirtualizeInstancePayloads", paged ? "true" : "false");
+		node->SetString("Tag"_h, "Translucent");
+		node->SetString("Sorting"_h, "BackToFront");
+		node->SetString("VirtualizeInstancePayloads"_h, paged ? "true" : "false");
 		const auto firstResources = node->GetResources(snapshot);
 		for (uint32_t cameraIndex = 0; cameraIndex < 2; ++cameraIndex)
 		{
@@ -3399,7 +5527,7 @@ frame:
 			for (auto mobility : { EMobilityType::Static, EMobilityType::Stationary, EMobilityType::Dynamic })
 				snapshot.ForEachSceneProxy(mobility, [&](const RHIVisibleSceneProxy& proxy)
 				{
-					if (cameraIndex == 0 || proxy.GetSource()->m_staticMeshEcs != 2) snapshot.m_proxies.Add(proxy);
+					if (cameraIndex == 0 || proxy.m_record->m_producerKey != 2) snapshot.m_proxies.Add(proxy);
 				});
 			auto prepare = node->Prepare(graph, snapshot);
 			prepare->Run();
@@ -3431,7 +5559,7 @@ frame:
 		auto bindings = driver->CreateShaderBindings();
 		auto buffer = driver->CreateBuffer(sizeof(glm::vec4), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
 		std::memset(buffer->GetPointer(), 0, sizeof(glm::vec4));
-		Require(driver->AddBufferToShaderBindings(bindings, buffer, "material", 0).IsValid(), "depth fixture parameters must bind");
+		Require(driver->AddBufferToShaderBindings(bindings, buffer, "material"_h, 0).IsValid(), "depth fixture parameters must bind");
 		const RenderState state(true, true, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill,
 			masked ? "Masked"_h.GetHash() : "Opaque"_h.GetHash(), true);
 		auto material = driver->CreateMaterial(mesh->m_vertexDescription, EPrimitiveTopology::TriangleList, state, shader, bindings);
@@ -3441,10 +5569,6 @@ frame:
 		models[2][3].x = 2;
 		const TVector<glm::vec4> colors{ glm::vec4(0), glm::vec4(0.5f), glm::vec4(1) };
 		RHISceneViewProxy source;
-		source.m_staticMeshEcs = 1;
-		source.m_mobility = mobility;
-		source.m_worldMatrix = glm::mat4(1);
-		source.m_worldAabb = Math::AABB(glm::vec3(0), glm::vec3(4));
 		if (instanced)
 		{
 			RHIInstancedMeshGroup group;
@@ -3468,18 +5592,18 @@ frame:
 		record.m_producerKey = 1;
 		record.m_mobility = mobility;
 		record.m_worldMatrix = glm::mat4(1);
-		record.m_worldBounds = source.m_worldAabb;
+		record.m_worldBounds = Math::AABB(glm::vec3(0), glm::vec3(4));
 		record.m_topology = RHISceneProxyResourcePtr::Make(std::move(source));
 		auto scene = RHIScenePtr::Make();
 		scene->AddInstance(record);
 		RHISceneViewSnapshot snapshot;
 		snapshot.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
-		snapshot.m_sceneVersions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make();
-		snapshot.m_sceneVersions->Add(scene->PublishVersion());
+		snapshot.m_sceneVersions = TSharedPtr<const TVector<RHISceneVersionPtr>>::Make(
+			TVector<RHISceneVersionPtr>{ scene->PublishVersion() });
 		snapshot.ForEachSceneProxy(mobility, [&](const RHIVisibleSceneProxy& proxy) { snapshot.m_proxies.Add(proxy); });
 		auto node = TRefPtr<DepthNode>::Make();
-		node->SetString("Tag", masked ? "Masked" : "Opaque");
-		node->SetString("VirtualizeInstancePayloads", paged ? "true" : "false");
+		node->SetString("Tag"_h, masked ? "Masked" : "Opaque");
+		node->SetString("VirtualizeInstancePayloads"_h, paged ? "true" : "false");
 		auto visibleProxies = std::move(snapshot.m_proxies);
 		auto prepare = node->Prepare(graph, snapshot);
 		prepare->Run();
@@ -3540,8 +5664,8 @@ frame:
 		frame.m_view = frame.m_projection = frame.m_invProjection = glm::mat4(1);
 		auto frameBuffer = driver->CreateBuffer(sizeof(frame), EBufferUsageBit::UniformBuffer_Bit, HostMemory);
 		std::memcpy(frameBuffer->GetPointer(), &frame, sizeof(frame));
-		driver->AddBufferToShaderBindings(scene.m_frameBindings, frameBuffer, "frame", 0);
-		driver->AddBufferToShaderBindings(scene.m_frameBindings, frameBuffer, "previousFrame", 1);
+		driver->AddBufferToShaderBindings(scene.m_frameBindings, frameBuffer, "frame"_h, 0);
+		driver->AddBufferToShaderBindings(scene.m_frameBindings, frameBuffer, "previousFrame"_h, 1);
 		RHIUpdateShadowMapCommand pass;
 		pass.m_shadowType = EShadowType::EVSM;
 		pass.m_lightMatrix = glm::mat4(1);
@@ -3642,11 +5766,11 @@ frame:
 			if (!phase)
 			{
 				bindings = resources->m_blurShaderBindings;
-				sampler = bindings->GetOrAddShaderBinding("colorSampler");
-				data = bindings->GetOrAddShaderBinding("data");
+				sampler = bindings->GetOrAddShaderBinding("colorSampler"_h);
+				data = bindings->GetOrAddShaderBinding("data"_h);
 			}
-			Require(resources->m_blurShaderBindings == bindings && bindings->GetOrAddShaderBinding("data") == data &&
-				bindings->GetOrAddShaderBinding("colorSampler") == sampler, "blur retries must retain their flight binding identities");
+			Require(resources->m_blurShaderBindings == bindings && bindings->GetOrAddShaderBinding("data"_h) == data &&
+				bindings->GetOrAddShaderBinding("colorSampler"_h) == sampler, "blur retries must retain their flight binding identities");
 			const auto size = request.m_shadowMap->GetExtent();
 			const size_t pixelCount = size.x * size.y;
 			auto pixels = readPixels(draw, request.m_shadowMap);
@@ -3702,8 +5826,8 @@ frame:
 				frame.m_view = frame.m_projection = frame.m_invProjection = glm::mat4(1);
 				auto frameBuffer = driver->CreateBuffer(sizeof(frame), EBufferUsageBit::UniformBuffer_Bit, HostMemory);
 				std::memcpy(frameBuffer->GetPointer(), &frame, sizeof(frame));
-				driver->AddBufferToShaderBindings(scene.m_frameBindings, frameBuffer, "frame", 0);
-				driver->AddBufferToShaderBindings(scene.m_frameBindings, frameBuffer, "previousFrame", 1);
+				driver->AddBufferToShaderBindings(scene.m_frameBindings, frameBuffer, "frame"_h, 0);
+				driver->AddBufferToShaderBindings(scene.m_frameBindings, frameBuffer, "previousFrame"_h, 1);
 				RHIUpdateShadowMapCommand pass;
 				pass.m_shadowType = EShadowType::EVSM;
 				pass.m_lightMatrix = glm::mat4(1);
@@ -3796,8 +5920,8 @@ frame:
 		auto mesh = graph->GetFullscreenNdcQuad();
 		mesh->m_bounds = Math::AABB(glm::vec3(0), glm::vec3(2));
 		auto node = TRefPtr<ShadowCacheProbe>::Make();
-		node->SetString("VirtualizeInstancePayloads", paged ? "true" : "false");
-		node->SetString("GPUCulling", "false");
+		node->SetString("VirtualizeInstancePayloads"_h, paged ? "true" : "false");
+		node->SetString("GPUCulling"_h, "false");
 		auto liveBindings = TSharedPtr<uint32_t>::Make(0u);
 		TVector<RHIMaterialPtr> retiredSources;
 		RHIRenderSubmissionContextPtr heldContext;
@@ -3821,7 +5945,7 @@ frame:
 			auto buffer = driver->CreateBuffer(sizeof(settings), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
 			std::memcpy(buffer->GetPointer(), &settings, sizeof(settings));
 			RHIShaderBindingSetPtr bindings = TRefPtr<CountedMaterialBindings>::Make(liveBindings);
-			Require(driver->AddBufferToShaderBindings(bindings, buffer, "material", 0).IsValid(),
+			Require(driver->AddBufferToShaderBindings(bindings, buffer, "material"_h, 0).IsValid(),
 				"counted source bindings must use real native descriptors");
 			const RenderState state(true, true, 0, true, ECullMode::None, EBlendMode::None, EFillMode::Fill, "Masked"_h.GetHash(), true);
 			auto source = driver->CreateMaterial(mesh->m_vertexDescription, EPrimitiveTopology::TriangleList, state, shader, bindings);
@@ -3835,26 +5959,22 @@ frame:
 			frameData.m_view = frameData.m_projection = frameData.m_invProjection = glm::mat4(1);
 			auto frameBuffer = driver->CreateBuffer(sizeof(frameData), EBufferUsageBit::UniformBuffer_Bit, HostMemory);
 			std::memcpy(frameBuffer->GetPointer(), &frameData, sizeof(frameData));
-			driver->AddBufferToShaderBindings(snapshot.m_frameBindings, frameBuffer, "frame", 0);
+			driver->AddBufferToShaderBindings(snapshot.m_frameBindings, frameBuffer, "frame"_h, 0);
 			RHISceneViewProxy proxy;
-			proxy.m_staticMeshEcs = frame;
-			proxy.m_mobility = EMobilityType::Static;
-			proxy.m_worldMatrix = glm::mat4(1);
-			proxy.m_worldAabb = mesh->m_bounds;
 			proxy.m_meshes = { mesh };
 			proxy.m_overrideMaterials = { source };
-			proxy.m_shadowCaster = RHIShadowCasterProxyPtr::Make();
-			proxy.m_shadowCaster->m_worldAabb = mesh->m_bounds;
+			auto shadowCaster = TSharedPtr<RHIShadowCasterProxy>::Make();
 			RHIShadowMeshProxy caster;
 			caster.m_mesh = mesh;
-			caster.m_worldMatrix = glm::mat4(1);
+			caster.m_localMatrix = glm::mat4(1);
 			caster.m_renderQueueTag = "Masked"_h.GetHash();
 			caster.m_customDepthMaterial = source;
 			caster.m_customDepthShader = shader;
 #if defined(__APPLE__)
 			caster.m_materialTextureSamplers = { 0 };
 #endif
-			proxy.m_shadowCaster->m_meshes.Add(std::move(caster));
+			shadowCaster->m_meshes.Add(std::move(caster));
+			proxy.m_shadowCaster = std::move(shadowCaster);
 			RHISceneInstanceRecord record;
 			record.m_producerKey = frame;
 			record.m_mobility = EMobilityType::Static;
@@ -3864,8 +5984,8 @@ frame:
 			record.m_renderFlags = 1;
 			auto scene = RHIScenePtr::Make();
 			scene->AddInstance(record);
-			snapshot.m_sceneVersions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make();
-			snapshot.m_sceneVersions->Add(scene->PublishVersion());
+			snapshot.m_sceneVersions = TSharedPtr<const TVector<RHISceneVersionPtr>>::Make(
+				TVector<RHISceneVersionPtr>{ scene->PublishVersion() });
 			for (uint32_t cascade = 0; cascade < 3; ++cascade)
 			{
 				RHIUpdateShadowMapCommand pass;
@@ -3880,7 +6000,7 @@ frame:
 			snapshot.PrepareLods(glm::mat4(1), glm::mat4(1));
 			const uint64_t submissionId = 178000 + frame;
 			const uint64_t revision = RHIMaterial::BeginSubmissionVersionCapture(submissionId);
-			snapshot.m_submissionContext->BeginSubmission(submissionId, 0, 0, revision);
+			snapshot.m_submissionContext->BeginSubmission(submissionId, 0, revision);
 			auto prepare = node->Prepare(graph, snapshot);
 			Require(prepare.IsValid(), "shadow cache fixture must prepare its cascades");
 			prepare->Run();
@@ -3955,7 +6075,7 @@ frame:
 			depth->GetMsaaSamples() != EMsaaSamples::Samples_1, EDepthCompare::Always };
 		auto material = driver->CreateMaterial(driver->GetOrAddVertexDescription<VertexP3N3UV2C4>(), EPrimitiveTopology::TriangleList, state, shader);
 		commands->ImageMemoryBarrier(command, depth, depth->GetDefaultLayout());
-		commands->BeginRenderPass(command, TVector<RHITexturePtr>{}, TVector<RHITexturePtr>{}, depth,
+		commands->BeginRenderPass(command, TVector<RHITexturePtr>{}, TVector<RHITexturePtr>{}, depth, nullptr,
 			glm::ivec4(0, 0, size.x, size.y), glm::ivec2(0), true, glm::vec4(0), 0.0f, false, true);
 		commands->BindMaterial(command, material);
 		const auto mesh = graph->GetFullscreenNdcQuad();
@@ -4006,7 +6126,7 @@ frame:
 		std::cout << "FrameGraph fullscreen upload: native rejection, dependency-preserving retry and stable reuse passed\n";
 	}
 
-	void TestImportedRendering(const std::array<FileId, 2>& ids)
+	void TestImportedRendering(const std::array<FileId, 2>& ids, const TVector<FileId>& repairedGraphs)
 	{
 		auto importer = App::GetSubmodule<FrameGraphImporter>();
 		FrameGraphPtr rejected;
@@ -4022,12 +6142,19 @@ frame:
 		Require(static_cast<bool>(validFile) && static_cast<bool>(repairedFile) &&
 			importer->LoadFrameGraph_Immediate(ids[1], rejected) && rejected,
 			"a failed graph load must retry successfully after its temporary fixture is repaired");
-		std::array<FrameGraphPtr, 2> instances;
+		TVector<FrameGraphPtr> instances(2);
 		Require(importer->LoadFrameGraph_Immediate(ids[0], instances[0]) &&
 			importer->Instantiate_Immediate(ids[0], instances[1]), "both graph instances must load");
 		Require(instances[0]->GetRHI() != instances[1]->GetRHI() &&
-			instances[0]->GetRHI()->GetSurface("Main") != instances[1]->GetRHI()->GetSurface("Main"),
+			instances[0]->GetRHI()->GetSurface("Main"_h) != instances[1]->GetRHI()->GetSurface("Main"_h),
 			"instantiating the same asset must not share mutable targets or nodes");
+		for (const auto id : repairedGraphs)
+		{
+			FrameGraphPtr repaired;
+			Require(importer->LoadFrameGraph_Immediate(id, repaired) && repaired,
+				"every repaired graph must remain available for actual rendering");
+			instances.Add(repaired);
+		}
 		World cameraWorld("ImportedGraphCamera", 0);
 		auto camera = cameraWorld.Instantiate("Camera")->AddComponent<CameraComponent>();
 		cameraWorld.GetECS<CameraECS>()->Tick(0);
@@ -4051,15 +6178,17 @@ frame:
 			fallbackValue[i] = fallbackValue[i] <= 0.04045f ? fallbackValue[i] / 12.92f :
 				std::pow((fallbackValue[i] + 0.055f) / 1.055f, 2.4f);
 		CaptureAttachments capture;
-		for (uint32_t instanceIndex = 0; instanceIndex < instances.size(); ++instanceIndex)
+		for (uint32_t instanceIndex = 0; instanceIndex < instances.Num(); ++instanceIndex)
 		{
 			auto graph = instances[instanceIndex]->GetRHI();
-			auto node = graph->GetGraphNode("Composite").DynamicCast<PostProcessNode>();
-			const auto output = graph->GetSurface("Main");
-			const auto source = graph->GetSampler("ById");
-			Require(source && source == graph->GetSampler("ByPath") && source == graph->GetSampler("Both") &&
-				node->GetSampledAttachment("sourceSampler") == source,
-				"path-only/id-only samplers must bind the same asset; fileId takes precedence over path");
+			auto node = graph->GetGraphNode("Composite"_h).DynamicCast<PostProcessNode>();
+			const auto output = graph->GetSurface("Main"_h);
+			const auto source = graph->GetSampler("ById"_h);
+			Require(source && node->GetSampledAttachment("sourceSampler"_h) == source,
+				"the imported node must retain its declared source sampler");
+			if (instanceIndex < 2)
+				Require(source == graph->GetSampler("ByPath"_h) && source == graph->GetSampler("Both"_h),
+					"path-only/id-only samplers must bind the same asset; fileId takes precedence over path");
 			auto view = RHISceneViewPtr::Make();
 			view->m_snapshots.Resize(1);
 			auto& scene = view->m_snapshots[0];
@@ -4088,9 +6217,9 @@ frame:
 						ClearColor(setup, externalSurface->GetTarget(), glm::vec4(8));
 					CompleteCommands(upload, setup);
 				}
-				graph->SetSurface("DynamicInput", published ? externalSurface : RHISurfacePtr{});
-				graph->SetSampler("DynamicInput", published && !externalSurface ? RHITexturePtr(external) : RHITexturePtr{});
-				if (frame >= 2) graph->SetSampler("ById", external);
+				graph->SetSurface("DynamicInput"_h, published ? externalSurface : RHISurfacePtr{});
+				graph->SetSampler("DynamicInput"_h, published && !externalSurface ? RHITexturePtr(external) : RHITexturePtr{});
+				if (frame >= 2) graph->SetSampler("ById"_h, external);
 				scene.m_submissionContext->BeginSubmission(frame + 1, 0);
 				TVector<RHICommandListPtr> transfers, graphics;
 				RHISemaphorePtr ready;
@@ -4108,8 +6237,8 @@ frame:
 						recordedColor.resolveImageView == (output->NeedsResolve() ? static_cast<VkImageView>(*output->GetResolved()->m_vulkan.m_imageView) : VK_NULL_HANDLE),
 						"imported rendering must retain the actual static Surface attachment");
 					auto bindings = PostProcessNodeTestAccess::GetBindings(*node, scene);
-					Require(bindings->GetOrAddShaderBinding("sourceSampler")->GetTextureBinding() == source &&
-						bindings->GetOrAddShaderBinding("externalSampler")->GetTextureBinding() == (published ? RHITexturePtr(external) : fallback),
+					Require(bindings->GetOrAddShaderBinding("sourceSampler"_h)->GetTextureBinding() == source &&
+						bindings->GetOrAddShaderBinding("externalSampler"_h)->GetTextureBinding() == (published ? RHITexturePtr(external) : fallback),
 						"only external inputs may refresh, retaining the driver fallback when unpublished");
 					if (frame == 3) Require(bindings->m_vulkan.m_descriptorSet == previousDescriptor,
 						"unchanged external input must reuse its descriptor set");
@@ -4145,47 +6274,165 @@ frame:
 			}
 		}
 		FrameGraphImporterTestAccess::ReleaseInstance(*importer, instances[1]);
-		std::cout << "FrameGraph imported rendering: two instances, six frames, static samplers and external replacement passed\n";
+		std::cout << "FrameGraph imported rendering: two original instances and " << repairedGraphs.Num()
+			<< " repaired graphs, six frames each, native attachments, exact pixels and external replacement passed\n";
+	}
+
+	void TestMotionBlurNode()
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		auto graph = TRefPtr<TestGraph>::Make();
+		graph->SetRenderTarget("Main"_h, driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT));
+		FrameGraphBuilder builder;
+		auto node = builder.CreateNode("MotionBlur"_h);
+		Require(node.IsValid(), "motion history must be available through the data-driven node factory");
+		World world("MotionHistoryCameras", 0);
+		auto camera = world.Instantiate("Camera")->AddComponent<CameraComponent>();
+		world.GetECS<CameraECS>()->Tick(0);
+		auto context = RHIRenderSubmissionContextPtr::Make();
+		std::array<RHISceneViewSnapshot, 2> views;
+		std::array<UboFrameData, 2> previousFrames;
+		std::array<TSharedPtr<const TVector<glm::mat4>>, 2> previousBones;
+		std::array<RHIShaderBindingPtr, 2> frameAllocations, boneAllocations;
+		for (uint32_t i = 0; i < views.size(); ++i)
+		{
+			auto& view = views[i];
+			view.m_cameraIndex = i;
+			view.m_camera = TUniquePtr<CameraData>::Make(camera->GetData());
+			view.m_submissionContext = context;
+			view.m_frameBindings = driver->CreateShaderBindings();
+		}
+		const uint32_t boneCounts[] = { 1, 5, 5, 5, 0, 0 };
+		for (uint32_t frame = 0; frame < std::size(boneCounts); ++frame)
+		{
+			context->BeginSubmission(4800 + frame, 0);
+			if (frame == 4) node->Clear();
+			auto completion = RHISubmissionCompletionTokenPtr::Make();
+			for (uint32_t i = 0; i < views.size(); ++i)
+			{
+				auto& view = views[i];
+				view.m_submissionCompletionToken = completion;
+				view.m_currentTime = 0.016f * frame;
+				view.m_cameraTransform.m_position = glm::vec4(float(i * 20 + frame), 0, 0, 1);
+				if (frame == 2 && i == 1) view.m_camera->ResetMotionHistory();
+				auto bones = TSharedPtr<TVector<glm::mat4>>::Make();
+				for (uint32_t bone = 0; bone < boneCounts[frame]; ++bone)
+					bones->Add(glm::translate(glm::mat4(1), glm::vec3(float(100 * i + 10 * frame + bone), 0, 0)));
+				view.m_cpuBoneMatrices = bones;
+				node->Prepare(graph, view);
+				const bool hasHistory = frame != 0 && frame != 4 && !(frame == 2 && i == 1);
+				Require(view.m_previousMotionFrame.IsValid() == hasHistory,
+					"each camera must retain its submitted history and reset on a cut or node Clear");
+				const auto expectedFrame = hasHistory ? previousFrames[i] : view.GetFrameData(glm::ivec2(Side));
+				const auto expectedBones = hasHistory ? previousBones[i] : view.m_cpuBoneMatrices;
+				if (hasHistory)
+				{
+					Require(view.m_previousMotionFrame->m_frameData.m_cameraPosition == expectedFrame.m_cameraPosition &&
+						view.m_previousMotionFrame->m_frameData.m_currentTime == expectedFrame.m_currentTime &&
+						view.m_previousMotionFrame->m_bones == expectedBones,
+						"camera and skeleton history must come from the same submitted frame");
+				}
+				auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				commands->BeginCommandList(upload, true);
+				node->Process(graph, upload, {}, view);
+				auto frameBinding = view.m_frameBindings->GetOrAddShaderBinding("previousFrameData"_h);
+				auto boneBinding = view.m_frameBindings->GetOrAddShaderBinding("previousBones"_h);
+				if (frame > 0) Require(frameBinding == frameAllocations[i], "camera history must reuse its uniform allocation");
+				if (frame > 2) Require(boneBinding == boneAllocations[i], "grown bone storage must not be reallocated every frame");
+				frameAllocations[i] = frameBinding;
+				boneAllocations[i] = boneBinding;
+				const size_t count = (std::max)(size_t{ 1 }, expectedBones->Num());
+				Require(boneBinding->m_vulkan.m_valueBinding->Get().m_size >= count * sizeof(glm::mat4),
+					"bone storage must accommodate the retained pose, including the empty-pose identity");
+				commands->EndCommandList(upload);
+				auto fence = RHIFencePtr::Make();
+				Require(driver->SubmitCommandList(upload, fence) && fence->Wait(5000000000ull) == EFenceStatus::Finished,
+					"motion history uploads must complete on the GPU");
+				previousFrames[i] = view.GetFrameData(glm::ivec2(Side));
+				previousBones[i] = view.m_cpuBoneMatrices;
+			}
+			completion->Complete(true);
+		}
+		std::cout << "MotionBlur history: two cameras, cuts, Clear, GPU uploads and allocation reuse passed\n";
+	}
+
+	void TestSceneRenderExtent()
+	{
+		auto& driver = Renderer::GetDriver();
+		for (bool named : { false, true })
+		for (bool surface : { false, true })
+		{
+			auto graph = RHIFrameGraphPtr::Make();
+			auto node = TRefPtr<DebugDrawNode>::Make();
+			node->SetTag("DebugDraw"_h);
+			graph->GetGraph().Add(node);
+			graph->SetRenderTarget("Main"_h, driver->CreateRenderTarget(glm::ivec2(17, 9), 1, EFormat::R16G16B16A16_SFLOAT));
+			if (named) node->SetRHIResource_Unresolved("color"_h, "SceneOutput"_h);
+			for (const auto extent : { glm::ivec2(31, 17), glm::ivec2(9, 43), glm::ivec2(65, 7) })
+			{
+				auto target = driver->CreateRenderTarget(extent, 1, EFormat::R16G16B16A16_SFLOAT);
+				const auto resource = surface ? RHIResourcePtr(driver->CreateSurface(target)) : RHIResourcePtr(target);
+				if (!named) node->SetRHIResource("color"_h, resource);
+				else if (surface) graph->SetSurface("SceneOutput"_h, resource.DynamicCast<RHISurface>());
+				else graph->SetRenderTarget("SceneOutput"_h, target);
+				const auto actual = graph->GetSceneRenderExtent();
+				if (actual != extent)
+					throw std::runtime_error("Scene extent named=" + std::to_string(named) + " surface=" + std::to_string(surface) +
+						": actual=" + std::to_string(actual.x) + "x" + std::to_string(actual.y) +
+						", expected=" + std::to_string(extent.x) + "x" + std::to_string(extent.y));
+			}
+			graph->GetGraph().Clear();
+			Require(graph->GetSceneRenderExtent() == glm::ivec2(17, 9), "an absent scene pass must retain Main target fallback");
+			graph->SetSurface("Main"_h, driver->CreateSurface(glm::ivec2(19, 11), 1, EFormat::R16G16B16A16_SFLOAT));
+			Require(graph->GetSceneRenderExtent() == glm::ivec2(19, 11), "Main Surface must retain priority over its target alias");
+			std::cout << "Scene extent named=" << named << " surface=" << surface
+				<< ": three replacements, selected output and Main fallback priority passed\n";
+		}
 	}
 
 	enum class DebugDepthInput { Default, Texture, Surface, DefaultSurface };
 	enum class DepthDrawPath { DebugNode, SurfacePass, ImGuiNode };
 
 	void TestDepthTestedDraw(ShaderSetPtr shader, ShaderSetPtr depthPattern, const std::array<ShaderSetPtr, 4>& depthReadback,
-		EFormat format, bool colorSurface, DebugDepthInput depthInput, bool namedColor, bool namedDepth,
-		DepthDrawPath path = DepthDrawPath::DebugNode)
+		EFormat format, uint32_t colorKind, DebugDepthInput depthInput, bool namedColor, bool namedDepth,
+		DepthDrawPath path = DepthDrawPath::DebugNode, bool bFullDepthSurface = false)
 	{
 		auto driver = Renderer::GetDriver().DynamicCast<VulkanGraphicsDriver>();
 		auto commands = Renderer::GetDriverCommands();
-		const bool msaa = colorSurface && VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT;
+		const bool colorSurface = colorKind != 0;
+		const bool msaa = path != DepthDrawPath::ImGuiNode && colorKind == 1 &&
+			VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT;
 		const bool defaultDepth = depthInput == DebugDepthInput::Default || depthInput == DebugDepthInput::DefaultSurface;
 		const bool depthSurface = depthInput == DebugDepthInput::Surface || depthInput == DebugDepthInput::DefaultSurface;
 		auto graph = TRefPtr<TestGraph>::Make();
 		FrameGraphNodePtr node = path == DepthDrawPath::ImGuiNode ?
 			FrameGraphNodePtr(TRefPtr<RenderImGuiNode>::Make()) : TRefPtr<DebugDrawNode>::Make();
-		if (namedColor) node->SetRHIResource_Unresolved("color", "DebugColor");
-		if (namedDepth) node->SetRHIResource_Unresolved("depthStencil", defaultDepth ? "DepthBuffer" : "DebugDepth");
+		if (namedColor) node->SetRHIResource_Unresolved("color"_h, "DebugColor"_h);
+		if (namedDepth) node->SetRHIResource_Unresolved("depthStencil"_h, defaultDepth ? "DepthBuffer"_h : "DebugDepth"_h);
 		CaptureAttachments capture;
 		for (uint32_t frame = 0; frame < 3; ++frame)
 		{
 			if (frame == 2) node->Clear();
 			auto color = colorSurface ? driver->CreateSurface(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT) : RHISurfacePtr{};
+			if (colorKind == 2) color = RHISurfacePtr::Make(color->GetResolved(), color->GetResolved(), false);
 			auto resolved = color ? color->GetResolved() : driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
-			auto target = color ? color->GetTarget() : resolved;
+			auto target = color && path != DepthDrawPath::ImGuiNode ? color->GetTarget() : resolved;
 			const auto usage = ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferDst_Bit;
 			auto depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, format, ETextureFiltration::Nearest, ETextureClamping::Clamp, usage);
 			auto surface = depthSurface ? driver->CreateSurface(glm::ivec2(Side), 1, format,
 				ETextureFiltration::Nearest, ETextureClamping::Clamp, usage) : RHISurfacePtr{};
-			if (surface && !msaa) surface = RHISurfacePtr::Make(surface->GetResolved(), surface->GetResolved(), false);
+			if (surface && !msaa && path != DepthDrawPath::ImGuiNode && !bFullDepthSurface)
+				surface = RHISurfacePtr::Make(surface->GetResolved(), surface->GetResolved(), false);
 			auto cachedDepth = msaa ? driver->GetOrAddMsaaFramebufferRenderTarget(format, glm::ivec2(Side)).StaticCast<RHIRenderTarget>() : depth;
-			auto depthTarget = surface ? surface->GetTarget() : cachedDepth;
-			if (color) graph->SetSurface("DebugColor", color);
-			else graph->SetRenderTarget("DebugColor", resolved);
-			if (surface) graph->SetSurface(defaultDepth ? "DepthBuffer" : "DebugDepth", surface);
-			else graph->SetRenderTarget(defaultDepth ? "DepthBuffer" : "DebugDepth", depth);
-			if (!namedColor) node->SetRHIResource("color", color ? RHIResourcePtr(color) : resolved);
-			if (!namedDepth && !defaultDepth) node->SetRHIResource("depthStencil", surface ? RHIResourcePtr(surface) : depth);
-			if (!defaultDepth) graph->SetRenderTarget("DepthBuffer", depth);
+			auto depthTarget = surface ? (msaa ? surface->GetTarget() : surface->GetResolved()) : cachedDepth;
+			if (color) graph->SetSurface("DebugColor"_h, color);
+			else graph->SetRenderTarget("DebugColor"_h, resolved);
+			if (surface) graph->SetSurface(defaultDepth ? "DepthBuffer"_h : "DebugDepth"_h, surface);
+			else graph->SetRenderTarget(defaultDepth ? "DepthBuffer"_h : "DebugDepth"_h, depth);
+			if (!namedColor) node->SetRHIResource("color"_h, color ? RHIResourcePtr(color) : resolved);
+			if (!namedDepth && !defaultDepth) node->SetRHIResource("depthStencil"_h, surface ? RHIResourcePtr(surface) : depth);
+			if (!defaultDepth) graph->SetRenderTarget("DepthBuffer"_h, depth);
 			const auto mesh = graph->GetFullscreenNdcQuad();
 			const RenderState state(true, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, msaa, EDepthCompare::Greater);
 			auto material = driver->CreateMaterial(mesh->m_vertexDescription, EPrimitiveTopology::TriangleList, state, shader);
@@ -4197,7 +6444,7 @@ frame:
 			RHISceneViewSnapshot scene;
 			if (path != DepthDrawPath::SurfacePass)
 			{
-				auto secondaryTask = Tasks::CreateTaskWithResult<RHICommandListPtr>("Record debug attachment fixture",
+				auto secondaryTask = Tasks::CreateTaskWithResult<RHICommandListPtr>("Record debug attachment fixture"_h,
 					[snapshot, format, msaa]()
 					{
 						auto secondary = Renderer::GetDriver()->CreateCommandList(true, ECommandListQueue::Graphics);
@@ -4224,7 +6471,7 @@ frame:
 			const glm::vec4 background(0.125f * (frame + 1));
 			ClearColor(draw, target, background);
 			if (msaa) ClearColor(draw, resolved, glm::vec4(-8));
-			for (auto image : { depth, cachedDepth, surface ? surface->GetResolved() : depth })
+			for (auto image : { depth, cachedDepth, surface ? surface->GetResolved() : depth, surface ? surface->GetTarget() : depth })
 			{
 				commands->ImageMemoryBarrier(draw, image, EImageLayout::TransferDstOptimal);
 				commands->ClearDepthStencil(draw, image, 0.9375f, 0);
@@ -4273,7 +6520,15 @@ frame:
 			auto depthPixels = ReadDepth(draw, depthTarget, depthReadback);
 			const auto depthResolved = surface ? surface->GetResolved() : depth;
 			auto depthResolvedPixels = depthResolved != depthTarget ? ReadDepth(draw, depthResolved, depthReadback) : depthPixels;
+			auto unusedDepthPixels = bFullDepthSurface && surface && surface->NeedsResolve() && !msaa ?
+				ReadDepth(draw, surface->GetTarget(), depthReadback) : RHIBufferPtr{};
 			CompleteCommands(upload, draw);
+			if (unusedDepthPixels)
+			{
+				const auto* values = static_cast<const glm::vec2*>(unusedDepthPixels->GetPointer());
+				for (uint32_t i = 0; i < Side * Side * uint32_t(surface->GetTarget()->GetMsaaSamples()); ++i)
+					Require(values[i] == glm::vec2(0.9375f, 0), "single-sample debug drawing must preserve unused MSAA depth");
+			}
 			const uint32_t samples = uint32_t(depthTarget->GetMsaaSamples());
 			const auto actualDepth = static_cast<const glm::vec2*>(depthPixels->GetPointer());
 			for (uint32_t y = 0; y < Side; ++y)
@@ -4304,12 +6559,12 @@ frame:
 					}
 				}
 		}
-		std::cout << (path == DepthDrawPath::SurfacePass ? "PrimarySurfaceDepth" : "DebugDraw") << " colorSurface=" << colorSurface << " depth=" << uint32_t(depthInput) <<
+		std::cout << (bFullDepthSurface ? "DebugResolvedDepth" : path == DepthDrawPath::SurfacePass ? "PrimarySurfaceDepth" : path == DepthDrawPath::ImGuiNode ? "ImGuiDepth" : "DebugDraw") << " colorSurface=" << colorSurface << " depth=" << uint32_t(depthInput) <<
 			" namedColor=" << namedColor << " namedDepth=" << namedDepth << " format=" << uint32_t(format) <<
 			": three replacements, native attachments and per-sample occlusion passed\n";
 	}
 
-	enum class DepthInput { Default, Texture, Surface };
+	enum class DepthInput { Default, Texture, Surface, DefaultSurface, DefaultSurfaceOnly, DefaultSurfaceDecoy, DefaultSingleSampleSurface };
 
 	void TestDepthHighZ(ShaderSetPtr patternShader, const std::array<ShaderSetPtr, 4>& readbackShaders,
 		EFormat format, DepthInput input, bool namedInput, bool namedOutput, bool outputSurface)
@@ -4318,8 +6573,10 @@ frame:
 		auto commands = Renderer::GetDriverCommands();
 		auto graph = TRefPtr<TestGraph>::Make();
 		auto node = TRefPtr<DepthHighZNode>::Make();
-		if (namedInput) node->SetRHIResource_Unresolved("src", input == DepthInput::Default ? "DepthBuffer" : "CustomDepth");
-		if (namedOutput) node->SetRHIResource_Unresolved("dst", "Pyramid");
+		const bool bDefaultSurface = input >= DepthInput::DefaultSurface;
+		const bool bDefault = input == DepthInput::Default || bDefaultSurface;
+		if (namedInput) node->SetRHIResource_Unresolved("src"_h, bDefault ? "DepthBuffer"_h : "CustomDepth"_h);
+		if (namedOutput) node->SetRHIResource_Unresolved("dst"_h, "Pyramid"_h);
 		RHIRenderTargetPtr previousPyramid;
 		for (uint32_t frame = 0; frame < 3; ++frame)
 		{
@@ -4331,20 +6588,28 @@ frame:
 			auto defaultDepth = driver->CreateRenderTarget(inputSize, 1, format, ETextureFiltration::Nearest, ETextureClamping::Clamp, usage);
 			auto defaultTarget = VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT ?
 				driver->GetOrAddMsaaFramebufferRenderTarget(format, inputSize).StaticCast<RHIRenderTarget>() : defaultDepth;
-			graph->SetRenderTarget("DepthBuffer", defaultDepth);
-			auto depthSurface = input == DepthInput::Surface ? driver->CreateSurface(inputSize, 1, format,
+			graph->SetRenderTarget("DepthBuffer"_h, defaultDepth);
+			auto depthSurface = input == DepthInput::Surface || bDefaultSurface ? driver->CreateSurface(inputSize, 1, format,
 				ETextureFiltration::Nearest, ETextureClamping::Clamp, usage) : RHISurfacePtr{};
+			if (input == DepthInput::DefaultSingleSampleSurface)
+				depthSurface = RHISurfacePtr::Make(depthSurface->GetResolved(), depthSurface->GetResolved(), false);
 			auto resolved = depthSurface ? depthSurface->GetResolved() : input == DepthInput::Default ? defaultDepth :
 				driver->CreateRenderTarget(inputSize, 1, format, ETextureFiltration::Nearest, ETextureClamping::Clamp, usage);
 			auto depth = depthSurface ? depthSurface->GetTarget() : input == DepthInput::Default ? defaultTarget : resolved;
+			if (bDefaultSurface)
+			{
+				graph->SetSurface("DepthBuffer"_h, depthSurface);
+				graph->SetRenderTarget("DepthBuffer"_h, input == DepthInput::DefaultSurfaceOnly ? RHIRenderTargetPtr{} :
+					input == DepthInput::DefaultSurfaceDecoy ? defaultDepth : resolved);
+			}
 			auto surface = outputSurface ? driver->CreateSurface(outputSize, mipCount, EFormat::R32_SFLOAT) : RHISurfacePtr{};
 			auto pyramid = surface ? surface->GetResolved() : driver->CreateRenderTarget(outputSize, mipCount, EFormat::R32_SFLOAT);
-			if (depthSurface) graph->SetSurface("CustomDepth", depthSurface);
-			else graph->SetRenderTarget("CustomDepth", resolved);
-			if (surface) graph->SetSurface("Pyramid", surface);
-			else graph->SetRenderTarget("Pyramid", pyramid);
-			if (!namedInput && input != DepthInput::Default) node->SetRHIResource("src", depthSurface ? RHIResourcePtr(depthSurface) : depth);
-			if (!namedOutput) node->SetRHIResource("dst", surface ? RHIResourcePtr(surface) : pyramid);
+			if (depthSurface) graph->SetSurface("CustomDepth"_h, depthSurface);
+			else graph->SetRenderTarget("CustomDepth"_h, resolved);
+			if (surface) graph->SetSurface("Pyramid"_h, surface);
+			else graph->SetRenderTarget("Pyramid"_h, pyramid);
+			if (!namedInput && !bDefault) node->SetRHIResource("src"_h, depthSurface ? RHIResourcePtr(depthSurface) : depth);
+			if (!namedOutput) node->SetRHIResource("dst"_h, surface ? RHIResourcePtr(surface) : pyramid);
 			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 			commands->BeginCommandList(upload, true);
@@ -4429,8 +6694,74 @@ frame:
 			}
 			previousPyramid = pyramid;
 		}
-		std::cout << "DepthHighZ format=" << uint32_t(format) << " input=" << uint32_t(input) << " namedInput=" << namedInput
+		std::cout << (bDefaultSurface ? "DepthHighZ default " : "DepthHighZ ") << "format=" << uint32_t(format) << " input=" << uint32_t(input) << " namedInput=" << namedInput
 			<< " namedOutput=" << namedOutput << " outputSurface=" << outputSurface << ": all samples, even/odd mips, replacement and Clear passed\n";
+	}
+
+	void TestDepthHighZIsolatedClearSample(const std::array<ShaderSetPtr, 4>& readbackShaders, std::string_view mode)
+	{
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		const std::array<glm::ivec2, 3> mipSizes{ glm::ivec2(4, 3), glm::ivec2(2, 1), glm::ivec2(1, 1) };
+		for (bool trailingCorner : { false, true })
+		{
+			auto graph = TRefPtr<TestGraph>::Make();
+			auto node = TRefPtr<DepthHighZNode>::Make();
+			auto depth = driver->CreateRenderTarget({ 9, 7 }, 1, EFormat::D32_SFLOAT,
+				ETextureFiltration::Nearest, ETextureClamping::Clamp,
+				ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferDst_Bit);
+			auto pyramid = driver->CreateRenderTarget(mipSizes[0], 3, EFormat::R32_SFLOAT);
+			node->SetRHIResource("src"_h, depth);
+			node->SetRHIResource("dst"_h, pyramid);
+			auto source = driver->CreateBuffer(9 * 7 * sizeof(float), EBufferUsageBit::BufferTransferSrc_Bit, HostMemory);
+			auto pixels = static_cast<float*>(source->GetPointer());
+			std::fill_n(pixels, 9 * 7, 0.75f);
+			pixels[trailingCorner ? 62 : 0] = 0;
+			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(upload, true);
+			commands->BeginCommandList(draw, true);
+			draw->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+			commands->ImageMemoryBarrier(draw, depth, EImageLayout::TransferDstOptimal);
+			VkBufferImageCopy region{};
+			region.bufferOffset = source->GetOffset();
+			region.imageSubresource = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1 };
+			region.imageExtent = { 9, 7, 1 };
+			const auto memory = *source->m_vulkan.m_buffer->Get();
+			vkCmdCopyBufferToImage(*draw->m_vulkan.m_commandBuffer, *memory.m_buffer,
+				*depth->m_vulkan.m_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+			auto input = ReadDepth(draw, depth, readbackShaders);
+			ClearColor(draw, pyramid, glm::vec4(-8));
+			node->Process(graph, upload, draw, RHISceneViewSnapshot{});
+			Require(graph->HasCurrentDepthPyramid(pyramid), "isolated-clear depth reduction must publish its result");
+			std::array<RHIBufferPtr, 3> readbacks;
+			for (uint32_t mip = 0; mip < 3; ++mip)
+			{
+				auto image = pyramid->GetMipLayer(mip);
+				Require(image->GetExtent() == mipSizes[mip], "the odd depth fixture must retain its expected mip extents");
+				readbacks[mip] = driver->CreateBuffer(mipSizes[mip].x * mipSizes[mip].y * sizeof(float),
+					EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+				std::fill_n(static_cast<float*>(readbacks[mip]->GetPointer()), mipSizes[mip].x * mipSizes[mip].y, -2.0f);
+				commands->ImageMemoryBarrier(draw, image, EImageLayout::TransferSrcOptimal);
+				commands->CopyImageToBuffer(draw, image, readbacks[mip]);
+			}
+			CompleteCommands(upload, draw);
+			const auto inputPixels = static_cast<const glm::vec2*>(input->GetPointer());
+			for (uint32_t i = 0; i < 63; ++i)
+				Require(inputPixels[i].x == pixels[i], "GPU input must contain exactly one clear sample");
+			// Nearest 9x7 -> 4x3 sampling misses both corners. Conservative reduction
+			// must retain the sole zero in the same corner of every mip, down to 1x1.
+			for (uint32_t mip = 0; mip < 3; ++mip)
+			{
+				const uint32_t count = mipSizes[mip].x * mipSizes[mip].y;
+				const auto actual = static_cast<const float*>(readbacks[mip]->GetPointer());
+				for (uint32_t i = 0; i < count; ++i)
+					Require(actual[i] == (i == (trailingCorner ? count - 1 : 0) ? 0.0f : 0.75f),
+						"every mip must preserve the isolated clear corner without changing the other depths");
+			}
+			std::cout << "DepthHighZ isolated clear: mode=" << mode << " corner=" << (trailingCorner ? "last" : "first")
+				<< " 9x7 -> 4x3 -> 2x1 -> 1x1 passed\n";
+		}
 	}
 
 	void TestDepthSurfaceFactory(const std::array<ShaderSetPtr, 4>& shaders, EFormat format)
@@ -4513,8 +6844,8 @@ frame:
 		auto commands = Renderer::GetDriverCommands();
 		auto graph = TRefPtr<TestGraph>::Make();
 		auto node = TRefPtr<LinearizeDepthNode>::Make();
-		if (namedDepth) node->SetRHIResource_Unresolved("depthStencil", "Depth");
-		if (namedTarget) node->SetRHIResource_Unresolved("target", "LinearDepth");
+		if (namedDepth) node->SetRHIResource_Unresolved("depthStencil"_h, "Depth"_h);
+		if (namedTarget) node->SetRHIResource_Unresolved("target"_h, "LinearDepth"_h);
 		CaptureAttachments capture;
 		for (uint32_t frame = 0; frame < 3; ++frame)
 		{
@@ -4540,7 +6871,7 @@ frame:
 			frameData.m_viewportSize = glm::ivec2(Side);
 			RHISceneViewSnapshot scene;
 			scene.m_frameBindings = driver->CreateShaderBindings();
-			auto frameBinding = driver->AddBufferToShaderBindings(scene.m_frameBindings, "frameData", sizeof(frameData), 0, EShaderBindingType::UniformBuffer);
+			auto frameBinding = driver->AddBufferToShaderBindings(scene.m_frameBindings, "frameData"_h, sizeof(frameData), 0, EShaderBindingType::UniformBuffer);
 			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 			commands->BeginCommandList(upload, true);
@@ -4564,12 +6895,12 @@ frame:
 				Require(recordedColorCount == 0 && node->GetDrawCallStats().m_numBatches == 0,
 					"linear depth must defer drawing until its resources are available");
 			}
-			if (depthSurface) graph->SetSurface("Depth", depthSurface);
-			else graph->SetRenderTarget("Depth", depth);
-			if (colorSurface) graph->SetSurface("LinearDepth", colorSurface);
-			else graph->SetRenderTarget("LinearDepth", color);
-			if (!namedDepth) node->SetRHIResource("depthStencil", depthSurface ? RHIResourcePtr(depthSurface) : depth);
-			if (!namedTarget) node->SetRHIResource("target", colorSurface ? RHIResourcePtr(colorSurface) : color);
+			if (depthSurface) graph->SetSurface("Depth"_h, depthSurface);
+			else graph->SetRenderTarget("Depth"_h, depth);
+			if (colorSurface) graph->SetSurface("LinearDepth"_h, colorSurface);
+			else graph->SetRenderTarget("LinearDepth"_h, color);
+			if (!namedDepth) node->SetRHIResource("depthStencil"_h, depthSurface ? RHIResourcePtr(depthSurface) : depth);
+			if (!namedTarget) node->SetRHIResource("target"_h, colorSurface ? RHIResourcePtr(colorSurface) : color);
 			recordedColorCount = 0;
 			node->Process(graph, upload, draw, scene);
 			auto readback = ReadColor(draw, color);
@@ -4596,29 +6927,46 @@ frame:
 			<< " namedDepth=" << namedDepth << " namedTarget=" << namedTarget << ": resource replacement, Clear and reconstructed distances passed\n";
 	}
 
-	void TestClearDepth(const std::array<ShaderSetPtr, 4>& shaders, EFormat format, bool surfaceInput, bool late, bool implicitDepth = false)
+	void TestClearDepth(const std::array<ShaderSetPtr, 4>& shaders, EFormat format, bool surfaceInput, bool late, bool implicitDepth = false,
+		uint32_t resolvedAlias = 0)
 	{
 		auto& driver = Renderer::GetDriver();
 		auto commands = Renderer::GetDriverCommands();
 		auto graph = TRefPtr<TestGraph>::Make();
 		auto node = TRefPtr<ClearNode>::Make();
 		RHISceneViewSnapshot scene;
-		const char* name = implicitDepth ? "DepthBuffer" : "Output";
-		if (late) node->SetRHIResource_Unresolved("target", name);
+		const auto name = implicitDepth ? "DepthBuffer"_h : "Output"_h;
+		if (late) node->SetRHIResource_Unresolved("target"_h, resolvedAlias ? "ResolvedDepth"_h : name);
+		auto owner = TRefPtr<DepthPrepassNode>::Make();
+		if (resolvedAlias)
+		{
+			graph->GetGraph().Add(node);
+			graph->GetGraph().Add(owner);
+		}
 		for (uint32_t frame = 0; frame < 2; ++frame)
 		{
 			auto resolved = driver->CreateRenderTarget(glm::ivec2(Side), 1, format, ETextureFiltration::Nearest, ETextureClamping::Clamp,
 				ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferDst_Bit);
 			const bool msaa = VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT;
 			auto target = (surfaceInput || implicitDepth) && msaa ?
-				driver->GetOrAddMsaaFramebufferRenderTarget(format, glm::ivec2(Side), implicitDepth ? 0 : frame + 1).StaticCast<RHIRenderTarget>() : resolved;
+				driver->GetOrAddMsaaFramebufferRenderTarget(format, glm::ivec2(Side), implicitDepth && !resolvedAlias ? 0 : frame + 1).StaticCast<RHIRenderTarget>() : resolved;
 			auto surface = surfaceInput ? RHISurfacePtr::Make(target, resolved, target != resolved) : RHISurfacePtr{};
 			graph->SetRenderTarget(name, surface && frame == 1 && !implicitDepth ? RHIRenderTargetPtr{} : resolved);
-			if (surface) graph->SetSurface(name, surface);
-			if (!late) node->SetRHIResource("target", surface ? RHIResourcePtr(surface) : resolved);
+			if (surface && resolvedAlias != 2) graph->SetSurface(name, surface);
+			if (!late) node->SetRHIResource("target"_h, surface && !resolvedAlias ? RHIResourcePtr(surface) : resolved);
+			if (resolvedAlias)
+			{
+				graph->SetRenderTarget("ResolvedDepth"_h, resolved);
+				if (resolvedAlias == 2) owner->SetRHIResource("depthStencil"_h, surface);
+				TVector<RHICommandListPtr> transfers, graphics;
+				RHISemaphorePtr ready;
+				Require(graph->Process(RHISceneViewPtr::Make(), transfers, graphics, {}, ready) &&
+					transfers.IsEmpty() && graphics.IsEmpty(), "depth aliases must prepare before any view is recorded");
+			}
+			auto unusedDepth = resolvedAlias && msaa ? driver->GetOrAddMsaaFramebufferRenderTarget(format, glm::ivec2(Side)).StaticCast<RHIRenderTarget>() : RHIRenderTargetPtr{};
 			const glm::vec2 expected(frame == 0 ? 0.375f : 0.0f, IsDepthStencilFormat(format) ? float(17 + frame) : 0.0f);
-			node->SetFloat("clearDepth", expected.x);
-			node->SetFloat("clearStencil", expected.y);
+			node->SetFloat("clearDepth"_h, expected.x);
+			node->SetFloat("clearStencil"_h, expected.y);
 			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 			commands->BeginCommandList(upload, true);
@@ -4628,10 +6976,24 @@ frame:
 				commands->ImageMemoryBarrier(draw, texture, EImageLayout::TransferDstOptimal);
 				commands->ClearDepthStencil(draw, texture, 0.875f, 91);
 			}
+			if (unusedDepth)
+			{
+				commands->ImageMemoryBarrier(draw, unusedDepth, EImageLayout::TransferDstOptimal);
+				commands->ClearDepthStencil(draw, unusedDepth, 0.8125f, 53);
+			}
 			node->Process(graph, upload, draw, scene);
 			auto resolvedReadback = ReadDepth(draw, resolved, shaders);
 			auto targetReadback = target != resolved ? ReadDepth(draw, target, shaders) : resolvedReadback;
+			auto unusedReadback = unusedDepth ? ReadDepth(draw, unusedDepth, shaders) : RHIBufferPtr{};
+			if (unusedDepth) commands->ImageMemoryBarrier(draw, unusedDepth, unusedDepth->GetDefaultLayout());
 			CompleteCommands(upload, draw);
+			if (unusedReadback)
+			{
+				const auto* values = static_cast<const glm::vec2*>(unusedReadback->GetPointer());
+				for (uint32_t i = 0; i < Side * Side * uint32_t(unusedDepth->GetMsaaSamples()); ++i)
+					Require(values[i] == glm::vec2(0.8125f, IsDepthStencilFormat(format) ? 53.0f : 0.0f),
+						"clearing an authored depth Surface must not alter the unrelated implicit MSAA cache");
+			}
 			for (const auto& image : { std::pair{ resolved, resolvedReadback }, std::pair{ target, targetReadback } })
 			{
 				const auto values = static_cast<const glm::vec2*>(image.second->GetPointer());
@@ -4643,7 +7005,8 @@ frame:
 								" implicit=" + std::to_string(implicitDepth) + ": every depth/stencil sample must contain the current clear value");
 			}
 		}
-		std::cout << "Clear depth format=" << uint32_t(format) << " surface=" << surfaceInput << " late=" << late << " implicit=" << implicitDepth
+		std::cout << (resolvedAlias ? "ClearDepthAlias " : "Clear depth ") << "format=" << uint32_t(format) << " surface=" << surfaceInput << " late=" << late << " implicit=" << implicitDepth
+			<< (resolvedAlias == 2 ? " owner=bound" : resolvedAlias ? " owner=graph" : "")
 			<< ": two frames and all live/resolved depth/stencil samples passed\n";
 	}
 
@@ -4654,18 +7017,18 @@ frame:
 		auto graph = TRefPtr<TestGraph>::Make();
 		auto node = TRefPtr<ClearNode>::Make();
 		RHISceneViewSnapshot scene;
-		if (late) node->SetRHIResource_Unresolved("target", "Output");
+		if (late) node->SetRHIResource_Unresolved("target"_h, "Output"_h);
 		for (uint32_t frame = 0; frame < 2; ++frame)
 		{
 			auto surface = surfaceInput ? driver->CreateSurface(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT) : RHISurfacePtr{};
 			auto resolved = surface ? surface->GetResolved() : driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
 			auto target = surface ? surface->GetTarget() : resolved;
 			// A named Surface must work without a second entry for its resolved texture.
-			graph->SetRenderTarget("Output", surface && frame == 1 ? RHIRenderTargetPtr{} : resolved);
-			if (surface) graph->SetSurface("Output", surface);
-			if (!late) node->SetRHIResource("target", surface ? RHIResourcePtr(surface) : resolved);
+			graph->SetRenderTarget("Output"_h, surface && frame == 1 ? RHIRenderTargetPtr{} : resolved);
+			if (surface) graph->SetSurface("Output"_h, surface);
+			if (!late) node->SetRHIResource("target"_h, surface ? RHIResourcePtr(surface) : resolved);
 			const glm::vec4 expected(0.125f * (frame + 1), 0.25f, 0.75f, 0.5f);
-			node->SetVec4("clearColor", expected);
+			node->SetVec4("clearColor"_h, expected);
 			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 			commands->BeginCommandList(upload, true);
@@ -4699,8 +7062,8 @@ frame:
 		scene.m_frameBindings = driver->CreateShaderBindings();
 		if (late)
 		{
-			node->SetRHIResource_Unresolved("src", "Source");
-			node->SetRHIResource_Unresolved("dst", "Destination");
+			node->SetRHIResource_Unresolved("src"_h, "Source"_h);
+			node->SetRHIResource_Unresolved("dst"_h, "Destination"_h);
 		}
 		CaptureAttachments capture;
 		for (uint32_t frame = 0; frame < 2; ++frame)
@@ -4710,14 +7073,14 @@ frame:
 			auto destinationSurface = destinationIsSurface ? driver->CreateSurface(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT) : RHISurfacePtr{};
 			auto source = sourceSurface ? sourceSurface->GetResolved() : driver->CreateRenderTarget(sourceExtent, 1, EFormat::R32G32B32A32_SFLOAT);
 			auto destination = destinationSurface ? destinationSurface->GetResolved() : driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
-			graph->SetRenderTarget("Source", source);
-			graph->SetRenderTarget("Destination", destination);
-			if (sourceSurface) graph->SetSurface("Source", sourceSurface);
-			if (destinationSurface) graph->SetSurface("Destination", destinationSurface);
+			graph->SetRenderTarget("Source"_h, source);
+			graph->SetRenderTarget("Destination"_h, destination);
+			if (sourceSurface) graph->SetSurface("Source"_h, sourceSurface);
+			if (destinationSurface) graph->SetSurface("Destination"_h, destinationSurface);
 			if (!late)
 			{
-				node->SetRHIResource("src", sourceSurface ? RHIResourcePtr(sourceSurface) : source);
-				node->SetRHIResource("dst", destinationSurface ? RHIResourcePtr(destinationSurface) : destination);
+				node->SetRHIResource("src"_h, sourceSurface ? RHIResourcePtr(sourceSurface) : source);
+				node->SetRHIResource("dst"_h, destinationSurface ? RHIResourcePtr(destinationSurface) : destination);
 			}
 			const bool sourceMsaa = sourceSurface && sourceSurface->NeedsResolve();
 			const bool destinationMsaa = destinationSurface && destinationSurface->NeedsResolve();
@@ -4768,11 +7131,11 @@ frame:
 		auto commands = Renderer::GetDriverCommands();
 		auto graph = TRefPtr<TestGraph>::Make();
 		auto node = TRefPtr<AtmosphericFogNode>::Make();
-		node->SetVec4("scattering", glm::vec4(0.75f, 0, 0.95f, 0));
+		node->SetVec4("scattering"_h, glm::vec4(0.75f, 0, 0.95f, 0));
 		if (late)
 		{
-			node->SetRHIResource_Unresolved("color", "Color");
-			node->SetRHIResource_Unresolved("depthSampler", "Depth");
+			node->SetRHIResource_Unresolved("color"_h, "Color"_h);
+			node->SetRHIResource_Unresolved("depthSampler"_h, "Depth"_h);
 		}
 		CaptureAttachments capture;
 		for (uint32_t frame = 0; frame < 3; ++frame)
@@ -4799,22 +7162,22 @@ frame:
 			ClearColor(draw, environment, radiance);
 			commands->ImageMemoryBarrier(draw, depth, EImageLayout::TransferDstOptimal);
 			commands->ClearDepthStencil(draw, depth, depthValue, 0);
-			graph->SetRenderTarget("Color", color);
-			if (surface) graph->SetSurface("Color", surface);
-			graph->SetRenderTarget("Depth", depth);
-			graph->SetSampler("g_irradianceCubemap", environment);
+			graph->SetRenderTarget("Color"_h, color);
+			if (surface) graph->SetSurface("Color"_h, surface);
+			graph->SetRenderTarget("Depth"_h, depth);
+			graph->SetSampler("g_irradianceCubemap"_h, environment);
 			if (!late)
 			{
-				node->SetRHIResource("color", surface ? RHIResourcePtr(surface) : color);
-				node->SetRHIResource("depthSampler", depth);
+				node->SetRHIResource("color"_h, surface ? RHIResourcePtr(surface) : color);
+				node->SetRHIResource("depthSampler"_h, depth);
 			}
-			node->SetVec4("fog", glm::vec4(density, 0, 0, 0));
+			node->SetVec4("fog"_h, glm::vec4(density, 0, 0, 0));
 			RHISceneViewSnapshot scene;
 			scene.m_frameBindings = driver->CreateShaderBindings();
 			UboFrameData frameData{};
 			frameData.m_view = frameData.m_projection = frameData.m_invProjection = glm::mat4(1);
 			frameData.m_viewportSize = glm::ivec2(Side);
-			auto frameBinding = driver->AddBufferToShaderBindings(scene.m_frameBindings, "frameData", sizeof(frameData), 0, EShaderBindingType::UniformBuffer);
+			auto frameBinding = driver->AddBufferToShaderBindings(scene.m_frameBindings, "frameData"_h, sizeof(frameData), 0, EShaderBindingType::UniformBuffer);
 			commands->UpdateShaderBinding(upload, frameBinding, &frameData, sizeof(frameData));
 			recordedColorCount = 0;
 			node->Process(graph, upload, draw, scene);
@@ -4858,7 +7221,7 @@ frame:
 		auto node = TRefPtr<LightCullingNode>::Make();
 		graph->GetGraph().Add(node);
 		if (inputMode == LightCullingInput::Named || inputMode == LightCullingInput::NamedWithoutDefault)
-			node->SetRHIResource_Unresolved("linearDepth", "SelectedDepth");
+			node->SetRHIResource_Unresolved("linearDepth"_h, "SelectedDepth"_h);
 		World cameraWorld("LightCullingTestCamera", 0);
 		auto cameraObject = cameraWorld.Instantiate("Camera");
 		auto camera = cameraObject->AddComponent<CameraComponent>();
@@ -4943,11 +7306,11 @@ frame:
 					Require(driver->SubmitCommandList(setup, initialized) && initialized->Wait(5000000000ull) == EFenceStatus::Finished,
 						"light-culling depth fixture must initialize");
 				}
-				graph->SetRenderTarget("Main", recording.depth);
-				const char* depthName = inputMode == LightCullingInput::Default ? "LinearDepth" : "SelectedDepth";
+				graph->SetRenderTarget("Main"_h, recording.depth);
+				const auto depthName = inputMode == LightCullingInput::Default ? "LinearDepth"_h : "SelectedDepth"_h;
 				graph->SetRenderTarget(depthName, surfaceInput ? RHIRenderTargetPtr{} : recording.depth);
 				graph->SetSurface(depthName, recording.input.DynamicCast<RHISurface>());
-				if (inputMode == LightCullingInput::Bound) node->SetRHIResource("linearDepth", recording.input);
+				if (inputMode == LightCullingInput::Bound) node->SetRHIResource("linearDepth"_h, recording.input);
 				if (inputMode == LightCullingInput::Bound || inputMode == LightCullingInput::Named)
 				{
 					// Large enough for every tested dispatch, but deliberately wrong depth and dimensions.
@@ -4959,7 +7322,7 @@ frame:
 					auto initialized = RHIFencePtr::Make();
 					Require(driver->SubmitCommandList(setup, initialized) && initialized->Wait(5000000000ull) == EFenceStatus::Finished,
 						"unrelated default depth must initialize");
-					graph->SetRenderTarget("LinearDepth", poison);
+					graph->SetRenderTarget("LinearDepth"_h, poison);
 				}
 				recording.transfers.Clear();
 				recording.graphics.Clear();
@@ -4979,8 +7342,8 @@ frame:
 					}
 				auto bindings = scene.m_rhiLightCullingData;
 				Require(bindings.IsValid(), "light-culling bindings must be published to the view");
-				const auto indices = *bindings->GetOrAddShaderBinding("culledLights")->m_vulkan.m_valueBinding->Get();
-				const auto grid = *bindings->GetOrAddShaderBinding("lightsGrid")->m_vulkan.m_valueBinding->Get();
+				const auto indices = *bindings->GetOrAddShaderBinding("culledLights"_h)->m_vulkan.m_valueBinding->Get();
+				const auto grid = *bindings->GetOrAddShaderBinding("lightsGrid"_h)->m_vulkan.m_valueBinding->Get();
 				auto indexReadback = driver->CreateBuffer(indices.m_size, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
 				auto gridReadback = driver->CreateBuffer(grid.m_size, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
 				auto read = driver->CreateCommandList(false, ECommandListQueue::Graphics);
@@ -5009,10 +7372,10 @@ frame:
 					std::sort(actual.begin(), actual.end());
 					Require(actual == std::array<uint32_t, 3>{ 0, 1, 2 + tile * 2 + i }, "GPU tile must contain only the directional, enclosing and matching-depth light");
 				}
-				Require(bindings->GetOrAddShaderBinding("linearDepth")->GetTextureBinding() == recording.depth,
+				Require(bindings->GetOrAddShaderBinding("linearDepth"_h)->GetTextureBinding() == recording.depth,
 					"light-culling sampler must use the selected resolved input");
-				Require(*scene.m_rhiLightsData->GetOrAddShaderBinding("culledLights")->m_vulkan.m_valueBinding->Get() == indices &&
-					*scene.m_rhiLightsData->GetOrAddShaderBinding("lightsGrid")->m_vulkan.m_valueBinding->Get() == grid,
+				Require(*scene.m_rhiLightsData->GetOrAddShaderBinding("culledLights"_h)->m_vulkan.m_valueBinding->Get() == indices &&
+					*scene.m_rhiLightsData->GetOrAddShaderBinding("lightsGrid"_h)->m_vulkan.m_valueBinding->Get() == grid,
 					"downstream lighting must consume exactly the culling output allocations");
 				if (round == 1 || round == 2 || round >= 4)
 				{
@@ -5042,13 +7405,13 @@ frame:
 		auto commands = Renderer::GetDriverCommands();
 		auto graph = TRefPtr<TestGraph>::Make();
 		auto node = TRefPtr<PostProcessNode>::Make();
-		node->SetString("shader", shader);
-		node->SetRHIResource_Unresolved("color", "Output");
-		node->SetFloat("data.gain", 0.5f);
+		node->SetString("shader"_h, shader);
+		node->SetRHIResource_Unresolved("color"_h, "Output"_h);
+		node->SetFloat("data.gain"_h, 0.5f);
 		const glm::vec4 texel(0.125f, 0.25f, 0.5f, 1);
 		auto texture = driver->CreateTexture(&texel, sizeof(texel), glm::ivec3(1), 1, ETextureType::Texture2D,
 			EFormat::R32G32B32A32_SFLOAT, ETextureFiltration::Nearest, ETextureClamping::Clamp);
-		node->SetRHIResource("sourceSampler", texture);
+		node->SetRHIResource("sourceSampler"_h, texture);
 		struct Recording
 		{
 			RHISceneViewSnapshot scene;
@@ -5076,10 +7439,10 @@ frame:
 				auto& recording = recordings[i];
 				if (!sameFlight || i == 0) recording.scene.m_submissionContext->BeginSubmission(round + 1, i);
 				const glm::vec4 tint(0.25f * (i + 1), 0.125f * (round + 1), 0.75f, 1);
-				node->SetVec4("data.tint", tint);
+				node->SetVec4("data.tint"_h, tint);
 				recording.expected = tint * 0.5f + texel;
 				auto target = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
-				graph->SetRenderTarget("Output", target);
+				graph->SetRenderTarget("Output"_h, target);
 				recording.upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 				recording.draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 				commands->BeginCommandList(recording.upload, true);
@@ -5089,7 +7452,7 @@ frame:
 				node->Process(graph, recording.upload, recording.draw, recording.scene);
 				Require(node->GetDrawCallStats().m_numBatches == 1, "each pending post-process recording must contain a draw");
 				auto bindings = PostProcessNodeTestAccess::GetBindings(*node, recording.scene);
-				const auto uniform = *bindings->GetOrAddShaderBinding("data")->m_vulkan.m_valueBinding->Get();
+				const auto uniform = *bindings->GetOrAddShaderBinding("data"_h)->m_vulkan.m_valueBinding->Get();
 				Require(round != 1 || (bindings == recording.bindings && uniform == recording.uniform),
 					"completed post-process slots must reuse their bindings and uniform allocations");
 				Require(round != 2 || (bindings != recording.bindings && uniform != recording.uniform),
@@ -5148,15 +7511,15 @@ frame:
 		scene.m_frameBindings = driver->CreateShaderBindings();
 		scene.m_rhiLightsData = driver->CreateShaderBindings();
 		auto node = TRefPtr<PostProcessNode>::Make();
-		node->SetString("shader", smallShader);
-		node->SetString("defines", "");
-		node->SetRHIResource("color", output);
-		node->SetRHIResource("sourceSampler", textureA);
+		node->SetString("shader"_h, smallShader);
+		node->SetString("defines"_h, "");
+		node->SetRHIResource("color"_h, output);
+		node->SetRHIResource("sourceSampler"_h, textureA);
 		glm::vec4 tint(0.25f, 0.5f, 0.75f, 1);
 		float gain = 0.5f;
 		bool inverted = false;
-		node->SetVec4("data.tint", tint);
-		node->SetFloat("data.gain", gain);
+		node->SetVec4("data.tint"_h, tint);
+		node->SetFloat("data.gain"_h, gain);
 		CaptureAttachments capture;
 
 		const auto draw = [&](const char* label, RHITexturePtr target, RHISurfacePtr surface, glm::vec4 texel)
@@ -5175,7 +7538,7 @@ frame:
 			const bool msaa = surface && surface->NeedsResolve();
 			auto currentBindings = PostProcessNodeTestAccess::GetBindings(*node, scene);
 			Require(currentBindings.IsValid(), "post-process shader must be ready and create its bindings");
-			const auto binding = currentBindings->GetOrAddShaderBinding("data");
+			const auto binding = currentBindings->GetOrAddShaderBinding("data"_h);
 			const auto reflectedSize = (std::max)(binding->GetLayout().m_size, binding->GetLayout().m_paddedSize);
 			const bool validAttachments = recordedColorCount == 1 &&
 				recordedColor.imageView == static_cast<VkImageView>(*(msaa ? surface->GetTarget() : target)->m_vulkan.m_imageView) &&
@@ -5216,10 +7579,10 @@ frame:
 		Require(draw("first draw", output, {}, firstTexel) > 0, "the first draw must upload its parameters");
 		tint = glm::vec4(0.75f, 0.25f, 0.5f, 1);
 		gain = 0.25f;
-		node->SetVec4("data.tint", tint);
-		node->SetFloat("data.gain", gain);
+		node->SetVec4("data.tint"_h, tint);
+		node->SetFloat("data.gain"_h, gain);
 		draw("mutated parameters", output, {}, firstTexel);
-		node->SetRHIResource("sourceSampler", textureB);
+		node->SetRHIResource("sourceSampler"_h, textureB);
 		draw("replaced bound sampler", output, {}, secondTexel);
 		const auto bindings = PostProcessNodeTestAccess::GetBindings(*node, scene);
 		const auto descriptor = bindings->m_vulkan.m_descriptorSet;
@@ -5232,8 +7595,8 @@ frame:
 		{
 			tint = glm::vec4(0.125f * (failure + 1), 0.5f, 0.75f, 1);
 			gain = 0.75f;
-			node->SetVec4("data.tint", tint);
-			node->SetFloat("data.gain", gain);
+			node->SetVec4("data.tint"_h, tint);
+			node->SetFloat("data.gain"_h, gain);
 			scene.m_submissionContext->BeginSubmission(++submissionId, 0);
 			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 			auto graphics = driver->CreateCommandList(false, ECommandListQueue::Graphics);
@@ -5262,7 +7625,7 @@ frame:
 			Require(draw(retries[failure], output, {}, secondTexel) > 0, "invalidated parameters must be uploaded on retry");
 		}
 		auto pendingTexture = RHITexturePtr::Make(ETextureFiltration::Nearest, ETextureClamping::Clamp, false);
-		node->SetRHIResource("sourceSampler", pendingTexture);
+		node->SetRHIResource("sourceSampler"_h, pendingTexture);
 		{
 			scene.m_submissionContext->BeginSubmission(++submissionId, 0);
 			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
@@ -5277,32 +7640,32 @@ frame:
 		}
 		pendingTexture->m_vulkan = textureA->m_vulkan;
 		draw("retry ready bound sampler", output, {}, firstTexel);
-		node->SetRHIResource("sourceSampler", textureB);
-		node->SetRHIResource("color", single);
+		node->SetRHIResource("sourceSampler"_h, textureB);
+		node->SetRHIResource("color"_h, single);
 		draw("bound 1x surface", output, single, secondTexel);
-		node->SetRHIResource("color", multisampled);
+		node->SetRHIResource("color"_h, multisampled);
 		draw("bound 2x surface", multisampled->GetResolved(), multisampled, secondTexel);
-		graph->SetSurface("LateOutput", multisampled);
-		graph->SetRenderTarget("LateOutput", multisampled->GetResolved());
-		node->SetRHIResource_Unresolved("color", "LateOutput");
+		graph->SetSurface("LateOutput"_h, multisampled);
+		graph->SetRenderTarget("LateOutput"_h, multisampled->GetResolved());
+		node->SetRHIResource_Unresolved("color"_h, "LateOutput"_h);
 		draw("late 2x surface", multisampled->GetResolved(), multisampled, secondTexel);
-		graph->SetSurface("LateOutput", single);
-		graph->SetRenderTarget("LateOutput", output);
+		graph->SetSurface("LateOutput"_h, single);
+		graph->SetRenderTarget("LateOutput"_h, output);
 		draw("late 1x surface replacement", output, single, secondTexel);
-		graph->SetRenderTarget("PlainOutput", output);
-		node->SetRHIResource_Unresolved("color", "PlainOutput");
+		graph->SetRenderTarget("PlainOutput"_h, output);
+		node->SetRHIResource_Unresolved("color"_h, "PlainOutput"_h);
 		draw("late plain target", output, {}, secondTexel);
-		graph->SetSampler("LateSampler", textureA);
-		node->SetRHIResource_Unresolved("sourceSampler", "LateSampler");
+		graph->SetSampler("LateSampler"_h, textureA);
+		node->SetRHIResource_Unresolved("sourceSampler"_h, "LateSampler"_h);
 		draw("late sampled texture", output, {}, firstTexel);
-		graph->SetSampler("LateSampler", textureB);
+		graph->SetSampler("LateSampler"_h, textureB);
 		draw("replaced late sampler", output, {}, secondTexel);
-		node->SetRHIResource("sourceSampler", textureA);
+		node->SetRHIResource("sourceSampler"_h, textureA);
 		draw("bound overrides late sampler", output, {}, firstTexel);
-		node->SetRHIResource("sourceSampler", multisampled);
+		node->SetRHIResource("sourceSampler"_h, multisampled);
 		draw("sample resolved 2x surface", output, {}, tint * gain + secondTexel);
-		graph->SetSurface("SurfaceSampler", multisampled);
-		node->SetRHIResource_Unresolved("sourceSampler", "SurfaceSampler");
+		graph->SetSurface("SurfaceSampler"_h, multisampled);
+		node->SetRHIResource_Unresolved("sourceSampler"_h, "SurfaceSampler"_h);
 		draw("sample late 2x surface", output, {}, tint * gain + secondTexel);
 
 		for (const auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT })
@@ -5319,28 +7682,28 @@ frame:
 			auto initialized = RHIFencePtr::Make();
 			Require(driver->SubmitCommandList(setup, initialized) && initialized->Wait(5000000000ull) == EFenceStatus::Finished,
 				"sampled depth fixture must initialize");
-			node->SetRHIResource("sourceSampler", depth);
+			node->SetRHIResource("sourceSampler"_h, depth);
 			draw("bound sampled depth", output, {}, glm::vec4(0.375f, 0, 0, 1));
-			graph->SetRenderTarget("SceneDepth", depth);
-			node->SetRHIResource_Unresolved("sourceSampler", "SceneDepth");
+			graph->SetRenderTarget("SceneDepth"_h, depth);
+			node->SetRHIResource_Unresolved("sourceSampler"_h, "SceneDepth"_h);
 			draw("late sampled depth", output, {}, glm::vec4(0.375f, 0, 0, 1));
-			const auto sampler = PostProcessNodeTestAccess::GetBindings(*node, scene)->GetOrAddShaderBinding("sourceSampler");
+			const auto sampler = PostProcessNodeTestAccess::GetBindings(*node, scene)->GetOrAddShaderBinding("sourceSampler"_h);
 			const RHITexturePtr expectedDepth = depth->GetDepthAspect() ? depth->GetDepthAspect() : RHITexturePtr(depth);
 			Require(sampler->GetTextureBinding() == expectedDepth &&
 				expectedDepth->m_vulkan.m_imageView->m_subresourceRange.aspectMask == VK_IMAGE_ASPECT_DEPTH_BIT,
 				"depth-stencil sampling must select the actual depth-only view");
 		}
-		node->SetRHIResource("sourceSampler", textureA);
-		node->SetString("shader", largeShader);
+		node->SetRHIResource("sourceSampler"_h, textureA);
+		node->SetString("shader"_h, largeShader);
 		draw("large reflected block and changed shader", output, {}, firstTexel);
-		const auto largeBinding = PostProcessNodeTestAccess::GetBindings(*node, scene)->GetOrAddShaderBinding("data");
+		const auto largeBinding = PostProcessNodeTestAccess::GetBindings(*node, scene)->GetOrAddShaderBinding("data"_h);
 		Require(largeBinding->GetLayout().m_binding == 3 && largeBinding->GetLayout().m_size > 512,
 			"large-block test must use the new shader with a nonzero uniform binding");
 		inverted = true;
-		node->SetString("defines", "INVERT");
+		node->SetString("defines"_h, "INVERT");
 		draw("changed shader defines", output, {}, firstTexel);
 		inverted = false;
-		node->SetString("defines", "");
+		node->SetString("defines"_h, "");
 		draw("restored shader defines", output, {}, firstTexel);
 		node->Clear();
 		draw("recreated material", output, {}, firstTexel);
@@ -5351,19 +7714,51 @@ namespace Sailor::Tests
 {
 	void RunCloudNoiseCommandTests(const std::filesystem::path& workspace)
 	{
+		TestShaderSourceLifetime(workspace);
 		TestGeneratedCloudNoise(workspace);
+	}
+
+	void RunSkyStarsCommandTests(const std::filesystem::path& workspace)
+	{
+		TestSkyWithoutStars(workspace);
+		TestSkyWithoutStars(workspace, VK_ERROR_OUT_OF_HOST_MEMORY);
+		TestSkyWithoutStars(workspace, VK_ERROR_OUT_OF_DEVICE_MEMORY);
 	}
 
 	void RunFrameGraphNodeCommandTests(const std::filesystem::path& workspace)
 	{
-		TestSkyWithoutStars(workspace);
+		RunShaderInterfaceCommandTests();
+		RunPostProcessingCommandTests();
+		RunGIResolveCommandTests();
+		RunEditorReadbackCommandTests();
+		RunSkyStarsCommandTests(workspace);
+		TestSkyWorldOwnership();
+		TestSkyQueuedFrameOrder();
+		TestSkyEnvironmentPublication();
 		TestAuthoredEnvironmentReload(workspace);
 		const auto smallShader = WriteShader(workspace, false);
 		const auto largeShader = WriteShader(workspace, true);
 		const auto depthReadback = WriteDepthReadbackShader(workspace);
+		const auto cullingIndexReadback = WriteCullingIndexReadbackShader(workspace);
+		ShaderSetPtr compactDepthShader, depthCullingShader;
+		const auto compactDepthInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/DepthOnly.shader");
+		const auto depthCullingInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeMeshCulling.shader");
+		Require(compactDepthInfo && depthCullingInfo &&
+			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(compactDepthInfo->GetFileId(), compactDepthShader) && compactDepthShader->IsReady() &&
+			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(depthCullingInfo->GetFileId(), depthCullingShader, { "DEPTH_INSTANCE_LAYOUT", "OCCLUSION_CULLING" }) && depthCullingShader->IsReady(),
+			"production compact-depth and occlusion-culling shaders must be ready before recording");
 		const std::array depthPatterns{ WriteDepthPatternShader(workspace, EFormat::D32_SFLOAT), WriteDepthPatternShader(workspace, EFormat::D32_SFLOAT_S8_UINT) };
 		const std::array debugShaders{ WriteDebugDrawShader(workspace, EFormat::D32_SFLOAT), WriteDebugDrawShader(workspace, EFormat::D32_SFLOAT_S8_UINT) };
 		const auto highZInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeDepthHighZ.shader");
+		std::array<ShaderSetPtr, 3> particleShaders;
+		for (uint32_t i = 0; i < particleShaders.size(); ++i)
+		{
+			const auto info = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(i == 2 ?
+				"Experimental/MeshParticles/ComputeParticles.shader" : "Experimental/MeshParticles/Particle.shader");
+			const TVector<std::string> defines = i == 1 ? TVector<std::string>{ "SHADOW_CASTER" } : TVector<std::string>{};
+			Require(info && App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(info->GetFileId(), particleShaders[i], defines) && particleShaders[i]->IsReady(),
+				"production particle compute, color and shadow shaders must compile");
+		}
 		Require(highZInfo != nullptr, "the production depth pyramid shader must exist");
 		std::array<ShaderSetPtr, 3> highZShaders;
 		for (uint32_t i = 0; i < highZShaders.size(); ++i)
@@ -5409,15 +7804,79 @@ namespace Sailor::Tests
 			"the production light-culling shader must compile before recording");
 		App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 		TestDelayedImGuiProducer();
-		auto task = Tasks::CreateTaskWithResult<std::string>("Post-process attachment and parameter contracts", [&]() -> std::string
+		auto task = Tasks::CreateTaskWithResult<std::string>("Post-process attachment and parameter contracts"_h, [&]() -> std::string
 			{
 				try
 				{
+					TestCubemapMipViews();
+					TestParticleHistory(particleShaders[2]);
+					std::string particleGraphFailures;
+					for (uint32_t kind : { 1u, 2u, 0u })
+					for (bool named : { false, true })
+					for (bool clearResolved : { false, true })
+					{
+						try { TestParticleGraph(particleShaders, kind, named, clearResolved); }
+						catch (const std::exception& error) { particleGraphFailures += std::string(error.what()) + "\n"; }
+					}
+					if (!particleGraphFailures.empty()) throw std::runtime_error(particleGraphFailures);
+					for (bool colorSurface : { true, false })
+					for (bool namedColor : { false, true })
+					for (uint32_t depthKind : { 0u, 1u, 2u })
+					for (bool namedDepth : { false, true })
+					{
+						if (depthKind == 2 && namedDepth) continue;
+						TestParticleAttachments(particleShaders, depthReadback, colorSurface, namedColor, depthKind, namedDepth);
+					}
+					std::string defaultDepthFailures;
+					for (auto publication : { DefaultDepthPublication::Target, DefaultDepthPublication::Surface,
+						DefaultDepthPublication::SurfaceOnly, DefaultDepthPublication::SurfaceWithDecoy })
+					for (bool named : { true, false })
+					for (bool prepass : { true, false })
+					for (uint32_t colorKind = 0; colorKind < (prepass ? 1u : 3u); ++colorKind)
+					{
+						try { TestDefaultDepthAttachment(prepass ? compactDepthShader : mrtShader, depthReadback, prepass, colorKind, publication, named); }
+						catch (const std::exception& error)
+						{
+							defaultDepthFailures += "Default depth publication=" + std::string(magic_enum::enum_name(publication)) +
+								" named=" + std::to_string(named) + " prepass=" + std::to_string(prepass) +
+								" colorKind=" + std::to_string(colorKind) + ": " + error.what() + "\n";
+						}
+					}
+					for (uint32_t depthKind : { 1u, 3u, 4u, 5u })
+					for (bool singleSample : { false, true })
+					for (bool namedColor : { false, true })
+					{
+						if (depthKind == 1 && !singleSample) continue;
+						try { TestParticleAttachments(particleShaders, depthReadback, true, namedColor, depthKind, false, singleSample); }
+						catch (const std::exception& error)
+						{
+							defaultDepthFailures += "Particles default depth depthKind=" + std::to_string(depthKind) +
+								" singleSample=" + std::to_string(singleSample) + " namedColor=" + std::to_string(namedColor) + ": " + error.what() + "\n";
+						}
+					}
+					if (!defaultDepthFailures.empty()) throw std::runtime_error(defaultDepthFailures);
+					std::string cullingFailures;
+					for (bool named : { false, true })
+					for (bool surface : { false, true })
+					for (bool paged : { false, true })
+					{
+						try { TestDepthPrepassCulling(compactDepthShader, cullingIndexReadback, depthReadback, named, surface, paged); }
+						catch (const std::exception& error)
+						{
+							cullingFailures += "Depth prepass named=" + std::to_string(named) + " surface=" + std::to_string(surface) +
+								" paged=" + std::to_string(paged) + ": " + error.what() + "\n";
+						}
+					}
+					if (!cullingFailures.empty()) throw std::runtime_error(cullingFailures);
+					for (bool named : { false, true })
+					for (bool paged : { false, true })
+						TestDepthPrepassOcclusion(compactDepthShader, cullingIndexReadback, depthReadback, named, paged);
 					TestSamplerReductionCache();
 					FrameGraphNodeTestAccess::WithoutSamplerMinmax(*VulkanApi::GetInstance()->GetMainDevice(), [&]()
 						{
 							TestSamplerReductionCache();
 							TestDepthHighZ(depthPatterns[0], depthReadback, EFormat::D32_SFLOAT, DepthInput::Default, true, true, false);
+							TestDepthHighZIsolatedClearSample(depthReadback, "minmax-disabled");
 							std::cout << "DepthHighZ: complete odd/even/MSAA mip readbacks with minmax=false passed\n";
 						});
 					for (size_t i = 0; i < storageShaders.size(); ++i) TestIndexedStorageBindings(storageShaders[i], storageSizes[i], false);
@@ -5440,18 +7899,25 @@ namespace Sailor::Tests
 					}
 					storageAllocator = std::move(savedAllocator);
 					TestDescriptorPoolLifetime(storageShaders[0]);
+					TestPagedArenaUploadFlights<RenderSceneNode::PerInstanceData>("main");
+					TestPagedArenaUploadFlights<DepthPrepassNode::PerInstanceData>("depth");
+					TestPagedArenaUploadFlights<ShadowPrepassNode::PerInstanceData>("shadow");
 					TestConcurrentDescriptorPublication(storageShaders[0]);
 					TestImGuiSkippedAttachments();
 					TestLinearizeDepthRegions(linearDepthShader);
 					TestFullscreenUploadRetry();
-					TestImportedRendering(importedGraphIds);
-					TestGraphLoadFailures(workspace, importedGraphIds[0]);
+					const auto repairedGraphs = TestGraphLoadFailures(workspace, importedGraphIds[0]);
+					TestImportedRendering(importedGraphIds, repairedGraphs);
 					TestRelativeAttachmentDimensions(workspace);
 					for (bool paged : { false, true })
 						for (bool instanced : { false, true })
 							for (bool skinned : { false, true })
 								for (auto mobility : { EMobilityType::Static, EMobilityType::Stationary, EMobilityType::Dynamic })
 									TestCustomDepthSilhouette(customDepthShaders[skinned ? 1 : 0], depthReadback, paged, instanced, skinned, mobility);
+					for (auto binding : { DepthAttachmentBinding::NamedTarget, DepthAttachmentBinding::Surface, DepthAttachmentBinding::NamedSurface })
+						for (bool paged : { false, true })
+							for (bool skinned : { false, true })
+								TestCustomDepthSilhouette(customDepthShaders[skinned ? 1 : 0], depthReadback, paged, true, skinned, EMobilityType::Stationary, binding);
 					TestShadowVerticalPublication(shadowBlurShaders);
 					TestShadowAttachmentRefusal(shadowBlurShaders);
 					TestShadowBlitInitialization();
@@ -5466,14 +7932,19 @@ namespace Sailor::Tests
 					TestStaticMsaaBindings(workspace);
 					TestGraphMsaaTargets();
 					TestGraphTargetLifetime();
+					TestSceneRenderExtent();
+					TestMotionBlurNode();
 					TestSceneMrt(mrtShader, true, false, false, true, true);
 					for (bool late : { false, true })
 						for (bool colorSurface : { true, false })
 							for (bool motionSurface : { true, false }) TestSceneMrt(mrtShader, colorSurface, motionSurface, late, false, true);
 					for (auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT })
-						for (bool named : { false, true })
-							TestDepthTestedDraw(debugShaders[format == EFormat::D32_SFLOAT ? 0 : 1], depthPatterns[format == EFormat::D32_SFLOAT ? 0 : 1],
-								depthReadback, format, false, DebugDepthInput::Texture, named, named, DepthDrawPath::ImGuiNode);
+						for (bool namedColor : { false, true })
+							for (bool namedDepth : { false, true })
+								for (bool colorSurface : { false, true })
+									for (auto input : { DebugDepthInput::Texture, DebugDepthInput::Surface })
+										TestDepthTestedDraw(debugShaders[format == EFormat::D32_SFLOAT ? 0 : 1], depthPatterns[format == EFormat::D32_SFLOAT ? 0 : 1],
+											depthReadback, format, colorSurface, input, namedColor, namedDepth, DepthDrawPath::ImGuiNode);
 					for (auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT })
 						for (auto input : { DebugDepthInput::Texture, DebugDepthInput::Surface })
 							TestDepthTestedDraw(debugShaders[format == EFormat::D32_SFLOAT ? 0 : 1], depthPatterns[format == EFormat::D32_SFLOAT ? 0 : 1],
@@ -5485,6 +7956,28 @@ namespace Sailor::Tests
 									for (auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT })
 										TestDepthTestedDraw(debugShaders[format == EFormat::D32_SFLOAT ? 0 : 1], depthPatterns[format == EFormat::D32_SFLOAT ? 0 : 1],
 											depthReadback, format, colorSurface, depthInput, namedColor, namedDepth);
+					std::string depthConsumerFailures;
+					for (uint32_t colorKind : { 0u, 2u })
+					for (bool namedColor : { false, true })
+					for (bool namedDepth : { false, true })
+					for (auto input : { DebugDepthInput::Surface, DebugDepthInput::DefaultSurface })
+					for (auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT })
+					{
+						try { TestDepthTestedDraw(debugShaders[format == EFormat::D32_SFLOAT ? 0 : 1], depthPatterns[format == EFormat::D32_SFLOAT ? 0 : 1],
+							depthReadback, format, colorKind, input, namedColor, namedDepth, DepthDrawPath::DebugNode, true); }
+						catch (const std::exception& error) { depthConsumerFailures += std::string(error.what()) + "\n"; }
+					}
+					for (auto input : { DepthInput::DefaultSurface, DepthInput::DefaultSurfaceOnly,
+						DepthInput::DefaultSurfaceDecoy, DepthInput::DefaultSingleSampleSurface })
+					for (bool namedInput : { false, true })
+					for (bool outputSurface : { false, true })
+					for (auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT })
+					{
+						try { TestDepthHighZ(depthPatterns[format == EFormat::D32_SFLOAT ? 0 : 1], depthReadback,
+							format, input, namedInput, true, outputSurface); }
+						catch (const std::exception& error) { depthConsumerFailures += std::string(error.what()) + "\n"; }
+					}
+					if (!depthConsumerFailures.empty()) throw std::runtime_error(depthConsumerFailures);
 					for (auto inputMode : { LightCullingInput::Bound, LightCullingInput::Named,
 						LightCullingInput::Default, LightCullingInput::NamedWithoutDefault })
 						for (bool surfaceInput : { false, true })
@@ -5496,6 +7989,7 @@ namespace Sailor::Tests
 								for (bool outputSurface : { false, true })
 									for (auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT })
 										TestDepthHighZ(depthPatterns[format == EFormat::D32_SFLOAT ? 0 : 1], depthReadback, format, input, namedInput, namedOutput, outputSurface);
+					TestDepthHighZIsolatedClearSample(depthReadback, "native");
 					for (bool namedDepth : { false, true })
 						for (bool namedTarget : { false, true })
 							for (bool depthSurface : { false, true })
@@ -5518,7 +8012,28 @@ namespace Sailor::Tests
 						for (bool colorSurface : { false, true })
 							for (auto depthFormat : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT }) TestFog(colorSurface, late, depthFormat);
 					}
+					std::string depthAliasFailures;
+					for (bool late : { false, true })
+						for (bool defaultName : { false, true })
+							for (uint32_t alias : { 1u, 2u })
+								for (auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT })
+								{
+									try { TestClearDepth(depthReadback, format, true, late, defaultName, alias); }
+									catch (const std::exception& error) { depthAliasFailures += std::string(error.what()) + "\n"; }
+								}
+					if (!depthAliasFailures.empty()) throw std::runtime_error(depthAliasFailures);
+					std::string mixedSampleFailures;
+					for (bool late : { false, true })
+						for (bool singleSample : { false, true })
+							for (bool clear : { false, true })
+							{
+								try { TestSceneMrt(mrtShader, true, true, late, singleSample, clear, false, true); }
+								catch (const std::exception& error) { mixedSampleFailures += std::string(error.what()) + "\n"; }
+							}
+					if (!mixedSampleFailures.empty()) throw std::runtime_error(mixedSampleFailures);
 					TestSceneMrt(mrtShader, true, false, false, true);
+					for (bool late : { false, true })
+						for (bool singleSample : { false, true }) TestSceneMrt(mrtShader, true, false, late, singleSample, false, true);
 					for (bool late : { false, true })
 						for (bool colorSurface : { false, true })
 							for (bool motionSurface : { false, true }) TestSceneMrt(mrtShader, colorSurface, motionSurface, late);

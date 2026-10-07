@@ -15,6 +15,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Sailor
@@ -52,7 +53,7 @@ namespace Sailor
 
 			bool IsPresent() const noexcept { return m_byteLength != 0; }
 			bool Validate(
-				const std::string& context,
+				std::string_view context,
 				std::string& outDiagnostic) const;
 
 			SAILOR_API virtual YAML::Node Serialize() const override;
@@ -77,9 +78,9 @@ namespace Sailor
 		SAILOR_API bool CachePrecompiledGlsl(
 			const FileId& uid,
 			uint32_t permutation,
-			const std::string& vertexGlsl,
-			const std::string& fragmentGlsl,
-			const std::string& computeGlsl);
+			std::string_view vertexGlsl,
+			std::string_view fragmentGlsl,
+			std::string_view computeGlsl);
 		SAILOR_API bool CacheSpirv_ThreadSafe(
 			const FileId& uid,
 			uint32_t permutation,
@@ -146,15 +147,15 @@ namespace Sailor
 		SAILOR_API static std::filesystem::path GetPrecompiledShaderFilepath(
 			const FileId& uid,
 			int32_t permutation,
-			const std::string& shaderKind);
+			std::string_view shaderKind);
 		SAILOR_API static std::filesystem::path GetCachedShaderFilepath(
 			const FileId& uid,
 			int32_t permutation,
-			const std::string& shaderKind);
+			std::string_view shaderKind);
 		SAILOR_API static std::filesystem::path GetCachedShaderWithDebugFilepath(
 			const FileId& uid,
 			int32_t permutation,
-			const std::string& shaderKind);
+			std::string_view shaderKind);
 
 	protected:
 		struct ArtifactSet final : IYamlSerializable
@@ -252,7 +253,7 @@ namespace Sailor
 		static bool HasMatchingArtifactTopology(
 			const ArtifactSet& regular,
 			const ArtifactSet& debug) noexcept;
-		static bool IsValidGeneration(const std::string& generation) noexcept;
+		static bool IsValidGeneration(std::string_view generation) noexcept;
 		static bool DescribeArtifactSet(
 			const TVector<uint32_t>& vertexSpirv,
 			const TVector<uint32_t>& fragmentSpirv,
@@ -267,7 +268,7 @@ namespace Sailor
 		std::filesystem::path GetCompiledDebugFolderLocked() const;
 		std::filesystem::path GetArtifactPathLocked(
 			const ShaderCacheData::Entry& entry,
-			const std::string& shaderKind,
+			std::string_view shaderKind,
 			bool bIsDebug) const;
 
 		Platform::EAtomicWriteResult WriteCacheDataLocked(
@@ -400,7 +401,7 @@ namespace Sailor
 			const ShaderCache& cache,
 			const FileId& uid,
 			uint32_t permutation,
-			const char* stage,
+			std::string_view stage,
 			bool bIsDebug);
 		SAILOR_API static std::filesystem::path GetCachePath(const ShaderCache& cache);
 		SAILOR_API static bool PublishWithArtifactFailure(

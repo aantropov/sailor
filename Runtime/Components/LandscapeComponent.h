@@ -45,50 +45,14 @@ namespace Sailor
 		SAILOR_API void SetLodSkirtDepth(float value);
 		SAILOR_API float GetGrassResidencyHysteresis() const { return m_grassResidencyHysteresis; }
 		SAILOR_API void SetGrassResidencyHysteresis(float value);
-		SAILOR_API const TVector<float>& GetSculptStamps() const { return m_sculptStamps; }
-		SAILOR_API void SetSculptStamps(const TVector<float>& value);
-		SAILOR_API const TVector<float>& GetPaintStamps() const { return m_paintStamps; }
-		SAILOR_API void SetPaintStamps(const TVector<float>& value);
+		SAILOR_API const TVector<LandscapeSculptStamp>& GetSculptStamps() const { return m_sculptStamps; }
+		SAILOR_API void SetSculptStamps(const TVector<LandscapeSculptStamp>& value);
+		SAILOR_API const TVector<LandscapePaintStamp>& GetPaintStamps() const { return m_paintStamps; }
+		SAILOR_API void SetPaintStamps(const TVector<LandscapePaintStamp>& value);
 		SAILOR_API const FileId& GetVegetation() const { return m_vegetation; }
 		SAILOR_API void SetVegetation(const FileId& value);
-		SAILOR_API const TVector<FileId>& GetVegetationModels() const { return m_vegetationModels; }
-		SAILOR_API void SetVegetationModels(const TVector<FileId>& value);
-		SAILOR_API const TVector<FileId>& GetVegetationMaterials() const { return m_vegetationMaterials; }
-		SAILOR_API void SetVegetationMaterials(const TVector<FileId>& value);
-		SAILOR_API const TVector<float>& GetVegetationMeshIndex() const { return m_vegetationMeshIndex; }
-		SAILOR_API void SetVegetationMeshIndex(const TVector<float>& value);
-		SAILOR_API const TVector<float>& GetVegetationInstancesPerChunk() const { return m_vegetationInstancesPerChunk; }
-		SAILOR_API void SetVegetationInstancesPerChunk(const TVector<float>& value);
-		SAILOR_API const TVector<float>& GetVegetationResidency() const { return m_vegetationResidency; }
-		SAILOR_API void SetVegetationResidency(const TVector<float>& value);
-		SAILOR_API const TVector<float>& GetVegetationPriority() const { return m_vegetationPriority; }
-		SAILOR_API void SetVegetationPriority(const TVector<float>& value);
-		SAILOR_API const TVector<float>& GetVegetationMinScale() const { return m_vegetationMinScale; }
-		SAILOR_API void SetVegetationMinScale(const TVector<float>& value);
-		SAILOR_API const TVector<float>& GetVegetationMaxScale() const { return m_vegetationMaxScale; }
-		SAILOR_API void SetVegetationMaxScale(const TVector<float>& value);
-		SAILOR_API const TVector<float>& GetVegetationGroundOffset() const { return m_vegetationGroundOffset; }
-		SAILOR_API void SetVegetationGroundOffset(const TVector<float>& value);
-		SAILOR_API const TVector<float>& GetVegetationShadowMode() const { return m_vegetationShadowMode; }
-		SAILOR_API void SetVegetationShadowMode(const TVector<float>& value);
-		SAILOR_API const TVector<float>& GetVegetationShadowDistance() const { return m_vegetationShadowDistance; }
-		SAILOR_API void SetVegetationShadowDistance(const TVector<float>& value);
-		SAILOR_API const TVector<float>& GetVegetationMinLod() const { return m_vegetationMinLod; }
-		SAILOR_API void SetVegetationMinLod(const TVector<float>& value);
-		SAILOR_API const TVector<float>& GetVegetationMaxLod() const { return m_vegetationMaxLod; }
-		SAILOR_API void SetVegetationMaxLod(const TVector<float>& value);
-		SAILOR_API const TVector<float>& GetVegetationLod1ScreenCoverage() const { return m_vegetationLod1ScreenCoverage; }
-		SAILOR_API void SetVegetationLod1ScreenCoverage(const TVector<float>& value);
-		SAILOR_API const TVector<float>& GetVegetationLod2ScreenCoverage() const { return m_vegetationLod2ScreenCoverage; }
-		SAILOR_API void SetVegetationLod2ScreenCoverage(const TVector<float>& value);
-		SAILOR_API const TVector<float>& GetVegetationCullDistance() const { return m_vegetationCullDistance; }
-		SAILOR_API void SetVegetationCullDistance(const TVector<float>& value);
-		SAILOR_API const TVector<float>& GetVegetationColliderRadius() const { return m_vegetationColliderRadius; }
-		SAILOR_API void SetVegetationColliderRadius(const TVector<float>& value);
-		SAILOR_API const TVector<float>& GetVegetationColliderHeight() const { return m_vegetationColliderHeight; }
-		SAILOR_API void SetVegetationColliderHeight(const TVector<float>& value);
-		SAILOR_API const TVector<float>& GetVegetationColliderOffsetY() const { return m_vegetationColliderOffsetY; }
-		SAILOR_API void SetVegetationColliderOffsetY(const TVector<float>& value);
+		SAILOR_API const TVector<LandscapeVegetationSettings>& GetVegetationProfiles() const { return m_vegetationProfiles; }
+		SAILOR_API void SetVegetationProfiles(const TVector<LandscapeVegetationSettings>& value);
 		SAILOR_API bool GetRegenerate() const { return m_bRegenerate; }
 		SAILOR_API void SetRegenerate(bool value);
 		SAILOR_API bool GetFlatten() const { return m_bFlatten; }
@@ -118,28 +82,10 @@ namespace Sailor
 		TVector<float> m_lodDistances{ 96.0f, 192.0f };
 		float m_lodSkirtDepth = 2.0f;
 		float m_grassResidencyHysteresis = 12.0f;
-		TVector<float> m_sculptStamps{};
-		TVector<float> m_paintStamps{};
+		TVector<LandscapeSculptStamp> m_sculptStamps{};
+		TVector<LandscapePaintStamp> m_paintStamps{};
 		FileId m_vegetation{};
-		TVector<FileId> m_vegetationModels{};
-		TVector<FileId> m_vegetationMaterials{};
-		TVector<float> m_vegetationMeshIndex{};
-		TVector<float> m_vegetationInstancesPerChunk{};
-		TVector<float> m_vegetationResidency{};
-		TVector<float> m_vegetationPriority{};
-		TVector<float> m_vegetationMinScale{};
-		TVector<float> m_vegetationMaxScale{};
-		TVector<float> m_vegetationGroundOffset{};
-		TVector<float> m_vegetationShadowMode{};
-		TVector<float> m_vegetationShadowDistance{};
-		TVector<float> m_vegetationMinLod{};
-		TVector<float> m_vegetationMaxLod{};
-		TVector<float> m_vegetationLod1ScreenCoverage{};
-		TVector<float> m_vegetationLod2ScreenCoverage{};
-		TVector<float> m_vegetationCullDistance{};
-		TVector<float> m_vegetationColliderRadius{};
-		TVector<float> m_vegetationColliderHeight{};
-		TVector<float> m_vegetationColliderOffsetY{};
+		TVector<LandscapeVegetationSettings> m_vegetationProfiles{};
 		bool m_bRegenerate = false;
 		bool m_bFlatten = false;
 	};
@@ -185,44 +131,8 @@ REFL_AUTO(
 	func(SetPaintStamps, property("paintStamps")),
 	func(GetVegetation, property("vegetation")),
 	func(SetVegetation, property("vegetation")),
-	func(GetVegetationModels, property("vegetationModels")),
-	func(SetVegetationModels, property("vegetationModels")),
-	func(GetVegetationMaterials, property("vegetationMaterials")),
-	func(SetVegetationMaterials, property("vegetationMaterials")),
-	func(GetVegetationMeshIndex, property("vegetationMeshIndex")),
-	func(SetVegetationMeshIndex, property("vegetationMeshIndex")),
-	func(GetVegetationInstancesPerChunk, property("vegetationInstancesPerChunk")),
-	func(SetVegetationInstancesPerChunk, property("vegetationInstancesPerChunk")),
-	func(GetVegetationResidency, property("vegetationResidency")),
-	func(SetVegetationResidency, property("vegetationResidency")),
-	func(GetVegetationPriority, property("vegetationPriority")),
-	func(SetVegetationPriority, property("vegetationPriority")),
-	func(GetVegetationMinScale, property("vegetationMinScale")),
-	func(SetVegetationMinScale, property("vegetationMinScale")),
-	func(GetVegetationMaxScale, property("vegetationMaxScale")),
-	func(SetVegetationMaxScale, property("vegetationMaxScale")),
-	func(GetVegetationGroundOffset, property("vegetationGroundOffset")),
-	func(SetVegetationGroundOffset, property("vegetationGroundOffset")),
-	func(GetVegetationShadowMode, property("vegetationShadowMode")),
-	func(SetVegetationShadowMode, property("vegetationShadowMode")),
-	func(GetVegetationShadowDistance, property("vegetationShadowDistance")),
-	func(SetVegetationShadowDistance, property("vegetationShadowDistance")),
-	func(GetVegetationMinLod, property("vegetationMinLod")),
-	func(SetVegetationMinLod, property("vegetationMinLod")),
-	func(GetVegetationMaxLod, property("vegetationMaxLod")),
-	func(SetVegetationMaxLod, property("vegetationMaxLod")),
-	func(GetVegetationLod1ScreenCoverage, property("vegetationLod1ScreenCoverage")),
-	func(SetVegetationLod1ScreenCoverage, property("vegetationLod1ScreenCoverage")),
-	func(GetVegetationLod2ScreenCoverage, property("vegetationLod2ScreenCoverage")),
-	func(SetVegetationLod2ScreenCoverage, property("vegetationLod2ScreenCoverage")),
-	func(GetVegetationCullDistance, property("vegetationCullDistance")),
-	func(SetVegetationCullDistance, property("vegetationCullDistance")),
-	func(GetVegetationColliderRadius, property("vegetationColliderRadius")),
-	func(SetVegetationColliderRadius, property("vegetationColliderRadius")),
-	func(GetVegetationColliderHeight, property("vegetationColliderHeight")),
-	func(SetVegetationColliderHeight, property("vegetationColliderHeight")),
-	func(GetVegetationColliderOffsetY, property("vegetationColliderOffsetY")),
-	func(SetVegetationColliderOffsetY, property("vegetationColliderOffsetY")),
+	func(GetVegetationProfiles, property("vegetationProfiles")),
+	func(SetVegetationProfiles, property("vegetationProfiles")),
 	func(GetRegenerate, property("regenerate")),
 	func(SetRegenerate, property("regenerate")),
 	func(GetFlatten, property("flatten")),

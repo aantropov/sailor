@@ -25,6 +25,6 @@ namespace Sailor
 		uint64_t GetRevision() const;
 	};
 
-	SAILOR_SHARED_API bool CaptureEnvironmentSource(const std::string& environmentMap,
+	SAILOR_SHARED_API bool CaptureEnvironmentSource(std::string_view environmentMap,
 		const SkyParameters* sky, EnvironmentSource& outSource, std::string& outDiagnostic);
 }

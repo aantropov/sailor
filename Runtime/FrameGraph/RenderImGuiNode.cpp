@@ -14,34 +14,13 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 
-#ifndef _SAILOR_IMPORT_
-const char* RenderImGuiNode::m_name = "RenderImGui";
-#endif
-
 void RenderImGuiNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
 	ResetDrawCallStats();
 
-	RHI::RHITexturePtr colorAttachment = GetResolvedAttachment("color");
-	for (const auto& r : m_unresolvedResourceParams)
-	{
-		if (r.First() == "color")
-		{
-			colorAttachment = frameGraph->GetRenderTarget(*r.Second());
-			break;
-		}
-	}
-
-	RHI::RHITexturePtr depthAttachment = GetResolvedAttachment("depthStencil");
-	for (const auto& r : m_unresolvedResourceParams)
-	{
-		if (r.First() == "depthStencil")
-		{
-			depthAttachment = frameGraph->GetRenderTarget(*r.Second());
-			break;
-		}
-	}
+	RHI::RHITexturePtr colorAttachment = GetResolvedAttachment("color"_h, frameGraph.GetRawPtr());
+	RHI::RHITexturePtr depthAttachment = GetResolvedAttachment("depthStencil"_h, frameGraph.GetRawPtr());
 
 	if (!colorAttachment || !depthAttachment)
 		return;

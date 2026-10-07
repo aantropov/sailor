@@ -7,6 +7,53 @@
 using namespace Sailor;
 using namespace Sailor::LandscapeECSInternal;
 
+namespace
+{
+	static void MarkChunksIntersectingStamp(LandscapeData& data,
+		glm::vec2 center,
+		float brushRadius,
+		float margin)
+	{
+		const float radius = (std::max)(brushRadius, 0.001f) + margin;
+		const float landscapeWidth = data.m_chunksX * data.m_chunkSize;
+		const float landscapeDepth = data.m_chunksZ * data.m_chunkSize;
+		for (uint32_t z = 0u; z < data.m_chunksZ; ++z)
+		{
+			for (uint32_t x = 0u; x < data.m_chunksX; ++x)
+			{
+				const glm::vec2 minimum(
+					x * data.m_chunkSize - landscapeWidth * 0.5f, z * data.m_chunkSize - landscapeDepth * 0.5f);
+				const glm::vec2 maximum = minimum + glm::vec2(data.m_chunkSize);
+				const glm::vec2 closest = glm::clamp(center, minimum, maximum);
+				if (glm::distance(center, closest) <= radius)
+				{
+					data.m_dirtyChunks.Insert(z * data.m_chunksX + x);
+				}
+			}
+		}
+	}
+
+	template<typename Stamp>
+	void MarkChunksAffectedByStampChanges(LandscapeData& data,
+		const TVector<Stamp>& previous, const TVector<Stamp>& current, float margin)
+	{
+		for (size_t index = 0; index < (std::max)(previous.Num(), current.Num()); ++index)
+		{
+			if (index < previous.Num() && index < current.Num() && previous[index] == current[index]) continue;
+			if (index < previous.Num())
+			{
+				const auto& stamp = previous[index];
+				MarkChunksIntersectingStamp(data, { stamp.m_x, stamp.m_z }, stamp.m_radius, margin);
+			}
+			if (index < current.Num())
+			{
+				const auto& stamp = current[index];
+				MarkChunksIntersectingStamp(data, { stamp.m_x, stamp.m_z }, stamp.m_radius, margin);
+			}
+		}
+	}
+}
+
 void LandscapeData::SetSettings(uint32_t chunksX,
 	uint32_t chunksZ,
 	float chunkSize,
@@ -51,7 +98,7 @@ void LandscapeData::SetMaterial(const MaterialPtr& material)
 	m_runtimeMaterial.Clear();
 	m_cachedSourceMaterialContentRevision = 0ull;
 	m_cachedSourceMaterialRenderMetadataRevision = 0ull;
-	RequestFullRebuild();
+	MarkDirty();
 }
 
 void LandscapeData::SetLodSettings(const TVector<float>& distances, float skirtDepth)
@@ -100,11 +147,18 @@ void LandscapeData::SetLayerTextures(const TVector<FileId>& textures)
 	{
 		return;
 	}
+	TVector<Tasks::TaskPtr<TexturePtr>> loads;
+	loads.Resize(normalized.Num());
+	for (size_t index = 0; index < normalized.Num() && index < m_layerTextureLoads.Num(); ++index)
+	{
+		if (normalized[index] == m_layerTextures[index]) loads[index] = m_layerTextureLoads[index];
+	}
 	m_layerTextures = std::move(normalized);
+	m_layerTextureLoads = std::move(loads);
 	m_runtimeMaterial.Clear();
 	m_cachedSourceMaterialContentRevision = 0ull;
 	m_cachedSourceMaterialRenderMetadataRevision = 0ull;
-	RequestFullRebuild();
+	MarkDirty();
 }
 
 void LandscapeData::SetImportMaps(const FileId& heightmapTexture, const TVector<FileId>& materialMasks)
@@ -118,10 +172,12 @@ void LandscapeData::SetImportMaps(const FileId& heightmapTexture, const TVector<
 	}
 	m_heightmapTexture = heightmapTexture;
 	m_materialMasks = std::move(normalizedMasks);
+	m_importMapLoads.Clear();
 	RequestFullRebuild();
 }
 
-void LandscapeData::SetAuthoredStamps(const TVector<float>& sculptStamps, const TVector<float>& paintStamps)
+void LandscapeData::SetAuthoredStamps(const TVector<LandscapeSculptStamp>& sculptStamps,
+	const TVector<LandscapePaintStamp>& paintStamps)
 {
 	if (m_sculptStamps == sculptStamps && m_paintStamps == paintStamps)
 	{
@@ -158,7 +214,26 @@ void LandscapeData::SetVegetationAsset(const FileId& vegetationAsset)
 void LandscapeData::RequestVegetationAssetReload()
 {
 	m_bReloadVegetationAsset = static_cast<bool>(m_vegetationAsset);
-	RequestFullRebuild();
+	for (uint32_t index = 0; index < m_vegetationProfiles.Num(); ++index)
+	{
+		auto& profile = m_vegetationProfiles[index];
+		m_dirtyVegetationProfiles.Insert(index);
+		m_bIsVegetationCollisionDirty |= profile.m_settings.HasCollision();
+		if (!profile.m_model) profile.m_modelLoad.Clear();
+		if (!profile.m_material) profile.m_materialLoad.Clear();
+		profile.m_modelMaterialsLoad.Clear();
+		profile.m_loadingModelMaterials.Clear();
+		profile.m_bAreModelMaterialsPublished = false;
+	}
+	for (auto& load : m_layerTextureLoads)
+	{
+		if (load && load->IsFinished() && !load->GetResult())
+		{
+			load.Clear();
+			m_runtimeMaterial.Clear();
+		}
+	}
+	MarkDirty();
 }
 
 void LandscapeData::RequestSaveVegetation()
@@ -174,94 +249,95 @@ void LandscapeData::RequestFullRebuild()
 	MarkDirty();
 }
 
-void LandscapeData::SetVegetationProfiles(const TVector<FileId>& models,
-	const TVector<FileId>& materials,
-	const TVector<float>& meshIndex,
-	const TVector<float>& instancesPerChunk,
-	const TVector<float>& residency,
-	const TVector<float>& priority,
-	const TVector<float>& minScale,
-	const TVector<float>& maxScale,
-	const TVector<float>& groundOffset,
-	const TVector<float>& shadowMode,
-	const TVector<float>& shadowDistance,
-	const TVector<float>& minLod,
-	const TVector<float>& maxLod,
-	const TVector<float>& lod1ScreenCoverage,
-	const TVector<float>& lod2ScreenCoverage,
-	const TVector<float>& cullDistance,
-	const TVector<float>& colliderRadius,
-	const TVector<float>& colliderHeight,
-	const TVector<float>& colliderOffsetY)
+void LandscapeVegetationSettings::Normalize()
 {
+	auto finite = [](float value, float fallback) { return std::isfinite(value) ? value : fallback; };
+	m_meshIndex = (std::clamp)(m_meshIndex, -1, 65535);
+	m_instancesPerChunk = (std::min)(m_instancesPerChunk, 2048u);
+	m_priority = (std::clamp)(finite(m_priority, 1.0f), 0.0f, 100.0f);
+	m_minScale = (std::max)(finite(m_minScale, 0.75f), 0.01f);
+	m_maxScale = (std::max)(finite(m_maxScale, 1.25f), m_minScale);
+	m_groundOffset = finite(m_groundOffset, 0.0f);
+	m_shadowDistance = (std::max)(finite(m_shadowDistance, 35.0f), 0.1f);
+	m_minLod = (std::min)(m_minLod, 15u);
+	m_maxLod = (std::clamp)(m_maxLod, m_minLod, 15u);
+	for (size_t index = 0; index < m_screenCoverageThresholds.Num(); ++index)
+	{
+		const float fallback = index == 0 ? 0.25f : 0.05f;
+		m_screenCoverageThresholds[index] = (std::clamp)(finite(m_screenCoverageThresholds[index], fallback), 0.0f, 1.0f);
+	}
+	std::sort(m_screenCoverageThresholds.begin(), m_screenCoverageThresholds.end(), std::greater<float>());
+	m_cullDistance = (std::max)(finite(m_cullDistance, 120.0f), 0.1f);
+	m_colliderRadius = (std::max)(finite(m_colliderRadius, 0.0f), 0.0f);
+	m_colliderHeight = (std::max)(finite(m_colliderHeight, 2.0f), m_colliderRadius * 2.0f);
+	m_colliderOffsetY = finite(m_colliderOffsetY, 1.0f);
+}
+
+void LandscapeData::SetVegetationProfiles(const TVector<LandscapeVegetationSettings>& settings)
+{
+	auto matchesCurrent = [&](const TVector<LandscapeVegetationSettings>& values)
+	{
+		return values.Num() == m_vegetationProfiles.Num() && std::equal(values.begin(), values.end(),
+			m_vegetationProfiles.begin(), [](const auto& value, const auto& profile) { return value == profile.m_settings; });
+	};
+	if (matchesCurrent(settings)) return;
+
+	TVector<LandscapeVegetationSettings> normalized = settings;
+	for (auto& value : normalized) value.Normalize();
+	if (matchesCurrent(normalized)) return;
+
 	TVector<LandscapeVegetationProfile> profiles;
-	const size_t numProfiles = models.Num();
-	profiles.Reserve(numProfiles);
-	for (size_t index = 0u; index < numProfiles; ++index)
-	{
-		LandscapeVegetationProfile profile;
-		profile.m_modelFileId = models[index];
-		profile.m_materialFileId = index < materials.Num() ? materials[index] : FileId{};
-		profile.m_meshIndex =
-			static_cast<int32_t>((std::clamp)(GetProfileValue(meshIndex, index, -1.0f), -1.0f, 65535.0f));
-		profile.m_instancesPerChunk =
-			static_cast<uint32_t>((std::clamp)(GetProfileValue(instancesPerChunk, index, 0.0f), 0.0f, 2048.0f));
-		profile.m_residency = static_cast<ELandscapeVegetationResidency>(
-			static_cast<uint32_t>((std::clamp)(GetProfileValue(residency, index, 0.0f), 0.0f, 1.0f)));
-		profile.m_priority = (std::clamp)(GetProfileValue(priority, index, 1.0f), 0.0f, 100.0f);
-		profile.m_minScale = (std::max)(GetProfileValue(minScale, index, 0.75f), 0.01f);
-		profile.m_maxScale = (std::max)(GetProfileValue(maxScale, index, 1.25f), profile.m_minScale);
-		profile.m_groundOffset = GetProfileValue(groundOffset, index, 0.0f);
-		profile.m_shadowMode = static_cast<ELandscapeVegetationShadowMode>(
-			static_cast<uint32_t>((std::clamp)(GetProfileValue(shadowMode, index, 1.0f), 0.0f, 2.0f)));
-		profile.m_shadowDistance = (std::max)(GetProfileValue(shadowDistance, index, 35.0f), 0.1f);
-		profile.m_minLod = static_cast<uint32_t>((std::clamp)(GetProfileValue(minLod, index, 0.0f), 0.0f, 15.0f));
-		profile.m_maxLod = static_cast<uint32_t>(
-			(std::clamp)(GetProfileValue(maxLod, index, 2.0f), static_cast<float>(profile.m_minLod), 15.0f));
-		profile.m_screenCoverageThresholds = {
-			(std::clamp)(GetProfileValue(lod1ScreenCoverage, index, 0.25f), 0.0f, 1.0f),
-			(std::clamp)(GetProfileValue(lod2ScreenCoverage, index, 0.05f), 0.0f, 1.0f)};
-		std::sort(profile.m_screenCoverageThresholds.begin(),
-			profile.m_screenCoverageThresholds.end(),
-			std::greater<float>());
-		profile.m_cullDistance = (std::max)(GetProfileValue(cullDistance, index, 120.0f), 0.1f);
-		profile.m_colliderRadius = (std::max)(GetProfileValue(colliderRadius, index, 0.0f), 0.0f);
-		profile.m_colliderHeight =
-			(std::max)(GetProfileValue(colliderHeight, index, 2.0f), profile.m_colliderRadius * 2.0f);
-		profile.m_colliderOffsetY = GetProfileValue(colliderOffsetY, index, 1.0f);
-		if (profile.m_residency == ELandscapeVegetationResidency::Grass)
-		{
-			profile.m_colliderRadius = 0.0f;
-		}
-		profiles.Add(std::move(profile));
-	}
-
-	bool bSettingsChanged = profiles.Num() != m_vegetationProfiles.Num();
-	for (size_t index = 0u; !bSettingsChanged && index < profiles.Num(); ++index)
-	{
-		bSettingsChanged = !AreVegetationProfileSettingsEqual(profiles[index], m_vegetationProfiles[index]);
-	}
-	if (!bSettingsChanged)
-	{
-		return;
-	}
-
-	for (size_t index = 0u; index < profiles.Num() && index < m_vegetationProfiles.Num(); ++index)
+	profiles.Resize(normalized.Num());
+	for (size_t index = 0; index < profiles.Num(); ++index)
 	{
 		auto& profile = profiles[index];
-		const auto& previous = m_vegetationProfiles[index];
-		if (profile.m_modelFileId == previous.m_modelFileId)
+		profile.m_settings = std::move(normalized[index]);
+		// Prefer the current slot, then reuse a matching resource after reorder/removal.
+		auto findResource = [&](auto member) -> const LandscapeVegetationProfile*
 		{
-			profile.m_model = previous.m_model;
-			profile.m_modelMaterials = previous.m_modelMaterials;
-			profile.m_bModelMaterialsRequested = previous.m_bModelMaterialsRequested;
-		}
-		if (profile.m_materialFileId == previous.m_materialFileId)
+			auto matches = [&](const auto& previous) { return previous.m_settings.*member == profile.m_settings.*member; };
+			if (index < m_vegetationProfiles.Num() && matches(m_vegetationProfiles[index])) return &m_vegetationProfiles[index];
+			const size_t previous = m_vegetationProfiles.FindIf(matches);
+			return previous != size_t(-1) ? &m_vegetationProfiles[previous] : nullptr;
+		};
+		if (const auto* previous = findResource(&LandscapeVegetationSettings::m_modelFileId))
 		{
-			profile.m_material = previous.m_material;
-			profile.m_cachedMaterialRenderMetadataRevision = previous.m_cachedMaterialRenderMetadataRevision;
+			profile.m_model = previous->m_model;
+			profile.m_modelLoad = previous->m_modelLoad;
+			profile.m_modelMaterials = previous->m_modelMaterials;
+			profile.m_modelMaterialsLoad = previous->m_modelMaterialsLoad;
+			profile.m_loadingModelMaterials = previous->m_loadingModelMaterials;
+			profile.m_bAreModelMaterialsPublished = previous->m_bAreModelMaterialsPublished;
 		}
+		if (const auto* previous = findResource(&LandscapeVegetationSettings::m_materialFileId))
+		{
+			profile.m_material = previous->m_material;
+			profile.m_materialLoad = previous->m_materialLoad;
+		}
+		// This revision describes the render proxy in this slot, not the reused model/material.
+		if (index < m_vegetationProfiles.Num())
+			profile.m_cachedRenderRevision = m_vegetationProfiles[index].m_cachedRenderRevision;
+	}
+	for (uint32_t index = 0; index < (std::max)(profiles.Num(), m_vegetationProfiles.Num()); ++index)
+	{
+		if (index >= profiles.Num() || index >= m_vegetationProfiles.Num())
+		{
+			m_dirtyVegetationProfiles.Insert(index);
+			const auto& profile = index < profiles.Num() ? profiles[index] : m_vegetationProfiles[index];
+			m_bIsVegetationCollisionDirty |= profile.m_settings.HasCollision();
+			continue;
+		}
+		const auto& profile = profiles[index].m_settings;
+		const auto& previous = m_vegetationProfiles[index].m_settings;
+		const bool bPlacementChanged = static_cast<bool>(profile.m_modelFileId) != static_cast<bool>(previous.m_modelFileId) ||
+			profile.m_residency != previous.m_residency || profile.m_instancesPerChunk != previous.m_instancesPerChunk ||
+			profile.m_minScale != previous.m_minScale || profile.m_maxScale != previous.m_maxScale ||
+			profile.m_groundOffset != previous.m_groundOffset;
+		if (bPlacementChanged) m_dirtyVegetationProfiles.Insert(index);
+		m_bIsVegetationCollisionDirty |= profile.HasCollision() != previous.HasCollision() ||
+			(profile.HasCollision() && (bPlacementChanged || profile.m_colliderRadius != previous.m_colliderRadius ||
+				profile.m_colliderHeight != previous.m_colliderHeight || profile.m_colliderOffsetY != previous.m_colliderOffsetY));
 	}
 	m_vegetationProfiles = std::move(profiles);
-	RequestFullRebuild();
+	MarkDirty();
 }

@@ -13,10 +13,11 @@
 
 using namespace Sailor;
 using namespace Sailor::AssetRegistryInternal;
+using namespace Sailor::Workspace;
 
 bool AssetScanSourceRevisionCache::TryGet(const std::string& physicalSourcePath, FileRevision& outRevision)
 {
-	const std::string key = PathKey(physicalSourcePath);
+	const std::string key = PathKey(PathFromUtf8(physicalSourcePath));
 	std::lock_guard<std::mutex> lock(m_mutex);
 	Entry* cached = nullptr;
 	if (m_entries.Find(key, cached) && cached != nullptr)
@@ -133,7 +134,7 @@ void AssetRegistry::CacheAsset(const AssetInfoPtr info)
 		info->GetAssetImportTime(),
 		info->GetAssetFilepath(),
 		sourceRevision,
-		std::filesystem::path(info->GetMetaFilepath()).filename().string(),
+		PathToUtf8(PathFromUtf8(info->GetMetaFilepath()).filename()),
 		info->m_metadataRevision,
 		info->GetAssetInfoType());
 }
@@ -153,7 +154,7 @@ AssetRegistry::AssetProcessingToken AssetRegistry::BeginAssetProcessing(AssetInf
 	// cannot safely decide which concurrently captured revision is newer.
 	token.m_fileId = info->GetFileId();
 	token.m_sourcePath = info->GetAssetFilepath();
-	const std::string metadataFilename = std::filesystem::path(info->GetMetaFilepath()).filename().string();
+	const std::string metadataFilename = PathToUtf8(PathFromUtf8(info->GetMetaFilepath()).filename());
 	FileRevision metadataRevision;
 	const bool bHasMetadataRevision = Utils::TryGetFileRevision(info->GetMetaFilepath(), metadataRevision);
 	const std::string assetInfoType = info->GetAssetInfoType();
@@ -231,15 +232,15 @@ void AssetRegistry::CompleteAssetProcessing(const AssetProcessingToken& token, b
 	}
 
 	const AssetProcessingToken acknowledgedToken = processingState.Value().m_token;
-	const std::filesystem::path metadataPath = std::filesystem::path(acknowledgedToken.m_sourcePath).parent_path() /
-											   processingState.Value().m_metadataFilename;
+	const std::filesystem::path metadataPath = PathFromUtf8(acknowledgedToken.m_sourcePath).parent_path() /
+											   PathFromUtf8(processingState.Value().m_metadataFilename);
 	FileRevision currentMetadataRevision;
-	if (!Utils::TryGetFileRevision(metadataPath.string(), currentMetadataRevision))
+	if (!Utils::TryGetFileRevision(PathToUtf8(metadataPath), currentMetadataRevision))
 	{
 		processingState.Value().m_bRejected = true;
 		m_bScanProcessingFailed |= m_bScanProcessingActive;
 		SAILOR_LOG_ERROR(
-			"Asset metadata disappeared while its source was being processed: %s", metadataPath.string().c_str());
+			"Asset metadata disappeared while its source was being processed: %s", PathToUtf8(metadataPath).c_str());
 		return;
 	}
 	if (m_scanInvalidatedAssets.Contains(token.m_fileId))
@@ -307,10 +308,10 @@ bool AssetRegistry::CommitScanProcessing()
 			continue;
 		}
 		const AssetProcessingToken& token = state.Value().m_token;
-		const auto metadataPath = std::filesystem::path(token.m_sourcePath).parent_path() / state.Value().m_metadataFilename;
+		const auto metadataPath = PathFromUtf8(token.m_sourcePath).parent_path() / PathFromUtf8(state.Value().m_metadataFilename);
 		FileRevision sourceRevision, metadataRevision;
 		if (!Utils::TryGetFileRevision(token.m_sourcePath, sourceRevision) || sourceRevision != token.m_sourceRevision ||
-			!Utils::TryGetFileRevision(metadataPath.string(), metadataRevision) ||
+			!Utils::TryGetFileRevision(PathToUtf8(metadataPath), metadataRevision) ||
 			metadataRevision != state.Value().m_completedMetadataRevision)
 		{
 			state.Value().m_bRejected = true;
@@ -379,7 +380,7 @@ void AssetRegistry::FinishScanProcessing()
 
 	// Startup scans also commit without an external CompleteScanProcessing call.
 	// Join acknowledgement tasks, not just the work which precedes them.
-	auto commitTask = Tasks::CreateTask<bool>("Commit Asset Scan", std::move(commit));
+	auto commitTask = Tasks::CreateTask<bool>("Commit Asset Scan"_h, std::move(commit));
 	for (const auto& task : processingTasks)
 	{
 		if (task)

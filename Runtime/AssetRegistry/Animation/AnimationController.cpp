@@ -4,16 +4,17 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <string_view>
 
 using namespace Sailor;
 
 namespace
 {
-	void AddError(TVector<std::string>* errors, const std::string& error)
+	void AddError(TVector<std::string>* errors, std::string_view error)
 	{
 		if (errors)
 		{
-			errors->Add(error);
+			errors->Emplace(error);
 		}
 	}
 
@@ -50,7 +51,7 @@ YAML::Node AnimationControllerAsset::Serialize() const
 		YAML::Node serialized;
 		serialized["id"] = parameter.m_id;
 		serialized["name"] = parameter.m_name;
-		serialized["type"] = std::string(magic_enum::enum_name(parameter.m_type));
+		serialized["type"] = magic_enum::enum_name(parameter.m_type);
 		switch (parameter.m_type)
 		{
 		case EAnimationParameterType::Float:
@@ -97,8 +98,7 @@ YAML::Node AnimationControllerAsset::Serialize() const
 		{
 			YAML::Node serializedCondition;
 			serializedCondition["parameter"] = condition.m_parameterId;
-			serializedCondition["operation"] =
-				std::string(magic_enum::enum_name(condition.m_operation));
+			serializedCondition["operation"] = magic_enum::enum_name(condition.m_operation);
 			serializedCondition["floatValue"] = condition.m_floatValue;
 			serializedCondition["intValue"] = condition.m_intValue;
 			serializedCondition["boolValue"] = condition.m_boolValue;
@@ -132,7 +132,7 @@ void AnimationControllerAsset::Deserialize(const YAML::Node& inData)
 			const YAML::Node parameterType = serialized["type"];
 			parameter.m_type = parameterType && !parameterType.IsNull()
 				? magic_enum::enum_cast<EAnimationParameterType>(
-					parameterType.as<std::string>()).value_or(
+					parameterType.as<std::string_view>()).value_or(
 						EAnimationParameterType::Invalid)
 				: EAnimationParameterType::Float;
 			switch (parameter.m_type)
@@ -195,7 +195,7 @@ void AnimationControllerAsset::Deserialize(const YAML::Node& inData)
 			YAML::Node conditions;
 			for (const auto& field : serialized)
 			{
-				if (field.first.as<std::string>("") == "conditions")
+				if (field.first.IsScalar() && field.first.Scalar() == "conditions")
 				{
 					conditions = field.second;
 					break;
@@ -214,7 +214,7 @@ void AnimationControllerAsset::Deserialize(const YAML::Node& inData)
 					condition.m_operation = conditionOperation &&
 						!conditionOperation.IsNull()
 						? magic_enum::enum_cast<EAnimationConditionOperation>(
-							conditionOperation.as<std::string>()).value_or(
+							conditionOperation.as<std::string_view>()).value_or(
 								EAnimationConditionOperation::Invalid)
 						: EAnimationConditionOperation::Equal;
 					condition.m_floatValue = serializedCondition["floatValue"].as<float>(0.0f);
@@ -302,6 +302,11 @@ bool AnimationController::Initialize(
 		{
 			condition.m_parameterIndex = static_cast<uint32_t>(FindParameterIndex(condition.m_parameterId));
 		}
+	}
+	m_parameterIndices.Clear();
+	for (size_t i = 0; i < m_parameters.Num(); ++i)
+	{
+		m_parameterIndices.Add(StringHash::Runtime(m_parameters[i].m_name), static_cast<int32_t>(i));
 	}
 	++m_revision;
 
@@ -459,16 +464,10 @@ int32_t AnimationController::FindParameterIndex(AnimationControllerNodeId parame
 	return -1;
 }
 
-int32_t AnimationController::FindParameterIndex(const std::string& name) const
+int32_t AnimationController::FindParameterIndex(StringHash name) const
 {
-	for (size_t i = 0; i < m_parameters.Num(); ++i)
-	{
-		if (m_parameters[i].m_name == name)
-		{
-			return static_cast<int32_t>(i);
-		}
-	}
-	return -1;
+	const int32_t* index = nullptr;
+	return m_parameterIndices.Find(name, index) ? *index : -1;
 }
 
 bool AnimationSet::Initialize(
@@ -501,21 +500,20 @@ bool AnimationSet::Initialize(
 	if (bValid)
 	{
 		m_entries = std::move(entries);
+		m_slotIndices.Clear();
+		for (size_t i = 0; i < m_entries.Num(); ++i)
+		{
+			m_slotIndices.Add(StringHash::Runtime(m_entries[i].m_slot), i);
+		}
 		++m_revision;
 	}
 	return bValid;
 }
 
-const FileId* AnimationSet::FindAnimation(const std::string& slot) const
+const FileId* AnimationSet::FindAnimation(StringHash slot) const
 {
-	for (const auto& entry : m_entries)
-	{
-		if (entry.m_slot == slot)
-		{
-			return &entry.m_animation;
-		}
-	}
-	return nullptr;
+	const size_t* index = nullptr;
+	return m_slotIndices.Find(slot, index) ? &m_entries[*index].m_animation : nullptr;
 }
 
 bool AnimationControllerInstance::SetController(const AnimationControllerPtr& controller)
@@ -590,7 +588,7 @@ void AnimationControllerInstance::Tick(float deltaTime, float activeClipDuration
 	TryBeginTransition(activeClipDuration);
 }
 
-bool AnimationControllerInstance::SetFloat(const std::string& name, float value)
+bool AnimationControllerInstance::SetFloat(StringHash name, float value)
 {
 	if (!std::isfinite(value))
 	{
@@ -601,28 +599,28 @@ bool AnimationControllerInstance::SetFloat(const std::string& name, float value)
 	return SetParameter(name, EAnimationParameterType::Float, parameter);
 }
 
-bool AnimationControllerInstance::SetInt(const std::string& name, int32_t value)
+bool AnimationControllerInstance::SetInt(StringHash name, int32_t value)
 {
 	AnimationParameterValue parameter;
 	parameter.m_intValue = value;
 	return SetParameter(name, EAnimationParameterType::Int, parameter);
 }
 
-bool AnimationControllerInstance::SetBool(const std::string& name, bool value)
+bool AnimationControllerInstance::SetBool(StringHash name, bool value)
 {
 	AnimationParameterValue parameter;
 	parameter.m_boolValue = value;
 	return SetParameter(name, EAnimationParameterType::Bool, parameter);
 }
 
-bool AnimationControllerInstance::SetTrigger(const std::string& name)
+bool AnimationControllerInstance::SetTrigger(StringHash name)
 {
 	AnimationParameterValue parameter;
 	parameter.m_boolValue = true;
 	return SetParameter(name, EAnimationParameterType::Trigger, parameter);
 }
 
-bool AnimationControllerInstance::ResetTrigger(const std::string& name)
+bool AnimationControllerInstance::ResetTrigger(StringHash name)
 {
 	AnimationParameterValue parameter;
 	parameter.m_boolValue = false;
@@ -643,7 +641,7 @@ float AnimationControllerInstance::GetTransitionAlpha() const
 }
 
 bool AnimationControllerInstance::SetParameter(
-	const std::string& name,
+	StringHash name,
 	EAnimationParameterType type,
 	const AnimationParameterValue& value)
 {

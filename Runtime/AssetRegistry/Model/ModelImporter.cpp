@@ -43,8 +43,8 @@ std::string ModelImporter::GetLodCacheFilename(const FileId& fileId, uint32_t lo
 		return {};
 	}
 
-	const std::filesystem::path filename = fileId.ToString() + "_lod" + std::to_string(lodLevel) + ".bin";
-	return filename == filename.filename() ? filename.string() : std::string{};
+	const auto filename = Workspace::PathFromUtf8(fileId.ToString() + "_lod" + std::to_string(lodLevel) + ".bin");
+	return filename == filename.filename() ? Workspace::PathToUtf8(filename) : std::string{};
 }
 
 void ModelImporter::GenerateLods(TVector<MeshContext>& meshes, uint32_t numLods, float reductionFactor)
@@ -55,7 +55,7 @@ void ModelImporter::GenerateLods(TVector<MeshContext>& meshes, uint32_t numLods,
 void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 {
 	SAILOR_PROFILE_FUNCTION();
-	SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
+	SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath());
 	if (ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo))
 	{
 		UpdateGeneratedAssets(modelAssetInfo, bWasExpired);
@@ -106,7 +106,7 @@ bool ModelImporter::UpdateGeneratedAssets(ModelAssetInfoPtr assetInfo, bool bWas
 		const auto* animation = assetRegistry.GetAssetInfoPtr<AnimationAssetInfoPtr>(fileId);
 		std::error_code error;
 		bAnimationsNeedRepair |= animation == nullptr ||
-			!std::filesystem::is_regular_file(animation->GetMetaFilepath(), error);
+			!std::filesystem::is_regular_file(Workspace::PathFromUtf8(animation->GetMetaFilepath()), error);
 	}
 	const bool bGenerateAnimations = bWasExpired || bAnimationsNeedRepair;
 	if (!bGenerateMaterials && !bGenerateAnimations)
@@ -236,7 +236,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 	// There is no promise, we need to load model
 	if (pAssetInfo)
 	{
-		SAILOR_PROFILE_TEXT(pAssetInfo->GetAssetFilepath().c_str());
+		SAILOR_PROFILE_TEXT(pAssetInfo->GetAssetFilepath());
 
 		ModelPtr pModel = ModelPtr::Make(m_allocator, uid);
 
@@ -246,7 +246,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 			bool m_bIsImported = false;
 		};
 
-		auto loadDataTask = Tasks::CreateTask<TSharedPtr<Data>>("Load model",
+		auto loadDataTask = Tasks::CreateTask<TSharedPtr<Data>>("Load model"_h,
 			[pAssetInfo, pModel
 #if defined(SAILOR_MODEL_IMPORT_TEST_HOOKS)
 			, this
@@ -384,6 +384,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 									sizeof(RHI::VertexP3N3T3B3UV2C4I4W4) * uploadVertices.Num(),
 									uploadIndices.GetData(),
 									sizeof(uint32_t) * uploadIndices.Num());
+								if (pMesh->HasInitializationFailed()) return ModelPtr{};
 								for (auto& lodMesh : pMesh->m_lods)
 								{
 									lodMesh->m_vertexBuffer = pMesh->m_vertexBuffer;
@@ -397,7 +398,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 						}
 						return pModel->IsStructurallyReady() ? pModel : ModelPtr{};
 					},
-					"Update RHI Meshes",
+					"Update RHI Meshes"_h,
 					EThreadType::RHI)
 				->ToTaskWithResult();
 
@@ -441,7 +442,7 @@ Tasks::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(FileId uid, TVector<Mat
 	if (ModelAssetInfoPtr modelInfo = m_assetRegistry->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
 	{
 		Tasks::TaskPtr<bool> loadingFinished =
-			Tasks::CreateTask<bool>("Load Default Materials", []() { return true; });
+			Tasks::CreateTask<bool>("Load Default Materials"_h, []() { return true; });
 		const TVector<FileId>& defaultMaterials = modelInfo->GetDefaultMaterials();
 		outMaterials.Resize(defaultMaterials.Num());
 

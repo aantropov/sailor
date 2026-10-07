@@ -1123,7 +1123,7 @@ VulkanCommandBufferPtr VulkanApi::UpdateBuffer(VulkanDevicePtr device, const Mem
 	(*stagingBufferManagedPtr).m_buffer->GetMemoryDevice()->Copy((**stagingBufferManagedPtr).m_offset, size, pData);
 
 	auto cmdBuffer = device->CreateCommandBuffer(RHI::ECommandListQueue::Transfer);
-	device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*cmdBuffer, "VulkanApi::UpdateBuffer");
+	device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*cmdBuffer, "VulkanApi::UpdateBuffer"_h);
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	cmdBuffer->CopyBuffer(*stagingBufferManagedPtr, dst, size, 0, 0);
 	cmdBuffer->EndCommandList();

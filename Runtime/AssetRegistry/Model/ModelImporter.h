@@ -145,8 +145,9 @@ namespace Sailor
 			TVector<glm::mat4>& outModelMatrices,
 			Math::AABB& outBounds) const;
 
-		// Should be triggered after mesh/material changes
+		// Publish edits to meshes, materials or inverse-bind matrices.
 		SAILOR_API void Flush();
+		uint64_t GetSkeletonRevision() const { return m_skeletonRevision; }
 
 		// The model hierarchy and RHIMesh objects are available after the importer
 		// task completes, while their GPU uploads may still be in flight.
@@ -207,6 +208,8 @@ namespace Sailor
 		std::atomic<bool> m_bIsReady{};
 		mutable std::atomic<bool> m_bGpuReady{};
 		TVector<glm::mat4> m_inverseBind;
+		uint64_t m_inverseBindHash = 0;
+		uint64_t m_skeletonRevision = 0;
 		TVector<MeshCpuData> m_cpuMeshes;
 		TSharedPtr<const BLASGeometry> m_blasGeometry;
 

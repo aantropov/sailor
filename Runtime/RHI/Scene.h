@@ -39,16 +39,10 @@ namespace Sailor::RHI
 	};
 
 	struct RenderInstanceHandleTag;
-	struct RenderItemHandleTag;
 	struct SceneRangeHandleTag;
-	struct MaterialVersionHandleTag;
-	struct ShadowTileHandleTag;
 
 	using RenderInstanceHandle = TGenerationalRenderHandle<RenderInstanceHandleTag>;
-	using RenderItemHandle = TGenerationalRenderHandle<RenderItemHandleTag>;
 	using SceneRangeHandle = TGenerationalRenderHandle<SceneRangeHandleTag>;
-	using MaterialVersionHandle = TGenerationalRenderHandle<MaterialVersionHandleTag>;
-	using ShadowTileHandle = TGenerationalRenderHandle<ShadowTileHandleTag>;
 
 	enum class ESceneChangeBit : uint32_t
 	{
@@ -101,7 +95,7 @@ namespace Sailor::RHI
 		EMobilityType m_mobility = EMobilityType::Static;
 		glm::mat4 m_worldMatrix{ 1.0f };
 		Math::AABB m_worldBounds{};
-		RHIResourcePtr m_topology{};
+		RHIResourceConstPtr m_topology{};
 		uint64_t m_topologyRevision = 0ull;
 		uint64_t m_materialRevision = 0ull;
 		uint64_t m_shadowRevision = 0ull;
@@ -135,7 +129,7 @@ namespace Sailor::RHI
 		RHISceneRecordSlot m_slots[NumRecords]{};
 	};
 
-	using RHISceneRecordPagePtr = TSharedPtr<RHISceneRecordPage>;
+	using RHISceneRecordPagePtr = TSharedPtr<const RHISceneRecordPage>;
 
 	class RHISceneRecordRoot final : public RHIResource
 	{
@@ -144,7 +138,7 @@ namespace Sailor::RHI
 		uint32_t m_generation = 1u;
 	};
 
-	using RHISceneRecordRootPtr = TRefPtr<RHISceneRecordRoot>;
+	using RHISceneRecordRootPtr = TRefPtr<const RHISceneRecordRoot>;
 
 	class RHISceneVersion final : public RHIResource
 	{
@@ -164,14 +158,13 @@ namespace Sailor::RHI
 		uint64_t m_materialRevision = 0ull;
 		uint64_t m_shadowRevision = 0ull;
 		uint64_t m_spatialRevision = 0ull;
-		RHISceneRecordRootPtr m_staticRoot{};
 		RHISceneRecordRootPtr m_recordsRoot{};
-		TSharedPtr<TVector<RenderInstanceHandle>> m_staticHandles{};
-		TSharedPtr<TVector<RenderInstanceHandle>> m_stationaryHandles{};
-		TSharedPtr<TVector<RenderInstanceHandle>> m_dynamicHandles{};
+		TSharedPtr<const TVector<RenderInstanceHandle>> m_staticHandles{};
+		TSharedPtr<const TVector<RenderInstanceHandle>> m_stationaryHandles{};
+		TSharedPtr<const TVector<RenderInstanceHandle>> m_dynamicHandles{};
 	};
 
-	using RHISceneVersionPtr = TRefPtr<RHISceneVersion>;
+	using RHISceneVersionPtr = TRefPtr<const RHISceneVersion>;
 
 	class RHISceneFlightState final : public RHIResource
 	{
@@ -299,7 +292,7 @@ namespace Sailor::RHI
 		TVector<uint32_t> m_retiredSlots{};
 		TVector<uint32_t> m_dirtySlots{};
 		TVector<uint8_t> m_dirtySlotFlags{};
-		TVector<uint8_t> m_cowPageScratch{};
+		TVector<RHISceneRecordPage*> m_cowPageScratch{};
 		RHISceneRecordRootPtr m_currentRoot{};
 		RHISceneVersionPtr m_currentVersion{};
 		TVector<RHISceneVersionPtr> m_retainedVersions{};

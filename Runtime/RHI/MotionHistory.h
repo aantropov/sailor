@@ -9,11 +9,7 @@ namespace Sailor::RHI
 	struct RHISceneViewSnapshot;
 	struct RHIVisibleSceneProxy;
 
-	// SceneView owns this through TSharedPtr, whose deleter needs the complete
-	// type. Keep the history data independent of SceneView to avoid a cycle.
-	// One immutable, successfully submitted view, not the last ECS mutation or
-	// the previous use of a GPU flight slot. Retaining scene versions also keeps
-	// generations, mesh-local transforms and skeleton allocations unambiguous.
+	// An immutable view retained by MotionBlurNode, shared by its MRT producers.
 	struct RHIMotionHistoryFrame
 	{
 		UboFrameData m_frameData{};
@@ -21,8 +17,8 @@ namespace Sailor::RHI
 		ObjectPtr m_cameraOwner{};
 		uint64_t m_cameraRevision = 0ull;
 		ESceneViewRenderMode m_renderMode = ESceneViewRenderMode::Lit;
-		TSharedPtr<TVector<RHISceneVersionPtr>> m_sceneVersions{};
-		TSharedPtr<TVector<glm::mat4>> m_bones{};
+		TSharedPtr<const TVector<RHISceneVersionPtr>> m_sceneVersions{};
+		TSharedPtr<const TVector<glm::mat4>> m_bones{};
 		std::array<uint64_t, 3> m_mobilityRevisions{};
 	};
 
@@ -38,8 +34,9 @@ namespace Sailor::RHI
 		uint32_t previousSkeletonOffset, bool valid);
 
 	SAILOR_API RHIMotionHistoryFrame CaptureMotionHistory(
-		const RHISceneViewSnapshot& snapshot, WorldPtr world,
-		float worldTime, const glm::ivec2& extent);
+		const RHISceneViewSnapshot& snapshot, const glm::ivec2& extent);
+	SAILOR_API void UploadMotionData(RHICommandListPtr commandList,
+		const RHISceneViewSnapshot& snapshot, const glm::ivec2& extent);
 	SAILOR_API bool IsMotionHistoryContinuous(
 		const RHIMotionHistoryFrame& previous, const RHIMotionHistoryFrame& current);
 	SAILOR_API bool ResolvePreviousMotionProxy(

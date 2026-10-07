@@ -26,14 +26,7 @@ HashedStringsContainer& GetHashedStrings()
 
 const std::string& StringHash::ToString() const
 {
-	if (!std::is_constant_evaluated())
-	{
-		return GetStrFromHashedStringsTable(*this);
-	}
-
-	check(false);
-	static const std::string s_notFound = "";
-	return s_notFound;
+	return GetStrFromHashedStringsTable(*this);
 }
 
 StringHash StringHash::Runtime(std::string_view str)

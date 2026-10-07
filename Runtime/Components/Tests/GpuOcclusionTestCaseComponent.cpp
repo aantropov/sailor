@@ -198,7 +198,7 @@ namespace
 		const EMemoryPropertyFlags hostMemory = EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent;
 		const EBufferUsageFlags usage = EBufferUsageBit::UniformBuffer_Bit |
 			EBufferUsageBit::BufferTransferSrc_Bit | EBufferUsageBit::BufferTransferDst_Bit;
-		constexpr std::array<const char*, 2> Names{ "immediateNeighbor", "immediateTarget" };
+		const std::array Names{ "immediateNeighbor"_h, "immediateTarget"_h };
 		std::array<std::array<uint32_t, 257>, 2> expected{};
 		std::array<RHIBufferPtr, 2> buffers;
 		auto bindings = driver->CreateShaderBindings();
@@ -249,7 +249,7 @@ namespace
 				{
 					if (actual[word] != expected[i][word])
 						return std::format("immediate update round {} {} word {}: expected {:#x}, got {:#x}",
-							round, Names[i], word, expected[i][word], actual[word]);
+							round, Names[i].ToString(), word, expected[i][word], actual[word]);
 				}
 			}
 		}
@@ -320,16 +320,16 @@ namespace
 				ETextureFormat::R32_SFLOAT, ETextureFiltration::Nearest, ETextureClamping::Clamp,
 				ETextureUsageBit::Storage_Bit | ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferSrc_Bit);
 			auto graph = RHIFrameGraphPtr::Make();
-			graph->SetRenderTarget("DepthBuffer", resolvedDepth);
+			graph->SetRenderTarget("DepthBuffer"_h, resolvedDepth);
 			Framegraph::FrameGraphBuilder builder;
-			auto highZ = builder.CreateNode("DepthHighZ");
+			auto highZ = builder.CreateNode("DepthHighZ"_h);
 			if (!highZ)
 			{
 				commands->EndCommandList(cmd);
 				return "the runtime factory did not create DepthHighZ";
 			}
-			highZ->SetRHIResource("src", resolvedDepth);
-			highZ->SetRHIResource("dst", pyramid);
+			highZ->SetRHIResource("src"_h, resolvedDepth);
+			highZ->SetRHIResource("dst"_h, pyramid);
 			TVector<Readback> readbacks;
 			for (uint32_t round = 0u; round < 2u; ++round)
 			{
@@ -470,15 +470,15 @@ namespace
 				auto bindings = driver->CreateShaderBindings();
 				if (mip == 0u)
 				{
-					driver->AddSamplerToShaderBindings(bindings, "inputDepth", read, 0u);
+					driver->AddSamplerToShaderBindings(bindings, "inputDepth"_h, read, 0u);
 					commands->ImageMemoryBarrierForComputeSampling(cmd, read);
 				}
 				else
 				{
-					driver->AddStorageImageToShaderBindings(bindings, "inputDepth", read, 0u);
+					driver->AddStorageImageToShaderBindings(bindings, "inputDepth"_h, read, 0u);
 					commands->ImageMemoryBarrier(cmd, read, EImageLayout::ComputeRead);
 				}
-				driver->AddStorageImageToShaderBindings(bindings, "outputDepth", write, 1u);
+				driver->AddStorageImageToShaderBindings(bindings, "outputDepth"_h, write, 1u);
 				commands->ImageMemoryBarrier(cmd, write, EImageLayout::ComputeWrite);
 				const glm::vec2 extent(write->GetExtent());
 				commands->Dispatch(cmd, mip == 0u ? depthInput : depthMips,
@@ -539,14 +539,14 @@ namespace
 			auto drawBuffer = makeBuffer(draws, sizeof(draws), EBufferUsageBit::StorageBuffer_Bit | EBufferUsageBit::IndirectBuffer_Bit);
 			auto frameBuffer = makeBuffer(&frame, sizeof(frame), EBufferUsageBit::UniformBuffer_Bit);
 			auto depthBindings = driver->CreateShaderBindings();
-			driver->AddSamplerToShaderBindings(depthBindings, "depthHighZ", pyramid, 0u);
+			driver->AddSamplerToShaderBindings(depthBindings, "depthHighZ"_h, pyramid, 0u);
 			auto instanceBindings = driver->CreateShaderBindings();
-			driver->AddBufferToShaderBindings(instanceBindings, dataBuffer, "data", 0u);
-			driver->AddBufferToShaderBindings(instanceBindings, indexBuffer, "indices", 1u);
+			driver->AddBufferToShaderBindings(instanceBindings, dataBuffer, "data"_h, 0u);
+			driver->AddBufferToShaderBindings(instanceBindings, indexBuffer, "indices"_h, 1u);
 			auto drawBindings = driver->CreateShaderBindings();
-			driver->AddBufferToShaderBindings(drawBindings, drawBuffer, "drawIndexedIndirect", 0u);
+			driver->AddBufferToShaderBindings(drawBindings, drawBuffer, "drawIndexedIndirect"_h, 0u);
 			auto frameBindings = driver->CreateShaderBindings();
-			driver->AddBufferToShaderBindings(frameBindings, frameBuffer, "frameData", 0u);
+			driver->AddBufferToShaderBindings(frameBindings, frameBuffer, "frameData"_h, 0u);
 			const GpuCullingPushConstants constants{
 				3u, NumInstances, OutputStart, StoragePrefix, CandidateStart, 0u, occlusion ? 1u : 0u };
 			RecordGpuCullingDispatches(*commands, cmd, culling,
@@ -642,7 +642,7 @@ void GpuOcclusionTestCaseComponent::Tick(float)
 		m_depthCoverageShader && m_depthCoverageShader->IsReady())
 	{
 		m_gpuStartTimeMs = Utils::GetCurrentTimeMs();
-		m_validation = Tasks::CreateTaskWithResult<ValidationResult>("GPU occlusion validation",
+		m_validation = Tasks::CreateTaskWithResult<ValidationResult>("GPU occlusion validation"_h,
 			[culling = m_cullingShader->GetComputeShaderRHI(),
 				input = m_depthInputShader->GetComputeShaderRHI(),
 				mips = m_depthMipShader->GetComputeShaderRHI(),

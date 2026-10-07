@@ -11,10 +11,6 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 
-#ifndef _SAILOR_IMPORT_
-const char* LinearizeDepthNode::m_name = "LinearizeDepth";
-#endif
-
 void LinearizeDepthNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -22,7 +18,7 @@ void LinearizeDepthNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandLis
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-	auto depthAttachment = GetResolvedAttachment("depthStencil", frameGraph.GetRawPtr());
+	auto depthAttachment = GetResolvedAttachment("depthStencil"_h, frameGraph.GetRawPtr());
 
 	if (!m_pLinearizeDepthShader)
 	{
@@ -30,14 +26,14 @@ void LinearizeDepthNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandLis
 		App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pLinearizeDepthShader);
 	}
 
-	auto target = GetResolvedAttachment("target", frameGraph.GetRawPtr());
+	auto target = GetResolvedAttachment("target"_h, frameGraph.GetRawPtr());
 
 	if (!m_pLinearizeDepthShader || !depthAttachment || !target || !m_pLinearizeDepthShader->IsReady())
 	{
 		return;
 	}
 
-	auto sampledDepthAttachment = GetSampledAttachment("depthStencil", frameGraph.GetRawPtr());
+	auto sampledDepthAttachment = GetSampledAttachment("depthStencil"_h, frameGraph.GetRawPtr());
 
 	if (!m_linearizeDepth || m_boundDepthAttachment != sampledDepthAttachment)
 	{
@@ -46,7 +42,7 @@ void LinearizeDepthNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandLis
 			m_linearizeDepth = driver->CreateShaderBindings();
 		}
 
-		driver->AddSamplerToShaderBindings(m_linearizeDepth, "depthSampler", sampledDepthAttachment, 0);
+		driver->AddSamplerToShaderBindings(m_linearizeDepth, "depthSampler"_h, sampledDepthAttachment, 0);
 		m_linearizeDepth->RecalculateCompatibility();
 		m_boundDepthAttachment = sampledDepthAttachment;
 	}

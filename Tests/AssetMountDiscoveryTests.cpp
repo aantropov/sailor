@@ -3,12 +3,14 @@
 #include "Support/TempDirectory.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -17,11 +19,11 @@ namespace
 	using namespace Sailor;
 	using Tests::TempDirectory;
 
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -49,7 +51,7 @@ namespace
 		}
 	};
 
-	void WriteFile(const std::filesystem::path& path, const std::string& content = "fixture")
+	void WriteFile(const std::filesystem::path& path, std::string_view content = "fixture")
 	{
 		std::filesystem::create_directories(path.parent_path());
 		std::ofstream stream(path);
@@ -384,6 +386,15 @@ namespace
 			"Workspace should override Engine for a colliding virtual path");
 		Require(winner->m_fileId == "{WORKSPACE-ID}",
 			"Virtual-path resolution should retain winner collision data");
+		constexpr std::string_view path = "./Materials\\shared.mat";
+		std::array<char, path.size()> bounded;
+		std::copy(path.begin(), path.end(), bounded.begin());
+		const auto borrowed = forward.FindByVirtualPath(std::string_view(bounded.data(), bounded.size()));
+		bounded.fill('x');
+		Require(borrowed == winner && borrowed->m_virtualPath == "Materials/shared.mat",
+			"A non-terminated lookup must normalize only the borrowed bytes and return registry-owned data");
+		Require(forward.FindByVirtualPath({}) == nullptr,
+			"An empty virtual-path view must not resolve an asset");
 		Require(reverse.FindByVirtualPath("Materials\\shared.mat") &&
 			reverse.FindByVirtualPath("Materials\\shared.mat")->m_fileId == "{WORKSPACE-ID}",
 			"Virtual lookup should normalize separators");
@@ -399,6 +410,10 @@ namespace
 			diagnostic.m_winnerFileId == "{WORKSPACE-ID}" &&
 			diagnostic.m_conflictingFileId == "{ENGINE-ID}",
 			"Virtual-path diagnostics should carry deterministic winner and loser provenance");
+		Require(diagnostic.m_message == "Asset virtual path collision '" + diagnostic.m_key + "' keeps Workspace '" +
+			workspaceCandidate.m_physicalPath.generic_string() + "' (FileId '{WORKSPACE-ID}') over Engine '" +
+			engineCandidate.m_physicalPath.generic_string() + "' (FileId '{ENGINE-ID}').",
+			"Collision diagnostics must preserve readable names and the existing text format");
 	}
 
 	void TestShaderLibraryOverrideFallsBackToEngine()

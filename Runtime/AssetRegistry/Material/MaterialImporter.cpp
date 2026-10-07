@@ -35,7 +35,7 @@ namespace
 	TVector<std::string> ResolveForwardDefines(const MaterialAsset& material)
 	{
 		auto defines = material.GetShaderDefines();
-		auto shader = App::GetSubmodule<ShaderCompiler>()->LoadShaderAsset(material.GetShader()).TryLock();
+		auto shader = App::GetSubmodule<ShaderCompiler>()->LoadShaderAsset(material.GetShader());
 		const auto tag = material.GetRenderState().GetTag();
 		const bool forward = tag == "Opaque"_h.GetHash() || tag == "Masked"_h.GetHash() || tag == "Transparent"_h.GetHash();
 		if (forward && shader && shader->GetSupportedDefines().Contains("MOTIONS") && !defines.Contains("MOTIONS"))
@@ -43,16 +43,24 @@ namespace
 		return defines;
 	}
 
-	bool IsBaseColorMetadataUniform(const std::string& name)
+	bool IsBaseColorMetadataUniform(StringHash name)
 	{
-		return name == "material.baseColorFactor" ||
-			name == "material.albedo";
+		return name == "material.baseColorFactor"_h ||
+			name == "material.albedo"_h;
 	}
 
-	bool IsEmissiveUniform(const std::string& name)
+	bool IsEmissiveUniform(StringHash name)
 	{
-		return name == "material.emissiveFactor" ||
-			name == "material.emissive" || name == "material.emission";
+		return name == "material.emissiveFactor"_h ||
+			name == "material.emissive"_h || name == "material.emission"_h;
+	}
+
+	glm::vec4 ResolveBaseColorFactor(const Material& material)
+	{
+		const glm::vec4* value = nullptr;
+		if (!material.GetUniformsVec4().Find("material.baseColorFactor"_h, value))
+			material.GetUniformsVec4().Find("material.albedo"_h, value);
+		return value ? *value : glm::vec4(1.0f);
 	}
 }
 
@@ -73,7 +81,36 @@ void Material::AdvanceContentRevision(bool bSurfaceChanged)
 
 void Material::AdvanceRenderMetadataRevision()
 {
+	UpdateRenderMetadata();
 	m_renderMetadataRevision.fetch_add(1, std::memory_order_release);
+}
+
+void Material::UpdateRenderMetadata()
+{
+	RHI::RHIMaterialMetadata metadata;
+	metadata.m_renderQueueTag = m_renderState.GetTag();
+	metadata.m_bRequiresCustomDepthShader = m_renderState.IsRequiredCustomDepthShader();
+	metadata.m_shader = m_shader;
+	metadata.m_baseColorFactor = ResolveBaseColorFactor(*this);
+	const float* cutoff = nullptr;
+	if (m_uniformsFloat.Find("material.alphaCutoff"_h, cutoff)) metadata.m_alphaCutoff = *cutoff;
+
+	const TexturePtr* baseColor = nullptr;
+	if (!m_samplers.Find("baseColorSampler"_h, baseColor)) m_samplers.Find("albedoSampler"_h, baseColor);
+	if (auto* textures = App::GetSubmodule<TextureImporter>())
+	{
+		if (baseColor && *baseColor)
+			metadata.m_baseColorSampler = static_cast<uint32_t>(textures->GetTextureIndex((*baseColor)->GetFileId()));
+#if defined(__APPLE__)
+		for (const auto& sampler : m_samplers)
+			metadata.m_textureSamplers.Add(sampler.m_second ?
+				static_cast<uint32_t>(textures->GetTextureIndex(sampler.m_second->GetFileId())) : 0u);
+#endif
+	}
+#if defined(__APPLE__)
+	RHI::NormalizeTextureSamplers(metadata.m_textureSamplers);
+#endif
+	m_renderMetadata = std::move(metadata);
 }
 
 void Material::SetShader(ShaderSetPtr shader)
@@ -119,6 +156,7 @@ MaterialPtr Material::CreateInstance(WorldPtr world, const MaterialPtr& material
 	newMaterial->m_renderState = material->GetRenderState();
 	newMaterial->m_samplers = material->GetSamplers();
 	newMaterial->m_shader = material->GetShader();
+	newMaterial->m_renderMetadata = material->m_renderMetadata;
 	newMaterial->m_bIsDirty = true;
 
 	newMaterial->UpdateRHIResource();
@@ -131,7 +169,7 @@ Tasks::ITaskPtr Material::OnHotReload()
 {
 	m_bIsDirty = true;
 
-	auto updateRHI = Tasks::CreateTask("Update material RHI resource", [=, this]
+	auto updateRHI = Tasks::CreateTask("Update material RHI resource"_h, [=, this]
 		{
 			// Dependency hot reload tasks are joined before this task executes, so
 			// publish the revision only after their material-visible data is ready.
@@ -160,7 +198,7 @@ void Material::ClearUniforms()
 	AdvanceRenderMetadataRevision();
 }
 
-void Material::SetSampler(const std::string& name, TexturePtr value)
+void Material::SetSampler(StringHash name, TexturePtr value)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -175,7 +213,7 @@ void Material::SetSampler(const std::string& name, TexturePtr value)
 	}
 }
 
-void Material::SetUniform(const std::string& name, float value)
+void Material::SetUniform(StringHash name, float value)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -186,7 +224,7 @@ void Material::SetUniform(const std::string& name, float value)
 	}
 
 	bool bRenderMetadataChanged = false;
-	if (name == "material.alphaCutoff")
+	if (name == "material.alphaCutoff"_h)
 	{
 		constexpr float defaultAlphaCutoff = 0.5f;
 		const float currentAlphaCutoff = currentValue ? *currentValue : defaultAlphaCutoff;
@@ -204,7 +242,7 @@ void Material::SetUniform(const std::string& name, float value)
 	}
 }
 
-void Material::SetUniform(const std::string& name, glm::vec4 value)
+void Material::SetUniform(StringHash name, glm::vec4 value)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -214,33 +252,18 @@ void Material::SetUniform(const std::string& name, glm::vec4 value)
 		return;
 	}
 
-	auto resolveBaseColorAlpha = [this]()
-	{
-		glm::vec4* baseColor = nullptr;
-		if (m_uniformsVec4.Find("material.baseColorFactor", baseColor) && baseColor)
-		{
-			return baseColor->a;
-		}
-
-		if (m_uniformsVec4.Find("material.albedo", baseColor) && baseColor)
-		{
-			return baseColor->a;
-		}
-
-		return 1.0f;
-	};
-
 	const bool bBaseColorMetadataUniform = IsBaseColorMetadataUniform(name);
-	const float currentBaseColorAlpha = bBaseColorMetadataUniform ? resolveBaseColorAlpha() : 1.0f;
+	const float currentBaseColorAlpha = m_renderMetadata.m_baseColorFactor.a;
 
 	m_uniformsVec4.At_Lock(name) = value;
 	m_uniformsVec4.Unlock(name);
 
 	m_bIsDirty = true;
 	AdvanceContentRevision(!IsEmissiveUniform(name));
-	if (bBaseColorMetadataUniform && currentBaseColorAlpha != resolveBaseColorAlpha())
+	if (bBaseColorMetadataUniform)
 	{
-		AdvanceRenderMetadataRevision();
+		m_renderMetadata.m_baseColorFactor = ResolveBaseColorFactor(*this);
+		if (currentBaseColorAlpha != m_renderMetadata.m_baseColorFactor.a) AdvanceRenderMetadataRevision();
 	}
 }
 
@@ -311,16 +334,10 @@ void Material::UpdateRHIResource()
 				RHI::Renderer::GetDriver()->UpdateShaderBinding(m_commonShaderBindings, sampler.m_first, sampler.m_second->GetRHI());
 			}
 
-			const std::string parameterName = "material." + sampler.m_first;
-
 			// Also the sampler could be bound by texture array, by its name
-			if (m_commonShaderBindings->HasParameter(parameterName))
+			if (m_commonShaderBindings->HasParameter("material"_h, sampler.m_first))
 			{
-				std::string outBinding;
-				std::string outVariable;
-
-				RHI::RHIShaderBindingSet::ParseParameter(parameterName, outBinding, outVariable);
-				m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
+				m_commonShaderBindings->GetOrAddShaderBinding("material"_h);
 			}
 		}
 	}
@@ -333,8 +350,8 @@ void Material::UpdateRHIResource()
 		{
 			if (m_commonShaderBindings->HasParameter(uniform.m_first))
 			{
-				std::string outBinding;
-				std::string outVariable;
+				StringHash outBinding;
+				StringHash outVariable;
 
 				RHI::RHIShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
 				m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
@@ -345,8 +362,8 @@ void Material::UpdateRHIResource()
 		{
 			if (m_commonShaderBindings->HasParameter(uniform.m_first))
 			{
-				std::string outBinding;
-				std::string outVariable;
+				StringHash outBinding;
+				StringHash outVariable;
 
 				RHI::RHIShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
 				m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
@@ -367,8 +384,14 @@ void Material::UpdateRHIResourceAndUniforms()
 
 void Material::SynchronizeUniformValues(const Material& source)
 {
+	const float previousAlpha = m_renderMetadata.m_baseColorFactor.a;
+	const float previousCutoff = m_renderMetadata.m_alphaCutoff;
 	m_uniformsVec4 = source.m_uniformsVec4;
 	m_uniformsFloat = source.m_uniformsFloat;
+	m_renderMetadata.m_baseColorFactor = source.m_renderMetadata.m_baseColorFactor;
+	m_renderMetadata.m_alphaCutoff = source.m_renderMetadata.m_alphaCutoff;
+	if (previousAlpha != m_renderMetadata.m_baseColorFactor.a || previousCutoff != m_renderMetadata.m_alphaCutoff)
+		AdvanceRenderMetadataRevision();
 	m_bIsDirty = true;
 	AdvanceContentRevision();
 	ForcelyUpdateUniforms();
@@ -381,24 +404,18 @@ void Material::UpdateUniforms(RHI::RHICommandListPtr cmdList)
 		return;
 	}
 
-	TMap<std::string, TVector<uint8_t>> bindingData;
+	TMap<StringHash, TVector<uint8_t>> bindingData;
 
 	auto writeParameter = [this, &bindingData](
-		const std::string& parameterName,
+		StringHash bindingName,
+		StringHash variableName,
 		const void* value,
 		size_t valueSize)
 		{
-			if (!m_commonShaderBindings->HasParameter(parameterName))
+			if (!m_commonShaderBindings->HasParameter(bindingName, variableName))
 			{
 				return;
 			}
-
-			std::string bindingName;
-			std::string variableName;
-			RHI::RHIShaderBindingSet::ParseParameter(
-				parameterName,
-				bindingName,
-				variableName);
 
 			RHI::RHIShaderBindingPtr& binding =
 				m_commonShaderBindings->GetOrAddShaderBinding(bindingName);
@@ -420,8 +437,8 @@ void Material::UpdateUniforms(RHI::RHICommandListPtr cmdList)
 				valueSize > bindingSize - memberLayout.m_absoluteOffset)
 			{
 				ensure(false,
-					"Cannot pack material parameter %s",
-					parameterName.c_str());
+					"Cannot pack material parameter %s.%s",
+					bindingName.ToString().c_str(), variableName.ToString().c_str());
 				return;
 			}
 
@@ -442,23 +459,26 @@ void Material::UpdateUniforms(RHI::RHICommandListPtr cmdList)
 
 	for (auto& uniform : m_uniformsVec4)
 	{
+		StringHash bindingName, variableName;
+		RHI::RHIShaderBindingSet::ParseParameter(uniform.m_first, bindingName, variableName);
 		const glm::vec4 value = uniform.m_second;
-		writeParameter(uniform.m_first, &value, sizeof(value));
+		writeParameter(bindingName, variableName, &value, sizeof(value));
 	}
 
 	for (auto& uniform : m_uniformsFloat)
 	{
+		StringHash bindingName, variableName;
+		RHI::RHIShaderBindingSet::ParseParameter(uniform.m_first, bindingName, variableName);
 		const float value = uniform.m_second;
-		writeParameter(uniform.m_first, &value, sizeof(value));
+		writeParameter(bindingName, variableName, &value, sizeof(value));
 	}
 
 	for (auto& sampler : m_samplers)
 	{
-		const std::string parameterName = "material." + sampler.m_first;
 		const uint32_t value = static_cast<uint32_t>(
 			App::GetSubmodule<TextureImporter>()->GetTextureIndex(
 				sampler.m_second->GetFileId()));
-		writeParameter(parameterName, &value, sizeof(value));
+		writeParameter("material"_h, sampler.m_first, &value, sizeof(value));
 	}
 
 	for (const auto& data : bindingData)
@@ -493,7 +513,7 @@ void Material::ForcelyUpdateUniforms()
 		SAILOR_PROFILE_SCOPE("Create command list");
 
 		cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Transfer);
-		RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Forcely Update Uniforms");
+		RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Forcely Update Uniforms"_h);
 		RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 		UpdateUniforms(cmdList);
 		RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
@@ -501,7 +521,7 @@ void Material::ForcelyUpdateUniforms()
 
 	// Create fences to track the state of material update
 	RHI::RHIFencePtr fence = RHI::RHIFencePtr::Make();
-	RHI::Renderer::GetDriver()->SetDebugName(fence, std::format("Forcely update uniforms"));
+	RHI::Renderer::GetDriver()->SetDebugName(fence, "Forcely update uniforms"_h);
 
 	RHI::Renderer::GetDriver()->TrackDelayedInitialization(m_commonShaderBindings.GetRawPtr(), fence);
 	for (const auto& entry : m_rhiMaterials)
@@ -514,7 +534,7 @@ void Material::ForcelyUpdateUniforms()
 	}
 
 	// Submit cmd lists
-	SAILOR_ENQUEUE_TASK_RENDER_THREAD("Update shader bindings set rhi",
+	SAILOR_ENQUEUE_TASK_RENDER_THREAD("Update shader bindings set rhi"_h,
 		([cmdList, fence]()
 			{
 				RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, fence);
@@ -560,7 +580,7 @@ void MaterialAsset::Deserialize(const YAML::Node& outData)
 	RHI::ECullMode cullMode = RHI::ECullMode::Back;
 	RHI::EBlendMode blendMode = RHI::EBlendMode::None;
 	RHI::EFillMode fillMode = RHI::EFillMode::Fill;
-	std::string renderQueue = "Opaque";
+	std::string_view renderQueue = "Opaque";
 
 	m_pData->m_shaderDefines.Clear();
 	m_pData->m_uniformsVec4.Clear();
@@ -582,7 +602,7 @@ void MaterialAsset::Deserialize(const YAML::Node& outData)
 	::Deserialize(outData, "renderQueue", renderQueue);
 
 	m_pData->m_renderQueue = renderQueue;
-	const size_t tag = StringHash::Runtime(renderQueue).GetHash();
+	const size_t tag = HashString(renderQueue);
 	m_pData->m_renderState = RHI::RenderState(bEnableDepthTest, bEnableZWrite, depthBias, bCustomDepthShader, cullMode, blendMode, fillMode, tag, bSupportMultisampling);
 }
 
@@ -636,7 +656,7 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 	promise = CreateMaterialTask(material, asset, true, promise);
 	auto task = promise;
 	m_promises.Unlock(uid);
-	auto acknowledge = Tasks::CreateTask<bool>("Acknowledge material reload", [registry, token, task]()
+	auto acknowledge = Tasks::CreateTask<bool>("Acknowledge material reload"_h, [registry, token, task]()
 		{
 			const bool succeeded = task->GetResult().IsValid();
 			registry->CompleteAssetProcessing(token, succeeded);
@@ -659,7 +679,7 @@ TSharedPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(FileId uid)
 
 	if (MaterialAssetInfoPtr materialAssetInfo = dynamic_cast<MaterialAssetInfoPtr>(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)))
 	{
-		SAILOR_PROFILE_TEXT(materialAssetInfo->GetAssetFilepath().c_str());
+		SAILOR_PROFILE_TEXT(materialAssetInfo->GetAssetFilepath());
 
 		const std::string& filepath = materialAssetInfo->GetAssetFilepath();
 
@@ -699,7 +719,7 @@ TSharedPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(FileId uid)
 
 const FileId& MaterialImporter::CreateMaterialAsset(const std::string& assetFilepath, MaterialAsset::Data data)
 {
-	if (auto shader = App::GetSubmodule<ShaderCompiler>()->LoadShaderAsset(data.m_shader).TryLock())
+	if (auto shader = App::GetSubmodule<ShaderCompiler>()->LoadShaderAsset(data.m_shader))
 	{
 		for (const auto& entry : shader->GetDefaultUniformsVec4())
 		{
@@ -718,7 +738,7 @@ const FileId& MaterialImporter::CreateMaterialAsset(const std::string& assetFile
 
 	YAML::Node newMaterial = asset.Serialize();
 
-	std::ofstream assetFile(assetFilepath);
+	std::ofstream assetFile(Workspace::PathFromUtf8(assetFilepath));
 
 	assetFile << newMaterial;
 	assetFile.close();
@@ -773,7 +793,7 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::CreateMaterialTask(
 	const std::string filename = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(
 		material->GetFileId())->GetAssetFilepath();
 
-	auto publish = Tasks::CreateTask<MaterialPtr>("Publish material",
+	auto publish = Tasks::CreateTask<MaterialPtr>("Publish material"_h,
 		[material, asset, loadShader, samplers, filename, bHotReload]() mutable
 		{
 			auto shader = loadShader ? loadShader->GetResult() : ShaderSetPtr{};
@@ -795,15 +815,15 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::CreateMaterialTask(
 						filename.c_str(), sampler.m_first.c_str());
 					return MaterialPtr{};
 				}
-				prepared.m_samplers.Insert(sampler.m_first, texture);
+				prepared.m_samplers.Insert(StringHash::Runtime(sampler.m_first), texture);
 			}
 			for (const auto& uniform : asset->GetUniformsVec4())
 			{
-				prepared.m_uniformsVec4.Insert(uniform.m_first, *uniform.m_second);
+				prepared.m_uniformsVec4.Insert(StringHash::Runtime(uniform.m_first), *uniform.m_second);
 			}
 			for (const auto& uniform : asset->GetUniformsFloat())
 			{
-				prepared.m_uniformsFloat.Insert(uniform.m_first, *uniform.m_second);
+				prepared.m_uniformsFloat.Insert(StringHash::Runtime(uniform.m_first), *uniform.m_second);
 			}
 
 			prepared.UpdateRHIResourceAndUniforms();

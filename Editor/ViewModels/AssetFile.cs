@@ -671,64 +671,6 @@ public partial class AssetFile : ObservableObject, ICloneable
     }
 }
 
-public partial class ObservableFileIdList : ObservableObject
-{
-    public ObservableFileIdList()
-    {
-        Values.CollectionChanged += ValuesCollectionChanged;
-        Values.ItemChanged += ValuesItemChanged;
-    }
-
-    public ObservableFileIdList(IEnumerable<FileId> values) : this()
-    {
-        foreach (var value in values)
-        {
-            Values.Add(new Observable<FileId>(
-                value ?? new FileId()));
-        }
-    }
-
-    public ObservableList<Observable<FileId>> Values { get; } = [];
-
-    void ValuesCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
-    {
-        OnPropertyChanged(nameof(Values));
-    }
-
-    void ValuesItemChanged(object sender, ItemChangedEventArgs<Observable<FileId>> e)
-    {
-        OnPropertyChanged(nameof(Values));
-    }
-}
-
-public partial class ObservableFloatList : ObservableObject
-{
-    public ObservableFloatList()
-    {
-        Values.CollectionChanged += ValuesCollectionChanged;
-        Values.ItemChanged += ValuesItemChanged;
-    }
-
-    public ObservableFloatList(IEnumerable<float> values) : this()
-    {
-        foreach (var value in values)
-        {
-            Values.Add(new Observable<float>(value));
-        }
-    }
-
-    public ObservableList<Observable<float>> Values { get; } = [];
-
-    void ValuesCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
-    {
-        OnPropertyChanged(nameof(Values));
-    }
-
-    void ValuesItemChanged(object sender, ItemChangedEventArgs<Observable<float>> e)
-    {
-        OnPropertyChanged(nameof(Values));
-    }
-}
 
 public class AssetFileYamlConverter : IYamlTypeConverter
 {

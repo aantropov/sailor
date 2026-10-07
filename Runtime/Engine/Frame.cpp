@@ -14,8 +14,8 @@ using namespace Sailor;
 
 
 Sailor::FrameState::FrameState() noexcept
+	: m_pData(TUniquePtr<FrameData>::Make())
 {
-	m_pData = TUniquePtr<FrameData>::Make();
 }
 
 Sailor::FrameState::FrameState(WorldPtr world, int64_t timeMs, const FrameInputState& currentInputState, const ivec2& centerPointViewport, const Sailor::FrameState* previousFrame) noexcept
@@ -40,15 +40,14 @@ Sailor::FrameState::FrameState(WorldPtr world, int64_t timeMs, const FrameInputS
 	m_pData->m_drawImGui = nullptr;
 }
 
-Sailor::FrameState::FrameState(const Sailor::FrameState& frameState) noexcept :
-	Sailor::FrameState()
+Sailor::FrameState::FrameState(const Sailor::FrameState& frameState) noexcept
+	: m_pData(TUniquePtr<FrameData>::Make(*frameState.m_pData))
 {
-	m_pData = TUniquePtr<FrameData>::Make(*frameState.m_pData);
 }
 
 Sailor::FrameState::FrameState(Sailor::FrameState&& frameState) noexcept
+	: m_pData(std::move(frameState.m_pData))
 {
-	std::swap(m_pData, frameState.m_pData);
 }
 
 Sailor::FrameState& Sailor::FrameState::operator=(Sailor::FrameState frameState)
@@ -60,7 +59,7 @@ Sailor::FrameState& Sailor::FrameState::operator=(Sailor::FrameState frameState)
 RHI::RHICommandListPtr Sailor::FrameState::CreateCommandBuffer(uint32_t index)
 {
 	auto cmdList = m_pData->m_updateResourcesCommandBuffers[index] = RHI::Renderer::GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Transfer);
-	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "World");
+	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "World"_h);
 
 	return cmdList;
 }

@@ -40,6 +40,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <sstream>
 #include <utility>
 
@@ -278,11 +279,11 @@ namespace
 		}
 	};
 
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -305,7 +306,7 @@ namespace
 	void RequireVec3Near(
 		const glm::vec3& actual,
 		const glm::vec3& expected,
-		const std::string& message)
+		std::string_view message)
 	{
 		Require(
 			NearlyEqual(actual.x, expected.x) &&
@@ -2124,9 +2125,10 @@ namespace
 
 	void TestGltfAlphaModesResolveRenderState()
 	{
+		const char boundedMode[] = { 'B', 'L', 'E', 'N', 'D', 'x' };
 		const auto transparent =
-			GltfImporterUtils::ResolveMaterialAlphaMode("BLEND");
-		Require(std::string(transparent.m_renderQueue) == "Transparent",
+			GltfImporterUtils::ResolveMaterialAlphaMode(std::string_view(boundedMode, 5));
+		Require(std::string_view(transparent.m_renderQueue) == "Transparent",
 			"glTF BLEND materials must use the Transparent queue");
 		Require(!transparent.m_bEnableZWrite,
 			"glTF BLEND materials must not write depth");
@@ -2137,18 +2139,18 @@ namespace
 
 		const auto masked =
 			GltfImporterUtils::ResolveMaterialAlphaMode("MASK");
-		Require(std::string(masked.m_renderQueue) == "Masked",
+		Require(std::string_view(masked.m_renderQueue) == "Masked",
 			"glTF MASK materials must use the Masked queue");
 		Require(masked.m_bEnableZWrite && masked.m_bAlphaCutout,
 			"glTF MASK materials must write depth through the cutout path");
 		Require(masked.m_blendMode == RHI::EBlendMode::None,
 			"glTF MASK materials must not enable alpha blending");
 
-		for (const std::string alphaMode : { "OPAQUE", "", "UNKNOWN" })
+		for (const std::string_view alphaMode : { "OPAQUE", "", "UNKNOWN" })
 		{
 			const auto opaque =
 				GltfImporterUtils::ResolveMaterialAlphaMode(alphaMode);
-			Require(std::string(opaque.m_renderQueue) == "Opaque",
+			Require(std::string_view(opaque.m_renderQueue) == "Opaque",
 				"non-BLEND glTF materials must default to the Opaque queue");
 			Require(opaque.m_bEnableZWrite && !opaque.m_bAlphaCutout,
 				"opaque glTF materials must retain the default depth path");
@@ -2158,7 +2160,7 @@ namespace
 
 		const auto transmission =
 			GltfImporterUtils::ResolveMaterialAlphaMode("OPAQUE", true);
-		Require(std::string(transmission.m_renderQueue) == "Transparent",
+		Require(std::string_view(transmission.m_renderQueue) == "Transparent",
 			"glTF transmission materials must use the Transparent queue");
 		Require(!transmission.m_bEnableZWrite &&
 			!transmission.m_bAlphaCutout,
@@ -2415,11 +2417,14 @@ uniformsVec4:
 samplers:
   transmissionSampler: generated-transmission
 )");
+		generated["defines"].push_back("TRANSMISSION");
+		generated["defines"].push_back("GENERATED_ONLY_UNMANAGED");
 
 		Require(GltfImporterUtils::MergeGeneratedMaterialProperties(
 			material,
 			generated),
 			"valid generated material properties must be mergeable");
+		generated["defines"] = YAML::Node(YAML::NodeType::Sequence);
 		Require(material["renderQueue"].as<std::string>() == "Transparent" &&
 			!material["bEnableZWrite"].as<bool>() &&
 			material["bCustomDepthShader"].as<bool>() &&
@@ -2455,15 +2460,15 @@ samplers:
 		bool bHasAlphaCutout = false;
 		for (const YAML::Node& define : material["defines"])
 		{
-			const std::string value = define.as<std::string>();
+			const std::string_view value = define.Scalar();
 			bHasClearCoat |= value == "CLEAR_COAT";
 			bHasCustomFeature |= value == "CUSTOM_FEATURE";
 			bHasTransmission |= value == "TRANSMISSION";
 			bHasAlphaCutout |= value == "ALPHA_CUTOUT";
 		}
-		Require(bHasClearCoat && bHasCustomFeature && bHasTransmission &&
+		Require(material["defines"].size() == 3 && bHasClearCoat && bHasCustomFeature && bHasTransmission &&
 			!bHasAlphaCutout,
-			"migration must preserve unrelated defines and replace managed defines");
+			"merged defines must stay owned, retain authored entries and deduplicate managed entries after source replacement");
 
 		YAML::Node opaqueGenerated = YAML::Load(R"(
 renderQueue: Opaque

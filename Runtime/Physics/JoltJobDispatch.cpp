@@ -17,7 +17,7 @@ void Physics::JoltJobSystem::QueueJob(JPH::JobSystem::Job* job)
 	const auto completion = m_numQueuedTasks;
 	completion->fetch_add(1, std::memory_order_relaxed);
 	auto task = Tasks::CreateTask(
-		"Jolt Physics",
+		"Jolt Physics"_h,
 		[completion, job]()
 		{
 			job->Execute();

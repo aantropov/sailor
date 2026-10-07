@@ -86,14 +86,12 @@ namespace Sailor::RHI
 		void BeginSubmission(
 			uint64_t submissionId,
 			uint32_t flightSlot,
-			uint64_t sceneRevision = 0ull,
 			uint64_t materialRevision = 0ull,
 			uint64_t resourceGeneration = 0ull)
 		{
 			m_lock.Lock();
 			m_submissionId = submissionId;
 			m_flightSlot = flightSlot;
-			m_sceneRevision = sceneRevision;
 			m_materialRevision = materialRevision;
 			m_resourceGeneration = resourceGeneration;
 			m_frameCompletion.Clear();
@@ -155,7 +153,7 @@ namespace Sailor::RHI
 			return result;
 		}
 
-		void RetainResource(RHIResourcePtr resource)
+		void RetainResource(RHIResourceConstPtr resource)
 		{
 			if (!resource)
 			{
@@ -200,20 +198,17 @@ namespace Sailor::RHI
 		}
 		RHIFencePtr GetFrameCompletion() const { return m_frameCompletion; }
 		uint32_t GetFlightSlot() const { return m_flightSlot; }
-		uint64_t GetSceneRevision() const { return m_sceneRevision; }
 		uint64_t GetMaterialRevision() const { return m_materialRevision; }
-		const RHISemaphorePtr& GetResourceReadySemaphore() const { return m_resourceReadySemaphore; }
 
 	private:
 		mutable SpinLock m_lock;
 		uint64_t m_submissionId = 0ull;
 		uint32_t m_flightSlot = 0u;
-		uint64_t m_sceneRevision = 0ull;
 		uint64_t m_materialRevision = 0ull;
 		uint64_t m_resourceGeneration = 0ull;
 		mutable TMap<RHIFrameGraphResourceKey, RHIFrameGraphSubmissionResourcePtr> m_frameGraphResources;
 		TVector<RHIFrameGraphResourceKey> m_expiredFrameGraphResourcesScratch;
-		TVector<RHIResourcePtr> m_retainedResources;
+		TVector<RHIResourceConstPtr> m_retainedResources;
 		RHISemaphorePtr m_resourceReadySemaphore{};
 		mutable RHIFencePtr m_frameCompletion{};
 	};

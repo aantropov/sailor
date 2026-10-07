@@ -183,28 +183,14 @@ namespace
 	ObservedSky ResolveObservedSky(World* world)
 	{
 		ObservedSky result;
-		std::string selectedInstanceId;
-		for (const GameObjectPtr& gameObject : world->GetGameObjects())
+		if (auto* lighting = world->GetECS<LightingECS>())
 		{
-			if (!gameObject)
+			if (const auto sky = lighting->GetSky())
 			{
-				continue;
-			}
-			const auto sky = gameObject->GetComponent<SkyComponent>();
-			if (!sky)
-			{
-				continue;
-			}
-			++result.m_componentCount;
-			const std::string instanceId =
-				gameObject->GetInstanceId().ToString();
-			if (result.m_componentCount == 1u ||
-				instanceId < selectedInstanceId)
-			{
+				result.m_componentCount = static_cast<uint32_t>(lighting->GetNumSkies());
 				result.m_parameters = sky->GetSkyParameters();
 				result.m_indirectIntensity = sky->GetGiIndirectIntensity();
-				result.m_selectedName = gameObject->GetName();
-				selectedInstanceId = instanceId;
+				result.m_selectedName = sky->GetOwner()->GetName();
 			}
 		}
 		return result;

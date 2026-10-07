@@ -15,6 +15,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -46,17 +47,35 @@ namespace
 		}
 	};
 
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
 	VulkanShaderStagePtr MakePushConstantStage(std::initializer_list<VkPushConstantRange> ranges)
 	{
 		return TRefPtr<PushConstantStageProbe>::Make(TVector<VkPushConstantRange>(ranges));
+	}
+
+	void TestShaderEntryPointIdentifiers()
+	{
+		auto first = VulkanShaderStagePtr::Make(VK_SHADER_STAGE_VERTEX_BIT, "main"_h, VulkanShaderModulePtr{});
+		auto second = VulkanShaderStagePtr::Make(VK_SHADER_STAGE_FRAGMENT_BIT, "main"_h, VulkanShaderModulePtr{});
+		Require(first->m_entryPointName == second->m_entryPointName &&
+			first->m_entryPointName.ToString().data() == second->m_entryPointName.ToString().data(),
+			"shader stages must share the registered entry-point name instead of copying text per stage");
+
+		VulkanShaderStagePtr dynamic;
+		{
+			std::string source = "prefix:custom_entry:suffix";
+			dynamic = VulkanShaderStagePtr::Make(VK_SHADER_STAGE_COMPUTE_BIT,
+				StringHash::Runtime(std::string_view(source).substr(7, 12)), VulkanShaderModulePtr{});
+		}
+		Require(dynamic->m_entryPointName.ToString() == "custom_entry",
+			"a dynamic entry point must own its registered text after the parser input is destroyed");
 	}
 
 	void TestRequiredDeviceFeatures()
@@ -289,7 +308,7 @@ namespace
 		uint32_t textureCount)
 	{
 		auto& textureBinding =
-			bindings->GetOrAddShaderBinding("textureSamplers");
+			bindings->GetOrAddShaderBinding("textureSamplers"_h);
 		TVector<RHI::RHITexturePtr> textures;
 		textures.Reserve(textureCount);
 		for (uint32_t i = 0; i < textureCount; ++i)
@@ -699,6 +718,7 @@ namespace
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "ShaderEntryPointIdentifiers", TestShaderEntryPointIdentifiers },
 		{ "RequiredDeviceFeatures", TestRequiredDeviceFeatures },
 		{ "PushConstantRangesUseReflectedStagesAndDeviceLimit",
 			TestPushConstantRangesUseReflectedStagesAndDeviceLimit },

@@ -26,6 +26,7 @@
 
 #ifndef STB_IMAGE_WRITE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
+#define STBIW_WINDOWS_UTF8
 #define __STDC_LIB_EXT1__
 #include <stb_image_write.h>
 #endif 
@@ -424,7 +425,7 @@ namespace
 	}
 
 	template<typename TUniforms, typename TValue>
-	bool ReadUniformValue(const TUniforms& uniforms, const std::string& name, TValue& outValue)
+	bool ReadUniformValue(const TUniforms& uniforms, StringHash name, TValue& outValue)
 	{
 		const TValue* pValue = nullptr;
 		if (uniforms.Find(name, pValue) && pValue != nullptr)
@@ -457,28 +458,28 @@ namespace
 		float attenuationDistance = (std::numeric_limits<float>::max)();
 		float indexOfRefraction = 1.5f;
 
-		ReadUniformValue(material.GetUniformsVec4(), "material.baseColorFactor", baseColorFactor);
-		ReadUniformValue(material.GetUniformsVec4(), "material.albedo", baseColorFactor);
-		ReadUniformValue(material.GetUniformsVec4(), "material.emissiveFactor", emissiveFactor);
-		ReadUniformValue(material.GetUniformsVec4(), "material.emissive", emissiveFactor);
-		ReadUniformValue(material.GetUniformsVec4(), "material.emission", emissiveFactor);
-		ReadUniformValue(material.GetUniformsVec4(), "material.attenuationColor", attenuationColor);
-		ReadUniformValue(material.GetUniformsVec4(), "material.sheenColorFactor", sheenColor);
-		ReadUniformValue(material.GetUniformsVec4(), "material.layerUvScale", layerUvScale);
-		ReadUniformValue(material.GetUniformsFloat(), "material.roughnessFactor", roughness);
-		ReadUniformValue(material.GetUniformsFloat(), "material.roughness", roughness);
-		ReadUniformValue(material.GetUniformsFloat(), "material.metallicFactor", metallic);
-		ReadUniformValue(material.GetUniformsFloat(), "material.metallic", metallic);
-		ReadUniformValue(material.GetUniformsFloat(), "material.alphaCutoff", alphaCutoff);
-		ReadUniformValue(material.GetUniformsFloat(), "material.normalScale", normalScale);
-		ReadUniformValue(material.GetUniformsFloat(), "material.clearcoatFactor", clearcoat);
-		ReadUniformValue(material.GetUniformsFloat(), "material.clearcoatRoughnessFactor", clearcoatRoughness);
-		ReadUniformValue(material.GetUniformsFloat(), "material.clearcoatNormalScale", clearcoatNormalScale);
-		ReadUniformValue(material.GetUniformsFloat(), "material.sheenRoughnessFactor", sheenRoughness);
-		ReadUniformValue(material.GetUniformsFloat(), "material.transmissionFactor", transmission);
-		ReadUniformValue(material.GetUniformsFloat(), "material.thicknessFactor", thickness);
-		ReadUniformValue(material.GetUniformsFloat(), "material.attenuationDistance", attenuationDistance);
-		ReadUniformValue(material.GetUniformsFloat(), "material.indexOfRefraction", indexOfRefraction);
+		ReadUniformValue(material.GetUniformsVec4(), "material.baseColorFactor"_h, baseColorFactor);
+		ReadUniformValue(material.GetUniformsVec4(), "material.albedo"_h, baseColorFactor);
+		ReadUniformValue(material.GetUniformsVec4(), "material.emissiveFactor"_h, emissiveFactor);
+		ReadUniformValue(material.GetUniformsVec4(), "material.emissive"_h, emissiveFactor);
+		ReadUniformValue(material.GetUniformsVec4(), "material.emission"_h, emissiveFactor);
+		ReadUniformValue(material.GetUniformsVec4(), "material.attenuationColor"_h, attenuationColor);
+		ReadUniformValue(material.GetUniformsVec4(), "material.sheenColorFactor"_h, sheenColor);
+		ReadUniformValue(material.GetUniformsVec4(), "material.layerUvScale"_h, layerUvScale);
+		ReadUniformValue(material.GetUniformsFloat(), "material.roughnessFactor"_h, roughness);
+		ReadUniformValue(material.GetUniformsFloat(), "material.roughness"_h, roughness);
+		ReadUniformValue(material.GetUniformsFloat(), "material.metallicFactor"_h, metallic);
+		ReadUniformValue(material.GetUniformsFloat(), "material.metallic"_h, metallic);
+		ReadUniformValue(material.GetUniformsFloat(), "material.alphaCutoff"_h, alphaCutoff);
+		ReadUniformValue(material.GetUniformsFloat(), "material.normalScale"_h, normalScale);
+		ReadUniformValue(material.GetUniformsFloat(), "material.clearcoatFactor"_h, clearcoat);
+		ReadUniformValue(material.GetUniformsFloat(), "material.clearcoatRoughnessFactor"_h, clearcoatRoughness);
+		ReadUniformValue(material.GetUniformsFloat(), "material.clearcoatNormalScale"_h, clearcoatNormalScale);
+		ReadUniformValue(material.GetUniformsFloat(), "material.sheenRoughnessFactor"_h, sheenRoughness);
+		ReadUniformValue(material.GetUniformsFloat(), "material.transmissionFactor"_h, transmission);
+		ReadUniformValue(material.GetUniformsFloat(), "material.thicknessFactor"_h, thickness);
+		ReadUniformValue(material.GetUniformsFloat(), "material.attenuationDistance"_h, attenuationDistance);
+		ReadUniformValue(material.GetUniformsFloat(), "material.indexOfRefraction"_h, indexOfRefraction);
 
 		outMaterial.m_baseColorFactor = baseColorFactor;
 		outMaterial.m_emissiveFactor = glm::vec3(emissiveFactor);
@@ -823,7 +824,7 @@ namespace
 			const std::string materialName = materialFileId.empty() ?
 				"runtime material slot " + std::to_string(i) :
 				"material '" + materialFileId + "'";
-			auto prepareTexture = [&](const std::string& samplerName,
+			auto prepareTexture = [&](StringHash samplerName,
 				const PathTracer::SamplerSnapshot& texture,
 				bool bLinear,
 				bool bNormalMap,
@@ -852,7 +853,7 @@ namespace
 						texture.m_texture->m_fileId.ToString() : std::string();
 					warning(
 						"could not prepare " + materialName +
-						" sampler '" + samplerName + "'" +
+						" sampler '" + samplerName.ToString() + "'" +
 						(textureFileId.empty() ? std::string() :
 							" texture '" + textureFileId + "'") +
 						": " + diagnostic);
@@ -863,82 +864,82 @@ namespace
 			{
 				if (samplerIndex != 0u && samplerIndex % 256u == 0u && !reportMaterialProgress(completedMaterials)) return false;
 				const auto& sampler = pMaterial->m_samplers[samplerIndex];
-				const std::string& samplerName = sampler.m_first;
+				const StringHash samplerName = sampler.m_first;
 				const auto& pTexture = sampler.m_second;
 
-				if (samplerName == "baseColorSampler")
+				if (samplerName == "baseColorSampler"_h)
 				{
 					prepareTexture(samplerName, pTexture, true, false, 4, outMaterial.m_baseColorIndex);
 				}
-				else if (samplerName == "albedoSampler")
+				else if (samplerName == "albedoSampler"_h)
 				{
 					prepareTexture(samplerName, pTexture, true, false, 4, outMaterial.m_baseColorIndex);
 				}
-				else if (samplerName == "layer0Sampler")
+				else if (samplerName == "layer0Sampler"_h)
 				{
 					prepareTexture(samplerName, pTexture, true, false, 4, outMaterial.m_layerColorIndices[0]);
 				}
-				else if (samplerName == "layer1Sampler")
+				else if (samplerName == "layer1Sampler"_h)
 				{
 					prepareTexture(samplerName, pTexture, true, false, 4, outMaterial.m_layerColorIndices[1]);
 				}
-				else if (samplerName == "layer2Sampler")
+				else if (samplerName == "layer2Sampler"_h)
 				{
 					prepareTexture(samplerName, pTexture, true, false, 4, outMaterial.m_layerColorIndices[2]);
 				}
-				else if (samplerName == "layer3Sampler")
+				else if (samplerName == "layer3Sampler"_h)
 				{
 					prepareTexture(samplerName, pTexture, true, false, 4, outMaterial.m_layerColorIndices[3]);
 				}
-				else if (samplerName == "normalSampler")
+				else if (samplerName == "normalSampler"_h)
 				{
 					prepareTexture(samplerName, pTexture, false, true, 3, outMaterial.m_normalIndex);
 				}
-				else if (samplerName == "ormSampler")
+				else if (samplerName == "ormSampler"_h)
 				{
 					prepareTexture(samplerName, pTexture, false, false, 3, outMaterial.m_metallicRoughnessIndex);
 				}
-				else if (samplerName == "emissiveSampler")
+				else if (samplerName == "emissiveSampler"_h)
 				{
 					prepareTexture(samplerName, pTexture, true, false, 3, outMaterial.m_emissiveIndex);
 				}
-				else if (samplerName == "occlusionSampler")
+				else if (samplerName == "occlusionSampler"_h)
 				{
 					prepareTexture(samplerName, pTexture, false, false, 3, outMaterial.m_occlusionIndex);
 				}
-				else if (samplerName == "roughnessSampler")
+				else if (samplerName == "roughnessSampler"_h)
 				{
 					prepareTexture(samplerName, pTexture, false, false, 3, outMaterial.m_roughnessIndex);
 				}
-				else if (samplerName == "metalnessSampler" || samplerName == "metallicSampler")
+				else if (samplerName == "metalnessSampler"_h || samplerName == "metallicSampler"_h)
 				{
 					prepareTexture(samplerName, pTexture, false, false, 3, outMaterial.m_metallicIndex);
 				}
-				else if (samplerName == "transmissionSampler")
+				else if (samplerName == "transmissionSampler"_h)
 				{
 					prepareTexture(samplerName, pTexture, false, false, 3, outMaterial.m_transmissionIndex);
 				}
-				else if (samplerName == "thicknessSampler")
+				else if (samplerName == "thicknessSampler"_h)
 				{
 					prepareTexture(samplerName, pTexture, false, false, 3, outMaterial.m_thicknessIndex);
 				}
-				else if (samplerName == "clearcoatSampler")
+				else if (samplerName == "clearcoatSampler"_h)
 				{
 					prepareTexture(samplerName, pTexture, false, false, 3, outMaterial.m_clearcoatIndex);
 				}
-				else if (samplerName == "clearcoatRoughnessSampler")
+				else if (samplerName == "clearcoatRoughnessSampler"_h)
 				{
 					prepareTexture(samplerName, pTexture, false, false, 4, outMaterial.m_clearcoatRoughnessIndex);
 				}
-				else if (samplerName == "clearcoatNormalSampler")
+				else if (samplerName == "clearcoatNormalSampler"_h)
 				{
 					prepareTexture(samplerName, pTexture, false, true, 3, outMaterial.m_clearcoatNormalIndex);
 				}
-				else if (samplerName == "sheenColorSampler")
+				else if (samplerName == "sheenColorSampler"_h)
 				{
 					prepareTexture(samplerName, pTexture, true, false, 3, outMaterial.m_sheenColorIndex);
 				}
-				else if (samplerName == "sheenRoughnessSampler")
+				else if (samplerName == "sheenRoughnessSampler"_h)
 				{
 					prepareTexture(samplerName, pTexture, false, false, 4, outMaterial.m_sheenRoughnessIndex);
 				}
@@ -1089,7 +1090,7 @@ PathTracer::MaterialSnapshots PathTracer::CaptureMaterials(const TVector<Materia
 	auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
 	if (scheduler && !scheduler->IsRendererThread())
 	{
-		auto capture = Tasks::CreateTask("Capture material CPU state", captureValues, EThreadType::Render);
+		auto capture = Tasks::CreateTask("Capture material CPU state"_h, captureValues, EThreadType::Render);
 		capture->Run();
 		capture->Wait();
 	}
@@ -1197,15 +1198,15 @@ void PathTracer::ParseCommandLineArgs(PathTracer::Params& res, const char** args
 
 	for (int32_t i = 1; i < num; i++)
 	{
-		std::string arg = args[i];
+		const std::string_view arg = args[i];
 
 		if (arg == "--in")
 		{
-			res.m_pathToModel = Utils::GetArgValue(args, i, num);
+			res.m_pathToModel = Workspace::PathFromUtf8(Utils::GetArgValue(args, i, num));
 		}
 		else if (arg == "--out")
 		{
-			res.m_output = Utils::GetArgValue(args, i, num);
+			res.m_output = Workspace::PathFromUtf8(Utils::GetArgValue(args, i, num));
 		}
 		else if (arg == "--height")
 		{
@@ -2190,7 +2191,7 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 		{
 			for (uint32_t x = 0; x < width; x += DefaultGroupSize)
 			{
-				auto task = Tasks::CreateTask("Calculate raytracing",
+				auto task = Tasks::CreateTask("Calculate raytracing"_h,
 					[=, &finishedTasks, &outputTex, &alphaTex, this]() mutable
 					{
 						Ray ray;
@@ -2293,7 +2294,7 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 	if (!params.m_output.empty())
 	{
 		const uint32_t Channels = 4;
-		if (!stbi_write_png(params.m_output.string().c_str(), width, height, Channels, GetLastRenderedImage().GetData(), width * Channels))
+		if (!stbi_write_png(Workspace::PathToUtf8(params.m_output).c_str(), width, height, Channels, GetLastRenderedImage().GetData(), width * Channels))
 		{
 			SAILOR_LOG_ERROR("Raytracing WriteImage error");
 			return false;
@@ -2416,17 +2417,17 @@ void PathTracer::Run(const PathTracer::Params& params)
 		return;
 	}
 
-	ModelAssetInfoPtr pModelAssetInfo = pAssetRegistry->GetAssetInfoPtr<ModelAssetInfoPtr>(params.m_pathToModel.string());
+	ModelAssetInfoPtr pModelAssetInfo = pAssetRegistry->GetAssetInfoPtr<ModelAssetInfoPtr>(Workspace::PathToUtf8(params.m_pathToModel));
 
 	if (!pModelAssetInfo && std::filesystem::exists(params.m_pathToModel))
 	{
-		const FileId& modelFileId = pAssetRegistry->GetOrLoadFile(params.m_pathToModel.string());
+		const FileId& modelFileId = pAssetRegistry->GetOrLoadFile(Workspace::PathToUtf8(params.m_pathToModel));
 		pModelAssetInfo = pAssetRegistry->GetAssetInfoPtr<ModelAssetInfoPtr>(modelFileId);
 	}
 
 	if (!pModelAssetInfo)
 	{
-		SAILOR_LOG_ERROR("Cannot resolve model asset: %s", params.m_pathToModel.string().c_str());
+		SAILOR_LOG_ERROR("Cannot resolve model asset: %s", Workspace::PathToUtf8(params.m_pathToModel).c_str());
 		return;
 	}
 
@@ -2437,7 +2438,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 	if (!pModelAssetInfo->ShouldKeepCpuBuffers())
 	{
-		SAILOR_LOG_ERROR("Path tracer requires bShouldKeepCpuBuffers=true in model asset info: %s", params.m_pathToModel.string().c_str());
+		SAILOR_LOG_ERROR("Path tracer requires bShouldKeepCpuBuffers=true in model asset info: %s", Workspace::PathToUtf8(params.m_pathToModel).c_str());
 		return;
 	}
 
@@ -2445,7 +2446,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 	Tasks::TaskPtr<ModelPtr> pLoadModelTask = pModelImporter->LoadModel(pModelAssetInfo->GetFileId(), pModel);
 	if (!pLoadModelTask.IsValid())
 	{
-		SAILOR_LOG_ERROR("Cannot start model loading for path tracing: %s", params.m_pathToModel.string().c_str());
+		SAILOR_LOG_ERROR("Cannot start model loading for path tracing: %s", Workspace::PathToUtf8(params.m_pathToModel).c_str());
 		return;
 	}
 
@@ -2453,7 +2454,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 	pModel = pLoadModelTask->GetResult();
 	if (!pModel || !pModel->IsStructurallyReady() || !pModel->HasCpuMeshes())
 	{
-		SAILOR_LOG_ERROR("Path tracer requires CPU model buffers. Enable bShouldKeepCpuBuffers for model: %s", params.m_pathToModel.string().c_str());
+		SAILOR_LOG_ERROR("Path tracer requires CPU model buffers. Enable bShouldKeepCpuBuffers for model: %s", Workspace::PathToUtf8(params.m_pathToModel).c_str());
 		return;
 	}
 
@@ -2463,7 +2464,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 	if (!pModel->HasBLAS())
 	{
-		SAILOR_LOG_ERROR("PathTracer requires model BLAS/TLAS-ready scene data: %s", params.m_pathToModel.string().c_str());
+		SAILOR_LOG_ERROR("PathTracer requires model BLAS/TLAS-ready scene data: %s", Workspace::PathToUtf8(params.m_pathToModel).c_str());
 		return;
 	}
 
@@ -2510,7 +2511,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 	}
 	if (!InitializeScene({ instance }, runtimeMaterials, lights))
 	{
-		SAILOR_LOG_ERROR("Cannot prepare model for path tracing: %s", params.m_pathToModel.string().c_str());
+		SAILOR_LOG_ERROR("Cannot prepare model for path tracing: %s", Workspace::PathToUtf8(params.m_pathToModel).c_str());
 		return;
 	}
 

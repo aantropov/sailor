@@ -37,7 +37,7 @@ namespace Sailor
 
 	inline void Serialize(
 		YAML::Node& node,
-		const std::string& name,
+		std::string_view name,
 		const FileRevision& revision)
 	{
 		node[name] = revision.Serialize();
@@ -45,7 +45,7 @@ namespace Sailor
 
 	inline bool Deserialize(
 		const YAML::Node& node,
-		const std::string& name,
+		std::string_view name,
 		FileRevision& revision)
 	{
 		if (!node[name])
@@ -62,14 +62,14 @@ namespace Sailor
 	YAML::Node SerializeEnum(typename std::enable_if< std::is_enum<T>::value, T >::type enumeration)
 	{
 		YAML::Node j;
-		j = std::string(magic_enum::enum_name(enumeration));
+		j = magic_enum::enum_name(enumeration);
 		return j;
 	}
 
 	template<typename T>
 	bool DeserializeEnum(const YAML::Node& j, typename std::enable_if< std::is_enum<T>::value, T >::type& outEnumeration)
 	{
-		auto value = magic_enum::enum_cast<T>(j.as<std::string>());
+		auto value = magic_enum::enum_cast<T>(j.as<std::string_view>());
 		if (!value)
 		{
 			return false;
@@ -79,7 +79,7 @@ namespace Sailor
 	}
 
 	template<typename T>
-	__forceinline void Serialize(YAML::Node& node, const std::string& name, const T& variable)
+	__forceinline void Serialize(YAML::Node& node, std::string_view name, const T& variable)
 	{
 		if constexpr (IsEnum<T>)
 		{
@@ -92,7 +92,7 @@ namespace Sailor
 	}
 
 	template<typename T>
-	__forceinline bool Deserialize(const YAML::Node& node, const std::string& name, T& variable)
+	__forceinline bool Deserialize(const YAML::Node& node, std::string_view name, T& variable)
 	{
 		const YAML::Node value = node[name];
 		if (value)
@@ -119,14 +119,14 @@ namespace Sailor
 	}
 
 	template<typename TMember>
-	std::string GetYamlFieldName(TMember member)
+	constexpr std::string_view GetYamlFieldName(TMember member)
 	{
 		if constexpr (refl::descriptor::has_attribute<Attributes::YamlName>(member))
 		{
 			return refl::descriptor::get_attribute<Attributes::YamlName>(member).m_name;
 		}
 		const std::string_view name = member.name.c_str();
-		return std::string(name.starts_with("m_") ? name.substr(2) : name);
+		return name.starts_with("m_") ? name.substr(2) : name;
 	}
 
 	template<typename T>
@@ -155,7 +155,7 @@ namespace Sailor
 			{
 				if constexpr (refl::descriptor::is_field(member))
 				{
-					const std::string name = GetYamlFieldName(member);
+					const std::string_view name = GetYamlFieldName(member);
 					if constexpr (refl::descriptor::has_attribute<Attributes::YamlOptional>(member))
 					{
 						if (!node[name]) return;
@@ -171,7 +171,7 @@ namespace Sailor
 					{
 						using TValue = std::remove_cvref_t<decltype(member(value))>;
 						const char* separator = refl::trait::is_reflectable_v<TValue> ? "." : ": ";
-						throw YAML::RepresentationException(error.mark, name + separator + error.msg);
+						throw YAML::RepresentationException(error.mark, std::string(name) + separator + error.msg);
 					}
 				}
 			});

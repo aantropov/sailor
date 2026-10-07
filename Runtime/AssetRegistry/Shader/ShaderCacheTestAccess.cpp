@@ -52,7 +52,7 @@ std::string ShaderCacheTestAccess::GetGeneration(const ShaderCache& cache, const
 std::filesystem::path ShaderCacheTestAccess::GetArtifactPath(const ShaderCache& cache,
 	const FileId& uid,
 	uint32_t permutation,
-	const char* stage,
+	std::string_view stage,
 	bool bIsDebug)
 {
 	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);

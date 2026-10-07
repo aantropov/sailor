@@ -16,8 +16,11 @@ namespace Sailor::Math
 	public:
 
 		glm::vec4 m_position;
-		glm::quat m_rotation;
 		glm::vec4 m_scale;
+
+		const glm::quat& GetRotation() const { return m_rotation; }
+		// Non-finite and near-zero authored rotations become identity.
+		SAILOR_API void SetRotation(const glm::quat& rotation);
 
 		SAILOR_API vec3 GetForward() const;
 		SAILOR_API vec3 GetRight() const;
@@ -46,12 +49,17 @@ namespace Sailor::Math
 
 		SAILOR_API Transform(vec4 pos = vec4(0.0f, 0.0f, 0.0f, 0.0f),
 			quat rot = quat(1.0, 0.0, 0.0, 0.0),
-			vec4 scale = vec4(1.0f, 1.0f, 1.0f, 1.0f)) : m_position(pos), m_rotation(rot), m_scale(scale) {
+			vec4 scale = vec4(1.0f, 1.0f, 1.0f, 1.0f)) : m_position(pos), m_scale(scale)
+		{
+			SetRotation(rot);
 		}
 
 		// Extracts TRS; shear cannot be represented by Transform.
 		SAILOR_API static Transform FromMatrix(const glm::mat4& m);
 
 		static const Transform Identity;
+
+	private:
+		glm::quat m_rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 	};
 }

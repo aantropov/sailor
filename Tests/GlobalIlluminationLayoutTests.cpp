@@ -24,11 +24,11 @@ namespace
 		uint32_t m_level = 0;
 	};
 
-	void Require(bool value, const std::string& message)
+	void Require(bool value, std::string_view message)
 	{
 		if (!value)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 

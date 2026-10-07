@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Workspace/WorkspaceInterface.h"
+
 #include <cstdint>
 #include <type_traits>
 
@@ -101,18 +103,15 @@ namespace Sailor::Workspace
 	inline constexpr uint32_t WorkspaceHostApiVersion = 1;
 	inline constexpr uint32_t WorkspaceModuleAbiRevision = SAILOR_WORKSPACE_ABI_REVISION;
 	inline constexpr uint32_t WorkspaceTypeMetadataVersion = 1;
-	inline constexpr uint32_t WorkspaceTypeDescriptorFlagAmbiguousProperties = 1u << 0;
-	inline constexpr uint32_t WorkspaceTypeDescriptorKnownFlags =
-		WorkspaceTypeDescriptorFlagAmbiguousProperties;
 	inline constexpr const char* WorkspaceModuleApiEntryPointV1 = "SailorGetWorkspaceModuleApiV1";
-	inline constexpr const char* WorkspaceTypeMetadataEntryPointV1 = "SailorGetWorkspaceTypeMetadataV1";
 	static constexpr char WorkspaceModuleAbiTagV1[] =
 		"sailor-workspace-abi-" SAILOR_WORKSPACE_ABI_STRINGIFY(SAILOR_WORKSPACE_ABI_REVISION)
 		";arch=" SAILOR_WORKSPACE_ABI_ARCH
 		";compiler=" SAILOR_WORKSPACE_ABI_COMPILER
 		";crt=" SAILOR_WORKSPACE_ABI_CRT
 		";iterator=" SAILOR_WORKSPACE_ABI_ITERATOR
-		";config=" SAILOR_WORKSPACE_ABI_CONFIG;
+		";config=" SAILOR_WORKSPACE_ABI_CONFIG
+		";interface=" SAILOR_WORKSPACE_INTERFACE_ID;
 	static constexpr uint64_t WorkspaceModuleAbiTagV1Length = sizeof(WorkspaceModuleAbiTagV1) - 1;
 
 	static constexpr const char* GetWorkspaceModuleAbiTagV1() noexcept
@@ -129,15 +128,8 @@ namespace Sailor::Workspace
 	{
 		Success = 0,
 		InvalidArgument = 1,
-		BufferTooSmall = 2,
-		SerializationFailed = 3,
-		RegistrationFailed = 4
+		RegistrationFailed = 2
 	};
-
-	using TGetWorkspaceTypeMetadataV1 = uint32_t (SAILOR_WORKSPACE_CALL *)(
-		char* destination,
-		uint64_t destinationCapacity,
-		uint64_t* outPayloadSize) noexcept;
 
 	// Returns the zero-offset Component address at destination, or null after cleaning up on failure.
 	using TWorkspacePlacementFactoryV1 = void* (SAILOR_WORKSPACE_CALL *)(void* destination) noexcept;
@@ -145,16 +137,9 @@ namespace Sailor::Workspace
 	struct WorkspaceTypeDescriptorV1
 	{
 		uint32_t structSize;
-		const char* typeName;
-		uint64_t typeNameLength;
-		const char* baseTypeName;
-		uint64_t baseTypeNameLength;
 		const void* typeInfo;
 		uint64_t typeSize;
 		uint64_t typeAlignment;
-		const char* canonicalDefaultValues;
-		uint64_t canonicalDefaultValuesLength;
-		uint32_t flags;
 		TWorkspacePlacementFactoryV1 placementFactory;
 	};
 
@@ -181,7 +166,6 @@ namespace Sailor::Workspace
 		uint64_t moduleNameLength;
 		const char* abiTag;
 		uint64_t abiTagLength;
-		TGetWorkspaceTypeMetadataV1 getMetadata;
 		TRegisterWorkspaceTypesV1 registerTypes;
 	};
 
@@ -196,14 +180,7 @@ namespace Sailor::Workspace
 }
 
 #if !defined(SAILOR_WORKSPACE_NO_ENTRY_POINT_DECLARATIONS)
-// A null destination with zero capacity queries the exact UTF-8 payload size.
-// The payload is not null-terminated and no allocation ownership crosses the module boundary.
-extern "C" SAILOR_WORKSPACE_MODULE_EXPORT uint32_t SAILOR_WORKSPACE_CALL SailorGetWorkspaceTypeMetadataV1(
-	char* destination,
-	uint64_t destinationCapacity,
-	uint64_t* outPayloadSize) noexcept;
-
-// The returned table and all pointed-to strings have process lifetime and remain module-owned.
+// The returned table and its strings remain module-owned until the library is unloaded.
 extern "C" SAILOR_WORKSPACE_MODULE_EXPORT const Sailor::Workspace::WorkspaceModuleApiV1* SAILOR_WORKSPACE_CALL
 	SailorGetWorkspaceModuleApiV1() noexcept;
 #endif

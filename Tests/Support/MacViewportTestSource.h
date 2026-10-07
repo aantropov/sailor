@@ -4,11 +4,12 @@
 
 namespace Sailor::Tests
 {
-	inline EditorRemote::MacRendererFrameSource MakeMacReadbackSource(uint32_t width, uint32_t height, uint8_t value)
+	inline EditorRemote::MacRendererFrameSource MakeMacReadbackSource(uint32_t width, uint32_t height, uint8_t value,
+		EditorRemote::FrameIndex frameIndex = 37)
 	{
-		auto frame = TSharedPtr<RHI::EditorReadbackFrame>::Make();
+		auto frame = TSharedPtr<RHI::ReadbackFrame>::Make();
 		frame->m_extent = { width, height };
-		frame->m_frameIndex = 37;
+		frame->m_frameIndex = frameIndex;
 		frame->m_bytesPerRow = width * 4;
 		frame->m_bgraPixels.Resize(static_cast<size_t>(width) * height * 4u);
 		for (auto& byte : frame->m_bgraPixels) byte = value;

@@ -68,17 +68,14 @@ void PathTracerECS::UpdateScene()
 
 	for (auto& data : m_components)
 	{
-		const size_t componentHandle = GetComponentIndex(&data);
 		if (!data.m_bIsActive || !data.m_options.m_bEnabled)
 		{
-			m_proxyOctree.Remove(componentHandle);
 			continue;
 		}
 
 		GameObjectPtr pOwnerGameObject = data.m_owner.StaticCast<GameObject>();
 		if (!pOwnerGameObject)
 		{
-			m_proxyOctree.Remove(componentHandle);
 			continue;
 		}
 
@@ -114,24 +111,11 @@ void PathTracerECS::UpdateScene()
 			data.m_bNeedsRebuild = true;
 			data.m_modelFileId = modelFileId;
 			data.m_meshIndex = meshIndex;
-			if (m_proxyOctree.Contains(componentHandle))
-			{
-				m_proxyOctree.Remove(componentHandle);
-			}
 			continue;
 		}
 
 		data.m_worldBounds = pModel->GetBoundsAABB(meshIndex);
 		data.m_worldBounds.Apply(data.m_worldMatrix);
-
-		if (data.m_worldBounds.IsValid())
-		{
-			m_proxyOctree.Update(data.m_worldBounds.GetCenter(), data.m_worldBounds.GetExtents(), componentHandle);
-		}
-		else if (m_proxyOctree.Contains(componentHandle))
-		{
-			m_proxyOctree.Remove(componentHandle);
-		}
 
 		Raytracing::PathTracer::TLASInstance instance{};
 		instance.m_model = pModel;
@@ -189,7 +173,6 @@ void PathTracerECS::CopySceneView(RHI::RHISceneViewPtr& outSceneView)
 void PathTracerECS::EndPlay()
 {
 	ECS::TSystem<PathTracerECS, PathTracerProxyData>::EndPlay();
-	m_proxyOctree.Clear();
 	m_scene.Clear();
 	m_materialSnapshots.Clear();
 }

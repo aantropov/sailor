@@ -21,15 +21,7 @@ void LandscapeComponent::Initialize()
 	data.SetImportMaps(m_heightmapTexture, m_materialMasks);
 	data.SetAuthoredStamps(m_sculptStamps, m_paintStamps);
 	data.SetVegetationAsset(m_vegetation);
-	data.SetVegetationProfiles(m_vegetationModels, m_vegetationMaterials,
-		m_vegetationMeshIndex, m_vegetationInstancesPerChunk,
-		m_vegetationResidency, m_vegetationPriority, m_vegetationMinScale,
-		m_vegetationMaxScale, m_vegetationGroundOffset,
-		m_vegetationShadowMode, m_vegetationShadowDistance,
-		m_vegetationMinLod, m_vegetationMaxLod,
-		m_vegetationLod1ScreenCoverage, m_vegetationLod2ScreenCoverage,
-		m_vegetationCullDistance, m_vegetationColliderRadius,
-		m_vegetationColliderHeight, m_vegetationColliderOffsetY);
+	data.SetVegetationProfiles(m_vegetationProfiles);
 }
 
 void LandscapeComponent::EndPlay()
@@ -64,15 +56,7 @@ void LandscapeComponent::MarkDirty()
 		data->SetImportMaps(m_heightmapTexture, m_materialMasks);
 		data->SetAuthoredStamps(m_sculptStamps, m_paintStamps);
 		data->SetVegetationAsset(m_vegetation);
-		data->SetVegetationProfiles(m_vegetationModels, m_vegetationMaterials,
-			m_vegetationMeshIndex, m_vegetationInstancesPerChunk,
-			m_vegetationResidency, m_vegetationPriority, m_vegetationMinScale,
-			m_vegetationMaxScale, m_vegetationGroundOffset,
-			m_vegetationShadowMode, m_vegetationShadowDistance,
-			m_vegetationMinLod, m_vegetationMaxLod,
-			m_vegetationLod1ScreenCoverage, m_vegetationLod2ScreenCoverage,
-			m_vegetationCullDistance, m_vegetationColliderRadius,
-			m_vegetationColliderHeight, m_vegetationColliderOffsetY);
+		data->SetVegetationProfiles(m_vegetationProfiles);
 	}
 }
 
@@ -101,28 +85,16 @@ void LandscapeComponent::SetLodDistances(const TVector<float>& value)
 }
 void LandscapeComponent::SetLodSkirtDepth(float value) { m_lodSkirtDepth = std::isfinite(value) ? (std::clamp)(value, 0.0f, 64.0f) : 2.0f; MarkDirty(); }
 void LandscapeComponent::SetGrassResidencyHysteresis(float value) { m_grassResidencyHysteresis = std::isfinite(value) ? (std::clamp)(value, 0.0f, 512.0f) : 12.0f; MarkDirty(); }
-void LandscapeComponent::SetSculptStamps(const TVector<float>& value) { m_sculptStamps = value; m_sculptStamps.Resize(m_sculptStamps.Num() / 5u * 5u); MarkDirty(); }
-void LandscapeComponent::SetPaintStamps(const TVector<float>& value) { m_paintStamps = value; m_paintStamps.Resize(m_paintStamps.Num() / 5u * 5u); MarkDirty(); }
+void LandscapeComponent::SetSculptStamps(const TVector<LandscapeSculptStamp>& value) { m_sculptStamps = value; MarkDirty(); }
+void LandscapeComponent::SetPaintStamps(const TVector<LandscapePaintStamp>& value) { m_paintStamps = value; MarkDirty(); }
 void LandscapeComponent::SetVegetation(const FileId& value) { m_vegetation = value; MarkDirty(); }
-void LandscapeComponent::SetVegetationModels(const TVector<FileId>& value) { m_vegetationModels = value; MarkDirty(); }
-void LandscapeComponent::SetVegetationMaterials(const TVector<FileId>& value) { m_vegetationMaterials = value; MarkDirty(); }
-void LandscapeComponent::SetVegetationMeshIndex(const TVector<float>& value) { m_vegetationMeshIndex = value; MarkDirty(); }
-void LandscapeComponent::SetVegetationInstancesPerChunk(const TVector<float>& value) { m_vegetationInstancesPerChunk = value; MarkDirty(); }
-void LandscapeComponent::SetVegetationResidency(const TVector<float>& value) { m_vegetationResidency = value; MarkDirty(); }
-void LandscapeComponent::SetVegetationPriority(const TVector<float>& value) { m_vegetationPriority = value; MarkDirty(); }
-void LandscapeComponent::SetVegetationMinScale(const TVector<float>& value) { m_vegetationMinScale = value; MarkDirty(); }
-void LandscapeComponent::SetVegetationMaxScale(const TVector<float>& value) { m_vegetationMaxScale = value; MarkDirty(); }
-void LandscapeComponent::SetVegetationGroundOffset(const TVector<float>& value) { m_vegetationGroundOffset = value; MarkDirty(); }
-void LandscapeComponent::SetVegetationShadowMode(const TVector<float>& value) { m_vegetationShadowMode = value; MarkDirty(); }
-void LandscapeComponent::SetVegetationShadowDistance(const TVector<float>& value) { m_vegetationShadowDistance = value; MarkDirty(); }
-void LandscapeComponent::SetVegetationMinLod(const TVector<float>& value) { m_vegetationMinLod = value; MarkDirty(); }
-void LandscapeComponent::SetVegetationMaxLod(const TVector<float>& value) { m_vegetationMaxLod = value; MarkDirty(); }
-void LandscapeComponent::SetVegetationLod1ScreenCoverage(const TVector<float>& value) { m_vegetationLod1ScreenCoverage = value; MarkDirty(); }
-void LandscapeComponent::SetVegetationLod2ScreenCoverage(const TVector<float>& value) { m_vegetationLod2ScreenCoverage = value; MarkDirty(); }
-void LandscapeComponent::SetVegetationCullDistance(const TVector<float>& value) { m_vegetationCullDistance = value; MarkDirty(); }
-void LandscapeComponent::SetVegetationColliderRadius(const TVector<float>& value) { m_vegetationColliderRadius = value; MarkDirty(); }
-void LandscapeComponent::SetVegetationColliderHeight(const TVector<float>& value) { m_vegetationColliderHeight = value; MarkDirty(); }
-void LandscapeComponent::SetVegetationColliderOffsetY(const TVector<float>& value) { m_vegetationColliderOffsetY = value; MarkDirty(); }
+void LandscapeComponent::SetVegetationProfiles(const TVector<LandscapeVegetationSettings>& value)
+{
+	if (m_vegetationProfiles == value) return;
+	m_vegetationProfiles = value;
+	for (auto& settings : m_vegetationProfiles) settings.Normalize();
+	MarkDirty();
+}
 void LandscapeComponent::SetRegenerate(bool value)
 {
 	m_bRegenerate = false;
@@ -131,6 +103,7 @@ void LandscapeComponent::SetRegenerate(bool value)
 		if (auto* data = TryGetData())
 		{
 			data->RequestVegetationAssetReload();
+			data->RequestFullRebuild();
 		}
 	}
 }

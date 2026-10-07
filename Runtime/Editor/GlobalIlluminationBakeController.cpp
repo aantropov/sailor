@@ -5,9 +5,11 @@
 #include "GlobalIllumination/GIProbesBinary.h"
 #include "GlobalIllumination/GIProbesScene.h"
 #include "AssetRegistry/GlobalIllumination/GIProbesImporter.h"
+#include "AssetRegistry/Prefab/PrefabInstance.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "AssetRegistry/World/WorldPrefabAssetInfo.h"
 #include "Core/LogMacros.h"
+#include "Core/YamlUtils.h"
 #include "Engine/World.h"
 #include "Math/Math.h"
 #include "Tasks/Scheduler.h"
@@ -134,7 +136,13 @@ namespace
 		{
 			if (!IsEditorOnlyPrefab(prefab))
 			{
-				filteredPrefabs.push_back(YAML::Clone(prefab));
+				for (YAML::Node component : prefab["components"])
+				{
+					ReflectedData data;
+					data.Deserialize(component);
+					::Serialize(component, "overrideProperties", data.GetOverrideProperties());
+				}
+				filteredPrefabs.push_back(prefab);
 			}
 		}
 		result["prefabs"] = std::move(filteredPrefabs);
@@ -209,8 +217,20 @@ namespace
 			return false;
 		}
 
+		// Loaded linked records keep source identities; live snapshots use instance identities.
+		YAML::Node savedSnapshot = savedWorld->Serialize();
+		const auto& savedPrefabs = savedWorld->GetGameObjects();
+		for (uint32_t i = 0; i < savedPrefabs.Num(); ++i)
+		{
+			const auto& prefab = savedPrefabs[i];
+			if (!prefab->IsLinkedInstanceRecord()) continue;
+			YAML::Node record = savedSnapshot["prefabs"][i];
+			for (const char* field : { "gameObjects", "components" })
+				record[field] = PrefabInstance::NormalizeReferences(record[field], prefab->GetLinkedInstanceIds());
+		}
+
 		if (!AreWorldDocumentsEquivalentForProbeBake(
-				savedDocument,
+				savedSnapshot,
 				currentWorld->Serialize(),
 				yamlDiagnostic))
 		{
@@ -345,23 +365,9 @@ bool Sailor::AreWorldDocumentsEquivalentForProbeBake(
 	std::string& outDiagnostic)
 {
 	outDiagnostic.clear();
-	std::string normalizedSavedWorld;
-	std::string normalizedCurrentWorld;
-	std::string yamlDiagnostic;
-	if (!External::TryDumpYaml(
-			MakeProbeBakeComparableWorldDocument(savedDocument),
-			normalizedSavedWorld,
-			yamlDiagnostic) ||
-		!External::TryDumpYaml(
-			MakeProbeBakeComparableWorldDocument(currentDocument),
-			normalizedCurrentWorld,
-			yamlDiagnostic))
-	{
-		outDiagnostic = "the current and saved worlds cannot be compared: " +
-			yamlDiagnostic;
-		return false;
-	}
-	if (normalizedSavedWorld != normalizedCurrentWorld)
+	if (!Utils::AreYamlNodesEqual(
+		MakeProbeBakeComparableWorldDocument(savedDocument),
+		MakeProbeBakeComparableWorldDocument(currentDocument)))
 	{
 		outDiagnostic =
 			"the current level has unsaved changes or does not match the selected .world asset; save it before baking";
@@ -423,7 +429,7 @@ bool GlobalIlluminationBakeController::Start(
 	}
 
 	m_task = Tasks::CreateTask(
-		"Bake adaptive irradiance GI probes",
+		"Bake adaptive irradiance GI probes"_h,
 		[state, scene, request]()
 		{
 			const auto started = std::chrono::steady_clock::now();

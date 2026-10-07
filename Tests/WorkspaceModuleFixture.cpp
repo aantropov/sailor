@@ -1,14 +1,33 @@
+#include "AssetRegistry/AssetCache.h"
 #include "Components/Component.h"
 #include "ECS/TransformECS.h"
+#include "ECS/LandscapeSettings.h"
 #include "Workspace/WorkspaceTypeRegistration.h"
+
+#include <atomic>
 
 namespace WorkspaceFixture
 {
+	static std::atomic<uint32_t> g_numConstructions = 0;
+
 	enum class EFixtureMode
 	{
 		Default,
 		Alternate
 	};
+
+	struct FixtureTuning
+	{
+		float m_gain = 0.25f;
+	};
+
+	struct FixtureSettings
+	{
+		Sailor::TVector<FixtureTuning> m_layers{ FixtureTuning{} };
+		Sailor::TVector<EFixtureMode> m_modes{ EFixtureMode::Alternate };
+	};
+
+	struct EmptySettings {};
 
 	class FixtureComponent final : public Sailor::Component
 	{
@@ -19,6 +38,7 @@ namespace WorkspaceFixture
 			: m_registryLookupSucceeded(Sailor::Reflection::TryGetTypeByName(
 				"WorkspaceFixture::FixtureComponent") != nullptr)
 		{
+			++g_numConstructions;
 		}
 
 		float GetMoveSpeed() const { return m_moveSpeed; }
@@ -37,6 +57,10 @@ namespace WorkspaceFixture
 		void SetOffset(const glm::vec3& offset) { m_offset = offset; }
 		Sailor::ComponentPtr GetNullableComponent() const { return m_nullableComponent; }
 		void SetNullableComponent(const Sailor::ComponentPtr& component) { m_nullableComponent = component; }
+		const FixtureSettings& GetSettings() const { return m_settings; }
+		void SetSettings(const FixtureSettings& settings) { m_settings = settings; }
+		Sailor::LandscapeVegetationSettings m_vegetation;
+		EmptySettings m_empty;
 
 	private:
 		float m_moveSpeed = 5.0f;
@@ -48,10 +72,28 @@ namespace WorkspaceFixture
 		Sailor::EMobilityType m_mobility = Sailor::EMobilityType::Stationary;
 		glm::vec3 m_offset{ 1.0f, 2.0f, 3.0f };
 		Sailor::ComponentPtr m_nullableComponent;
+		FixtureSettings m_settings;
 	};
 
+	class ReloadedComponent final : public Sailor::Component
+	{
+		SAILOR_WORKSPACE_REFLECTABLE(ReloadedComponent)
+
+	public:
+		uint32_t m_capacity = 12;
+	};
+
+#if defined(SAILOR_TEST_RELOADED_WORKSPACE)
+	using WorkspaceTypes = Sailor::Workspace::TWorkspaceTypeList<ReloadedComponent>;
+#else
 	using WorkspaceTypes = Sailor::Workspace::TWorkspaceTypeList<FixtureComponent>;
+#endif
 }
+
+REFL_AUTO(type(WorkspaceFixture::ReloadedComponent, bases<Sailor::Component>), field(m_capacity))
+REFL_AUTO(type(WorkspaceFixture::FixtureTuning), field(m_gain, Sailor::Attributes::Range(0.0, 1.0)))
+REFL_AUTO(type(WorkspaceFixture::FixtureSettings), field(m_layers), field(m_modes))
+REFL_AUTO(type(WorkspaceFixture::EmptySettings))
 
 REFL_AUTO(
 	type(WorkspaceFixture::FixtureComponent, bases<Sailor::Component>),
@@ -70,7 +112,11 @@ REFL_AUTO(
 	func(GetOffset, property("offset")),
 	func(SetOffset, property("offset")),
 	func(GetNullableComponent, property("nullableComponent")),
-	func(SetNullableComponent, property("nullableComponent"))
+	func(SetNullableComponent, property("nullableComponent")),
+	func(GetSettings, property("settings")),
+	func(SetSettings, property("settings")),
+	field(m_vegetation),
+	field(m_empty)
 )
 
 namespace
@@ -84,16 +130,16 @@ namespace
 	}
 }
 
-extern "C" SAILOR_WORKSPACE_MODULE_EXPORT uint32_t SAILOR_WORKSPACE_CALL SailorGetWorkspaceTypeMetadataV1(
-	char* destination,
-	uint64_t destinationCapacity,
-	uint64_t* outPayloadSize) noexcept
+extern "C" SAILOR_WORKSPACE_MODULE_EXPORT uint64_t SAILOR_WORKSPACE_CALL
+	SailorWorkspaceFixtureAssetCacheSize() noexcept
 {
-	return Sailor::Workspace::ExportWorkspaceTypeMetadataV1<WorkspaceFixture::WorkspaceTypes>(
-		WorkspaceModuleName,
-		destination,
-		destinationCapacity,
-		outPayloadSize);
+	return sizeof(Sailor::AssetCache);
+}
+
+extern "C" SAILOR_WORKSPACE_MODULE_EXPORT uint32_t SAILOR_WORKSPACE_CALL
+	SailorWorkspaceFixtureConstructionCount() noexcept
+{
+	return WorkspaceFixture::g_numConstructions;
 }
 
 extern "C" SAILOR_WORKSPACE_MODULE_EXPORT const Sailor::Workspace::WorkspaceModuleApiV1* SAILOR_WORKSPACE_CALL
@@ -107,7 +153,6 @@ extern "C" SAILOR_WORKSPACE_MODULE_EXPORT const Sailor::Workspace::WorkspaceModu
 		static_cast<uint64_t>(sizeof(WorkspaceModuleName) - 1),
 		Sailor::Workspace::GetWorkspaceModuleAbiTagV1(),
 		Sailor::Workspace::GetWorkspaceModuleAbiTagV1Length(),
-		&SailorGetWorkspaceTypeMetadataV1,
 		&RegisterWorkspaceTypes
 	};
 

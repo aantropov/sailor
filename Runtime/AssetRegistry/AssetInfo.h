@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <string>
+#include <string_view>
 #include <ctime>
 #include <type_traits>
 #include "AssetRegistry/FileId.h"
@@ -173,14 +174,14 @@ namespace Sailor
 
 namespace Sailor
 {
-	inline std::string NormalizeAssetInfoFieldName(const std::string& fieldName)
+	constexpr std::string_view NormalizeAssetInfoFieldName(std::string_view fieldName)
 	{
 		if (fieldName == "m_assetFilename")
 		{
 			return "filename";
 		}
 
-		if (fieldName.rfind("m_", 0) == 0)
+		if (fieldName.starts_with("m_"))
 		{
 			return fieldName.substr(2);
 		}
@@ -214,17 +215,17 @@ namespace Sailor
 				node["extensions"] = YAML::Node(YAML::NodeType::Sequence);
 				for (const auto extension : m_extensions)
 				{
-					node["extensions"].push_back(std::string(extension));
+					node["extensions"].push_back(extension);
 				}
 
 				YAML::Node properties(YAML::NodeType::Sequence);
-				TVector<std::string> names;
+				TVector<std::string_view> names;
 				TAssetInfo* empty = nullptr;
 				for_each(refl::reflect<TAssetInfo>().members, [&](auto member)
 					{
 						if constexpr (is_writable(member))
 						{
-							const std::string name = NormalizeAssetInfoFieldName(get_display_name(member));
+							const std::string_view name = NormalizeAssetInfoFieldName(get_display_name(member));
 							if (names.Contains(name))
 							{
 								return;
@@ -262,7 +263,7 @@ namespace Sailor
 			{
 				if constexpr (is_readable(member))
 				{
-					const std::string displayName = NormalizeAssetInfoFieldName(get_display_name(member));
+					const std::string_view displayName = NormalizeAssetInfoFieldName(get_display_name(member));
 					outData[displayName] = member(assetInfo);
 				}
 			});
@@ -271,7 +272,7 @@ namespace Sailor
 	}
 
 	template<typename TAssetInfo>
-	YAML::Node CreateAssetInfoMetadata(const FileId& fileId, const std::string& filename)
+	YAML::Node CreateAssetInfoMetadata(const FileId& fileId, std::string_view filename)
 	{
 		static_assert(std::is_base_of_v<AssetInfo, TAssetInfo>);
 
@@ -309,7 +310,7 @@ namespace Sailor
 			{
 				if constexpr (is_writable(member))
 				{
-					const std::string displayName = NormalizeAssetInfoFieldName(get_display_name(member));
+					const std::string_view displayName = NormalizeAssetInfoFieldName(get_display_name(member));
 					const YAML::Node& node = inData[displayName];
 					if (node.IsDefined())
 					{

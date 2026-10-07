@@ -109,7 +109,7 @@ namespace
 		return sky.GetEnvironmentKey();
 	}
 
-	constexpr const char* MapNames[] = { "g_envCubemap", "g_irradianceCubemap", "g_sheenEnvCubemap" };
+	constexpr StringHash MapNames[] = { "g_envCubemap"_h, "g_irradianceCubemap"_h, "g_sheenEnvCubemap"_h };
 
 	void RequireFrameGraphMaps(RHIFrameGraphPtr frameGraph, uint32_t state)
 	{
@@ -166,18 +166,18 @@ namespace
 		}
 		Require(node.TryRestoreEnvironment(frameGraph, MakeKey(1u), firstRaw),
 			"the oldest cached key must be reusable");
-		const RHITexturePtr firstSpecular = frameGraph->GetSampler("g_envCubemap");
+		const RHITexturePtr firstSpecular = frameGraph->GetSampler("g_envCubemap"_h);
 		Require(node.TryRestoreEnvironment(frameGraph, MakeKey(1u), currentRaw) &&
-			frameGraph->GetSampler("g_envCubemap") == firstSpecular && filteredCounts.m_created == 12u,
+			frameGraph->GetSampler("g_envCubemap"_h) == firstSpecular && filteredCounts.m_created == 12u,
 			"repeated cache hits must reuse the exact resources without filtering again");
-		Require(frameGraph->GetSampler("g_rawEnvCubemap").GetRawPtr() == currentRaw.GetRawPtr(),
+		Require(frameGraph->GetSampler("g_rawEnvCubemap"_h).GetRawPtr() == currentRaw.GetRawPtr(),
 			"a cache hit must publish the current ready raw sky, not a cached raw source");
 
 		node.CacheEnvironment(MakeKey(5u), MakeMaps(filteredCounts, 5u));
 		Require(!node.TryRestoreEnvironment(frameGraph, MakeKey(2u), firstRaw),
 			"inserting a fifth key must evict the least recently used key, not the oldest hit");
 		RequireFrameGraphMaps(frameGraph, 1u);
-		Require(frameGraph->GetSampler("g_rawEnvCubemap").GetRawPtr() == currentRaw.GetRawPtr(),
+		Require(frameGraph->GetSampler("g_rawEnvCubemap"_h).GetRawPtr() == currentRaw.GetRawPtr(),
 			"a cache miss must not disturb the currently published raw source");
 		for (uint32_t state : { 1u, 3u, 4u, 5u })
 		{
@@ -201,7 +201,7 @@ namespace
 			{
 				retainedBinding->SetTextureBinding(channel, frameGraph->GetSampler(MapNames[channel]));
 			}
-			previousFogEnvironment = frameGraph->GetSampler("g_irradianceCubemap").DynamicCast<RHICubemap>();
+			previousFogEnvironment = frameGraph->GetSampler("g_irradianceCubemap"_h).DynamicCast<RHICubemap>();
 			for (uint32_t state = 2u; state <= 5u; ++state)
 			{
 				node.CacheEnvironment(MakeKey(state), MakeMaps(counts, state));

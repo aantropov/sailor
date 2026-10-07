@@ -105,6 +105,7 @@ namespace Sailor::RHI
 			const TVector<RHISemaphorePtr>& waitSemaphores = {}, RHIFencePtr completion = {}) = 0;
 
 		SAILOR_API virtual void SetDebugName(RHIResourcePtr resource, const std::string& name) = 0;
+		SAILOR_API virtual void SetDebugName(RHIResourcePtr resource, StringHash name) = 0;
 		SAILOR_API virtual void WaitIdle() = 0;
 
 		SAILOR_API virtual RHIRenderTargetPtr GetBackBuffer() const = 0;
@@ -180,18 +181,18 @@ namespace Sailor::RHI
 		SAILOR_API virtual RHIShaderBindingSetPtr CreateShaderBindings() = 0;
 		SAILOR_API virtual RHIShaderBindingSetPtr CloneMaterialShaderBindings(
 			const RHIShaderBindingSetPtr& source) = 0;
-		SAILOR_API virtual RHI::RHIShaderBindingPtr AddBufferToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, RHIBufferPtr buffer, const std::string& name, uint32_t shaderBinding) = 0;
-		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSsboToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t elementSize, size_t numElements, uint32_t shaderBinding, bool bBindSsboWithOffset = false) = 0;
-		SAILOR_API virtual RHI::RHIShaderBindingPtr AddBufferToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType) = 0;
-		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSamplerToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::RHITexturePtr texture, uint32_t shaderBinding, bool bVariableDescriptorCount = false, uint32_t variableDescriptorUpperBound = 0) = 0;
-		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSamplerToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, const TVector<RHI::RHITexturePtr>& array, uint32_t shaderBinding, bool bVariableDescriptorCount = false, uint32_t variableDescriptorUpperBound = 0) = 0;
-		SAILOR_API virtual RHI::RHIShaderBindingPtr AddStorageImageToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::RHITexturePtr texture, uint32_t shaderBinding) = 0;
-		SAILOR_API virtual RHI::RHIShaderBindingPtr AddStorageImageToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, const TVector<RHI::RHITexturePtr>& array, uint32_t shaderBinding) = 0;
-		SAILOR_API virtual RHI::RHIShaderBindingPtr AddShaderBinding(RHI::RHIShaderBindingSetPtr& pShaderBindings, const RHI::RHIShaderBindingPtr& binding, const std::string& name, uint32_t shaderBinding) = 0;
+		SAILOR_API virtual RHI::RHIShaderBindingPtr AddBufferToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, RHIBufferPtr buffer, StringHash name, uint32_t shaderBinding) = 0;
+		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSsboToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, StringHash name, size_t elementSize, size_t numElements, uint32_t shaderBinding, bool bBindSsboWithOffset = false) = 0;
+		SAILOR_API virtual RHI::RHIShaderBindingPtr AddBufferToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, StringHash name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType) = 0;
+		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSamplerToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, StringHash name, RHI::RHITexturePtr texture, uint32_t shaderBinding, bool bVariableDescriptorCount = false, uint32_t variableDescriptorUpperBound = 0) = 0;
+		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSamplerToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, StringHash name, const TVector<RHI::RHITexturePtr>& array, uint32_t shaderBinding, bool bVariableDescriptorCount = false, uint32_t variableDescriptorUpperBound = 0) = 0;
+		SAILOR_API virtual RHI::RHIShaderBindingPtr AddStorageImageToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, StringHash name, RHI::RHITexturePtr texture, uint32_t shaderBinding) = 0;
+		SAILOR_API virtual RHI::RHIShaderBindingPtr AddStorageImageToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, StringHash name, const TVector<RHI::RHITexturePtr>& array, uint32_t shaderBinding) = 0;
+		SAILOR_API virtual RHI::RHIShaderBindingPtr AddShaderBinding(RHI::RHIShaderBindingSetPtr& pShaderBindings, const RHI::RHIShaderBindingPtr& binding, StringHash name, uint32_t shaderBinding) = 0;
 		SAILOR_API virtual bool FillShadersLayout(RHI::RHIShaderBindingSetPtr& pShaderBindings, const TVector<RHIShaderPtr>& shaders, uint32_t setNum) = 0;
 
 		// Returns true when the requested texture binding is current.
-		SAILOR_API virtual bool UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, RHITexturePtr value, uint32_t index = 0) = 0;
+		SAILOR_API virtual bool UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, StringHash binding, RHITexturePtr value, uint32_t index = 0) = 0;
 
 		// Used only for static vertex types
 		template<typename TVertex>
@@ -217,7 +218,7 @@ namespace Sailor::RHI
 		SAILOR_API virtual void ReleaseTemporaryRenderTarget(RHI::RHIRenderTargetPtr renderTarget);
 
 		//Immediate context
-		SAILOR_API virtual bool UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) = 0;
+		SAILOR_API virtual bool UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, StringHash binding, const void* value, size_t size) = 0;
 		// An incomplete wait returns nullptr/false; accepted commands remain tracked until completion.
 		SAILOR_API virtual RHIBufferPtr CreateBuffer_Immediate(const void* pData, size_t size, EBufferUsageFlags usage) = 0;
 		SAILOR_API virtual bool CopyBuffer_Immediate(RHIBufferPtr src, RHIBufferPtr dst, size_t size, size_t srcOffset = 0, size_t dstOffset = 0) = 0;
@@ -280,8 +281,8 @@ namespace Sailor::RHI
 	{
 	protected:
 
-		// Copy from RHIShaderBindingSet::ParseParameter to increase compile time
-		SAILOR_API void ParseParameter(const std::string& parameter, std::string& outBinding, std::string& outVariable);
+		// Keep the material header out of command API consumers.
+		SAILOR_API void ParseParameter(StringHash parameter, StringHash& outBinding, StringHash& outVariable);
 
 	public:
 
@@ -289,10 +290,11 @@ namespace Sailor::RHI
 		SAILOR_API virtual bool FitsDefaultViewport(RHI::RHICommandListPtr cmd) = 0;
 
 		SAILOR_API virtual void BeginDebugRegion(RHI::RHICommandListPtr cmdList, const std::string& title, const glm::vec4& color) = 0;
+		SAILOR_API virtual void BeginDebugRegion(RHI::RHICommandListPtr cmdList, StringHash title, const glm::vec4& color) = 0;
 		SAILOR_API virtual void EndDebugRegion(RHI::RHICommandListPtr cmdList) = 0;
 		SAILOR_API virtual uint32_t BeginGpuTimestamp(
 			RHI::RHICommandListPtr cmdList,
-			const std::string& name) = 0;
+			StringHash name) = 0;
 		SAILOR_API virtual void EndGpuTimestamp(
 			RHI::RHICommandListPtr cmdList,
 			uint32_t query) = 0;
@@ -342,11 +344,12 @@ namespace Sailor::RHI
 			float clearDepth,
 			bool bStoreDepth) = 0;
 
-		// One optional resolve per color target, preserving explicit MSAA targets in mixed MRT passes.
+		// Explicit target/resolve pairs preserve authored attachments in mixed MRT passes.
 		SAILOR_API virtual bool BeginRenderPass(RHI::RHICommandListPtr cmd,
 			const TVector<RHI::RHITexturePtr>& colorAttachments,
 			const TVector<RHI::RHITexturePtr>& colorAttachmentResolves,
 			RHI::RHITexturePtr depthStencilAttachment,
+			RHI::RHITexturePtr depthStencilResolve,
 			glm::ivec4 renderArea,
 			glm::ivec2 offset,
 			bool bClearRenderTargets,
@@ -373,11 +376,11 @@ namespace Sailor::RHI
 		SAILOR_API virtual void BeginCommandList(RHICommandListPtr cmd, bool bOneTimeSubmit) = 0;
 		SAILOR_API virtual void EndCommandList(RHICommandListPtr cmd) = 0;
 
-		SAILOR_API virtual void UpdateShaderBindingVariable(RHICommandListPtr cmd, RHI::RHIShaderBindingPtr binding, const std::string& variable, const void* value, size_t size, uint32_t indexInArray);
-		SAILOR_API virtual void UpdateShaderBindingVariable(RHICommandListPtr cmd, RHI::RHIShaderBindingPtr binding, const std::string& variable, const void* value, size_t size) = 0;
+		SAILOR_API virtual void UpdateShaderBindingVariable(RHICommandListPtr cmd, RHI::RHIShaderBindingPtr binding, StringHash variable, const void* value, size_t size, uint32_t indexInArray);
+		SAILOR_API virtual void UpdateShaderBindingVariable(RHICommandListPtr cmd, RHI::RHIShaderBindingPtr binding, StringHash variable, const void* value, size_t size) = 0;
 		SAILOR_API virtual void UpdateShaderBinding(RHICommandListPtr cmd, RHI::RHIShaderBindingPtr binding, const void* data, size_t size, size_t variableOffset = 0) = 0;
 		SAILOR_API virtual void UpdateBuffer(RHICommandListPtr cmd, RHI::RHIBufferPtr buffer, const void* data, size_t size, size_t offset = 0) = 0;
-		SAILOR_API virtual void SetMaterialParameter(RHICommandListPtr cmd, RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const std::string& variable, const void* value, size_t size) = 0;
+		SAILOR_API virtual void SetMaterialParameter(RHICommandListPtr cmd, RHI::RHIShaderBindingSetPtr bindings, StringHash binding, StringHash variable, const void* value, size_t size) = 0;
 
 		SAILOR_API virtual void ExecuteSecondaryCommandList(RHI::RHICommandListPtr cmd, RHI::RHICommandListPtr cmdSecondary) = 0;
 		SAILOR_API virtual void BindMaterial(RHICommandListPtr cmd, RHI::RHIMaterialPtr material) = 0;
@@ -407,10 +410,16 @@ namespace Sailor::RHI
 		// Used for variables inside uniform buffer 
 		// 'customData.color' would be parsed as 'customData' buffer with 'color' variable
 		template<typename TDataType>
-		void SetMaterialParameter(RHICommandListPtr cmd, RHI::RHIShaderBindingSetPtr bindings, const std::string& parameter, const TDataType& value)
+		void SetMaterialParameter(RHICommandListPtr cmd, RHI::RHIShaderBindingSetPtr bindings, StringHash binding, StringHash variable, const TDataType& value)
 		{
-			std::string outBinding;
-			std::string outVariable;
+			SetMaterialParameter(cmd, bindings, binding, variable, &value, sizeof(value));
+		}
+
+		template<typename TDataType>
+		void SetMaterialParameter(RHICommandListPtr cmd, RHI::RHIShaderBindingSetPtr bindings, StringHash parameter, const TDataType& value)
+		{
+			StringHash outBinding;
+			StringHash outVariable;
 
 			ParseParameter(parameter, outBinding, outVariable);
 			SetMaterialParameter(cmd, bindings, outBinding, outVariable, &value, sizeof(value));

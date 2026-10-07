@@ -94,7 +94,7 @@ FrameGraphAssetPtr FrameGraphImporter::LoadFrameGraphAsset(FileId uid)
 
 	if (FrameGraphAssetInfoPtr assetInfo = dynamic_cast<FrameGraphAssetInfoPtr>(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)))
 	{
-		SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
+		SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath());
 
 		const std::string& filepath = assetInfo->GetAssetFilepath();
 
@@ -153,6 +153,7 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const Frame
 
 	for (const auto& renderTarget : frameGraphAsset->m_renderTargets)
 	{
+		const auto name = StringHash::Runtime(renderTarget.m_first);
 		const bool bUsedWithComputeShaders = renderTarget.m_second->m_bIsCompatibleWithComputeShaders;
 		const bool bShouldGenerateMips = renderTarget.m_second->m_bGenerateMips;
 		const bool bIsDepthFormat = RHI::IsDepthFormat(renderTarget.m_second->m_format);
@@ -179,8 +180,8 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const Frame
 				return {};
 			}
 
-			pRhiFrameGraph->SetSurface(renderTarget.m_first, rhiSurface);
-			pRhiFrameGraph->SetRenderTarget(renderTarget.m_first, rhiSurface->GetResolved());
+			pRhiFrameGraph->SetSurface(name, rhiSurface);
+			pRhiFrameGraph->SetRenderTarget(name, rhiSurface->GetResolved());
 
 			RHI::Renderer::GetDriver()->SetDebugName(rhiSurface->GetTarget(), renderTarget.m_first + " Target");
 			RHI::Renderer::GetDriver()->SetDebugName(rhiSurface->GetResolved(), renderTarget.m_first + " Resolved");
@@ -195,7 +196,7 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const Frame
 				return {};
 			}
 
-			pRhiFrameGraph->SetRenderTarget(renderTarget.m_first, rhiRenderTarget);
+			pRhiFrameGraph->SetRenderTarget(name, rhiRenderTarget);
 
 			RHI::Renderer::GetDriver()->SetDebugName(rhiRenderTarget, renderTarget.m_first);
 		}
@@ -205,11 +206,11 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const Frame
 	{
 		if (value.m_second->IsVec4())
 		{
-			pRhiFrameGraph->SetValue(value.m_first, value.m_second->GetVec4());
+			pRhiFrameGraph->SetValue(StringHash::Runtime(value.m_first), value.m_second->GetVec4());
 		}
 		else if (value.m_second->IsFloat())
 		{
-			pRhiFrameGraph->SetValue(value.m_first, value.m_second->GetFloat());
+			pRhiFrameGraph->SetValue(StringHash::Runtime(value.m_first), value.m_second->GetFloat());
 		}
 	}
 
@@ -233,12 +234,13 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const Frame
 				uid.ToString().c_str(), sampler.m_first.c_str(), source.c_str());
 			return {};
 		}
-		pRhiFrameGraph->SetSampler(sampler.m_first, texture->GetRHI());
+		pRhiFrameGraph->SetSampler(StringHash::Runtime(sampler.m_first), texture->GetRHI());
 	}
 
 	for (auto& node : frameGraphAsset->m_nodes)
 	{
-		auto pNewNode = App::GetSubmodule<FrameGraphBuilder>()->CreateNode(node.m_name);
+		const auto name = StringHash::Runtime(node.m_name);
+		auto pNewNode = App::GetSubmodule<FrameGraphBuilder>()->CreateNode(name);
 
 		if (!pNewNode)
 		{
@@ -246,35 +248,36 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const Frame
 			return {};
 		}
 
-		pNewNode->SetTag(node.m_tag.empty() ? node.m_name : node.m_tag);
+		pNewNode->SetTag(node.m_tag.empty() ? name : StringHash::Runtime(node.m_tag));
 
 		for (const auto& param : node.m_values)
 		{
 			if (param.m_second->IsVec4())
 			{
-				pNewNode->SetVec4(param.m_first, param.m_second->GetVec4());
+				pNewNode->SetVec4(StringHash::Runtime(param.m_first), param.m_second->GetVec4());
 			}
 			else if (param.m_second->IsFloat())
 			{
-				pNewNode->SetFloat(param.m_first, param.m_second->GetFloat());
+				pNewNode->SetFloat(StringHash::Runtime(param.m_first), param.m_second->GetFloat());
 			}
 			else if (param.m_second->IsString())
 			{
-				pNewNode->SetString(param.m_first, param.m_second->GetString());
+				pNewNode->SetString(StringHash::Runtime(param.m_first), param.m_second->GetString());
 			}
 		}
 
 		for (const auto& param : node.m_renderTargets)
 		{
-			if (auto resource = pRhiFrameGraph->GetResource(*param.m_second))
+			const auto resourceName = StringHash::Runtime(*param.m_second);
+			if (auto resource = pRhiFrameGraph->GetResource(resourceName))
 			{
-				pNewNode->SetRHIResource(param.m_first, resource);
+				pNewNode->SetRHIResource(StringHash::Runtime(param.m_first), resource);
 			}
 			else
 			{
 				// Resolve per-frame resources, such as DepthBuffer and BackBuffer,
 				// when the frame is recorded.
-				pNewNode->SetRHIResource_Unresolved(param.m_first, *param.m_second);
+				pNewNode->SetRHIResource_Unresolved(StringHash::Runtime(param.m_first), resourceName);
 			}
 		}
 		// TODO: Build params

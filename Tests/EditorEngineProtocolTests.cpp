@@ -2,10 +2,16 @@
 #include "EditorEngineProtocolLifecycle.h"
 #include "Protocol/Generated/editor_engine.pb.h"
 #include "Sailor.h"
+#include "Editor/EditorViewportEvent.h"
+#include "Editor/EditorViewportController.h"
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "Support/TempDirectory.h"
+#include "Support/EditorProtocolWire.h"
+#include "Support/ScopeExit.h"
+#include "Workspace/WorkspacePathEncoding.h"
 
 #include <atomic>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -19,6 +25,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 
@@ -46,11 +53,9 @@ namespace
 	using Sailor::Protocol::EditorEngineProtocolMaxPayloadSize;
 	using Sailor::Protocol::EditorEngineProtocolVersion;
 
-	constexpr uint32_t c_protocolVersionField = 1;
-	constexpr uint32_t c_requestIdField = 2;
-	constexpr uint32_t c_successField = 3;
-	constexpr uint32_t c_errorField = 4;
-	constexpr uint32_t c_supportsStrictInstanceIdsField = 5;
+	using namespace Sailor::Tests::ProtocolWire;
+	using TDecodedResponse = TProtocolResponseWire;
+
 	constexpr uint32_t c_boolResultField = 11;
 	constexpr uint32_t c_int32ResultField = 12;
 	constexpr uint32_t c_uint64ResultField = 14;
@@ -81,236 +86,28 @@ namespace
 	constexpr uint32_t c_getEditorRenderModeCommandField = 66;
 	constexpr uint32_t c_setRuntimeGIProbesPreviewBudgetCommandField = 76;
 
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
-	}
-
-	void AppendVarint(std::string& output, uint64_t value)
-	{
-		while (value >= 0x80u)
-		{
-			output.push_back(static_cast<char>((value & 0x7fu) | 0x80u));
-			value >>= 7u;
-		}
-		output.push_back(static_cast<char>(value));
-	}
-
-	void AppendKey(std::string& output, uint32_t fieldNumber, uint32_t wireType)
-	{
-		AppendVarint(output, (static_cast<uint64_t>(fieldNumber) << 3u) | wireType);
-	}
-
-	void AppendVarintField(std::string& output, uint32_t fieldNumber, uint64_t value)
-	{
-		AppendKey(output, fieldNumber, 0u);
-		AppendVarint(output, value);
-	}
-
-	void AppendMessageField(
-		std::string& output,
-		uint32_t fieldNumber,
-		const std::string& value)
-	{
-		AppendKey(output, fieldNumber, 2u);
-		AppendVarint(output, value.size());
-		output.append(value);
-	}
-
-	std::string MakeRequest(
-		uint32_t version,
-		uint64_t requestId,
-		uint32_t commandField = 0,
-		const std::string& command = {})
-	{
-		std::string request;
-		AppendVarintField(request, c_protocolVersionField, version);
-		if (requestId != 0)
-		{
-			AppendVarintField(request, c_requestIdField, requestId);
-		}
-		if (commandField != 0)
-		{
-			AppendMessageField(request, commandField, command);
-		}
-		return request;
-	}
-
-	bool ReadVarint(
-		const uint8_t* data,
-		size_t size,
-		size_t& offset,
-		uint64_t& outValue)
-	{
-		outValue = 0;
-		for (uint32_t shift = 0; shift < 64 && offset < size; shift += 7)
-		{
-			const uint8_t byte = data[offset++];
-			outValue |= static_cast<uint64_t>(byte & 0x7fu) << shift;
-			if ((byte & 0x80u) == 0)
-			{
-				return true;
-			}
-		}
-		return false;
-	}
-
-	struct TDecodedResponse
-	{
-		uint32_t m_protocolVersion = 0;
-		uint64_t m_requestId = 0;
-		bool m_success = false;
-		bool m_supportsStrictInstanceIds = false;
-		std::string m_error{};
-		uint32_t m_resultField = 0;
-		bool m_boolResult = false;
-		int32_t m_int32Result = 0;
-		std::string m_resultPayload{};
-	};
-
-	bool TryDecodeInt32Result(
-		const uint8_t* data,
-		size_t size,
-		int32_t& outValue)
-	{
-		outValue = 0;
-		size_t offset = 0;
-		while (offset < size)
-		{
-			uint64_t key = 0;
-			if (!ReadVarint(data, size, offset, key))
-			{
-				return false;
-			}
-
-			const uint32_t fieldNumber = static_cast<uint32_t>(key >> 3u);
-			const uint32_t wireType = static_cast<uint32_t>(key & 0x7u);
-			uint64_t value = 0;
-			if (wireType != 0 || !ReadVarint(data, size, offset, value))
-			{
-				return false;
-			}
-			if (fieldNumber == 1)
-			{
-				outValue = static_cast<int32_t>(value);
-			}
-		}
-		return true;
-	}
-
-	bool TryDecodeBoolResult(
-		const uint8_t* data,
-		size_t size,
-		bool& outValue)
-	{
-		outValue = false;
-		size_t offset = 0;
-		while (offset < size)
-		{
-			uint64_t key = 0;
-			if (!ReadVarint(data, size, offset, key))
-			{
-				return false;
-			}
-
-			const uint32_t fieldNumber = static_cast<uint32_t>(key >> 3u);
-			const uint32_t wireType = static_cast<uint32_t>(key & 0x7u);
-			uint64_t value = 0;
-			if (wireType != 0 || !ReadVarint(data, size, offset, value))
-			{
-				return false;
-			}
-			if (fieldNumber == 1)
-			{
-				outValue = value != 0;
-			}
-		}
-		return true;
 	}
 
 	TDecodedResponse DecodeResponse(const uint8_t* data, size_t size)
 	{
 		Require(data != nullptr && size > 0, "protocol response must not be empty");
-
 		TDecodedResponse response;
-		size_t offset = 0;
-		while (offset < size)
-		{
-			uint64_t key = 0;
-			Require(ReadVarint(data, size, offset, key), "response field key must be valid");
-			const uint32_t fieldNumber = static_cast<uint32_t>(key >> 3u);
-			const uint32_t wireType = static_cast<uint32_t>(key & 0x7u);
-
-			if (wireType == 0)
-			{
-				uint64_t value = 0;
-				Require(ReadVarint(data, size, offset, value), "response varint must be valid");
-				if (fieldNumber == c_protocolVersionField)
-				{
-					response.m_protocolVersion = static_cast<uint32_t>(value);
-				}
-				else if (fieldNumber == c_requestIdField)
-				{
-					response.m_requestId = value;
-				}
-				else if (fieldNumber == c_successField)
-				{
-					response.m_success = value != 0;
-				}
-				else if (fieldNumber ==
-					c_supportsStrictInstanceIdsField)
-				{
-					response.m_supportsStrictInstanceIds =
-						value != 0;
-				}
-				continue;
-			}
-
-			Require(wireType == 2, "response must use supported protobuf wire types");
-			uint64_t length = 0;
-			Require(ReadVarint(data, size, offset, length), "response field length must be valid");
-			Require(length <= size - offset, "response field length must fit its buffer");
-			const uint8_t* value = data + offset;
-			offset += static_cast<size_t>(length);
-
-			if (fieldNumber == c_errorField)
-			{
-				response.m_error.assign(
-					reinterpret_cast<const char*>(value),
-					static_cast<size_t>(length));
-			}
-			else if ((fieldNumber >= 10u && fieldNumber <= c_editorRenderModeResultField) ||
-				fieldNumber == sailor::editor::v1::ProtocolResponse::kModelFingerprintStatusResultFieldNumber)
-			{
-				response.m_resultField = fieldNumber;
-				response.m_resultPayload.assign(
-					reinterpret_cast<const char*>(value),
-					static_cast<size_t>(length));
-				if (fieldNumber == c_boolResultField ||
-					fieldNumber == c_instanceIdResultField)
-				{
-					Require(
-						TryDecodeBoolResult(
-							value,
-							static_cast<size_t>(length),
-							response.m_boolResult),
-						"bool result payload must be valid");
-				}
-				else if (fieldNumber == c_int32ResultField)
-				{
-					Require(
-						TryDecodeInt32Result(
-							value,
-							static_cast<size_t>(length),
-							response.m_int32Result),
-						"int32 result payload must be valid");
-				}
-			}
-		}
+		Require(ParseResponse(std::string_view(reinterpret_cast<const char*>(data), size), response),
+			"response must contain valid protobuf envelope fields");
 		return response;
+	}
+
+	uint64_t ReadResult(const TDecodedResponse& response)
+	{
+		uint64_t value = 0;
+		Require(ReadNestedScalar(response.m_resultPayload, value), "result must contain a valid scalar payload");
+		return value;
 	}
 
 	bool SkipField(
@@ -354,16 +151,13 @@ namespace
 		const uint8_t*& outData,
 		size_t& outSize)
 	{
-		uint64_t length = 0;
-		if (!ReadVarint(data, size, offset, length) ||
-			length > size - offset)
+		std::string_view value;
+		if (!ReadBytes(std::string_view(reinterpret_cast<const char*>(data), size), offset, value))
 		{
 			return false;
 		}
-
-		outData = data + offset;
-		outSize = static_cast<size_t>(length);
-		offset += outSize;
+		outData = reinterpret_cast<const uint8_t*>(value.data());
+		outSize = value.size();
 		return true;
 	}
 
@@ -558,6 +352,60 @@ namespace
 		return bHasKeyCode;
 	}
 
+	struct TDecodedViewportTransform
+	{
+		std::string m_instanceId;
+		uint64_t m_operation = 0;
+		uint64_t m_space = 0;
+		std::array<glm::vec4, 6> m_vectors{};
+	};
+
+	bool TryDecodeVector4(const uint8_t* data, size_t size, glm::vec4& value)
+	{
+		size_t offset = 0;
+		while (offset < size)
+		{
+			uint64_t key;
+			if (!ReadVarint(data, size, offset, key)) return false;
+			const auto field = key >> 3u;
+			const auto wire = key & 7u;
+			if (field >= 1 && field <= 4 && wire == 5)
+			{
+				uint32_t bits;
+				if (!TryReadFixed32(data, size, offset, bits)) return false;
+				std::memcpy(&value[static_cast<int>(field - 1)], &bits, sizeof(float));
+			}
+			else if (!SkipField(data, size, offset, static_cast<uint32_t>(wire))) return false;
+		}
+		return true;
+	}
+
+	bool TryDecodeViewportTransform(const uint8_t* data, size_t size, TDecodedViewportTransform& value)
+	{
+		size_t offset = 0;
+		while (offset < size)
+		{
+			uint64_t key;
+			if (!ReadVarint(data, size, offset, key)) return false;
+			const auto field = key >> 3u;
+			const auto wire = key & 7u;
+			if ((field == 2 || field == 3) && wire == 0)
+			{
+				if (!ReadVarint(data, size, offset, field == 2 ? value.m_operation : value.m_space)) return false;
+			}
+			else if ((field == 1 || (field >= 4 && field <= 9)) && wire == 2)
+			{
+				const uint8_t* bytes;
+				size_t length;
+				if (!TryReadLengthDelimited(data, size, offset, bytes, length)) return false;
+				if (field == 1) value.m_instanceId.assign(reinterpret_cast<const char*>(bytes), length);
+				else if (!TryDecodeVector4(bytes, length, value.m_vectors[field - 4])) return false;
+			}
+			else if (!SkipField(data, size, offset, static_cast<uint32_t>(wire))) return false;
+		}
+		return true;
+	}
+
 	struct TDecodedViewportEvent
 	{
 		uint64_t m_revision = 0;
@@ -570,6 +418,8 @@ namespace
 		float m_normalizedY = 0.0f;
 		bool m_hasToolShortcut = false;
 		uint32_t m_toolShortcutKeyCode = 0;
+		bool m_bHasTransform = false;
+		TDecodedViewportTransform m_transform;
 	};
 
 	bool TryDecodeViewportEvent(
@@ -625,6 +475,15 @@ namespace
 					return false;
 				}
 				outEvent.m_hasSelection = true;
+				continue;
+			}
+			if (fieldNumber == 11u)
+			{
+				const uint8_t* transform;
+				size_t length;
+				if (wireType != 2u || !TryReadLengthDelimited(data, size, offset, transform, length) ||
+					!TryDecodeViewportTransform(transform, length, outEvent.m_transform)) return false;
+				outEvent.m_bHasTransform = true;
 				continue;
 			}
 			if (fieldNumber == 12u)
@@ -804,6 +663,62 @@ namespace
 		return DecodeResponse(response.GetData(), response.GetSize());
 	}
 
+	void TestGoldenProtocolWire()
+	{
+		using namespace std::literals;
+		// Literal bytes are independent of the shared encoder. The managed tests
+		// parse and serialize the same version-one cases with generated messages.
+		constexpr auto request = "\x08\x01\x10\x96\x01\x82\x01\x00"sv;
+		Require(MakeVersionedRequest(1, 150, c_getExitCodeCommandField) == request &&
+			MakeRequest(150, c_getExitCodeCommandField) == request,
+			"get-exit-code encoding must match the golden request with a multibyte ID");
+		TProtocolBuffer buffer;
+		Require(Invoke(std::string(request), buffer) == static_cast<int32_t>(EEditorEngineTransportStatus::Ok),
+			"the native generated decoder must accept the golden request");
+		Require(std::string_view(reinterpret_cast<const char*>(buffer.GetData()), buffer.GetSize()) ==
+			"\x08\x01\x10\x96\x01\x18\x01\x28\x01\x62\x00"sv,
+			"the native generated serializer must emit the golden zero exit-code response");
+
+		constexpr std::pair<std::string_view, uint32_t> results[] = {
+			{ "\x52\x00"sv, 10 }, { "\x5a\x00"sv, 11 }, { "\x62\x00"sv, 12 },
+			{ "\x6a\x00"sv, 13 }, { "\x72\x00"sv, 14 }, { "\x7a\x00"sv, 15 },
+			{ "\x82\x01\x00"sv, 16 }, { "\x8a\x01\x00"sv, 17 }, { "\x92\x01\x00"sv, 18 },
+			{ "\x9a\x01\x00"sv, 19 }, { "\xa2\x01\x00"sv, 20 }, { "\xaa\x01\x00"sv, 21 },
+			{ "\xb2\x01\x00"sv, 22 }, { "\xba\x01\x00"sv, 23 }, { "\xc2\x01\x00"sv, 24 },
+			{ "\xca\x01\x00"sv, 25 }, { "\xa2\x06\x00"sv, 100 }
+		};
+		TDecodedResponse response;
+		for (const auto& [bytes, field] : results)
+		{
+			Require(ParseResponse(bytes, response) && response.m_resultField == field && response.m_resultPayload.empty(),
+				"the wire reader must retain the exact result kind, including an empty oneof payload");
+		}
+
+		constexpr auto negative = "\x08\x01\x10\x96\x01\x18\x01\x28\x01\x62\x0b\x08\xfd\xff\xff\xff\xff\xff\xff\xff\xff\x01"sv;
+		Require(ParseResponse(negative, response) && response.m_protocolVersion == 1 && response.m_requestId == 150 &&
+			response.m_bSuccess && response.m_bSupportsStrictInstanceIds && response.m_resultField == 12 &&
+			static_cast<int32_t>(ReadResult(response)) == -3,
+			"negative int32 results must retain protobuf's ten-byte signed varint encoding");
+
+		std::string owned("\x08\x01\x10\x96\x01\x18\x01\x28\x01\x5a\x02\x08\x01"sv);
+		Require(ParseResponse(owned, response), "the golden bool response must decode");
+		owned.assign(owned.size(), '\0');
+		Require(response.m_resultField == 11 && ReadResult(response) == 1,
+			"decoded results must own their bytes after the input buffer is overwritten");
+		owned = "\x08\x01\x10\x96\x01\x22\x03" "bad";
+		Require(ParseResponse(owned, response), "the golden error response must decode");
+		owned.clear();
+		Require(response.m_error == "bad" && response.m_requestId == 150 && !response.m_bSuccess &&
+			!response.m_bSupportsStrictInstanceIds && response.m_resultField == 0 && response.m_resultPayload.empty(),
+			"reusing the wire reader must clear the prior result and retain its own error text");
+
+		for (auto bytes : { "\x80"sv, "\x10\x80"sv, "\x5a\x02\x08"sv, "\x5a\x80"sv, "\x0d\0\0\0\0"sv })
+		{
+			Require(!ParseResponse(bytes, response), "truncated fields and unsupported envelope wire types must fail");
+		}
+		std::cout << "Protocol wire: golden request/native response, 17 result kinds, signed scalar and owned payloads passed\n";
+	}
+
 	void TestViewportEvidenceRequestReportsNoFrame()
 	{
 		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
@@ -815,9 +730,9 @@ namespace
 		std::string viewport;
 		AppendVarintField(viewport, 1u, 1u);
 		TProtocolBuffer buffer;
-		const auto response = RequireProtocolResponse(MakeRequest(1u, 151,
+		const auto response = RequireProtocolResponse(MakeVersionedRequest(1u, 151,
 			sailor::editor::v1::ProtocolRequest::kCaptureRemoteViewportFrameEvidence, viewport), buffer, dependencies);
-		Require(!response.m_success && response.m_requestId == 151 && response.m_resultField == 0,
+		Require(!response.m_bSuccess && response.m_requestId == 151 && response.m_resultField == 0,
 			"capture without a viewport must return a correlated request failure, not empty successful evidence");
 #if defined(__APPLE__)
 		Require(response.m_error == "Viewport does not exist.", "capture command must reach the native viewport handler");
@@ -825,8 +740,8 @@ namespace
 		Require(response.m_error == "Viewport pixel evidence is only available on macOS.", "other platforms must report unsupported capture");
 #endif
 		TProtocolBuffer diagnostics;
-		Require(RequireProtocolResponse(MakeRequest(1u, 152,
-			sailor::editor::v1::ProtocolRequest::kGetRemoteViewportDiagnostics, viewport), diagnostics, dependencies).m_success,
+		Require(RequireProtocolResponse(MakeVersionedRequest(1u, 152,
+			sailor::editor::v1::ProtocolRequest::kGetRemoteViewportDiagnostics, viewport), diagnostics, dependencies).m_bSuccess,
 			"ordinary diagnostics must remain a separate read-only query after capture failure");
 	}
 
@@ -901,11 +816,11 @@ namespace
 	void TestCommandExceptionIsContainedByTransportBoundary()
 	{
 		std::string initializeRequest;
-		AppendMessageField(initializeRequest, 1u, "SailorEditor");
-		AppendMessageField(initializeRequest, 1u, "--hwnd");
-		AppendMessageField(initializeRequest, 1u, "not-a-number");
+		AppendBytesField(initializeRequest, 1u, "SailorEditor");
+		AppendBytesField(initializeRequest, 1u, "--hwnd");
+		AppendBytesField(initializeRequest, 1u, "not-a-number");
 
-		const std::string request = MakeRequest(
+		const std::string request = MakeVersionedRequest(
 			EditorEngineProtocolVersion,
 			16,
 			c_initializeCommandField,
@@ -932,7 +847,7 @@ namespace
 		{
 			TProtocolBuffer buffer;
 			const auto response = RequireProtocolResponse(
-				MakeRequest(
+				MakeVersionedRequest(
 					EditorEngineProtocolVersion + 1u,
 					17,
 					c_getExitCodeCommandField),
@@ -941,7 +856,7 @@ namespace
 				response.m_protocolVersion ==
 					EditorEngineProtocolVersion &&
 				response.m_requestId == 17 &&
-				!response.m_success &&
+				!response.m_bSuccess &&
 				response.m_error.find("version") != std::string::npos &&
 				response.m_resultField == 0,
 				"version mismatch must return a correlated protocol error");
@@ -950,7 +865,7 @@ namespace
 		{
 			TProtocolBuffer buffer;
 			const auto response = RequireProtocolResponse(
-				MakeRequest(
+				MakeVersionedRequest(
 					EditorEngineProtocolVersion,
 					0,
 					c_getExitCodeCommandField),
@@ -958,7 +873,7 @@ namespace
 			Require(
 				response.m_protocolVersion == EditorEngineProtocolVersion &&
 				response.m_requestId == 0 &&
-				!response.m_success &&
+				!response.m_bSuccess &&
 				response.m_error.find("request_id") != std::string::npos &&
 				response.m_resultField == 0,
 				"zero request id must return a protocol error");
@@ -967,11 +882,11 @@ namespace
 		{
 			TProtocolBuffer buffer;
 			const auto response = RequireProtocolResponse(
-				MakeRequest(EditorEngineProtocolVersion, 23),
+				MakeVersionedRequest(EditorEngineProtocolVersion, 23),
 				buffer);
 			Require(
 				response.m_requestId == 23 &&
-				!response.m_success &&
+				!response.m_bSuccess &&
 				response.m_error.find("command") != std::string::npos &&
 				response.m_resultField == 0,
 				"missing command must return a correlated protocol error");
@@ -990,12 +905,12 @@ namespace
 		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
 		dependencies.m_lifecycleGate = &gate;
 		std::string parameterRequest;
-		AppendMessageField(parameterRequest, 1u, "Animator-1");
-		AppendMessageField(parameterRequest, 2u, "Speed");
+		AppendBytesField(parameterRequest, 1u, "Animator-1");
+		AppendBytesField(parameterRequest, 2u, "Speed");
 
 		TProtocolBuffer buffer;
 		const auto response = RequireProtocolResponse(
-			MakeRequest(
+			MakeVersionedRequest(
 				EditorEngineProtocolVersion,
 				27,
 				c_setAnimatorParameterCommandField,
@@ -1003,7 +918,7 @@ namespace
 			buffer,
 			dependencies);
 		Require(
-			!response.m_success &&
+			!response.m_bSuccess &&
 				response.m_error.find("value is not set") != std::string::npos &&
 				response.m_resultField == 0,
 			"animator parameter mutations must carry exactly one typed value");
@@ -1030,7 +945,7 @@ namespace
 
 			TProtocolBuffer buffer;
 			const auto response = RequireProtocolResponse(
-				MakeRequest(
+				MakeVersionedRequest(
 					EditorEngineProtocolVersion,
 					26,
 					c_instantiatePrefabFromYamlCommandField,
@@ -1041,10 +956,10 @@ namespace
 				response.m_protocolVersion ==
 					EditorEngineProtocolVersion &&
 				response.m_requestId == 26 &&
-				response.m_success &&
+				response.m_bSuccess &&
 				response.m_resultField == c_instanceIdResultField &&
-				!response.m_boolResult &&
-				response.m_supportsStrictInstanceIds,
+				ReadResult(response) == 0 &&
+				response.m_bSupportsStrictInstanceIds,
 				"a capable host must dispatch strict restoration through protocol v1");
 		}
 	}
@@ -1114,7 +1029,7 @@ namespace
 
 		TProtocolBuffer buffer;
 		const auto response = RequireProtocolResponse(
-			MakeRequest(
+			MakeVersionedRequest(
 				EditorEngineProtocolVersion,
 				28,
 				c_setEditorStatsModeCommandField,
@@ -1123,7 +1038,7 @@ namespace
 			dependencies);
 		Require(
 			response.m_requestId == 28 &&
-			!response.m_success &&
+			!response.m_bSuccess &&
 			response.m_resultField == 0 &&
 			response.m_error.find("stats mode") != std::string::npos,
 			"an invalid Editor stats mode must fail without mutating runtime state");
@@ -1205,7 +1120,7 @@ namespace
 			sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_VISIBILITY);
 		TProtocolBuffer setBuffer;
 		const auto setResponse = RequireProtocolResponse(
-			MakeRequest(
+			MakeVersionedRequest(
 				EditorEngineProtocolVersion,
 				129,
 				c_setEditorRenderModeCommandField,
@@ -1213,28 +1128,24 @@ namespace
 			setBuffer,
 			dependencies);
 		Require(
-			setResponse.m_success &&
+			setResponse.m_bSuccess &&
 			setResponse.m_resultField == c_boolResultField &&
-			setResponse.m_boolResult,
+			ReadResult(setResponse) != 0,
 			"a valid Editor render mode must update runtime state");
 
 		TProtocolBuffer getBuffer;
 		const auto getResponse = RequireProtocolResponse(
-			MakeRequest(
+			MakeVersionedRequest(
 				EditorEngineProtocolVersion,
 				130,
 				c_getEditorRenderModeCommandField),
 			getBuffer,
 			dependencies);
-		int32_t currentMode = 0;
+		uint64_t currentMode = 0;
 		Require(
-			getResponse.m_success &&
+			getResponse.m_bSuccess &&
 			getResponse.m_resultField == c_editorRenderModeResultField &&
-			TryDecodeInt32Result(
-				reinterpret_cast<const uint8_t*>(
-					getResponse.m_resultPayload.data()),
-				getResponse.m_resultPayload.size(),
-				currentMode) &&
+			ReadNestedScalar(getResponse.m_resultPayload, currentMode) &&
 			currentMode ==
 				sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_VISIBILITY,
 			"the typed render-mode query must return Engine truth");
@@ -1243,7 +1154,7 @@ namespace
 		AppendVarintField(invalidModeRequest, 1u, 99u);
 		TProtocolBuffer invalidBuffer;
 		const auto invalidResponse = RequireProtocolResponse(
-			MakeRequest(
+			MakeVersionedRequest(
 				EditorEngineProtocolVersion,
 				131,
 				c_setEditorRenderModeCommandField,
@@ -1251,7 +1162,7 @@ namespace
 			invalidBuffer,
 			dependencies);
 		Require(
-			!invalidResponse.m_success &&
+			!invalidResponse.m_bSuccess &&
 			invalidResponse.m_resultField == 0 &&
 			invalidResponse.m_error.find("render mode") != std::string::npos,
 			"an invalid Editor render mode must be rejected");
@@ -1263,7 +1174,7 @@ namespace
 			sailor::editor::v1::EDITOR_RENDER_MODE_LIT);
 		TProtocolBuffer resetBuffer;
 		const auto resetResponse = RequireProtocolResponse(
-			MakeRequest(
+			MakeVersionedRequest(
 				EditorEngineProtocolVersion,
 				132,
 				c_setEditorRenderModeCommandField,
@@ -1271,7 +1182,7 @@ namespace
 			resetBuffer,
 			dependencies);
 		Require(
-			resetResponse.m_success && resetResponse.m_boolResult,
+			resetResponse.m_bSuccess && ReadResult(resetResponse) != 0,
 			"the render-mode fixture must restore Lit mode");
 	}
 
@@ -1301,33 +1212,62 @@ namespace
 		Sailor::Protocol::EditorEngineProtocolDependencies dependencies;
 		dependencies.m_lifecycleGate = &gate;
 		std::string fileId;
-		AppendMessageField(fileId, FileIdRequest::kFileIdFieldNumber, "01234567-89AB-CDEF-0123-456789ABCDEF");
+		AppendBytesField(fileId, FileIdRequest::kFileIdFieldNumber, "01234567-89AB-CDEF-0123-456789ABCDEF");
 		TProtocolBuffer admitted;
-		const auto response = RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 143,
+		const auto response = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 143,
 			ProtocolRequest::kRequestModelFingerprintFieldNumber, fileId), admitted, dependencies);
-		Require(response.m_success && response.m_requestId == 143 &&
-			response.m_resultField == c_boolResultField && !response.m_boolResult,
+		Require(response.m_bSuccess && response.m_requestId == 143 &&
+			response.m_resultField == c_boolResultField && ReadResult(response) == 0,
 			"an unavailable importer must refuse generation rather than report a ready image");
 		TProtocolBuffer queried;
-		const auto status = RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 144,
+		const auto status = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 144,
 			ProtocolRequest::kGetModelFingerprintStatusFieldNumber, fileId), queried, dependencies);
-		int32_t value = -1;
-		Require(status.m_success && status.m_requestId == 144 &&
+		uint64_t value = 0;
+		Require(status.m_bSuccess && status.m_requestId == 144 &&
 			status.m_resultField == ProtocolResponse::kModelFingerprintStatusResultFieldNumber &&
-			TryDecodeInt32Result(reinterpret_cast<const uint8_t*>(status.m_resultPayload.data()), status.m_resultPayload.size(), value) &&
+			ReadNestedScalar(status.m_resultPayload, value) &&
 			value == MODEL_FINGERPRINT_STATUS_UNAVAILABLE,
 			"status queries must distinguish an absent request/importer from pending or ready output");
+	}
+
+	void TestPathTracedExportIsUnsupported()
+	{
+		Sailor::Tests::TempDirectory output("unsupported-export");
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::string error;
+		Require(gate.TryBeginInitialization(error), "export protocol fixture must initialize");
+		gate.CompleteInitialization(true);
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies;
+		dependencies.m_lifecycleGate = &gate;
+
+		for (const auto* instanceId : { "", "game-object", "component" })
+		{
+			std::string render;
+			AppendBytesField(render, 1u, Sailor::Workspace::PathToUtf8(output.Path("export/image.png")));
+			AppendBytesField(render, 2u, instanceId);
+			AppendVarintField(render, 3u, 720);
+			AppendVarintField(render, 4u, 64);
+			AppendVarintField(render, 5u, 4);
+			TProtocolBuffer buffer;
+			const auto response = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 145,
+				c_renderPathTracedImageCommandField, render), buffer, dependencies);
+			Require(response.m_protocolVersion == EditorEngineProtocolVersion && response.m_requestId == 145 &&
+				!response.m_bSuccess && response.m_resultField == 0 &&
+				response.m_error == "Path-traced image export is not supported by the editor.",
+				"unsupported export must return an explicit protocol error, not a failed render result");
+			Require(std::filesystem::is_empty(output.Get()), "unsupported export must not create output files or directories");
+		}
 	}
 
 	void TestEmbeddedNullIsRejected()
 	{
 		std::string fileIdRequest;
 		const std::string fileIdWithNull("asset\0id", 8);
-		AppendMessageField(fileIdRequest, 1u, fileIdWithNull);
+		AppendBytesField(fileIdRequest, 1u, fileIdWithNull);
 
 		TProtocolBuffer buffer;
 		const auto response = RequireProtocolResponse(
-			MakeRequest(
+			MakeVersionedRequest(
 				EditorEngineProtocolVersion,
 				29,
 				c_loadEditorWorldCommandField,
@@ -1335,7 +1275,7 @@ namespace
 			buffer);
 		Require(
 			response.m_requestId == 29 &&
-			!response.m_success &&
+			!response.m_bSuccess &&
 			response.m_error.find("NUL") != std::string::npos &&
 			response.m_resultField == 0,
 			"embedded NUL in a protobuf string must be rejected before App adaptation");
@@ -1347,7 +1287,7 @@ namespace
 		AppendVarintField(mutationRequest, 1u, 2u);
 		const std::string unicodeInstanceId =
 			"Editor-" "\xd0\xa3\xd1\x82\xd0\xba\xd0\xb0";
-		AppendMessageField(mutationRequest, 2u, unicodeInstanceId);
+		AppendBytesField(mutationRequest, 2u, unicodeInstanceId);
 
 		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
 		std::string admissionError;
@@ -1360,7 +1300,7 @@ namespace
 
 		TProtocolBuffer buffer;
 		const auto response = RequireProtocolResponse(
-			MakeRequest(
+			MakeVersionedRequest(
 				EditorEngineProtocolVersion,
 				30,
 				c_getManagedMutationRevisionCommandField,
@@ -1369,8 +1309,8 @@ namespace
 			dependencies);
 		Require(
 			response.m_requestId == 30 &&
-			response.m_success &&
-			response.m_supportsStrictInstanceIds &&
+			response.m_bSuccess &&
+			response.m_bSupportsStrictInstanceIds &&
 			response.m_error.empty() &&
 			response.m_resultField == c_uint64ResultField,
 			"valid UTF-8 protobuf strings must pass native string validation");
@@ -1380,7 +1320,7 @@ namespace
 	{
 		TProtocolBuffer buffer;
 		const auto response = RequireProtocolResponse(
-			MakeRequest(
+			MakeVersionedRequest(
 				EditorEngineProtocolVersion,
 				31,
 				c_getExitCodeCommandField),
@@ -1388,50 +1328,48 @@ namespace
 		Require(
 			response.m_protocolVersion == EditorEngineProtocolVersion &&
 			response.m_requestId == 31 &&
-			response.m_success &&
+			response.m_bSuccess &&
 			response.m_error.empty() &&
 			response.m_resultField == c_int32ResultField &&
-			response.m_int32Result == 0,
+			ReadResult(response) == 0,
 			"get-exit-code must round-trip through the exported C ABI");
 	}
 
 	struct TViewportEventSource
 	{
-		std::string m_events[2]{};
+		Sailor::TVector<Sailor::EditorViewport::Event> m_events;
 		uint32_t m_nextEvent = 0;
 	};
 
-	uint32_t PullViewportEvents(
+	Sailor::TVector<Sailor::EditorViewport::Event> PullViewportEvents(
 		void* context,
-		char** events,
 		uint32_t capacity)
 	{
 		auto* source = static_cast<TViewportEventSource*>(context);
-		if (!source || !events)
+		Sailor::TVector<Sailor::EditorViewport::Event> events;
+		while (events.Num() < capacity && source->m_nextEvent < source->m_events.Num())
 		{
-			return 0;
+			events.Add(std::move(source->m_events[source->m_nextEvent++]));
 		}
-
-		uint32_t numEvents = 0;
-		while (numEvents < capacity && source->m_nextEvent < 2)
-		{
-			const std::string& event = source->m_events[source->m_nextEvent++];
-			events[numEvents] = new char[event.size() + 1];
-			std::memcpy(events[numEvents], event.c_str(), event.size() + 1);
-			++numEvents;
-		}
-		return numEvents;
+		return events;
 	}
 
-	void TestMalformedViewportEventDoesNotDiscardValidBatchEvents()
+	Sailor::TVector<Sailor::EditorViewport::Event> PullControllerViewportEvents(void* context, uint32_t capacity)
 	{
+		auto& controller = *static_cast<Sailor::EditorViewport::EditorViewportController*>(context);
+		Sailor::TVector<Sailor::EditorViewport::Event> events;
+		Sailor::EditorViewport::Event event;
+		while (events.Num() < capacity && controller.PullEvent(event)) events.Add(std::move(event));
+		return events;
+	}
+
+	void TestViewportEventBatchKeepsOrderAndOwnsPayload()
+	{
+		using namespace Sailor::EditorViewport;
 		TViewportEventSource source{
 			{
-				"kind: [unterminated",
-				"kind: selection\n"
-				"revision: 42\n"
-				"managedMutationRevision: 9\n"
-				"selectedInstanceId: Duck-123\n"
+				Event{ 42, 9, SelectionEvent{ Sailor::InstanceId("Duck-123") } },
+				Event{ 43, 10, SelectionEvent{} }
 			}
 		};
 		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
@@ -1446,8 +1384,8 @@ namespace
 		dependencies.m_lifecycleGate = &gate;
 
 		std::string countRequest;
-		AppendVarintField(countRequest, 1u, 2u);
-		const std::string request = MakeRequest(
+		AppendVarintField(countRequest, 1u, 1u);
+		const std::string request = MakeVersionedRequest(
 			EditorEngineProtocolVersion,
 			41,
 			c_pullEditorViewportEventsCommandField,
@@ -1457,13 +1395,13 @@ namespace
 		Require(
 			Invoke(request, buffer, dependencies) ==
 				static_cast<int32_t>(EEditorEngineTransportStatus::Ok),
-			"a malformed viewport event must not fail the protocol transport");
+			"a typed viewport event must pass through the protocol transport");
 
 		const auto response = DecodeResponse(buffer.GetData(), buffer.GetSize());
 		Require(
 			response.m_protocolVersion == EditorEngineProtocolVersion &&
 			response.m_requestId == 41 &&
-			response.m_success &&
+			response.m_bSuccess &&
 			response.m_error.empty() &&
 			response.m_resultField == c_viewportEventBatchResultField,
 			"viewport event response must report protocol success");
@@ -1476,38 +1414,83 @@ namespace
 				numEvents,
 				event) &&
 			numEvents == 1,
-			"only the valid event from the pulled batch must be returned");
+			"a bounded pull must leave the next event in the queue");
 		Require(
 			event.m_revision == 42 &&
 			event.m_managedMutationRevision == 9 &&
 			event.m_hasSelection &&
 			event.m_selectedInstanceId == "Duck-123",
-			"the valid event following malformed YAML must be preserved");
+			"the first typed selection event must preserve its identity and revisions");
+		Require(source.m_nextEvent == 1, "the source must respect the requested capacity");
+
+		TProtocolBuffer nextBuffer;
+		const auto next = RequireProtocolResponse(request, nextBuffer, dependencies);
+		source.m_events.Clear();
+		Require(TryDecodeViewportEventBatch(next.m_resultPayload, numEvents, event) && numEvents == 1 &&
+			event.m_revision == 43 && event.m_managedMutationRevision == 10 && event.m_hasSelection &&
+			event.m_selectedInstanceId.empty(), "selection clear must follow selection and own its wire payload");
+		TProtocolBuffer emptyBuffer;
+		const auto empty = RequireProtocolResponse(request, emptyBuffer, dependencies);
+		Require(TryDecodeViewportEventBatch(empty.m_resultPayload, numEvents, event) && numEvents == 0,
+			"draining the queue must not duplicate the last event");
+	}
+
+	void TestViewportTransformPreservesValuesAndToolState()
+	{
+		using namespace Sailor::EditorViewport;
+		const Sailor::InstanceId id("Duck-123");
+		const Sailor::Math::Transform before({ 1, 2, -3, 1 }, glm::normalize(glm::quat(1, 2, 3, 4)), { 2, 3, 4, 1 });
+		const Sailor::Math::Transform after({ -5, 6, 7, 1 }, glm::normalize(glm::quat(4, 3, 2, 1)), { 5, 6, 7, 1 });
+		const std::array expected{ before.m_position,
+			glm::vec4(before.GetRotation().x, before.GetRotation().y, before.GetRotation().z, before.GetRotation().w), before.m_scale,
+			after.m_position, glm::vec4(after.GetRotation().x, after.GetRotation().y, after.GetRotation().z, after.GetRotation().w), after.m_scale };
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::string error;
+		Require(gate.TryBeginInitialization(error), "transform test lifecycle must initialize");
+		gate.CompleteInitialization(true);
+		std::string count;
+		AppendVarintField(count, 1, 1);
+		for (auto operation : { ETransformOperation::Select, ETransformOperation::Translate,
+			ETransformOperation::Rotate, ETransformOperation::Scale })
+		{
+			for (auto space : { ETransformSpace::World, ETransformSpace::Local })
+			{
+				TViewportEventSource source{ { Event{ 51, 12, TransformEvent{ id, before, after, operation, space } } } };
+				Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+				dependencies.m_context = &source;
+				dependencies.m_lifecycleGate = &gate;
+				dependencies.m_pullEditorViewportEvents = PullViewportEvents;
+				TProtocolBuffer buffer;
+				const auto response = RequireProtocolResponse(
+					MakeVersionedRequest(EditorEngineProtocolVersion, 44, c_pullEditorViewportEventsCommandField, count), buffer, dependencies);
+				uint32_t numEvents;
+				TDecodedViewportEvent event;
+				Require(response.m_bSuccess && TryDecodeViewportEventBatch(response.m_resultPayload, numEvents, event) &&
+					numEvents == 1 && event.m_bHasTransform && event.m_revision == 51 && event.m_managedMutationRevision == 12,
+					"transform event must retain its kind, order and mutation revisions");
+				Require(event.m_transform.m_instanceId == id.ToString() && event.m_transform.m_vectors == expected &&
+					event.m_transform.m_operation == static_cast<uint64_t>(operation) + 1 &&
+					event.m_transform.m_space == static_cast<uint64_t>(space) + 1,
+					"transform wire fields must retain identity, tool state and before/after XYZW values");
+			}
+		}
 	}
 
 	void TestViewportAssetDropEventIsTypedAndValidated()
 	{
 		const std::string fileId =
 			"{12345678-1234-1234-1234-123456789ABC}";
-		TViewportEventSource source{
-			{
-				"kind: assetDrop\n"
-				"revision: 43\n"
-				"managedMutationRevision: 10\n"
-				"fileId: \"" + fileId + "\"\n"
-				"normalizedX: 0.25\n"
-				"normalizedY: 0.75\n",
-				"kind: assetDrop\n"
-				"revision: 44\n"
-				"managedMutationRevision: 10\n"
-				"fileId: \"" + fileId + "\"\n"
-				"normalizedX: 1.5\n"
-				"normalizedY: 0.5\n"
-			}
-		};
+		Sailor::EditorViewport::EditorViewportController controller;
+		controller.SetManagedMutationRevisions(10, 0);
+		std::string source = fileId + "ignored suffix";
+		Require(controller.QueueAssetDropEvent(std::string_view(source.data(), fileId.size()), 0.25f, 0.75f),
+			"valid bounded asset-drop text must enter the viewport queue");
+		source.assign("replaced");
+		Require(!controller.QueueAssetDropEvent(fileId, 1.5f, 0.5f),
+			"out-of-viewport drops must be rejected before queueing");
 		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
-		dependencies.m_context = &source;
-		dependencies.m_pullEditorViewportEvents = PullViewportEvents;
+		dependencies.m_context = &controller;
+		dependencies.m_pullEditorViewportEvents = PullControllerViewportEvents;
 		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
 		std::string admissionError;
 		Require(
@@ -1520,7 +1503,7 @@ namespace
 		AppendVarintField(countRequest, 1u, 2u);
 		TProtocolBuffer buffer;
 		const auto response = RequireProtocolResponse(
-			MakeRequest(
+			MakeVersionedRequest(
 				EditorEngineProtocolVersion,
 				42,
 				c_pullEditorViewportEventsCommandField,
@@ -1528,7 +1511,7 @@ namespace
 			buffer,
 			dependencies);
 		Require(
-			response.m_success &&
+			response.m_bSuccess &&
 				response.m_resultField ==
 					c_viewportEventBatchResultField,
 			"viewport asset-drop response must report protocol success");
@@ -1541,9 +1524,9 @@ namespace
 				numEvents,
 				event) &&
 				numEvents == 1,
-			"invalid normalized asset-drop events must be filtered");
+			"only the accepted asset-drop event must reach the protocol");
 		Require(
-			event.m_revision == 43 &&
+			event.m_revision == 1 &&
 				event.m_managedMutationRevision == 10 &&
 				event.m_hasAssetDrop &&
 				event.m_assetFileId == fileId &&
@@ -1554,21 +1537,13 @@ namespace
 
 	void TestViewportToolShortcutEventIsTypedAndValidated()
 	{
-		TViewportEventSource source{
-			{
-				"kind: toolShortcut\n"
-				"revision: 45\n"
-				"managedMutationRevision: 11\n"
-				"keyCode: 87\n",
-				"kind: toolShortcut\n"
-				"revision: 46\n"
-				"managedMutationRevision: 11\n"
-				"keyCode: 88\n"
-			}
-		};
+		Sailor::EditorViewport::EditorViewportController controller;
+		controller.SetManagedMutationRevisions(11, 0);
+		Require(controller.QueueToolShortcutEvent('W'), "supported tool shortcuts must enter the queue");
+		Require(!controller.QueueToolShortcutEvent('X'), "unsupported keys must be rejected before queueing");
 		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
-		dependencies.m_context = &source;
-		dependencies.m_pullEditorViewportEvents = PullViewportEvents;
+		dependencies.m_context = &controller;
+		dependencies.m_pullEditorViewportEvents = PullControllerViewportEvents;
 		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
 		std::string admissionError;
 		Require(
@@ -1581,7 +1556,7 @@ namespace
 		AppendVarintField(countRequest, 1u, 2u);
 		TProtocolBuffer buffer;
 		const auto response = RequireProtocolResponse(
-			MakeRequest(
+			MakeVersionedRequest(
 				EditorEngineProtocolVersion,
 				43,
 				c_pullEditorViewportEventsCommandField,
@@ -1589,7 +1564,7 @@ namespace
 			buffer,
 			dependencies);
 		Require(
-			response.m_success &&
+			response.m_bSuccess &&
 				response.m_resultField ==
 					c_viewportEventBatchResultField,
 			"viewport tool-shortcut response must report protocol success");
@@ -1602,9 +1577,9 @@ namespace
 				numEvents,
 				event) &&
 				numEvents == 1,
-			"unsupported viewport shortcut keys must be filtered");
+			"only the accepted tool shortcut must reach the protocol");
 		Require(
-			event.m_revision == 45 &&
+			event.m_revision == 1 &&
 				event.m_managedMutationRevision == 11 &&
 				event.m_hasToolShortcut &&
 				event.m_toolShortcutKeyCode == 'W',
@@ -1658,14 +1633,16 @@ namespace
 			{
 				gate.WaitForShutdownDrain();
 			});
+		Sailor::Tests::ScopeExit completeStart([&]() { gate.CompleteStart(); });
+		Sailor::Tests::ScopeExit releaseOperation([&]() { gate.ReleaseOperation(); });
 		Require(
 			drain.wait_for(20ms) == std::future_status::timeout,
 			"Shutdown must wait for both Start and regular operation leases");
-		gate.ReleaseOperation();
+		releaseOperation.Run();
 		Require(
 			drain.wait_for(20ms) == std::future_status::timeout,
 			"Shutdown must continue waiting while Start is active");
-		gate.CompleteStart();
+		completeStart.Run();
 		Require(
 			drain.wait_for(1s) == std::future_status::ready,
 			"Shutdown must continue after Start and operations drain");
@@ -1720,10 +1697,11 @@ namespace
 			{
 				shutdownInitGate.WaitForInitializationDrain();
 			});
+		Sailor::Tests::ScopeExit completeInitialization([&]() { shutdownInitGate.CompleteInitialization(true); });
 		Require(
 			initializationDrain.wait_for(20ms) == std::future_status::timeout,
 			"Shutdown must wait for the active Initialize owner");
-		shutdownInitGate.CompleteInitialization(true);
+		completeInitialization.Run();
 		Require(
 			initializationDrain.wait_for(1s) == std::future_status::ready,
 			"Shutdown must continue when Initialize completes");
@@ -1850,7 +1828,7 @@ namespace
 			try
 			{
 				response = RequireProtocolResponse(
-					MakeRequest(EditorEngineProtocolVersion, attempt, c_shutdownCommandField), buffer, dependencies);
+					MakeVersionedRequest(EditorEngineProtocolVersion, attempt, c_shutdownCommandField), buffer, dependencies);
 			}
 			catch (const std::runtime_error& exception)
 			{
@@ -1860,7 +1838,7 @@ namespace
 			}
 			Require(bThrew == (attempt == 2u), "throwing shutdown must reach the native transport boundary");
 			Require(attempts == attempt, "Shutdown must execute each explicit retry exactly once");
-			Require(response.m_success == (attempt == 3u), "Shutdown must report native completion, not just dispatch");
+			Require(response.m_bSuccess == (attempt == 3u), "Shutdown must report native completion, not just dispatch");
 			std::string error;
 			if (attempt < 3u)
 			{
@@ -1894,12 +1872,12 @@ namespace
 			for (const auto& argument : { std::string("SailorEngine"), std::string("--workspace"),
 				workspace.Path(path).string(), std::string("--noconsole"), std::string("--new-world") })
 			{
-				AppendMessageField(arguments, 1u, argument);
+				AppendBytesField(arguments, 1u, argument);
 			}
 			TProtocolBuffer buffer;
-			const auto response = RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 1u,
+			const auto response = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 1u,
 				c_initializeCommandField, arguments), buffer, dependencies);
-			Require(!response.m_success && !response.m_error.empty(),
+			Require(!response.m_bSuccess && !response.m_error.empty(),
 				"Initialize must report the real App failure, not successful dispatch");
 			Require(Sailor::App::GetInstance() && Sailor::App::GetExitCode() != 0 &&
 				Sailor::App::Initialize() == Sailor::EAppInitializationResult::Failed,
@@ -1909,8 +1887,8 @@ namespace
 				!gate.TryBeginInitialization(error),
 				"failed initialization must not admit commands or another App before rollback");
 			TProtocolBuffer shutdownBuffer;
-			Require(RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 2u,
-				c_shutdownCommandField), shutdownBuffer, dependencies).m_success && !Sailor::App::GetInstance(),
+			Require(RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 2u,
+				c_shutdownCommandField), shutdownBuffer, dependencies).m_bSuccess && !Sailor::App::GetInstance(),
 				"shutdown must release a partially initialized App and allow the next attempt");
 		}
 	}
@@ -1926,8 +1904,8 @@ namespace
 		auto stop = [&]()
 			{
 				TProtocolBuffer buffer;
-				Require(RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 1u,
-					c_stopCommandField), buffer, dependencies).m_success, "Stop must acknowledge its request");
+				Require(RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 1u,
+					c_stopCommandField), buffer, dependencies).m_bSuccess, "Stop must acknowledge its request");
 			};
 
 		std::string error;
@@ -1991,15 +1969,15 @@ namespace
 		auto stop = std::async(std::launch::async, [&]()
 			{
 				TProtocolBuffer buffer;
-				return RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 1u,
-					c_stopCommandField), buffer, stopDependencies).m_success;
+				return RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 1u,
+					c_stopCommandField), buffer, stopDependencies).m_bSuccess;
 			});
 		const bool bStopEntered = source.m_stopEntered.get_future().wait_for(1s) == std::future_status::ready;
 		auto shutdown = std::async(std::launch::async, [&]()
 			{
 				TProtocolBuffer buffer;
-				return RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 2u,
-					c_shutdownCommandField), buffer, shutdownDependencies).m_success;
+				return RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 2u,
+					c_shutdownCommandField), buffer, shutdownDependencies).m_bSuccess;
 			});
 		const bool bShutdownEntered = source.m_shutdownEntered.get_future().wait_for(1s) == std::future_status::ready;
 		const bool bShutdownWaited = shutdown.wait_for(20ms) == std::future_status::timeout;
@@ -2023,7 +2001,7 @@ namespace
 		try
 		{
 			TProtocolBuffer buffer;
-			RequireProtocolResponse(MakeRequest(EditorEngineProtocolVersion, 1u,
+			RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 1u,
 				c_stopCommandField), buffer, dependencies);
 		}
 		catch (const std::runtime_error& error)
@@ -2050,7 +2028,7 @@ namespace
 			{
 				TProtocolBuffer buffer;
 				return RequireProtocolResponse(
-					MakeRequest(
+					MakeVersionedRequest(
 						EditorEngineProtocolVersion,
 						requestId,
 						c_startCommandField),
@@ -2086,7 +2064,7 @@ namespace
 		const auto startResponse =
 			InvokeStartPromptly(51, dependencies, source);
 		Require(
-			startResponse.m_success &&
+			startResponse.m_bSuccess &&
 				startResponse.m_resultField == c_emptyResultField,
 			"Start must acknowledge an admitted async worker");
 
@@ -2108,40 +2086,40 @@ namespace
 
 		TProtocolBuffer livenessBuffer;
 		const auto livenessResponse = RequireProtocolResponse(
-			MakeRequest(
+			MakeVersionedRequest(
 				EditorEngineProtocolVersion,
 				58,
 				c_isEngineRunningCommandField),
 			livenessBuffer,
 			dependencies);
 		Require(
-			livenessResponse.m_success &&
+			livenessResponse.m_bSuccess &&
 				livenessResponse.m_resultField == c_boolResultField &&
-				livenessResponse.m_boolResult,
+				ReadResult(livenessResponse) != 0,
 			"lifecycle probe must report the admitted Start worker as running");
 
 		TProtocolBuffer duplicateBuffer;
 		const auto duplicateResponse = RequireProtocolResponse(
-			MakeRequest(
+			MakeVersionedRequest(
 				EditorEngineProtocolVersion,
 				52,
 				c_startCommandField),
 			duplicateBuffer,
 			dependencies);
 		Require(
-			!duplicateResponse.m_success,
+			!duplicateResponse.m_bSuccess,
 			"an active async Start must still reject duplicate starts");
 
 		TProtocolBuffer stopBuffer;
 		const auto stopResponse = RequireProtocolResponse(
-			MakeRequest(
+			MakeVersionedRequest(
 				EditorEngineProtocolVersion,
 				53,
 				c_stopCommandField),
 			stopBuffer,
 			dependencies);
 		Require(
-			stopResponse.m_success &&
+			stopResponse.m_bSuccess &&
 				stopResponse.m_resultField == c_emptyResultField,
 			"Stop must acknowledge after releasing and joining the Start worker");
 		{
@@ -2153,16 +2131,16 @@ namespace
 
 		TProtocolBuffer stoppedLivenessBuffer;
 		const auto stoppedLivenessResponse = RequireProtocolResponse(
-			MakeRequest(
+			MakeVersionedRequest(
 				EditorEngineProtocolVersion,
 				59,
 				c_isEngineRunningCommandField),
 			stoppedLivenessBuffer,
 			dependencies);
 		Require(
-			stoppedLivenessResponse.m_success &&
+			stoppedLivenessResponse.m_bSuccess &&
 				stoppedLivenessResponse.m_resultField == c_boolResultField &&
-				!stoppedLivenessResponse.m_boolResult,
+				ReadResult(stoppedLivenessResponse) == 0,
 			"lifecycle probe must report a joined Start worker as stopped");
 	}
 
@@ -2178,21 +2156,21 @@ namespace
 		const auto startResponse =
 			InvokeStartPromptly(56, dependencies, source);
 		Require(
-			startResponse.m_success,
+			startResponse.m_bSuccess,
 			"immediate Stop test must receive the Start acknowledgement");
 
 		// Do not wait for BlockingStart to enter. Stop must publish its request
 		// before or after the worker reaches the routine without losing it.
 		TProtocolBuffer stopBuffer;
 		const auto stopResponse = RequireProtocolResponse(
-			MakeRequest(
+			MakeVersionedRequest(
 				EditorEngineProtocolVersion,
 				57,
 				c_stopCommandField),
 			stopBuffer,
 			dependencies);
 		Require(
-			stopResponse.m_success,
+			stopResponse.m_bSuccess,
 			"immediate Stop must release and join the admitted Start worker");
 		{
 			const std::lock_guard<std::mutex> lock(source.m_mutex);
@@ -2218,7 +2196,7 @@ namespace
 		const auto startResponse =
 			InvokeStartPromptly(54, dependencies, source);
 		Require(
-			startResponse.m_success,
+			startResponse.m_bSuccess,
 			"Shutdown ordering test must admit Start");
 		{
 			std::unique_lock<std::mutex> lock(source.m_mutex);
@@ -2235,14 +2213,14 @@ namespace
 
 		TProtocolBuffer shutdownBuffer;
 		const auto shutdownResponse = RequireProtocolResponse(
-			MakeRequest(
+			MakeVersionedRequest(
 				EditorEngineProtocolVersion,
 				55,
 				c_shutdownCommandField),
 			shutdownBuffer,
 			dependencies);
 		Require(
-			shutdownResponse.m_success &&
+			shutdownResponse.m_bSuccess &&
 				shutdownResponse.m_resultField == c_emptyResultField,
 			"Shutdown must complete after draining async lifecycle work");
 		{
@@ -2338,7 +2316,7 @@ namespace
 		return true;
 	}
 
-	uint32_t ThrowFromEditorOperation(void*, char**, uint32_t)
+	Sailor::TVector<Sailor::EditorViewport::Event> ThrowFromEditorOperation(void*, uint32_t)
 	{
 		throw std::runtime_error("test Editor worker failure");
 	}
@@ -2366,7 +2344,7 @@ namespace
 		try
 		{
 			Invoke(
-				MakeRequest(
+				MakeVersionedRequest(
 					EditorEngineProtocolVersion,
 					60,
 					c_pullEditorViewportEventsCommandField,
@@ -2406,7 +2384,7 @@ namespace
 		gate.CompleteShutdown();
 	}
 
-	void TestPathTracingDoesNotBlockLifecycleDispatch()
+	void TestEditorCommandDoesNotBlockLifecycleDispatch(bool bStopReleasesDispatch = true)
 	{
 		using namespace std::chrono_literals;
 
@@ -2422,23 +2400,38 @@ namespace
 		dependencies.m_editorDispatchContext = &source;
 		dependencies.m_dispatchEditorOperation =
 			DispatchBlockingEditorOperation;
+		if (!bStopReleasesDispatch)
+		{
+			dependencies.m_stop = [](void* context)
+			{
+				auto& blocked = *static_cast<TBlockingEditorDispatchSource*>(context);
+				const std::lock_guard lock(blocked.m_mutex);
+				++blocked.m_numStops;
+			};
+		}
 
-		std::string renderRequest;
-		AppendMessageField(renderRequest, 1u, "PathTrace.png");
-		auto render = std::async(
+		auto command = std::async(
 			std::launch::async,
-			[&dependencies, &renderRequest]()
+			[&dependencies]()
 			{
 				TProtocolBuffer buffer;
 				return RequireProtocolResponse(
-					MakeRequest(
+					MakeVersionedRequest(
 						EditorEngineProtocolVersion,
 						61,
-						c_renderPathTracedImageCommandField,
-						renderRequest),
+						c_getEditorSimulationStateCommandField),
 					buffer,
 					dependencies);
 			});
+		std::future<TDecodedResponse> shutdown;
+		Sailor::Tests::ScopeExit releaseDispatch([&]()
+		{
+			{
+				const std::lock_guard lock(source.m_mutex);
+				source.m_bReleaseDispatch = true;
+			}
+			source.m_condition.notify_all();
+		});
 
 		{
 			std::unique_lock<std::mutex> lock(source.m_mutex);
@@ -2450,16 +2443,16 @@ namespace
 					{
 						return source.m_bDispatchEntered;
 					}),
-				"path tracing must enter the dedicated Editor dispatcher");
+				"a regular editor command must enter the dedicated Editor dispatcher");
 		}
 
-		auto shutdown = std::async(
+		shutdown = std::async(
 			std::launch::async,
 			[&dependencies]()
 			{
 				TProtocolBuffer buffer;
 				return RequireProtocolResponse(
-					MakeRequest(
+					MakeVersionedRequest(
 						EditorEngineProtocolVersion,
 						62,
 						c_shutdownCommandField),
@@ -2467,25 +2460,21 @@ namespace
 					dependencies);
 			});
 
-		if (shutdown.wait_for(1s) != std::future_status::ready)
-		{
-			{
-				const std::lock_guard<std::mutex> lock(source.m_mutex);
-				source.m_bReleaseDispatch = true;
-			}
-			source.m_condition.notify_all();
-		}
+		const bool bShutdownCompletedBeforeCleanup = shutdown.wait_for(1s) == std::future_status::ready;
+		releaseDispatch.Run();
 
 		const auto shutdownResponse = shutdown.get();
-		const auto renderResponse = render.get();
+		const auto commandResponse = command.get();
+		Require(bShutdownCompletedBeforeCleanup,
+			"Shutdown must finish before test cleanup releases the Editor worker");
 		Require(
-			shutdownResponse.m_success &&
+			shutdownResponse.m_bSuccess &&
 				shutdownResponse.m_resultField == c_emptyResultField,
 			"Shutdown must bypass the Editor worker and drain it safely");
 		Require(
-			renderResponse.m_success &&
-				renderResponse.m_resultField == c_boolResultField,
-			"path tracing must complete its regular Editor operation response");
+			commandResponse.m_bSuccess &&
+				commandResponse.m_resultField == c_boolResultField,
+			"the editor command must complete its regular operation response");
 		{
 			const std::lock_guard<std::mutex> lock(source.m_mutex);
 			Require(
@@ -2493,8 +2482,24 @@ namespace
 					source.m_numStops == 1 &&
 					source.m_numShutdowns == 1 &&
 					source.m_bOperationExecuted,
-				"lifecycle must interrupt and drain path tracing without entering the Editor dispatcher");
+				"lifecycle must interrupt and drain editor commands without entering the Editor dispatcher");
 		}
+	}
+
+	void TestShutdownOrderingRejectsCleanupAssistedCompletion()
+	{
+		bool bRejected = false;
+		try
+		{
+			TestEditorCommandDoesNotBlockLifecycleDispatch(false);
+		}
+		catch (const std::runtime_error& error)
+		{
+			if (std::string_view(error.what()) != "Shutdown must finish before test cleanup releases the Editor worker") throw;
+			bRejected = true;
+		}
+		Require(bRejected, "a Stop callback that never releases its worker must fail the ordering check");
+		std::cout << "Shutdown ordering: cleanup-assisted completion rejected after joining both workers" << std::endl;
 	}
 }
 
@@ -2502,6 +2507,7 @@ int main()
 {
 	try
 	{
+		TestGoldenProtocolWire();
 		TestInvalidArgumentsResetOutputs();
 		TestViewportEvidenceRequestReportsNoFrame();
 		TestOversizedAndMalformedPayloads();
@@ -2515,10 +2521,12 @@ int main()
 		TestEditorRenderModeWireContract();
 		TestAudioPreviewWireContract();
 		TestModelFingerprintProtocol();
+		TestPathTracedExportIsUnsupported();
 		TestEmbeddedNullIsRejected();
 		TestUtf8StringIsAccepted();
 		TestGetExitCodeRoundTripAndFree();
-		TestMalformedViewportEventDoesNotDiscardValidBatchEvents();
+		TestViewportEventBatchKeepsOrderAndOwnsPayload();
+		TestViewportTransformPreservesValuesAndToolState();
 		TestViewportAssetDropEventIsTypedAndValidated();
 		TestViewportToolShortcutEventIsTypedAndValidated();
 		TestLifecycleGateDrainsStartAndOperationsBeforeShutdown();
@@ -2531,7 +2539,8 @@ int main()
 		TestImmediateStopAfterStartAcknowledgementCannotBeLost();
 		TestShutdownStopsAndJoinsWorkerBeforeShutdownRoutine();
 		TestEditorWorkerExceptionIsRethrownOnInvoker();
-		TestPathTracingDoesNotBlockLifecycleDispatch();
+		TestEditorCommandDoesNotBlockLifecycleDispatch();
+		TestShutdownOrderingRejectsCleanupAssistedCompletion();
 	}
 	catch (const std::exception& exception)
 	{

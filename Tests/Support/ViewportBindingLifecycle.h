@@ -107,18 +107,124 @@ namespace Sailor::Tests
 		RequireViewport(session.StampAndHandleInput(input).IsOk() && binding.SetFocused(true).IsOk() &&
 			session.GetLastInput()->m_timestampNs > input.m_timestampNs && session.GetLastInput()->m_focused,
 			"focus and forwarded input must use the same session timestamp sequence");
-		const auto first = presenter.m_presentCalls.back();
-		presenter.m_nextPresentFailure = Failure::FromDomain(ErrorDomain::Transport, 921, "present refused");
-		auto result = binding.PumpFrame();
-		RequireViewport(!result.IsOk() && result.m_nativeCode == 921, "presenter failure must reach the live binding caller");
-		RequireViewport(binding.PumpFrame().IsOk() && presenter.m_presentCalls.back().m_frameIndex > first.m_frameIndex &&
-			presenter.m_presentCalls.back().m_generation == first.m_generation, "presentation must resume on the same imported surface");
+		const auto retry = Failure::FromDomain(ErrorDomain::Session, 921, "presentation pending");
+		presenter.m_nextPresentFailure = retry;
+		RequireViewport(binding.PumpFrame() == retry, "presenter failure must reach the live binding caller");
+		const auto pending = presenter.m_presentCalls.back();
+		const auto begins = provider.m_beginCalls.size();
+		const auto exports = provider.m_exportCalls.size();
+		for (uint32_t attempt = 0; attempt < 3; ++attempt)
+		{
+			presenter.m_nextPresentFailure = retry;
+			RequireViewport(binding.PumpFrame() == retry && presenter.m_presentCalls.back() == pending &&
+				provider.m_beginCalls.size() == begins && provider.m_exportCalls.size() == exports &&
+				session.GetState() == SessionState::Active && session.IsReady(),
+				"pending presentation must retry the same frame and sync keys without another producer copy");
+		}
+		const auto presents = presenter.m_presentCalls.size();
+		RequireViewport(binding.SetVisible(false).IsOk() && binding.PumpFrame().IsOk() &&
+			presenter.m_presentCalls.size() == presents && binding.SetVisible(true).IsOk(),
+			"hiding a pending frame must pause presentation without consuming it");
+		presenter.m_nextImportFailure = Failure::FromDomain(ErrorDomain::Transport, 922, "resize import refused");
+		RequireViewport(!binding.Resize(1600, 900).IsOk() && binding.PumpFrame().IsOk() &&
+			presenter.m_presentCalls.back() == pending && provider.m_beginCalls.size() == begins &&
+			provider.m_exportCalls.size() == exports,
+			"failed resize must preserve the pending frame until presentation succeeds");
+		RequireViewport(binding.PumpFrame().IsOk() && presenter.m_presentCalls.back().m_frameIndex == pending.m_frameIndex + 1 &&
+			provider.m_beginCalls.size() == begins + 1 && provider.m_exportCalls.size() == exports + 1,
+			"only a completed presentation may allow the producer to advance");
+		presenter.m_nextPresentFailure = retry;
+		RequireViewport(binding.PumpFrame() == retry && binding.Resize(1600, 900).IsOk() && binding.PumpFrame().IsOk() &&
+			presenter.m_presentCalls.back().m_generation == pending.m_generation + 1 &&
+			presenter.m_presentCalls.back().m_frameIndex == 1 && provider.m_liveSurfaces.size() == 1,
+			"successful resize must discard pending presentation from the retired surface");
+
+		const auto oldInput = *session.GetLastInput();
+		const auto recreate = Failure::FromDomain(ErrorDomain::Session, 2, "surface abandoned");
+		presenter.m_nextPresentFailure = recreate;
+		RequireViewport(binding.PumpFrame() == recreate && session.GetState() == SessionState::Recovering && !session.IsReady(),
+			"an abandoned surface must stop accepting frames and input until recreation");
+		RequireViewport(binding.PumpFrame().IsOk() && session.GetConnectionEpoch() == oldInput.m_connectionEpoch + 1 &&
+			presenter.m_importEpoch == session.GetConnectionEpoch() && presenter.m_presentCalls.back().m_frameIndex == 1 &&
+			presenter.m_presentCalls.back().m_connectionEpoch == session.GetConnectionEpoch() &&
+			!session.IsInputCurrent(oldInput) && session.GetLastInput()->m_focused &&
+			!presenter.m_resets.empty() && provider.m_liveSurfaces.size() == 1,
+			"recovery must replace provider and presenter surfaces, invalidate old input and restore focus");
+
+		const auto fatal = Failure::FromDomain(ErrorDomain::Transport, 923, "device removed");
+		presenter.m_nextPresentFailure = fatal;
+		RequireViewport(binding.PumpFrame() == fatal && session.GetState() == SessionState::Lost && !session.IsReady(),
+			"fatal presentation must stop the session instead of silently resuming on the broken surface");
 		const auto attempts = presenter.m_presentCalls.size();
+		const auto failedBegins = provider.m_beginCalls.size();
+		const auto failedExports = provider.m_exportCalls.size();
+		for (uint32_t attempt = 0; attempt < 3; ++attempt)
+		{
+			RequireViewport(binding.PumpFrame() == fatal && presenter.m_presentCalls.size() == attempts &&
+				provider.m_beginCalls.size() == failedBegins && provider.m_exportCalls.size() == failedExports,
+				"a lost session must retain its error without touching the producer or presenter again");
+		}
+		const auto failedEpoch = session.GetConnectionEpoch();
+		RequireViewport(binding.Create().IsOk() && binding.PumpFrame().IsOk() &&
+			session.GetConnectionEpoch() == failedEpoch + 1 && presenter.m_importEpoch == failedEpoch + 1 &&
+			presenter.m_presentCalls.back().m_connectionEpoch == failedEpoch + 1 &&
+			presenter.m_presentCalls.back().m_frameIndex == 1 && provider.m_liveSurfaces.size() == 1,
+			"explicit retry after a fatal failure must import a fresh surface, not reuse the failed allocation");
 		RequireViewport(binding.Destroy().IsOk() && !presenter.m_resets.empty() &&
 			presenter.m_resets.back() == viewport.m_viewportId && provider.m_liveSurfaces.empty(),
 			"destroy must release provider and presenter state");
-		RequireViewport(!binding.PumpFrame().IsOk() && presenter.m_presentCalls.size() == attempts,
+		RequireViewport(!binding.PumpFrame().IsOk() && presenter.m_presentCalls.size() == attempts + 1,
 			"a disposed binding must not forward another frame to the presenter");
+	}
+
+	template<typename TBinding, typename TProvider, typename TPresenter>
+	void TestViewportProducerFailure(const ViewportDescriptor& viewport)
+	{
+		for (bool bExportFailure : { false, true })
+		{
+			for (const auto& failure : {
+				Failure::FromDomain(ErrorDomain::Session, 924, "producer pending"),
+				Failure::FromDomain(ErrorDomain::Session, 2, "producer surface lost"),
+				Failure::FromDomain(ErrorDomain::Transport, 925, "producer device lost") })
+			{
+				TProvider provider;
+				TPresenter presenter;
+				TBinding binding(viewport, provider, presenter);
+				auto& session = binding.GetRuntimeSession();
+				RequireViewport(binding.Create().IsOk() && binding.PumpFrame().IsOk(), "producer fixture must present its first frame");
+				(bExportFailure ? provider.m_nextExportFailure : provider.m_nextBeginFailure) = failure;
+				RequireViewport(binding.PumpFrame() == failure && presenter.m_presentCalls.size() == 1 &&
+					session.GetLastPublishedFrameIndex() == 1, "failed preparation or export must not publish or present another frame");
+				const auto begins = provider.m_beginCalls.size();
+				const auto exports = provider.m_exportCalls.size();
+				if (failure.m_code == ResultCode::Retryable)
+				{
+					RequireViewport(session.GetState() == SessionState::Active && binding.PumpFrame().IsOk() &&
+						session.GetConnectionEpoch() == 1 && presenter.m_presentCalls.back().m_frameIndex == 2 &&
+						provider.m_beginCalls.size() == begins + (bExportFailure ? 0 : 1) &&
+						provider.m_exportCalls.size() == exports + 1,
+						"retryable producer failure must resume its existing preparation without recreating the surface");
+				}
+				else
+				{
+					if (failure.m_code == ResultCode::FatalTransportError)
+					{
+						RequireViewport(session.GetState() == SessionState::Lost && !session.IsReady() &&
+							binding.PumpFrame() == failure && provider.m_beginCalls.size() == begins &&
+							provider.m_exportCalls.size() == exports && presenter.m_presentCalls.size() == 1,
+							"fatal producer failure must stop work until an explicit retry");
+						RequireViewport(binding.Create().IsOk(), "explicit producer retry must import a fresh surface");
+					}
+					else RequireViewport(session.GetState() == SessionState::Recovering && !session.IsReady(),
+						"lost producer surface must request recreation");
+					RequireViewport(binding.PumpFrame().IsOk() && session.GetConnectionEpoch() == 2 &&
+						presenter.m_importEpoch == 2 && presenter.m_presentCalls.back().m_connectionEpoch == 2 &&
+						presenter.m_presentCalls.back().m_frameIndex == 1 && provider.m_liveSurfaces.size() == 1,
+						"producer recovery must present a new epoch and retire the failed allocation");
+				}
+				RequireViewport(binding.Destroy().IsOk() && provider.m_liveSurfaces.empty(), "producer failure fixture must release every surface");
+			}
+		}
 	}
 
 	template<typename TBinding, typename TProvider, typename TPresenter>
@@ -186,7 +292,7 @@ namespace Sailor::Tests
 					session.GetLastInput()->m_focused && session.GetLastInput()->m_generation == 2,
 					"successful import must commit matching extents, generation, focus and visibility once");
 				RequireViewport(binding.SetVisible(true).IsOk(), "resized viewport must become visible");
-				provider.m_nextExportFailure = Failure::FromDomain(ErrorDomain::Transport, 902, "export failed");
+				provider.m_nextExportFailure = Failure::FromDomain(ErrorDomain::Session, 902, "export pending");
 				RequireViewport(!binding.PumpFrame().IsOk() && session.GetGeneration() == 2 && presenter.m_importGeneration == 2,
 					"export failure must not revert or leak the committed resize");
 				RequireViewport(binding.PumpFrame().IsOk() && presenter.m_presentCalls.back().m_generation == 2,

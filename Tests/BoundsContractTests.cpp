@@ -10,17 +10,24 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
+#include <type_traits>
 
 using namespace Sailor;
 
 namespace
 {
-	void Require(bool condition, const std::string& message)
+	template<typename T>
+	concept HasWritableRotation = requires(T value) { value.m_rotation = glm::quat{}; };
+	static_assert(!HasWritableRotation<Math::Transform>);
+	static_assert(std::is_same_v<decltype(std::declval<Math::Transform&>().GetRotation()), const glm::quat&>);
+
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -152,7 +159,7 @@ namespace
 		assigned *= parent;
 		Require(Math::AreNearlyEqual(assigned.Matrix(), expected), "in-place composition must use the same order");
 
-		const Math::Transform nonUniformParent(parent.m_position, parent.m_rotation, glm::vec4(2.0f, -3.0f, 0.5f, 1.0f));
+		const Math::Transform nonUniformParent(parent.m_position, parent.GetRotation(), glm::vec4(2.0f, -3.0f, 0.5f, 1.0f));
 		const Math::Transform unrotatedLocal(local.m_position, Math::quat_Identity, local.m_scale);
 		Require(Math::AreNearlyEqual((unrotatedLocal * nonUniformParent).Matrix(),
 			nonUniformParent.Matrix() * unrotatedLocal.Matrix()),
@@ -182,20 +189,76 @@ namespace
 		}
 	}
 
-	void TestPublicRotationWritesRemainNormalizedOnUse()
+	void TestRotationIsNormalizedAtConstruction()
+	{
+		const glm::quat rotation = glm::angleAxis(0.8f, Math::vec3_Up);
+		for (float scale : { 5.0f, -3.0f, 1.0e30f })
+		{
+			const Math::Transform transform(glm::vec4(0), rotation * scale);
+			Require(Math::AllFinite(transform.GetRotation()) && std::abs(glm::length(transform.GetRotation()) - 1.0f) < 0.00001f,
+				"construction must store a finite unit quaternion, not defer normalization to readers");
+			Require(std::abs(glm::dot(transform.GetRotation(), rotation)) > 0.99999f,
+				"normalization must preserve the input orientation even when its squared length overflows");
+		}
+	}
+
+	void TestAuthoredRotationWritesRemainNormalized()
 	{
 		Math::Transform transform;
 		const glm::quat rotation = glm::angleAxis(0.8f, Math::vec3_Up);
-		transform.m_rotation = rotation * 5.0f;
+		transform.SetRotation(rotation * 5.0f);
 		Require(IsNear(transform.GetForward(), rotation * Math::vec3_Forward),
-			"public authored non-unit rotations must keep normalized direction behavior");
+			"authored non-unit rotations must keep normalized direction behavior");
 		Require(IsNear(glm::vec3(transform.TransformVector(Math::vec4_Forward)), rotation * Math::vec3_Forward),
-			"vector and direction helpers must agree after a public rotation write");
-		transform.m_rotation = glm::quat(0.0f, 0.0f, 0.0f, 0.0f);
+			"vector and direction helpers must agree after an authored rotation write");
+		transform.SetRotation(glm::quat(0.0f, 0.0f, 0.0f, 0.0f));
 		Require(Math::AreNearlyEqual(transform.Matrix(), glm::mat4(1.0f)), "zero rotation must retain identity fallback");
-		transform.m_rotation.x = std::numeric_limits<float>::quiet_NaN();
+		transform.SetRotation(glm::quat(1.0f, std::numeric_limits<float>::quiet_NaN(), 0, 0));
 		Require(Math::AllFinite(transform.Matrix()) && IsNear(transform.GetForward(), Math::vec3_Forward),
 			"invalid authored rotation must retain finite identity fallback");
+		for (const auto& invalid : {
+			glm::quat(0.0f, 0.0f, 0.0f, 0.0f), rotation * 1.0e-12f,
+			glm::quat(std::numeric_limits<float>::infinity(), 0, 0, 0),
+			glm::quat(1, 0, -std::numeric_limits<float>::infinity(), 0) })
+		{
+			transform.SetRotation(rotation);
+			transform.SetRotation(invalid);
+			const Math::Transform constructed(glm::vec4(0), invalid);
+			Require(transform.GetRotation() == Math::quat_Identity && constructed.GetRotation() == Math::quat_Identity,
+				"the setter and constructor must store the same finite identity for zero, tiny and non-finite rotations");
+		}
+	}
+
+	void TestRotationInvariantSurvivesCompositionAndReads()
+	{
+		Math::Transform value;
+		const glm::quat stepRotation = glm::angleAxis(0.001f, glm::normalize(glm::vec3(1, 2, 3)));
+		const Math::Transform step(glm::vec4(0), stepRotation);
+		for (uint32_t i = 0; i < 4096; ++i)
+		{
+			value *= step;
+			Require(std::abs(glm::length(value.GetRotation()) - 1.0f) < 0.00001f,
+				"repeated composition must publish unit rotations, not repair them during reads");
+			const auto blended = Math::Lerp(Math::Transform::Identity, value, 0.3f);
+			Require(std::abs(glm::length(blended.GetRotation()) - 1.0f) < 0.00001f,
+				"interpolation must use the normalized construction boundary");
+		}
+		const auto expected = glm::angleAxis(4.096f, glm::normalize(glm::vec3(1, 2, 3)));
+		Require(std::abs(glm::dot(value.GetRotation(), expected)) > 0.99999f,
+			"normalizing composition must not change rotation order or accumulated orientation");
+		Math::Transform copied = value;
+		Math::Transform moved = std::move(copied);
+		copied = moved;
+		const auto stored = copied.GetRotation();
+		const auto matrix = copied.Matrix();
+		Require(IsNear(copied.GetForward(), glm::vec3(matrix * Math::vec4_Forward)) &&
+			IsNear(copied.GetRight(), glm::vec3(matrix * Math::vec4_Right)) &&
+			IsNear(copied.GetUp(), glm::vec3(matrix * Math::vec4_Up)) &&
+			IsNear(glm::vec3(copied.InverseTransformVector(copied.TransformVector(Math::vec4_Forward))), Math::vec3_Forward),
+			"all read helpers must agree after copy/move and repeated composition");
+		Require(copied.GetRotation() == stored, "reading transforms must not mutate or renormalize stored rotation");
+		copied.SetRotation(stored);
+		Require(copied.GetRotation() == stored, "assigning the stored quaternion must be exactly idempotent");
 	}
 
 	void TestPerspectiveFrustumMatchesCameraConstruction()
@@ -512,6 +575,47 @@ namespace
 			"distance LOD must respect the configured minimum LOD");
 	}
 
+	void TestRayAabbParallelSlabs()
+	{
+		const glm::vec3 minimum(-1), maximum(1);
+		constexpr float miss = std::numeric_limits<float>::max();
+		for (int axis = 0; axis < 3; ++axis)
+		{
+			for (float sign : { -1.0f, 1.0f })
+			{
+				for (float zero : { -0.0f, 0.0f })
+				{
+					glm::vec3 direction(zero);
+					direction[axis] = sign;
+					for (float face : { -1.0f, 0.0f, 1.0f })
+					{
+						glm::vec3 origin(0);
+						origin[axis] = -2 * sign;
+						origin[(axis + 1) % 3] = face;
+						const Math::Ray ray(origin, direction);
+						Require(Math::IntersectRayAABB(ray, minimum, maximum, 10) == 1,
+							"a parallel ray inside or on either slab face must retain the entry distance");
+						Require(Math::IntersectRayAABB(ray, minimum, maximum, 1) == miss &&
+							Math::IntersectRayAABB(ray, minimum, maximum, 1.01f) == 1,
+							"ray maximum distance must remain an exclusive bound");
+						origin[(axis + 2) % 3] = 2;
+						Require(Math::IntersectRayAABB(Math::Ray(origin, direction), minimum, maximum, 10) == miss,
+							"touching one slab must not hide a miss outside another parallel slab");
+						origin[(axis + 2) % 3] = -2;
+						Require(Math::IntersectRayAABB(Math::Ray(origin, direction), minimum, maximum, 10) == miss,
+							"parallel slab rejection must work on both sides of the box");
+					}
+					Require(Math::IntersectRayAABB(Math::Ray(glm::vec3(0), direction), minimum, maximum) == -1,
+						"a ray starting inside must retain its negative entry parameter");
+					Require(Math::IntersectRayAABB(Math::Ray(direction * 2.0f, direction), minimum, maximum) == miss,
+						"a box behind the ray must remain a miss");
+				}
+			}
+		}
+		Require(Math::IntersectRayAABB(Math::Ray(glm::vec3(-2), glm::vec3(1)), minimum, maximum) == 1,
+			"nonparallel ray entry must keep its existing parameterization");
+	}
+
 	void TestStabilizedShadowProjectionKeepsReceiverGuardBand()
 	{
 		Math::Frustum cameraSlice;
@@ -544,13 +648,16 @@ int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "ValidityRejectsSentinelAndInvertedBounds", TestValidityRejectsSentinelAndInvertedBounds },
+		{ "RayAabbParallelSlabs", TestRayAabbParallelSlabs },
 		{ "ValidityRejectsNonFiniteBounds", TestValidityRejectsNonFiniteBounds },
 		{ "TransformPreservesAllNegativeBounds", TestTransformPreservesAllNegativeBounds },
 		{ "AffineBoundsMatchTransformedCorners", TestAffineBoundsMatchTransformedCorners },
 		{ "TransformInversePointAndVectorMatchMatrices", TestTransformInversePointAndVectorMatchMatrices },
 		{ "TransformCompositionUsesParentRotationFirst", TestTransformCompositionUsesParentRotationFirst },
 		{ "TrsInverseForRepresentableTransforms", TestTrsInverseForRepresentableTransforms },
-		{ "PublicRotationWritesRemainNormalizedOnUse", TestPublicRotationWritesRemainNormalizedOnUse },
+		{ "RotationIsNormalizedAtConstruction", TestRotationIsNormalizedAtConstruction },
+		{ "AuthoredRotationWritesRemainNormalized", TestAuthoredRotationWritesRemainNormalized },
+		{ "RotationInvariantSurvivesCompositionAndReads", TestRotationInvariantSurvivesCompositionAndReads },
 		{ "PerspectiveFrustumMatchesCameraConstruction", TestPerspectiveFrustumMatchesCameraConstruction },
 		{ "BatchFrustumQueriesMatchScalarForAnyCount", TestBatchFrustumQueriesMatchScalarForAnyCount },
 		{ "BatchPerspectiveFrustumQueriesMatchScalar", TestBatchPerspectiveFrustumQueriesMatchScalar },

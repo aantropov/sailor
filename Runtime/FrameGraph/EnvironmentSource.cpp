@@ -4,10 +4,11 @@
 #include "Containers/Hash.h"
 #include "Math/Math.h"
 #include "Sailor.h"
+#include <format>
 
 using namespace Sailor;
 
-bool Sailor::CaptureEnvironmentSource(const std::string& environmentMap,
+bool Sailor::CaptureEnvironmentSource(std::string_view environmentMap,
 	const SkyParameters* sky, EnvironmentSource& outSource, std::string& outDiagnostic)
 {
 	outSource = {};
@@ -17,7 +18,7 @@ bool Sailor::CaptureEnvironmentSource(const std::string& environmentMap,
 		const auto* asset = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(environmentMap);
 		if (!asset || !TextureImporter::CaptureCpuDecodeRequest(*asset, outSource.m_texture))
 		{
-			outDiagnostic = "cannot capture environment texture '" + environmentMap + "'";
+			outDiagnostic = std::format("cannot capture environment texture '{}'", environmentMap);
 			return false;
 		}
 		outSource.m_type = EEnvironmentSource::Texture;

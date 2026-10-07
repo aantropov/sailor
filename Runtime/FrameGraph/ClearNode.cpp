@@ -8,10 +8,6 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 
-#ifndef _SAILOR_IMPORT_
-const char* ClearNode::m_name = "Clear";
-#endif
-
 void ClearNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -19,26 +15,31 @@ void ClearNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 	auto renderer = App::GetSubmodule<RHI::Renderer>();
 	auto commands = renderer->GetDriverCommands();
 
-	auto resource = GetRHIResource("target", frameGraph.GetRawPtr());
-	const auto surface = resource.DynamicCast<RHISurface>();
+	auto resource = GetRHIResource("target"_h, frameGraph.GetRawPtr());
+	auto surface = resource.DynamicCast<RHISurface>();
+	if (surface && !surface->NeedsResolve())
+	{
+		if (const auto prepared = frameGraph->ResolveResource(surface->GetResolved()).DynamicCast<RHISurface>())
+			surface = prepared;
+	}
 	const RHITexturePtr resolved = surface ? RHITexturePtr(surface->GetResolved()) : resource.DynamicCast<RHITexture>();
 	if (!resolved)
 	{
-		SAILOR_LOG_ERROR("ClearNode '%s' cannot resolve its target render texture.", GetTag().c_str());
+		SAILOR_LOG_ERROR("ClearNode '%s' cannot resolve its target render texture.", GetTag().ToString().c_str());
 		return;
 	}
 
-	const auto clearTexture = [&](const RHITexturePtr& texture, const char* label = GetName())
+	const auto clearTexture = [&](const RHITexturePtr& texture, StringHash label = GetName())
 	{
 		commands->ImageMemoryBarrier(commandList, texture, EImageLayout::TransferDstOptimal);
 		if (RHI::IsDepthFormat(texture->GetFormat()))
 		{
 			commands->BeginDebugRegion(commandList, label, glm::vec4(1.0f));
-			commands->ClearDepthStencil(commandList, texture, GetFloat("clearDepth"), static_cast<uint32_t>(GetFloat("clearStencil")));
+			commands->ClearDepthStencil(commandList, texture, GetFloat("clearDepth"_h), static_cast<uint32_t>(GetFloat("clearStencil"_h)));
 		}
 		else
 		{
-			const glm::vec4 clearColor = GetVec4("clearColor");
+			const glm::vec4 clearColor = GetVec4("clearColor"_h);
 			commands->BeginDebugRegion(commandList, label, glm::vec4(clearColor.x, clearColor.y, clearColor.z, 0.5f));
 			commands->ClearImage(commandList, texture, clearColor);
 		}
@@ -54,12 +55,12 @@ void ClearNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 	// The driver keeps the multisampled depth attachment separately from its
 	// resolved texture. Clear it for explicitly declared graph targets too;
 	// otherwise previous frames keep rejecting moving geometry's fragments.
-	if (resolved == frameGraph->GetRenderTarget("DepthBuffer") &&
+	if (!surface && resolved == frameGraph->GetRenderTarget("DepthBuffer"_h) &&
 		RHI::IsDepthFormat(resolved->GetFormat()) && renderer->GetMsaaSamples() != EMsaaSamples::Samples_1)
 	{
 		auto msaaDepth = renderer->GetDriver()->GetOrAddMsaaFramebufferRenderTarget(resolved->GetFormat(), resolved->GetExtent());
 		if (!msaaDepth) return;
-		clearTexture(msaaDepth, "Clear internal MSAA depth render target");
+		clearTexture(msaaDepth, "Clear internal MSAA depth render target"_h);
 		const auto layout = RHI::IsDepthStencilFormat(resolved->GetFormat()) ?
 			EImageLayout::DepthStencilAttachmentOptimal : EImageLayout::DepthAttachmentOptimal;
 		commands->ImageMemoryBarrier(commandList, msaaDepth, layout);

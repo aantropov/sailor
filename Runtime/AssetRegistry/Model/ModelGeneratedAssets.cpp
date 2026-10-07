@@ -15,15 +15,17 @@
 #include <fstream>
 #include <limits>
 #include <string>
+#include <string_view>
 
 #include <tiny_gltf.h>
 
 using namespace Sailor;
+using namespace Sailor::Workspace;
 
 static bool TryLoadYamlFile(const std::filesystem::path& filepath, YAML::Node& outDocument, std::string& outDiagnostic)
 {
 	std::string payload;
-	if (!AssetRegistry::ReadAllTextFile(filepath.string(), payload))
+	if (!AssetRegistry::ReadAllTextFile(PathToUtf8(filepath), payload))
 	{
 		outDiagnostic = "cannot read the file";
 		return false;
@@ -42,9 +44,10 @@ FileId ModelImporter::CreateTextureAsset(const std::string& filepath,
 	bool bShouldKeepCpuBuffers)
 {
 	AssetRegistry* assetRegistry = m_assetRegistry;
+	const auto metadataPath = PathFromUtf8(filepath);
 
 	std::error_code statusError;
-	const std::filesystem::file_status metadataStatus = std::filesystem::symlink_status(filepath, statusError);
+	const std::filesystem::file_status metadataStatus = std::filesystem::symlink_status(metadataPath, statusError);
 	if (statusError == std::errc::no_such_file_or_directory || statusError == std::errc::not_a_directory)
 	{
 		statusError.clear();
@@ -61,7 +64,7 @@ FileId ModelImporter::CreateTextureAsset(const std::string& filepath,
 	{
 		TVector<FileId> textures;
 		assetRegistry->GetAssetInfoIdsByTypeAndSource("Sailor::TextureAssetInfo",
-			(std::filesystem::path(filepath).parent_path() / sourceFilename).string(), textures);
+			PathToUtf8(metadataPath.parent_path() / PathFromUtf8(sourceFilename)), textures);
 		for (const auto& id : textures)
 		{
 			const auto* texture = assetRegistry->GetAssetInfoPtr<TextureAssetInfoPtr>(id);
@@ -69,7 +72,7 @@ FileId ModelImporter::CreateTextureAsset(const std::string& filepath,
 				texture->ShouldGenerateMips() == bShouldGenerateMips && texture->GetFormat() == format &&
 				texture->GetClamping() == clamping && texture->GetFiltration() == filtration &&
 				texture->ShouldKeepCpuBuffers() == bShouldKeepCpuBuffers &&
-				std::filesystem::is_regular_file(texture->GetMetaFilepath()))
+				std::filesystem::is_regular_file(PathFromUtf8(texture->GetMetaFilepath())))
 			{
 				return id;
 			}
@@ -82,7 +85,7 @@ FileId ModelImporter::CreateTextureAsset(const std::string& filepath,
 	}
 
 	FileId fileId =
-		bMetadataExists ? assetRegistry->RegisterGeneratedSecondaryAssetInfo(filepath) : FileId::CreateNewFileId();
+		bMetadataExists ? assetRegistry->RegisterGeneratedSecondaryAssetInfo(metadataPath) : FileId::CreateNewFileId();
 	if (!fileId)
 	{
 		return FileId::Invalid;
@@ -125,13 +128,13 @@ FileId ModelImporter::CreateTextureAsset(const std::string& filepath,
 	}
 
 	std::string diagnostic;
-	if (!Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(std::filesystem::path(filepath), serialized.str(), diagnostic)))
+	if (!Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(metadataPath, serialized.str(), diagnostic)))
 	{
 		SAILOR_LOG_ERROR("Cannot save generated texture metadata '%s': %s", filepath.c_str(), diagnostic.c_str());
 		return {};
 	}
 
-	if (assetRegistry->RegisterGeneratedSecondaryAssetInfo(filepath) != fileId)
+	if (assetRegistry->RegisterGeneratedSecondaryAssetInfo(metadataPath) != fileId)
 	{
 		SAILOR_LOG_ERROR(
 			"Cannot register generated texture metadata for immediate model processing: %s", filepath.c_str());
@@ -178,8 +181,8 @@ bool GltfImporterUtils::MergeGeneratedMaterialProperties(YAML::Node& inOutMateri
 	merged["bCustomDepthShader"] = bCustomDepthShader;
 
 	// Reimport owns alpha/skinning and optical properties. Surface authoring stays local.
-	static const char* ManagedDefines[] = { "TRANSMISSION", "MATERIAL_IOR", "ALPHA_CUTOUT", "SKINNING" };
-	auto isManagedDefine = [](const std::string& define)
+	static constexpr std::string_view ManagedDefines[] = { "TRANSMISSION", "MATERIAL_IOR", "ALPHA_CUTOUT", "SKINNING" };
+	auto isManagedDefine = [](std::string_view define)
 	{
 		return std::find(std::begin(ManagedDefines), std::end(ManagedDefines), define) != std::end(ManagedDefines);
 	};
@@ -200,7 +203,7 @@ bool GltfImporterUtils::MergeGeneratedMaterialProperties(YAML::Node& inOutMateri
 				return false;
 			}
 
-			const std::string define = defineNode.as<std::string>();
+			const auto& define = defineNode.Scalar();
 			if (!isManagedDefine(define))
 			{
 				mergedDefines.push_back(define);
@@ -216,18 +219,17 @@ bool GltfImporterUtils::MergeGeneratedMaterialProperties(YAML::Node& inOutMateri
 			return false;
 		}
 
-		TSet<std::string> addedDefines;
+		TSet<std::string_view> addedDefines;
 		for (const YAML::Node& defineNode : generatedDefines)
 		{
 			if (!defineNode.IsScalar())
 			{
 				return false;
 			}
-			const std::string define = defineNode.as<std::string>();
-			if (isManagedDefine(define) && !addedDefines.Contains(define))
+			const auto& define = defineNode.Scalar();
+			if (isManagedDefine(define) && addedDefines.Insert(define))
 			{
 				mergedDefines.push_back(define);
-				addedDefines.Insert(define);
 			}
 		}
 	}
@@ -330,7 +332,7 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 			SAILOR_LOG_ERROR("Cannot resolve generated material output for %s.", assetInfo->GetAssetFilepath().c_str());
 			return false;
 		}
-		const std::string materialName = materialNamePath.string();
+		const std::string materialName = PathToUtf8(materialNamePath);
 
 		if (material.pbrMetallicRoughness.baseColorTexture.index != -1)
 		{
@@ -674,7 +676,7 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 			material.doubleSided ? RHI::ECullMode::None : RHI::ECullMode::Back,
 			alphaModeSettings.m_blendMode,
 			RHI::EFillMode::Fill,
-			StringHash::Runtime(data.m_renderQueue).GetHash());
+			HashString(data.m_renderQueue));
 
 		data.m_shader = m_assetRegistry->GetOrLoadFile("Shaders/Standard_glTF.shader");
 		for (const auto& sampler : data.m_samplers)
@@ -750,15 +752,16 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 			const std::string stem = assetInfo->GetAssetFilename() + "_material_" + std::to_string(i);
 			for (uint32_t suffix = 0;; ++suffix)
 			{
-				materialPath = materialsFolder / (stem + (suffix ? "_" + std::to_string(suffix) : "") + ".mat");
-				const auto metadataPath = materialPath.string() + ".asset";
+				materialPath = materialsFolder / PathFromUtf8(stem + (suffix ? "_" + std::to_string(suffix) : "") + ".mat");
+				auto metadataPath = materialPath;
+				metadataPath += ".asset";
 				if (std::filesystem::exists(metadataPath))
 				{
 					MaterialAssetInfo candidate;
 					if (!TryLoadYamlFile(metadataPath, metadata, diagnostic) ||
 						!External::GuardYamlExceptions([&]() { candidate.Deserialize(metadata); }, diagnostic))
 					{
-						SAILOR_LOG_ERROR("Cannot read generated material metadata '%s': %s", metadataPath.c_str(), diagnostic.c_str());
+						SAILOR_LOG_ERROR("Cannot read generated material metadata '%s': %s", PathToUtf8(metadataPath).c_str(), diagnostic.c_str());
 						return false;
 					}
 					if (candidate.GetSourceModel() == assetInfo->GetFileId() &&
@@ -771,7 +774,7 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 				else if (!std::filesystem::exists(materialPath))
 				{
 					fileId = FileId::CreateNewFileId();
-					metadata = CreateAssetInfoMetadata<MaterialAssetInfo>(fileId, materialPath.filename().string());
+					metadata = CreateAssetInfoMetadata<MaterialAssetInfo>(fileId, PathToUtf8(materialPath.filename()));
 					metadata["sourceModel"] = assetInfo->GetFileId();
 					metadata["sourceMaterialIndex"] = static_cast<int32_t>(i);
 					break;
@@ -779,20 +782,21 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 			}
 		}
 
-		const auto metadataPath = materialPath.string() + ".asset";
+		auto metadataPath = materialPath;
+		metadataPath += ".asset";
 		const bool bMetadataExists = std::filesystem::exists(metadataPath);
 		if (bMetadataExists && !TryLoadYamlFile(metadataPath, metadata, diagnostic))
 		{
-			SAILOR_LOG_ERROR("Cannot read generated material metadata '%s': %s", metadataPath.c_str(), diagnostic.c_str());
+			SAILOR_LOG_ERROR("Cannot read generated material metadata '%s': %s", PathToUtf8(metadataPath).c_str(), diagnostic.c_str());
 			return false;
 		}
 		MaterialAssetInfo identity;
 		if (!External::GuardYamlExceptions([&]() { identity.Deserialize(metadata); }, diagnostic) ||
 			!fileId || identity.GetFileId() != fileId || identity.GetSourceModel() != assetInfo->GetFileId() ||
 			identity.GetSourceMaterialIndex() != static_cast<int32_t>(i) ||
-			identity.GetAssetFilename() != materialPath.filename().string())
+			identity.GetAssetFilename() != PathToUtf8(materialPath.filename()))
 		{
-			SAILOR_LOG_ERROR("Generated material ownership changed: %s", metadataPath.c_str());
+			SAILOR_LOG_ERROR("Generated material ownership changed: %s", PathToUtf8(metadataPath).c_str());
 			return false;
 		}
 
@@ -810,7 +814,7 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 						merged = GltfImporterUtils::MergeGeneratedMaterialProperties(document, generated);
 					}, diagnostic) || !merged)
 			{
-				SAILOR_LOG_ERROR("Cannot update generated material '%s': %s", materialPath.string().c_str(), diagnostic.c_str());
+				SAILOR_LOG_ERROR("Cannot update generated material '%s': %s", PathToUtf8(materialPath).c_str(), diagnostic.c_str());
 				return false;
 			}
 			bWriteMaterial = !Utils::AreYamlNodesEqual(previous, document);
@@ -828,7 +832,7 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 				!Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(
 					metadataPath, contents, diagnostic, Platform::EAtomicWriteMode::FailIfExists)))
 			{
-				SAILOR_LOG_ERROR("Cannot save generated material metadata '%s': %s", metadataPath.c_str(), diagnostic.c_str());
+				SAILOR_LOG_ERROR("Cannot save generated material metadata '%s': %s", PathToUtf8(metadataPath).c_str(), diagnostic.c_str());
 				return false;
 			}
 		}
@@ -838,13 +842,13 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 			if (!External::TryDumpYaml(document, contents, diagnostic) ||
 				!Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(materialPath, contents, diagnostic)))
 			{
-				SAILOR_LOG_ERROR("Cannot save generated material '%s': %s", materialPath.string().c_str(), diagnostic.c_str());
+				SAILOR_LOG_ERROR("Cannot save generated material '%s': %s", PathToUtf8(materialPath).c_str(), diagnostic.c_str());
 				return false;
 			}
 		}
 		// Keep standalone/Main error handling synchronous. Off-Main engine
 		// callers already requested publication through GetOrLoadFile.
-		if (m_assetRegistry->GetOrLoadFile(materialPath.string()) != fileId ||
+		if (m_assetRegistry->GetOrLoadFile(PathToUtf8(materialPath)) != fileId ||
 			((!m_scheduler || m_scheduler->IsMainThread()) && !m_assetRegistry->UpdateAsset(fileId)))
 		{
 			return false;

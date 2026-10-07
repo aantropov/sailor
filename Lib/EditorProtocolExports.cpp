@@ -23,6 +23,7 @@ namespace
 		{
 			Sailor::Protocol::WaitForEditorEngineProtocolStartDrain();
 			if (!bShutdownEngine) return true;
+			Sailor::Protocol::DrainEditorEngineProtocolForShutdown();
 			if (Sailor::App::Shutdown())
 			{
 				Sailor::Protocol::ResetEditorEngineProtocolLifecycle();
@@ -150,6 +151,18 @@ extern "C"
 		const bool bShutdownEngine) noexcept
 	{
 		return StopLocalEditorHost(bShutdownEngine) ? 1 : 0;
+	}
+
+	SAILOR_API int32_t SailorProtocolSetMacViewportHost(uint64_t viewportId, uintptr_t layer) noexcept
+	{
+		try
+		{
+			return Sailor::Protocol::SetMacViewportHost(viewportId, layer) ? 1 : 0;
+		}
+		catch (...)
+		{
+			return 0;
+		}
 	}
 
 	SAILOR_API int32_t SailorProtocolSetWindowsViewportHost(

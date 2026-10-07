@@ -111,6 +111,12 @@ bool Model::CollectRenderData(int32_t meshIndex,
 
 void Model::Flush()
 {
+	const uint64_t inverseBindHash = HashBytes(m_inverseBind.GetData(), m_inverseBind.Num() * sizeof(glm::mat4));
+	if (inverseBindHash != m_inverseBindHash)
+	{
+		m_inverseBindHash = inverseBindHash;
+		++m_skeletonRevision;
+	}
 	m_bGpuReady.store(false, std::memory_order_release);
 
 	if (m_meshes.Num() == 0)

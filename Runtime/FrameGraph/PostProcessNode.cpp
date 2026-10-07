@@ -15,15 +15,11 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 
-#ifndef _SAILOR_IMPORT_
-const char* PostProcessNode::m_name = "PostProcess";
-#endif
-
 void PostProcessNode::PreloadShader()
 {
-	const auto shaderPath = GetString("shader");
-	std::string definesStr;
-	TryGetString("defines", definesStr);
+	const auto& shaderPath = GetString("shader"_h);
+	std::string_view definesStr;
+	TryGetString("defines"_h, definesStr);
 	if (m_shaderPath != shaderPath || m_shaderDefines != definesStr)
 	{
 		Clear();
@@ -58,14 +54,14 @@ void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	RHI::RHITexturePtr target = GetResolvedAttachment("color", frameGraph.GetRawPtr());
-	RHI::RHISurfacePtr targetMsaa = GetRHIResource("color", frameGraph.GetRawPtr()).DynamicCast<RHISurface>();
+	RHI::RHITexturePtr target = GetResolvedAttachment("color"_h, frameGraph.GetRawPtr());
+	RHI::RHISurfacePtr targetMsaa = GetRHIResource("color"_h, frameGraph.GetRawPtr()).DynamicCast<RHISurface>();
 
 	const bool bShouldUseMsaaTarget = targetMsaa.IsValid() && targetMsaa->NeedsResolve();
 
-	if (!target && !m_unresolvedResourceParams.ContainsKey("color"))
+	if (!target && !m_unresolvedResourceParams.ContainsKey("color"_h))
 	{
-		target = frameGraph->GetRenderTarget("BackBuffer");
+		target = frameGraph->GetRenderTarget("BackBuffer"_h);
 	}
 
 	PreloadShader();
@@ -75,7 +71,7 @@ void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		return;
 	}
 
-	const std::string shaderName = std::string(GetName()) + ":" + GetString("shader");
+	const std::string shaderName = GetName().ToString() + ":" + GetString("shader"_h);
 	commands->BeginDebugRegion(commandList, shaderName, DebugContext::Color_CmdPostProcess);
 
 	auto resources = sceneView.m_submissionContext->GetOrAddFrameGraphResources<SubmissionResources>(this, sceneView.m_cameraIndex, 0);

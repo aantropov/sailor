@@ -5,7 +5,7 @@
 #include "Components/MeshRendererComponent.h"
 #include "Components/CameraComponent.h"
 #include "Components/LightComponent.h"
-#include "Components/PathTracerProxyComponent.h"
+#include "Components/Tests/TestCaseComponent.h"
 #include "Engine/GameObject.h"
 #include "Engine/EngineLoop.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
@@ -17,11 +17,7 @@
 
 #include "RHI/Texture.h"
 #include "FrameGraph/CopyTextureToRamNode.h"
-#include "ECS/PathTracerECS.h"
-#include "Raytracing/PathTracer.h"
 #include "Core/LogMacros.h"
-#include <cstring>
-#include <cstdio>
 
 using namespace Sailor;
 using namespace Sailor::Tasks;
@@ -137,9 +133,6 @@ void TestComponent::BeginPlay()
 void TestComponent::EndPlay()
 {
 }
-
-#include <stb_image.h>
-#include <stb_image_write.h>
 
 void TestComponent::Tick(float deltaTime)
 {
@@ -328,14 +321,14 @@ void TestComponent::Tick(float deltaTime)
 			{
 				for (auto& mat : mr->GetMaterials())
 				{
-					if (mat && mat->IsReady() && mat->GetShaderBindings()->HasParameter("material.albedo"))
+					if (mat && mat->IsReady() && mat->GetShaderBindings()->HasParameter("material.albedo"_h))
 					{
 						mat = Material::CreateInstance(GetWorld(), mat);
 
 						const glm::vec4 color = max(vec4(0), glm::vec4(glm::ballRand(1.0f), 1));
 
 						commands->SetMaterialParameter(GetWorld()->GetCommandList(),
-							mat->GetShaderBindings(), "material.albedo", color);
+							mat->GetShaderBindings(), "material"_h, "albedo"_h, color);
 					}
 				}
 			}
@@ -350,210 +343,31 @@ void TestComponent::Tick(float deltaTime)
 			frameGraph ? frameGraph->GetRHI() : RHI::RHIFrameGraphPtr{};
 
 		ImGui::Begin("Screenshot");
-		if (ImGui::Button("Capture"))
+		if (ImGui::Button("Capture") && rhiFrameGraph)
 		{
-			if (rhiFrameGraph)
-			{
-				if (auto snapshot =
-					rhiFrameGraph->
-						GetGraphNode("CopyTextureToRam").
-						DynamicCast<
-							Framegraph::CopyTextureToRamNode>())
-				{
-					snapshot->DoOneCapture();
-				}
-
-				auto& graph = rhiFrameGraph->GetGraph();
-				if (!graph.IsEmpty())
-				{
-					if (auto snapshot =
-						graph.Last()->
-							DynamicCast<
-								Framegraph::CopyTextureToRamNode>())
-					{
-						snapshot->DoOneCapture();
-					}
-				}
-			}
-		}
-
-		const bool bSaveMask = ImGui::Button("Save Mask");
-		const bool bSave = ImGui::Button("Save");
-
-		FrameGraphNodePtr snapshotNode = nullptr;
-
-		if (bSave && rhiFrameGraph)
-		{
-			snapshotNode =
-				rhiFrameGraph->GetGraphNode("CopyTextureToRam");
-		}
-		else if (bSaveMask && rhiFrameGraph)
-		{
-			auto& graph = rhiFrameGraph->GetGraph();
+			auto source = rhiFrameGraph->GetGraphNode("CopyTextureToRam"_h).DynamicCast<Framegraph::CopyTextureToRamNode>();
+			if (source) m_capture = source->DoOneCapture();
+			const auto& graph = rhiFrameGraph->GetGraph();
 			if (!graph.IsEmpty())
 			{
-				snapshotNode = *graph.Last();
+				if (auto mask = graph.Last()->DynamicCast<Framegraph::CopyTextureToRamNode>())
+					m_maskCapture = mask == source ? m_capture : mask->DoOneCapture();
 			}
 		}
-
-		if (snapshotNode)
+		const auto saveCapture = [](const Framegraph::CopyTextureToRamNode::CaptureTask& capture, std::string_view filename)
 		{
-			auto snapshot = snapshotNode.DynamicCast<Framegraph::CopyTextureToRamNode>();
-			auto cpuRam = snapshot ? snapshot->GetBuffer() : nullptr;
-			auto texture = snapshot ? snapshot->GetTexture() : nullptr;
-			if (cpuRam && texture)
-			{
-				if (vec4* ptr = (vec4*)cpuRam->GetPointer())
-				{
-					TVector<u8vec3> outSrgb(
-						texture->GetExtent().x *
-						texture->GetExtent().y);
-
-					for (int y = 0;
-						y < texture->GetExtent().y;
-						y++)
-					{
-						for (int x = 0;
-							x < texture->GetExtent().x;
-							x++)
-						{
-							uint32_t index =
-								x + y *
-									texture->GetExtent().x;
-							vec3 value = ptr[index];
-							value.x =
-								powf(
-									value.x,
-									1.0f / 2.2f);
-							value.y =
-								powf(
-									value.y,
-									1.0f / 2.2f);
-							value.z =
-								powf(
-									value.z,
-									1.0f / 2.2f);
-
-							outSrgb[index] =
-								u8vec3(
-									glm::clamp(
-										value * 255.0f,
-										0.0f,
-										255.0f));
-						}
-					}
-
-					const uint32_t Channels = 3;
-					if (!stbi_write_png(
-						bSave
-							? "screenshot.png"
-							: "mask.png",
-						texture->GetExtent().x,
-						texture->GetExtent().y,
-						Channels,
-						outSrgb.GetData(),
-						texture->GetExtent().x *
-							Channels))
-					{
-						SAILOR_LOG_ERROR(
-							"Cannot write screenshot");
-					}
-				}
-			}
-		}
-
+			if (!capture || !capture->IsFinished()) return;
+			const auto& frame = capture->GetResult();
+			if (!frame) { SAILOR_LOG_ERROR("Capture was cancelled or failed."); return; }
+			std::string error;
+			if (!TestCaseComponent::CaptureScreenshot(*frame, filename, error))
+				SAILOR_LOG_ERROR("%s", error.c_str());
+		};
+		if (ImGui::Button("Save")) saveCapture(m_capture, "screenshot.png");
+		ImGui::SameLine();
+		if (ImGui::Button("Save Mask")) saveCapture(m_maskCapture, "mask.png");
+		if (m_capture && !m_capture->IsFinished()) ImGui::TextUnformatted("Waiting for GPU capture...");
 		ImGui::End();
 	}
 
-	ImGui::Begin("Path Tracer");
-	int32_t pathTraceHeight = (int32_t)m_pathTraceHeight;
-	int32_t pathTraceSamplesPerPixel = (int32_t)m_pathTraceSamplesPerPixel;
-	int32_t pathTraceMaxBounces = (int32_t)m_pathTraceMaxBounces;
-	float pathTraceRayBiasBase = m_pathTraceRayBiasBase;
-	float pathTraceRayBiasScale = m_pathTraceRayBiasScale;
-
-	if (ImGui::SliderInt("Height", &pathTraceHeight, 64, 4320))
-	{
-		m_pathTraceHeight = (uint32_t)(std::max)(1, pathTraceHeight);
-	}
-
-	if (ImGui::SliderInt("Samples Per Pixel", &pathTraceSamplesPerPixel, 1, 1024))
-	{
-		m_pathTraceSamplesPerPixel = (uint32_t)(std::max)(1, pathTraceSamplesPerPixel);
-	}
-
-	if (ImGui::SliderInt("Max Bounces", &pathTraceMaxBounces, 0, 32))
-	{
-		m_pathTraceMaxBounces = (uint32_t)(std::max)(0, pathTraceMaxBounces);
-	}
-
-	if (ImGui::SliderFloat("Ray Bias Base", &pathTraceRayBiasBase, 0.0f, 0.01f, "%.6f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat))
-	{
-		m_pathTraceRayBiasBase = (std::max)(0.0f, pathTraceRayBiasBase);
-	}
-
-	if (ImGui::SliderFloat("Ray Bias Scale", &pathTraceRayBiasScale, 0.00001f, 0.01f, "%.6f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat))
-	{
-		m_pathTraceRayBiasScale = (std::max)(0.0f, pathTraceRayBiasScale);
-	}
-
-	char outputPath[512];
-	memset(outputPath, 0, sizeof(outputPath));
-	std::snprintf(outputPath, sizeof(outputPath), "%s", m_pathTraceOutputPath.c_str());
-	if (ImGui::InputText("Output", outputPath, IM_ARRAYSIZE(outputPath)))
-	{
-		m_pathTraceOutputPath = outputPath;
-	}
-
-	if (ImGui::Button("Path Trace"))
-	{
-		size_t numAdded = 0;
-		for (auto& gameObject : GetWorld()->GetGameObjects())
-		{
-			if (!gameObject)
-			{
-				continue;
-			}
-
-			if (!gameObject->GetComponent<PathTracerProxyComponent>())
-			{
-				auto proxy = gameObject->AddComponent<PathTracerProxyComponent>();
-				if (proxy)
-				{
-					proxy->SetEnabled(true);
-					numAdded++;
-				}
-			}
-		}
-
-		bool bRendered = false;
-		Raytracing::PathTracer::Params params{};
-		params.m_output = m_pathTraceOutputPath;
-		params.m_height = m_pathTraceHeight;
-		params.m_maxBounces = m_pathTraceMaxBounces;
-		params.m_rayBiasBase = m_pathTraceRayBiasBase;
-		params.m_rayBiasScale = m_pathTraceRayBiasScale;
-
-		if (m_pathTraceSamplesPerPixel > 0)
-		{
-			params.m_msaa = m_pathTraceSamplesPerPixel <= 32 ? std::min(4u, m_pathTraceSamplesPerPixel) : 8u;
-			params.m_numSamples = std::max(1u, (uint32_t)std::lround(m_pathTraceSamplesPerPixel / (float)params.m_msaa));
-		}
-
-		bRendered = false;
-		m_pathTraceLastExecutionMs = 0.0;
-
-		m_pathTraceStatus = bRendered ?
-			("Saved: " + m_pathTraceOutputPath + " (added proxies: " + std::to_string(numAdded) + ", time: " + std::to_string(m_pathTraceLastExecutionMs) + " ms)") :
-			("Path trace failed (added proxies: " + std::to_string(numAdded) + ", time: " + std::to_string(m_pathTraceLastExecutionMs) + " ms)");
-
-		SAILOR_LOG("Path trace %s in %.3f ms (output: %s)", bRendered ? "succeeded" : "failed", m_pathTraceLastExecutionMs, m_pathTraceOutputPath.c_str());
-	}
-
-	if (!m_pathTraceStatus.empty())
-	{
-		ImGui::Text("%s", m_pathTraceStatus.c_str());
-	}
-	ImGui::Text("Last path trace time: %.2f ms (%.2f s)", m_pathTraceLastExecutionMs, m_pathTraceLastExecutionMs * 0.001);
-	ImGui::End();
 }

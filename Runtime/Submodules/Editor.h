@@ -1,8 +1,10 @@
 #pragma once
 #include "Audio/AudioTypes.h"
 #include "Core/Submodule.h"
+#include "Engine/WorldPrefab.h"
 #include "Memory/UniquePtr.hpp"
 #include <atomic>
+#include <string_view>
 #include <glm/vec3.hpp>
 #include <yaml-cpp/yaml.h>
 #if __has_include(<concurrent_queue.h>)
@@ -32,6 +34,7 @@ namespace Sailor
 	{
 		enum class ETransformOperation : uint8_t;
 		enum class ETransformSpace : uint8_t;
+		struct Event;
 		class EditorViewportController;
 	}
 
@@ -52,7 +55,7 @@ namespace Sailor
 		SAILOR_SHARED_API void SetWorld(class World* world);
 		class World* GetWorld() const { return m_world; }
 		SAILOR_SHARED_API bool SetSimulationEnabled(bool bEnabled);
-		bool IsSimulationEnabled() const { return m_bSimulationEnabled; }
+		bool IsSimulationEnabled() const { return !m_simulationSnapshot.empty(); }
 		bool PreviewAudioAsset(const class FileId& fileId);
 		void StopAudioPreview();
 		SAILOR_SHARED_API bool StartGIProbesBake(
@@ -64,13 +67,13 @@ namespace Sailor
 			GetGIProbesBakeStatus() const;
 		void TickViewportTools();
 		void CancelViewportInteraction();
-		bool PullViewportEvent(std::string& outEvent);
+		bool PullViewportEvent(EditorViewport::Event& outEvent);
 		void NotifyManagedSelectionMutation() { ++m_managedSelectionMutationRevision; }
 		uint64_t GetManagedSelectionMutationRevision() const { return m_managedSelectionMutationRevision; }
 		void NotifyManagedObjectMutation(const InstanceId& instanceId);
 		uint64_t GetManagedObjectMutationRevision(const InstanceId& instanceId) const;
 
-		SAILOR_API void PushMessage(const std::string& msg);
+		SAILOR_API void PushMessage(std::string_view msg);
 		bool PullMessage(std::string& msg);
 
 		__forceinline size_t NumMessages() const
@@ -104,11 +107,8 @@ namespace Sailor
 		bool InstantiatePrefab(const class FileId& prefabId, const class InstanceId& parentInstanceId);
 		SAILOR_API bool InstantiatePrefab(
 			const TObjectPtr<Prefab>& prefab,
-			const class InstanceId& parentInstanceId);
-		SAILOR_API bool InstantiatePrefab(
-			const TObjectPtr<Prefab>& prefab,
 			const class InstanceId& parentInstanceId,
-			bool bStrictInstanceIds);
+			EPrefabInstanceIdPolicy idPolicy = EPrefabInstanceIdPolicy::PreserveAvailable);
 		bool InstantiatePrefab(
 			const class FileId& prefabId,
 			const class InstanceId& parentInstanceId,
@@ -119,8 +119,7 @@ namespace Sailor
 			const class InstanceId& parentInstanceId,
 			const glm::vec3* worldPosition,
 			class InstanceId& outInstanceId,
-			bool bStrictInstanceIds = false,
-			bool bForceNewInstanceIds = false);
+			EPrefabInstanceIdPolicy idPolicy = EPrefabInstanceIdPolicy::PreserveAvailable);
 		bool TraceViewportRay(
 			uint64_t viewportId,
 			float normalizedX,
@@ -137,7 +136,6 @@ namespace Sailor
 		void GetViewportToolState(
 			EditorViewport::ETransformOperation& outOperation,
 			EditorViewport::ETransformSpace& outSpace) const;
-		bool RenderPathTracedImage(const class InstanceId& instanceId, const std::string& outputPath, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces);
 
 	protected:
 
@@ -151,8 +149,7 @@ namespace Sailor
 		class Win32::Window* m_pMainWindow = nullptr;
 
 		class World* m_world = nullptr;
-		std::string m_simulationSnapshot{};
-		bool m_bSimulationEnabled = false;
+		std::string m_simulationSnapshot;
 		AudioVoiceId m_audioPreviewVoiceId = InvalidAudioVoiceId;
 		TUniquePtr<EditorViewport::EditorViewportController> m_viewportController{};
 		TUniquePtr<GlobalIlluminationBakeController> m_giProbesBakeController{};

@@ -1,6 +1,7 @@
 #include "Components/Component.h"
 #include "Components/CameraComponent.h"
 #include "Core/Reflection.h"
+#include "Core/YamlUtils.h"
 #include "Memory/ObjectAllocator.hpp"
 #include "Memory/SharedPtr.hpp"
 #include "Workspace/WorkspaceModuleApi.h"
@@ -15,6 +16,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -22,15 +24,25 @@
 using namespace Sailor;
 using namespace Sailor::Workspace;
 
+extern "C" uint32_t SAILOR_WORKSPACE_CALL SailorWorkspaceFixtureConstructionCount() noexcept;
+
 namespace RangeAnnotationFixture
 {
-	class NumericProperties
+	class BaseProperties
+	{
+	public:
+		int32_t GetInheritedReadOnly() const { return 5; }
+	};
+
+	class NumericProperties : public BaseProperties
 	{
 	public:
 		int32_t GetSignedValue() const { return m_signedValue; }
 		void SetSignedValue(int32_t value) { m_signedValue = value; }
 		uint32_t GetUnsignedValue() const { return m_unsignedValue; }
 		void SetUnsignedValue(uint32_t value) { m_unsignedValue = value; }
+		int32_t GetSkippedReadOnly() const { return 9; }
+		int32_t GetTransientValue() const { return 11; }
 
 	private:
 		int32_t m_signedValue = 0;
@@ -46,11 +58,18 @@ namespace StableTypeNameFixture
 }
 
 REFL_AUTO(
-	type(RangeAnnotationFixture::NumericProperties),
+	type(RangeAnnotationFixture::BaseProperties),
+	func(GetInheritedReadOnly, property("inheritedReadOnly"))
+)
+
+REFL_AUTO(
+	type(RangeAnnotationFixture::NumericProperties, bases<RangeAnnotationFixture::BaseProperties>),
 	func(GetSignedValue, property("signedValue"), Sailor::Attributes::Range(-10.0, 10.0)),
 	func(SetSignedValue, property("signedValue")),
 	func(GetUnsignedValue, property("unsignedValue"), Sailor::Attributes::Range(0.0, 20.0)),
-	func(SetUnsignedValue, property("unsignedValue"))
+	func(SetUnsignedValue, property("unsignedValue")),
+	func(GetSkippedReadOnly, property("skippedReadOnly"), Sailor::Attributes::SkipCDO()),
+	func(GetTransientValue, property("transientValue"), Sailor::Attributes::Transient())
 )
 
 namespace
@@ -88,35 +107,27 @@ namespace
 		return static_cast<uint32_t>(EWorkspaceModuleResult::Success);
 	}
 
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
-	EWorkspaceModuleResult ExportMetadata(char* destination, uint64_t capacity, uint64_t* payloadSize)
+	YAML::Node ReadMetadata()
 	{
-		const TGetWorkspaceTypeMetadataV1 exportFunction = &SailorGetWorkspaceTypeMetadataV1;
-		return static_cast<EWorkspaceModuleResult>(exportFunction(destination, capacity, payloadSize));
-	}
-
-	std::string ReadMetadata()
-	{
-		uint64_t payloadSize = 0;
-		Require(
-			ExportMetadata(nullptr, 0, &payloadSize) == EWorkspaceModuleResult::BufferTooSmall,
-			"metadata size query should request a caller-owned buffer");
-		Require(payloadSize > 0, "metadata size query should return a non-empty payload size");
-
-		std::string payload(static_cast<size_t>(payloadSize), '\0');
-		uint64_t writtenSize = 0;
-		Require(
-			ExportMetadata(payload.data(), payloadSize, &writtenSize) == EWorkspaceModuleResult::Success,
-			"metadata export should fill an exact-size buffer");
-		Require(writtenSize == payloadSize, "metadata export should preserve the queried payload size");
-		return payload;
+		WorkspaceDescriptorCapture capture;
+		const WorkspaceHostApiV1 host{ sizeof(WorkspaceHostApiV1), WorkspaceHostApiVersion, &capture, &CaptureWorkspaceDescriptor };
+		const auto* api = SailorGetWorkspaceModuleApiV1();
+		Require(api->registerTypes(&host) == static_cast<uint32_t>(EWorkspaceModuleResult::Success),
+			"module should enumerate its reflected types");
+		const auto* type = static_cast<const TypeInfo*>(capture.m_descriptor.typeInfo);
+		Require(type && type->GetDefaultValues(), "TypeInfo should capture the typed default object");
+		YAML::Node metadata = Reflection::ExportTypes({ type });
+		metadata["moduleName"] = std::string(api->moduleName, api->moduleNameLength);
+		metadata["metadataVersion"] = WorkspaceTypeMetadataVersion;
+		return metadata;
 	}
 
 	const YAML::Node FindType(const YAML::Node& types, const std::string& typeName)
@@ -158,35 +169,29 @@ namespace
 		return FindType(metadata["engineTypes"], typeName).IsDefined();
 	}
 
-	void TestBufferContract()
+	void TestRegistrationContract()
 	{
-		Require(
-			ExportMetadata(nullptr, 0, nullptr) == EWorkspaceModuleResult::InvalidArgument,
-			"metadata export should reject a missing payload size pointer");
-
-		uint64_t payloadSize = 0;
-		Require(
-			ExportMetadata(nullptr, 1, &payloadSize) == EWorkspaceModuleResult::InvalidArgument,
-			"metadata export should reject a null destination with non-zero capacity");
-		Require(payloadSize > 0, "invalid destination should still report the required payload size");
-
-		std::vector<char> tooSmall(static_cast<size_t>(payloadSize - 1), '#');
-		uint64_t requiredSize = 0;
-		Require(
-			ExportMetadata(tooSmall.data(), tooSmall.size(), &requiredSize) == EWorkspaceModuleResult::BufferTooSmall,
-			"metadata export should reject an undersized destination");
-		Require(requiredSize == payloadSize, "undersized export should report the full required size");
-		Require(
-			std::all_of(tooSmall.begin(), tooSmall.end(), [](char value) { return value == '#'; }),
-			"metadata export should not partially write an undersized destination");
-
-		const std::string payload = ReadMetadata();
-		Require(payload.back() != '\0', "metadata payload should not include a null terminator");
+		const auto* api = SailorGetWorkspaceModuleApiV1();
+		Require(api->registerTypes(nullptr) == static_cast<uint32_t>(EWorkspaceModuleResult::InvalidArgument),
+			"registration should reject a missing host table");
+		WorkspaceDescriptorCapture capture;
+		WorkspaceHostApiV1 host{ sizeof(WorkspaceHostApiV1), WorkspaceHostApiVersion, &capture, &CaptureWorkspaceDescriptor };
+		host.structSize = 0;
+		Require(api->registerTypes(&host) == static_cast<uint32_t>(EWorkspaceModuleResult::InvalidArgument),
+			"registration should reject an incomplete host table");
+		host.structSize = sizeof(host);
+		host.apiVersion = 0;
+		Require(api->registerTypes(&host) == static_cast<uint32_t>(EWorkspaceModuleResult::InvalidArgument),
+			"registration should reject an incompatible host protocol");
+		host.apiVersion = WorkspaceHostApiVersion;
+		host.collectType = nullptr;
+		Require(api->registerTypes(&host) == static_cast<uint32_t>(EWorkspaceModuleResult::InvalidArgument),
+			"registration should reject a missing collector");
 	}
 
 	void TestMetadataSchemaAndDefaults()
 	{
-		const YAML::Node metadata = YAML::Load(ReadMetadata());
+		const YAML::Node metadata = ReadMetadata();
 		Require(metadata.IsMap(), "workspace metadata should be a YAML map");
 		Require(
 			metadata["metadataVersion"].as<uint32_t>() == WorkspaceTypeMetadataVersion,
@@ -223,6 +228,13 @@ namespace
 			ContainsScalar(type["readOnlyProperties"], "readOnlyValue") &&
 			ContainsScalar(type["readOnlyProperties"], "skippedReadOnlyValue"),
 			"workspace metadata should explicitly identify serialized read-only properties");
+		WorkspaceDescriptorCapture capture;
+		const WorkspaceHostApiV1 host{ sizeof(WorkspaceHostApiV1), WorkspaceHostApiVersion, &capture, &CaptureWorkspaceDescriptor };
+		Require(SailorGetWorkspaceModuleApiV1()->registerTypes(&host) == static_cast<uint32_t>(EWorkspaceModuleResult::Success),
+			"workspace type descriptor should be available for common schema comparison");
+		const auto* typeInfo = static_cast<const TypeInfo*>(capture.m_descriptor.typeInfo);
+		Require(Utils::AreYamlNodesEqual(typeInfo->Serialize(), type),
+			"workspace and engine TypeInfo serialization must produce the same complete property schema");
 		Require(type["properties"]["skippedDefault"].as<std::string>() == "float",
 			"SkipCDO properties should remain available in the writable property schema");
 		Require(type["properties"]["mode"].as<std::string>() == "enum WorkspaceFixture::EFixtureMode",
@@ -244,6 +256,17 @@ namespace
 			"workspace component metadata should preserve custom structured property types");
 		Require(type["properties"]["nullableComponent"].IsScalar(),
 			"workspace component metadata should preserve object-reference property types");
+		const YAML::Node settingsType = FindType(metadata["engineTypes"], "WorkspaceFixture::FixtureSettings");
+		const YAML::Node tuningType = FindType(metadata["engineTypes"], "WorkspaceFixture::FixtureTuning");
+		Require(type["properties"]["settings"].as<std::string>() == "WorkspaceFixture::FixtureSettings" &&
+			settingsType["properties"]["layers"].as<std::string>() == "List<WorkspaceFixture::FixtureTuning>" &&
+			settingsType["properties"]["modes"].as<std::string>() == "List<enum WorkspaceFixture::EFixtureMode>",
+			"workspace catalog should include value types reached through nested records and lists");
+		Require(tuningType["propertyRanges"]["gain"]["max"].as<float>() == 1.0f,
+			"nested value schemas should use the same range metadata as component schemas");
+		const YAML::Node tuningDefaults = FindType(metadata["cdos"], "WorkspaceFixture::FixtureTuning");
+		Require(tuningDefaults["defaultValues"]["gain"].as<float>() == 0.25f,
+			"workspace catalog should export defaults for nested value types");
 
 		const YAML::Node defaultObject = FindType(metadata["cdos"], FixtureTypeName);
 		Require(defaultObject.IsDefined(), "workspace metadata should include fixture defaults");
@@ -274,7 +297,12 @@ namespace
 
 	void TestRepeatedAndConcurrentCalls()
 	{
-		const std::string expected = ReadMetadata();
+		const YAML::Node expected = ReadMetadata();
+		const int64_t timestamp = expected["timeStamp"].as<int64_t>();
+		std::string expectedValue;
+		Require(Utils::CanonicalizeYaml(expected, expectedValue, Utils::EYamlCanonicalizationMode::SemanticValue),
+			"fixture metadata should have a canonical value");
+		// YAML's const traversal updates lazy caches; share only the comparison text.
 		std::atomic<bool> failed = false;
 		std::vector<std::thread> threads;
 
@@ -286,7 +314,11 @@ namespace
 					{
 						try
 						{
-							if (ReadMetadata() != expected)
+							auto actual = ReadMetadata();
+							actual["timeStamp"] = timestamp;
+							std::string actualValue;
+							if (!Utils::CanonicalizeYaml(actual, actualValue, Utils::EYamlCanonicalizationMode::SemanticValue) ||
+								actualValue != expectedValue)
 							{
 								failed = true;
 								return;
@@ -307,6 +339,8 @@ namespace
 		}
 
 		Require(!failed, "metadata export should be stable across repeated concurrent calls");
+		Require(SailorWorkspaceFixtureConstructionCount() == 1,
+			"repeated concurrent catalog requests must capture exactly one component default object");
 	}
 
 	void TestFactoryInvocationLease()
@@ -332,18 +366,17 @@ namespace
 			"workspace fixture descriptor should expose its reflected TypeInfo");
 		Require(capture.m_descriptor.placementFactory != nullptr,
 			"workspace fixture descriptor should expose its placement factory");
-		Require(capture.m_descriptor.canonicalDefaultValues != nullptr &&
-			capture.m_descriptor.canonicalDefaultValuesLength > 0,
-			"workspace fixture descriptor should expose a canonical defaults snapshot");
-		Require(capture.m_descriptor.flags == 0,
-			"workspace fixture descriptor should not report reflected property ambiguity");
-		const YAML::Node descriptorDefaults = YAML::Load(std::string(
-			capture.m_descriptor.canonicalDefaultValues,
-			static_cast<size_t>(capture.m_descriptor.canonicalDefaultValuesLength)));
+		Require(typeInfo->GetDefaultValues() != nullptr,
+			"TypeInfo should expose the captured default object");
+		Require(!typeInfo->HasAmbiguousProperties(), "fixture properties should be unambiguous");
+		Require(typeInfo->Size() == capture.m_descriptor.typeSize &&
+			typeInfo->Alignment() == capture.m_descriptor.typeAlignment,
+			"registration descriptor should match the compiled TypeInfo layout");
+		const YAML::Node& descriptorDefaults = *typeInfo->GetDefaultValues();
 		Require(descriptorDefaults["nullableComponent"].IsNull(),
 			"canonical descriptor defaults should preserve null object references");
 
-		const YAML::Node metadata = YAML::Load(ReadMetadata());
+		const YAML::Node metadata = ReadMetadata();
 		const YAML::Node defaultObject = FindType(metadata["cdos"], FixtureTypeName);
 		Require(defaultObject["defaultValues"].IsMap(),
 			"workspace fixture should expose reflected defaults for lease validation");
@@ -504,12 +537,23 @@ namespace
 			metadata["propertyRanges"]["fov"]["max"].as<double>() == 179.0,
 			"engine TypeInfo serialization should export propertyRanges metadata");
 
-		YAML::Node legacyMetadata = YAML::Clone(metadata);
-		legacyMetadata.remove("propertyRanges");
-		TypeInfo legacyType = cameraType;
-		legacyType.Deserialize(legacyMetadata);
-		Require(legacyType.PropertyRanges().Num() == 0,
-			"TypeInfo deserialization should treat an absent legacy propertyRanges field as empty");
+		for (bool bHasExplicitEmptyMap : { false, true })
+		{
+			YAML::Node withoutRanges = YAML::Clone(metadata);
+			withoutRanges.remove("propertyRanges");
+			if (bHasExplicitEmptyMap) withoutRanges["propertyRanges"] = YAML::Node(YAML::NodeType::Map);
+			TypeInfo parsedType = cameraType;
+			parsedType.Deserialize(withoutRanges);
+			Require(parsedType.PropertyRanges().IsEmpty(),
+				"absent or empty optional ranges must clear previously populated annotations");
+			withoutRanges["propertyRanges"] = YAML::Node(YAML::NodeType::Map);
+			Require(Utils::AreYamlNodesEqual(parsedType.Serialize(), withoutRanges),
+				"the current producer must normalize absent ranges to an explicit empty map without losing other metadata");
+			parsedType.Deserialize(metadata);
+			Require(Utils::AreYamlNodesEqual(parsedType.Serialize(), metadata),
+				"reading annotated metadata again must restore ranges without retaining the prior empty state");
+		}
+		std::cout << "Reflection metadata: absent/empty ranges, canonical map and annotation replacement passed\n";
 
 		const TypeInfo& numericType = TypeInfo::Get<RangeAnnotationFixture::NumericProperties>();
 		Require(numericType.PropertyRanges()["signedValue"].m_min == -10.0 &&
@@ -517,13 +561,23 @@ namespace
 			numericType.PropertyRanges()["unsignedValue"].m_min == 0.0 &&
 			numericType.PropertyRanges()["unsignedValue"].m_max == 20.0,
 			"TypeInfo should export representable int32 and uint32 property ranges");
+
+		const YAML::Node numericMetadata = numericType.Serialize();
+		const YAML::Node readOnly = numericMetadata["readOnlyProperties"];
+		Require(readOnly.size() == 2 && ContainsScalar(readOnly, "inheritedReadOnly") &&
+			ContainsScalar(readOnly, "skippedReadOnly") && !ContainsScalar(readOnly, "transientValue"),
+			"common TypeInfo must preserve inherited read-only and SkipCDO properties but exclude transient values");
+		TypeInfo roundTrip = numericType;
+		roundTrip.Deserialize(numericMetadata);
+		Require(Utils::AreYamlNodesEqual(roundTrip.Serialize(), numericMetadata),
+			"common type metadata must retain read-only properties on a serialization round trip");
 	}
 }
 
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
-		{ "BufferContract", TestBufferContract },
+		{ "RegistrationContract", TestRegistrationContract },
 		{ "MetadataSchemaAndDefaults", TestMetadataSchemaAndDefaults },
 		{ "RepeatedAndConcurrentCalls", TestRepeatedAndConcurrentCalls },
 		{ "FactoryInvocationLease", TestFactoryInvocationLease },

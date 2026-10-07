@@ -2,43 +2,16 @@
 #include "Components/LightComponent.h"
 #include "Engine/GameObject.h"
 #include "ECS/TransformECS.h"
-#include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
-#include "FrameGraph/SkyNode.h"
+#include "ECS/LightingECS.h"
 #include "Math/Math.h"
-#include "RHI/Renderer.h"
 #include "Raytracing/SkyEnvironmentGenerator.h"
-#include "Tasks/Tasks.h"
 #include <glm/gtx/quaternion.hpp>
 #include <cmath>
 
 using namespace Sailor;
-using namespace Sailor::Framegraph;
 
 namespace
 {
-	TRefPtr<SkyNode> GetSkyNode()
-	{
-		auto* renderer = App::GetSubmodule<RHI::Renderer>();
-		if (!renderer)
-		{
-			return {};
-		}
-
-		FrameGraphPtr frameGraph = renderer->GetFrameGraph();
-		if (!frameGraph)
-		{
-			return {};
-		}
-
-		RHI::RHIFrameGraphPtr rhiFrameGraph = frameGraph->GetRHI();
-		if (!rhiFrameGraph)
-		{
-			return {};
-		}
-
-		return rhiFrameGraph->GetGraphNode("Sky").DynamicCast<SkyNode>();
-	}
-
 	glm::mat4 CalculateWorldMatrix(GameObjectPtr gameObject)
 	{
 		if (!gameObject)
@@ -62,6 +35,18 @@ SkyComponent::SkyComponent()
 	m_skyParams.m_sunIlluminance = glm::vec4(m_sunIlluminance, 0.0f);
 }
 
+void SkyComponent::Initialize()
+{
+	for (auto component : GetOwner()->GetComponents())
+	{
+		if (component.GetRawPtr() == this)
+		{
+			GetWorld()->GetECS<LightingECS>()->RegisterSky(component.StaticCast<SkyComponent>());
+			break;
+		}
+	}
+}
+
 void SkyComponent::BeginPlay()
 {
 	Apply();
@@ -69,13 +54,7 @@ void SkyComponent::BeginPlay()
 
 void SkyComponent::EndPlay()
 {
-	if (auto skyNode = GetSkyNode())
-	{
-		Tasks::CreateTask("Reset sky parameters", [skyNode]() mutable
-			{
-				skyNode->ResetSkyParams();
-			}, EThreadType::Render)->Run();
-	}
+	GetWorld()->GetECS<LightingECS>()->UnregisterSky(this);
 }
 
 void SkyComponent::Tick(float)
@@ -92,13 +71,8 @@ void SkyComponent::Apply()
 {
 	UpdateLightDirection();
 
-	if (auto skyNode = GetSkyNode())
-	{
-		Tasks::CreateTask("Update sky parameters", [skyNode, skyParams = m_skyParams]() mutable
-			{
-				skyNode->SetSkyParams(skyParams);
-			}, EThreadType::Render)->Run();
-	}
+	const auto selected = GetWorld()->GetECS<LightingECS>()->GetSky();
+	if (!selected || selected.GetRawPtr() != this) return;
 
 	if (!m_directionalLight)
 	{

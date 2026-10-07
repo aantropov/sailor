@@ -29,7 +29,6 @@
 #include <cmath>
 #include <cstring>
 #include <sstream>
-#include <thread>
 
 using Microsoft::WRL::ComPtr;
 
@@ -273,6 +272,12 @@ namespace Sailor::EditorRemote
 
 		Failure EnsureDevice()
 		{
+			if (m_device && FAILED(m_device->GetDeviceRemovedReason()))
+			{
+				m_context.Reset();
+				m_device.Reset();
+				m_factory.Reset();
+			}
 			return m_device && m_context && m_factory
 				? Failure::Ok()
 				: CreateD3D11DeviceForVulkanAdapter(m_device, m_context, m_factory);
@@ -675,6 +680,7 @@ namespace Sailor::EditorRemote
 		ConnectionEpoch m_epoch = 0;
 		SurfaceGeneration m_generation = 0;
 		FrameIndex m_presentedFrameIndex = 0;
+		bool m_bIsCopyPending = false;
 		uint32_t m_width = 0;
 		uint32_t m_height = 0;
 		float m_compositionScale = 1.0f;
@@ -682,31 +688,15 @@ namespace Sailor::EditorRemote
 
 		Failure EnsureDevice()
 		{
-			if (m_device && m_context && m_factory)
+			if (m_device && FAILED(m_device->GetDeviceRemovedReason()))
 			{
-				return Failure::Ok();
+				m_context.Reset();
+				m_device.Reset();
+				m_factory.Reset();
 			}
-
-			auto createResult = CreateD3D11DeviceForVulkanAdapter(
-				m_device,
-				m_context,
-				m_factory);
-			if (!createResult.IsOk())
-			{
-				return createResult;
-			}
-
-			D3D11_QUERY_DESC queryDescription{};
-			queryDescription.Query = D3D11_QUERY_EVENT;
-			const HRESULT result = m_device->CreateQuery(
-				&queryDescription,
-				&m_copyCompleteQuery);
-			if (FAILED(result))
-			{
-				return MakeWindowsFailure(result, "ID3D11Device::CreateQuery");
-			}
-
-			return Failure::Ok();
+			return m_device && m_context && m_factory
+				? Failure::Ok()
+				: CreateD3D11DeviceForVulkanAdapter(m_device, m_context, m_factory);
 		}
 
 		Failure AttachSwapChainOnCurrentThread()
@@ -863,9 +853,21 @@ namespace Sailor::EditorRemote
 			return result;
 		}
 
+		ComPtr<ID3D11Query> copyCompleteQuery;
+		D3D11_QUERY_DESC queryDescription{};
+		queryDescription.Query = D3D11_QUERY_EVENT;
+		nativeResult = m_impl->m_device->CreateQuery(&queryDescription, &copyCompleteQuery);
+		if (FAILED(nativeResult))
+		{
+			m_impl->m_lastFailure = MakeWindowsFailure(nativeResult, "ID3D11Device::CreateQuery");
+			return m_impl->m_lastFailure;
+		}
+
 		m_impl->m_sharedTexture = std::move(sharedTexture);
 		m_impl->m_keyedMutex = std::move(keyedMutex);
 		m_impl->m_swapChain = std::move(swapChain);
+		m_impl->m_copyCompleteQuery = std::move(copyCompleteQuery);
+		m_impl->m_bIsCopyPending = false;
 		m_impl->m_attachedSwapChain.Reset();
 		m_impl->m_viewportId = viewport.m_viewportId;
 		m_impl->m_epoch = epoch;
@@ -897,69 +899,75 @@ namespace Sailor::EditorRemote
 
 		const uint64_t acquireKey = frame.m_sync.m_acquireValue;
 		const uint64_t releaseKey = frame.m_sync.m_releaseValue;
-		HRESULT result = m_impl->m_keyedMutex->AcquireSync(acquireKey, 2000);
-		if (result != S_OK)
+		const bool bPresent = m_impl->m_attachedSwapChain.Get() == m_impl->m_swapChain.Get();
+		HRESULT result = S_OK;
+		if (!m_impl->m_bIsCopyPending)
 		{
-			m_impl->m_lastFailure = MakeWindowsFailure(result, "IDXGIKeyedMutex::AcquireSync");
-			return m_impl->m_lastFailure;
-		}
-
-		if (m_impl->m_attachedSwapChain.Get() == m_impl->m_swapChain.Get())
-		{
-			ComPtr<ID3D11Texture2D> backBuffer;
-			result = m_impl->m_swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuffer));
-			if (FAILED(result))
+			result = m_impl->m_keyedMutex->AcquireSync(acquireKey, 0);
+			if (result != S_OK)
 			{
-				m_impl->m_keyedMutex->ReleaseSync(releaseKey);
-				m_impl->m_lastFailure = MakeWindowsFailure(result, "IDXGISwapChain::GetBuffer");
+				m_impl->m_lastFailure = MakeWindowsFailure(result, "IDXGIKeyedMutex::AcquireSync");
+				if (result == WAIT_TIMEOUT || result == WAIT_ABANDONED)
+				{
+					m_impl->m_lastFailure.m_scope = FailureScope::Session;
+					m_impl->m_lastFailure.m_code = result == WAIT_TIMEOUT ? ResultCode::Retryable : ResultCode::RecreateRequired;
+				}
 				return m_impl->m_lastFailure;
 			}
 
-			// CopyResource preserves the sRGB-encoded bytes in the UNORM composition
-			// back buffer. The Vulkan destination must therefore also use sRGB.
-			m_impl->m_context->CopyResource(backBuffer.Get(), m_impl->m_sharedTexture.Get());
-			m_impl->m_context->End(m_impl->m_copyCompleteQuery.Get());
-			m_impl->m_context->Flush();
-
-			const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-			while ((result = m_impl->m_context->GetData(
-				m_impl->m_copyCompleteQuery.Get(),
-				nullptr,
-				0,
-				0)) == S_FALSE)
+			if (bPresent)
 			{
-				if (std::chrono::steady_clock::now() >= deadline)
+				ComPtr<ID3D11Texture2D> backBuffer;
+				result = m_impl->m_swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuffer));
+				if (FAILED(result))
 				{
-					m_impl->m_keyedMutex->ReleaseSync(releaseKey);
-					m_impl->m_lastFailure = Failure::FromDomain(
-						ErrorDomain::Session,
-						1,
-						"Timed out waiting for the D3D11 shared-texture copy");
+					const HRESULT releaseResult = m_impl->m_keyedMutex->ReleaseSync(releaseKey);
+					m_impl->m_lastFailure = releaseResult == S_OK
+						? MakeWindowsFailure(result, "IDXGISwapChain::GetBuffer")
+						: MakeWindowsFailure(releaseResult, "IDXGIKeyedMutex::ReleaseSync");
 					return m_impl->m_lastFailure;
 				}
-				std::this_thread::yield();
+
+				// Preserve the sRGB-encoded bytes in the UNORM composition back buffer.
+				m_impl->m_context->CopyResource(backBuffer.Get(), m_impl->m_sharedTexture.Get());
+				m_impl->m_context->End(m_impl->m_copyCompleteQuery.Get());
+				m_impl->m_context->Flush();
+				m_impl->m_bIsCopyPending = true;
+			}
+		}
+
+		if (m_impl->m_bIsCopyPending)
+		{
+			result = m_impl->m_context->GetData(m_impl->m_copyCompleteQuery.Get(), nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH);
+			if (result == S_FALSE)
+			{
+				m_impl->m_lastFailure = Failure::FromDomain(ErrorDomain::Session, S_FALSE, "D3D11 shared-texture copy is pending");
+				return m_impl->m_lastFailure;
 			}
 			if (result != S_OK)
 			{
-				m_impl->m_keyedMutex->ReleaseSync(releaseKey);
 				m_impl->m_lastFailure = MakeWindowsFailure(result, "ID3D11DeviceContext::GetData");
-				return m_impl->m_lastFailure;
-			}
-
-			result = m_impl->m_swapChain->Present(1, 0);
-			if (FAILED(result) && result != DXGI_STATUS_OCCLUDED)
-			{
-				m_impl->m_keyedMutex->ReleaseSync(releaseKey);
-				m_impl->m_lastFailure = MakeWindowsFailure(result, "IDXGISwapChain::Present");
 				return m_impl->m_lastFailure;
 			}
 		}
 
+		// A pending or failed query must never return the surface to the producer.
 		result = m_impl->m_keyedMutex->ReleaseSync(releaseKey);
-		if (FAILED(result))
+		if (result != S_OK)
 		{
 			m_impl->m_lastFailure = MakeWindowsFailure(result, "IDXGIKeyedMutex::ReleaseSync");
 			return m_impl->m_lastFailure;
+		}
+		m_impl->m_bIsCopyPending = false;
+
+		if (bPresent)
+		{
+			result = m_impl->m_swapChain->Present(1, 0);
+			if (FAILED(result))
+			{
+				m_impl->m_lastFailure = MakeWindowsFailure(result, "IDXGISwapChain::Present");
+				return m_impl->m_lastFailure;
+			}
 		}
 
 		m_impl->m_presentedFrameIndex = frame.m_frameIndex;
@@ -978,6 +986,8 @@ namespace Sailor::EditorRemote
 		m_impl->m_swapChain.Reset();
 		m_impl->m_keyedMutex.Reset();
 		m_impl->m_sharedTexture.Reset();
+		m_impl->m_copyCompleteQuery.Reset();
+		m_impl->m_bIsCopyPending = false;
 		m_impl->m_viewportId = 0;
 		m_impl->m_epoch = 0;
 		m_impl->m_generation = 0;

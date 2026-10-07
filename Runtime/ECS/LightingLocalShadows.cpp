@@ -17,12 +17,12 @@ using namespace Sailor::Tasks;
 
 void LightingECS::ReleaseLocalShadowAllocation(uint32_t componentIndex)
 {
-	if (componentIndex >= m_localShadowAllocations.Num())
+	if (componentIndex >= m_shadows.m_localAllocations.Num())
 	{
 		return;
 	}
 
-	auto& allocation = m_localShadowAllocations[componentIndex];
+	auto& allocation = m_shadows.m_localAllocations[componentIndex];
 	if (allocation.m_componentIndex != componentIndex)
 	{
 		return;
@@ -31,14 +31,14 @@ void LightingECS::ReleaseLocalShadowAllocation(uint32_t componentIndex)
 	ReleaseLocalShadowTiles(allocation.m_atlasIndex, allocation.m_tiles);
 	for (uint32_t slot : allocation.m_slots)
 	{
-		if (slot >= m_shadowMapOwners.Num())
+		if (slot >= m_shadows.m_mapOwners.Num())
 		{
 			continue;
 		}
 
-		m_shadowMapOwners[slot] = InvalidShadowMapIndex;
+		m_shadows.m_mapOwners[slot] = InvalidShadowMapIndex;
 	}
-	for (auto& flightResources : m_shadowFlightResources)
+	for (auto& flightResources : m_shadows.m_flights)
 	{
 		if (flightResources.m_localShadowSnapshots.Num() > componentIndex)
 		{
@@ -51,12 +51,12 @@ void LightingECS::ReleaseLocalShadowAllocation(uint32_t componentIndex)
 
 void LightingECS::ReleaseLocalShadowTiles(uint32_t atlasIndex, const TVector<glm::ivec4>& tiles)
 {
-	if (atlasIndex >= m_localShadowAtlases.Num() || !m_localShadowAtlases[atlasIndex].m_texture)
+	if (atlasIndex >= m_shadows.m_localAtlases.Num() || !m_shadows.m_localAtlases[atlasIndex].m_texture)
 	{
 		return;
 	}
 
-	auto& occupancy = m_localShadowAtlases[atlasIndex].m_occupancy;
+	auto& occupancy = m_shadows.m_localAtlases[atlasIndex].m_occupancy;
 	for (const auto& tile : tiles)
 	{
 		const uint32_t firstX = static_cast<uint32_t>(tile.x) / LocalShadowMinResolution;
@@ -74,15 +74,15 @@ void LightingECS::ReleaseLocalShadowTiles(uint32_t atlasIndex, const TVector<glm
 
 bool LightingECS::TryCreateLocalShadowAtlas(uint32_t& outAtlasIndex)
 {
-	if (m_shadowMapsMb + LocalShadowAtlasMemoryMb > m_shadowsMemoryBudgetMb + 0.001f)
+	if (m_shadows.m_mapsMb + LocalShadowAtlasMemoryMb > m_shadowsMemoryBudgetMb + 0.001f)
 	{
 		return false;
 	}
 
-	uint32_t atlasIndex = static_cast<uint32_t>(m_localShadowAtlases.Num());
-	for (uint32_t i = 0; i < m_localShadowAtlases.Num(); ++i)
+	uint32_t atlasIndex = static_cast<uint32_t>(m_shadows.m_localAtlases.Num());
+	for (uint32_t i = 0; i < m_shadows.m_localAtlases.Num(); ++i)
 	{
-		if (!m_localShadowAtlases[i].m_texture)
+		if (!m_shadows.m_localAtlases[i].m_texture)
 		{
 			atlasIndex = i;
 			break;
@@ -117,19 +117,19 @@ bool LightingECS::TryCreateLocalShadowAtlas(uint32_t& outAtlasIndex)
 	{
 		occupied = 0;
 	}
-	if (atlasIndex == m_localShadowAtlases.Num())
+	if (atlasIndex == m_shadows.m_localAtlases.Num())
 	{
-		m_localShadowAtlases.Add(std::move(atlas));
+		m_shadows.m_localAtlases.Add(std::move(atlas));
 	}
 	else
 	{
-		m_localShadowAtlases[atlasIndex] = std::move(atlas);
+		m_shadows.m_localAtlases[atlasIndex] = std::move(atlas);
 	}
 
-	m_shadowMapTextures[NumCascades + atlasIndex] = texture;
-	m_writableLocalShadowAtlases.set(atlasIndex);
-	m_bShadowMapBindingsDirty = true;
-	m_shadowMapsMb += LocalShadowAtlasMemoryMb;
+	m_shadows.m_textures[NumCascades + atlasIndex] = texture;
+	m_shadows.m_writableLocalAtlases.set(atlasIndex);
+	m_shadows.m_bBindingsDirty = true;
+	m_shadows.m_mapsMb += LocalShadowAtlasMemoryMb;
 	outAtlasIndex = atlasIndex;
 	return true;
 }
@@ -138,8 +138,8 @@ bool LightingECS::EnsureWritableLocalShadowAtlas(uint32_t atlasIndex,
 	uint32_t flightSlot,
 	LightingShadowFlightResources& flightResources)
 {
-	if (atlasIndex >= m_localShadowAtlases.Num() || atlasIndex >= m_writableLocalShadowAtlases.size() ||
-		!m_localShadowAtlases[atlasIndex].m_texture)
+	if (atlasIndex >= m_shadows.m_localAtlases.Num() || atlasIndex >= m_shadows.m_writableLocalAtlases.size() ||
+		!m_shadows.m_localAtlases[atlasIndex].m_texture)
 	{
 		return false;
 	}
@@ -148,18 +148,18 @@ bool LightingECS::EnsureWritableLocalShadowAtlas(uint32_t atlasIndex,
 		flightResources.m_localShadowAtlasTextures.Resize(static_cast<size_t>(atlasIndex) + 1u);
 	}
 	auto& writableTexture = flightResources.m_localShadowAtlasTextures[atlasIndex];
-	if (m_writableLocalShadowAtlases.test(atlasIndex))
+	if (m_shadows.m_writableLocalAtlases.test(atlasIndex))
 	{
 		if (!writableTexture)
 		{
-			writableTexture = m_localShadowAtlases[atlasIndex].m_texture;
+			writableTexture = m_shadows.m_localAtlases[atlasIndex].m_texture;
 		}
 		return writableTexture.IsValid();
 	}
 
 	if (!writableTexture)
 	{
-		if (m_shadowMapsMb + LocalShadowAtlasMemoryMb > m_shadowsMemoryBudgetMb + 0.001f)
+		if (m_shadows.m_mapsMb + LocalShadowAtlasMemoryMb > m_shadowsMemoryBudgetMb + 0.001f)
 		{
 			return false;
 		}
@@ -173,7 +173,7 @@ bool LightingECS::EnsureWritableLocalShadowAtlas(uint32_t atlasIndex,
 			usage);
 		if (writableTexture)
 		{
-			m_shadowMapsMb += LocalShadowAtlasMemoryMb;
+			m_shadows.m_mapsMb += LocalShadowAtlasMemoryMb;
 		}
 	}
 	if (!writableTexture)
@@ -184,10 +184,10 @@ bool LightingECS::EnsureWritableLocalShadowAtlas(uint32_t atlasIndex,
 	char debugName[64];
 	sprintf_s(debugName, sizeof(debugName), "Shadow Map, Local Atlas %u, Flight %u", atlasIndex, flightSlot);
 	RHI::Renderer::GetDriver()->SetDebugName(writableTexture, debugName);
-	m_localShadowAtlases[atlasIndex].m_texture = writableTexture;
-	m_shadowMapTextures[NumCascades + atlasIndex] = writableTexture;
-	m_writableLocalShadowAtlases.set(atlasIndex);
-	m_bShadowMapBindingsDirty = true;
+	m_shadows.m_localAtlases[atlasIndex].m_texture = writableTexture;
+	m_shadows.m_textures[NumCascades + atlasIndex] = writableTexture;
+	m_shadows.m_writableLocalAtlases.set(atlasIndex);
+	m_shadows.m_bBindingsDirty = true;
 	return true;
 }
 
@@ -197,12 +197,12 @@ bool LightingECS::TryAllocateLocalShadowTilesInAtlas(uint32_t atlasIndex,
 	TVector<glm::ivec4>& outTiles)
 {
 	outTiles.Clear(false);
-	if (atlasIndex >= m_localShadowAtlases.Num() || !m_localShadowAtlases[atlasIndex].m_texture)
+	if (atlasIndex >= m_shadows.m_localAtlases.Num() || !m_shadows.m_localAtlases[atlasIndex].m_texture)
 	{
 		return false;
 	}
 
-	auto& occupancy = m_localShadowAtlases[atlasIndex].m_occupancy;
+	auto& occupancy = m_shadows.m_localAtlases[atlasIndex].m_occupancy;
 	const uint32_t cellsPerTile = resolution / LocalShadowMinResolution;
 	for (uint32_t tileIndex = 0; tileIndex < count; ++tileIndex)
 	{
@@ -263,7 +263,7 @@ bool LightingECS::TryAllocateLocalShadowTiles(uint32_t count,
 	uint32_t resolution = glm::clamp(desiredResolution, LocalShadowMinResolution, LocalShadowAtlasResolution);
 	while (resolution >= LocalShadowMinResolution)
 	{
-		for (uint32_t atlasIndex = 0; atlasIndex < m_localShadowAtlases.Num(); ++atlasIndex)
+		for (uint32_t atlasIndex = 0; atlasIndex < m_shadows.m_localAtlases.Num(); ++atlasIndex)
 		{
 			if (TryAllocateLocalShadowTilesInAtlas(atlasIndex, count, resolution, outTiles))
 			{
@@ -312,12 +312,12 @@ bool LightingECS::EnsureLocalShadowAllocation(uint32_t componentIndex,
 	uint32_t desiredResolution,
 	uint64_t frame)
 {
-	if (m_localShadowAllocations.Num() <= componentIndex)
+	if (m_shadows.m_localAllocations.Num() <= componentIndex)
 	{
-		m_localShadowAllocations.Resize(static_cast<size_t>(componentIndex) + 1);
+		m_shadows.m_localAllocations.Resize(static_cast<size_t>(componentIndex) + 1);
 	}
 
-	auto& current = m_localShadowAllocations[componentIndex];
+	auto& current = m_shadows.m_localAllocations[componentIndex];
 	if (current.m_componentIndex == componentIndex && current.m_lightType == lightType && !current.m_slots.IsEmpty())
 	{
 		if (desiredResolution < current.m_resolution)
@@ -333,10 +333,10 @@ bool LightingECS::EnsureLocalShadowAllocation(uint32_t componentIndex,
 				current.m_atlasIndex = destinationAtlasIndex;
 				current.m_tiles = std::move(destinationTiles);
 				current.m_resolution = static_cast<uint32_t>(current.m_tiles[0].z);
-				current.m_revision = ++m_localShadowAllocationRevision;
+				current.m_revision = ++m_shadows.m_localAllocationRevision;
 				if (current.m_revision == 0ull)
 				{
-					current.m_revision = ++m_localShadowAllocationRevision;
+					current.m_revision = ++m_shadows.m_localAllocationRevision;
 				}
 			}
 		}
@@ -373,7 +373,7 @@ bool LightingECS::EnsureLocalShadowAllocation(uint32_t componentIndex,
 				bool bRangeAvailable = true;
 				for (uint32_t offset = 0; offset < mapCount; ++offset)
 				{
-					if (m_shadowMapOwners[candidate + offset] != InvalidShadowMapIndex)
+					if (m_shadows.m_mapOwners[candidate + offset] != InvalidShadowMapIndex)
 					{
 						bRangeAvailable = false;
 						break;
@@ -437,10 +437,10 @@ bool LightingECS::EnsureLocalShadowAllocation(uint32_t componentIndex,
 	allocation.m_requestedResolution = desiredResolution;
 	allocation.m_atlasIndex = atlasIndex;
 	allocation.m_lastUsedFrame = frame;
-	allocation.m_revision = ++m_localShadowAllocationRevision;
+	allocation.m_revision = ++m_shadows.m_localAllocationRevision;
 	if (allocation.m_revision == 0ull)
 	{
-		allocation.m_revision = ++m_localShadowAllocationRevision;
+		allocation.m_revision = ++m_shadows.m_localAllocationRevision;
 	}
 	allocation.m_slots.Reserve(mapCount);
 	allocation.m_tiles = std::move(tiles);
@@ -457,12 +457,12 @@ bool LightingECS::EnsureLocalShadowAllocation(uint32_t componentIndex,
 		for (uint32_t face = 0; face < mapCount; ++face)
 		{
 			const uint32_t slot = firstSlot + face;
-			m_shadowMapOwners[slot] = componentIndex;
+			m_shadows.m_mapOwners[slot] = componentIndex;
 			allocation.m_slots.Add(slot);
 		}
 	}
 
-	m_localShadowAllocations[componentIndex] = std::move(allocation);
+	m_shadows.m_localAllocations[componentIndex] = std::move(allocation);
 	return true;
 }
 
@@ -470,9 +470,9 @@ bool LightingECS::EvictLeastRecentlyUsedLocalShadowAllocation(uint32_t protected
 {
 	uint32_t oldestComponentIndex = InvalidShadowMapIndex;
 	uint64_t oldestFrame = frame;
-	for (uint32_t componentIndex = 0; componentIndex < m_localShadowAllocations.Num(); ++componentIndex)
+	for (uint32_t componentIndex = 0; componentIndex < m_shadows.m_localAllocations.Num(); ++componentIndex)
 	{
-		const auto& allocation = m_localShadowAllocations[componentIndex];
+		const auto& allocation = m_shadows.m_localAllocations[componentIndex];
 		if (componentIndex == protectedComponentIndex || allocation.m_componentIndex != componentIndex ||
 			allocation.m_lastUsedFrame >= frame || allocation.m_lastUsedFrame > oldestFrame)
 		{
@@ -494,9 +494,9 @@ bool LightingECS::EvictLeastRecentlyUsedLocalShadowAllocation(uint32_t protected
 
 void LightingECS::ReleaseUnusedLocalShadowAllocations(uint64_t frame)
 {
-	for (uint32_t componentIndex = 0; componentIndex < m_localShadowAllocations.Num(); ++componentIndex)
+	for (uint32_t componentIndex = 0; componentIndex < m_shadows.m_localAllocations.Num(); ++componentIndex)
 	{
-		const auto& allocation = m_localShadowAllocations[componentIndex];
+		const auto& allocation = m_shadows.m_localAllocations[componentIndex];
 		const bool bComponentCannotCastShadows =
 			componentIndex >= m_components.Num() || !m_components[componentIndex].m_bIsActive ||
 			!ContributesToRealtimeLighting(m_components[componentIndex].m_globalIlluminationMode) ||
@@ -512,9 +512,9 @@ void LightingECS::ReleaseUnusedLocalShadowAllocations(uint64_t frame)
 
 void LightingECS::ReleaseUnusedLocalShadowAtlases()
 {
-	for (uint32_t atlasIndex = 0; atlasIndex < m_localShadowAtlases.Num(); ++atlasIndex)
+	for (uint32_t atlasIndex = 0; atlasIndex < m_shadows.m_localAtlases.Num(); ++atlasIndex)
 	{
-		auto& atlas = m_localShadowAtlases[atlasIndex];
+		auto& atlas = m_shadows.m_localAtlases[atlasIndex];
 		if (!atlas.m_texture)
 		{
 			continue;
@@ -534,12 +534,12 @@ void LightingECS::ReleaseUnusedLocalShadowAtlases()
 			continue;
 		}
 
-		m_shadowMapTextures[NumCascades + atlasIndex] = m_defaultShadowMap;
-		m_bShadowMapBindingsDirty = true;
+		m_shadows.m_textures[NumCascades + atlasIndex] = m_shadows.m_defaultMap;
+		m_shadows.m_bBindingsDirty = true;
 		const auto latestTexture = atlas.m_texture;
 		bool bLatestOwnedByFlight = false;
 		size_t numPhysicalTextures = 0u;
-		for (auto& flightResources : m_shadowFlightResources)
+		for (auto& flightResources : m_shadows.m_flights)
 		{
 			if (flightResources.m_localShadowAtlasTextures.Num() <= atlasIndex)
 			{
@@ -559,8 +559,8 @@ void LightingECS::ReleaseUnusedLocalShadowAtlases()
 			++numPhysicalTextures;
 		}
 		atlas = {};
-		m_shadowMapsMb =
-			(std::max)(0.0f, m_shadowMapsMb - LocalShadowAtlasMemoryMb * static_cast<float>(numPhysicalTextures));
+		m_shadows.m_mapsMb =
+			(std::max)(0.0f, m_shadows.m_mapsMb - LocalShadowAtlasMemoryMb * static_cast<float>(numPhysicalTextures));
 	}
 }
 
@@ -601,7 +601,7 @@ void LightingECS::PrepareLocalShadowPasses(const RHI::RHISceneViewPtr& sceneView
 				continue;
 			}
 
-			auto& allocation = m_localShadowAllocations[lightProxy.m_index];
+			auto& allocation = m_shadows.m_localAllocations[lightProxy.m_index];
 			GameObject* owner = light.m_owner ? static_cast<GameObject*>(light.m_owner.GetRawPtr()) : nullptr;
 			if (!owner)
 			{
@@ -724,7 +724,7 @@ void LightingECS::PrepareLocalShadowPasses(const RHI::RHISceneViewPtr& sceneView
 				ResolveShadowCasterUpdatePolicy(
 					shadowPass.m_meshList, snapshot.m_bContainsDynamicCasters, snapshot.m_bContainsAnimatedCasters,
 					snapshot.m_bContainsCameraLodCasters);
-				shadowPass.m_shadowMap = m_localShadowAtlases[allocation.m_atlasIndex].m_texture;
+				shadowPass.m_shadowMap = m_shadows.m_localAtlases[allocation.m_atlasIndex].m_texture;
 				snapshot.m_submissionToken = submissionToken;
 				snapshot.m_payloadCompletionToken = AcquireShadowPayloadToken(cachedState.m_payloadCompletionToken);
 				shadowPass.m_payloadCompletionToken = snapshot.m_payloadCompletionToken;

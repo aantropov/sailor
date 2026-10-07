@@ -1,4 +1,5 @@
 #include "Sailor.h"
+#include "ModelImporterTestAccess.h"
 #include "Core/FileRevision.h"
 #include "Core/YamlUtils.h"
 #include "AssetRegistry/AssetRegistry.h"
@@ -13,6 +14,7 @@
 #include "Support/EditorProtocolWire.h"
 #include "Support/SurfaceRender.h"
 #include "EditorEngineProtocolLifecycle.h"
+#include "Workspace/WorkspacePathEncoding.h"
 
 #include <algorithm>
 #include <array>
@@ -31,16 +33,10 @@ using namespace Sailor;
 
 extern "C" SAILOR_SHARED_API void SailorProtocolFreeBuffer(uint8_t* buffer) noexcept;
 
-namespace Sailor
+namespace Sailor::Tests
 {
-	class ModelImporterTestAccess
-	{
-	public:
-		static void BeforeCpuPreparation(ModelImporter& importer, std::function<void()> callback)
-		{
-			importer.m_beforeCpuPreparationForTests = std::move(callback);
-		}
-	};
+	void RequireWorkerUploadRefusal(const std::function<void()>& load, VkResult error, bool transfer = false);
+	void RequirePendingMeshUpload(const std::function<void()>& load, const std::function<void()>& checkPending);
 }
 
 namespace
@@ -195,7 +191,7 @@ namespace
 			Require(static_cast<bool>(output), "external index buffer must be written");
 		}
 
-		void WriteGeometry(const Geometry& geometry) const
+		void WriteGeometryBuffers(const Geometry& geometry) const
 		{
 			TVector<float> attributes;
 			for (const auto& vertex : geometry.m_vertices)
@@ -211,11 +207,16 @@ namespace
 			indices.write(reinterpret_cast<const char*>(geometry.m_indices.GetData()), geometry.m_indices.Num() * sizeof(uint32_t));
 			indices.close();
 			Require(vertices && indices, "LOD geometry buffers must be written");
+		}
+
+		void WriteGeometry(const Geometry& geometry) const
+		{
+			WriteGeometryBuffers(geometry);
 			std::ifstream input(m_path);
 			auto document = nlohmann::json::parse(input);
 			input.close();
 			const size_t positionBytes = geometry.m_vertices.Num() * 3 * sizeof(float);
-			document["buffers"][0]["byteLength"] = attributes.Num() * sizeof(float);
+			document["buffers"][0]["byteLength"] = geometry.m_vertices.Num() * 8 * sizeof(float);
 			document["buffers"][1]["byteLength"] = geometry.m_indices.Num() * sizeof(uint32_t);
 			for (uint32_t i = 0; i < 3; ++i)
 			{
@@ -321,7 +322,7 @@ namespace
 		const auto revision = material->GetContentRevision();
 		if (worker)
 		{
-			auto lookup = Tasks::CreateTask<FileId>("Register model with a live generated material", [registry, modelPath]()
+			auto lookup = Tasks::CreateTask<FileId>("Register model with a live generated material"_h, [registry, modelPath]()
 				{
 					return registry->GetOrLoadFile(modelPath.string());
 				}, EThreadType::Worker);
@@ -339,7 +340,7 @@ namespace
 				"Main registration must return the authored model identity");
 		}
 		glm::vec4 emission;
-		Require(material->GetUniformsVec4().TryGet("material.emissiveFactor", emission) && emission == glm::vec4(1, 2, 3, 0),
+		Require(material->GetUniformsVec4().TryGet("material.emissiveFactor"_h, emission) && emission == glm::vec4(1, 2, 3, 0),
 			"Main must publish the generated emission to the existing material");
 		auto* model = registry->GetAssetInfoPtr<ModelAssetInfoPtr>(modelId);
 		Require(model && model->GetDefaultMaterials().Num() == 2 && model->GetDefaultMaterials()[0] == materialId,
@@ -523,7 +524,7 @@ namespace
 			Require(unused["uniformsVec4"]["material.emissiveFactor"].as<glm::vec4>() == glm::vec4(1, 2, 4, 0),
 				"reimport must update its owned material even when a draw slot has an authored replacement");
 			glm::vec4 radiance;
-			Require(liveGenerated->IsReady() && liveGenerated->GetUniformsVec4().TryGet("material.emissiveFactor", radiance) &&
+			Require(liveGenerated->IsReady() && liveGenerated->GetUniformsVec4().TryGet("material.emissiveFactor"_h, radiance) &&
 				radiance == glm::vec4(1, 2, 4, 0),
 				"explicit generation must also publish the changed radiance to an already loaded material");
 			Require(Utils::AreYamlNodesEqual(YAML::LoadFile(authoredPath.string()), authoredDocument) &&
@@ -735,7 +736,7 @@ namespace
 				auto load = fresh.m_importer.LoadModel(fixture.m_id, model);
 				const bool reached = started.wait_for(std::chrono::seconds(5)) == std::future_status::ready;
 				const bool pending = !load->IsFinished() && !model->IsStructurallyReady();
-				auto upload = Tasks::CreateTask<bool>("Independent model-test buffer upload", [&]()
+				auto upload = Tasks::CreateTask<bool>("Independent model-test buffer upload"_h, [&]()
 					{
 						const std::array<uint32_t, 4> data{ 17, 29, 41, 53 };
 						auto& driver = RHI::Renderer::GetDriver();
@@ -870,7 +871,7 @@ namespace
 
 	void CheckGpuGeometry(const RHI::RHIMeshPtr& mesh, const Geometry& geometry)
 	{
-		auto readback = Tasks::CreateTaskWithResult<bool>("Read back selected LOD geometry", [mesh, &geometry]()
+		auto readback = Tasks::CreateTaskWithResult<bool>("Read back selected LOD geometry"_h, [mesh, &geometry]()
 			{
 				auto& driver = RHI::Renderer::GetDriver();
 				const auto memory = RHI::EMemoryPropertyBit::HostVisible | RHI::EMemoryPropertyBit::HostCoherent;
@@ -990,7 +991,7 @@ namespace
 
 	RHI::RHIMeshPtr MakeReferenceMesh(const Geometry& geometry)
 	{
-		auto task = Tasks::CreateTaskWithResult<RHI::RHIMeshPtr>("Upload independent LOD reference", [&geometry]()
+		auto task = Tasks::CreateTaskWithResult<RHI::RHIMeshPtr>("Upload independent LOD reference"_h, [&geometry]()
 			{
 				auto& driver = RHI::Renderer::GetDriver();
 				const auto memory = RHI::EMemoryPropertyBit::HostVisible | RHI::EMemoryPropertyBit::HostCoherent;
@@ -1091,6 +1092,54 @@ namespace
 			<< uploadedBytes << " uploaded bytes (" << bytesWithoutAliases << " without aliases)\n";
 	}
 
+	void TestExternalLodBuffers(const ModelFixture& fixture, MaterialPtr material)
+	{
+		const auto sourceTime = std::filesystem::last_write_time(fixture.m_path);
+		const auto vertexTime = std::filesystem::last_write_time(fixture.m_verticesPath);
+		const auto indexTime = std::filesystem::last_write_time(fixture.m_indicesPath);
+		const auto vertexBytes = std::filesystem::file_size(fixture.m_verticesPath);
+		const auto indexBytes = std::filesystem::file_size(fixture.m_indicesPath);
+		std::string source;
+		Require(AssetRegistry::ReadAllTextFile(Workspace::PathToUtf8(fixture.m_path), source), "the glTF source must be readable");
+		auto geometry = MakeSurfaceGeometry(8);
+		auto reference = MakeSurfaceGeometry(1);
+		for (bool changeIndices : { false, true })
+		{
+			if (changeIndices)
+			{
+				for (size_t i = 0; i < geometry.m_indices.Num(); i += 3)
+					std::swap(geometry.m_indices[i + 1], geometry.m_indices[i + 2]);
+			}
+			else
+			{
+				for (auto& vertex : geometry.m_vertices) vertex.m_position.x += 0.125f;
+				for (auto& vertex : reference.m_vertices) vertex.m_position.x += 0.125f;
+			}
+			fixture.WriteGeometryBuffers(geometry);
+			std::filesystem::last_write_time(fixture.m_verticesPath, vertexTime);
+			std::filesystem::last_write_time(fixture.m_indicesPath, indexTime);
+			std::string unchanged;
+			Require(AssetRegistry::ReadAllTextFile(Workspace::PathToUtf8(fixture.m_path), unchanged) && unchanged == source &&
+				std::filesystem::last_write_time(fixture.m_path) == sourceTime &&
+				std::filesystem::last_write_time(fixture.m_verticesPath) == vertexTime &&
+				std::filesystem::last_write_time(fixture.m_indicesPath) == indexTime &&
+				std::filesystem::file_size(fixture.m_verticesPath) == vertexBytes &&
+				std::filesystem::file_size(fixture.m_indicesPath) == indexBytes,
+				"external geometry changes must leave glTF contents, all revisions and buffer sizes unchanged");
+			const auto pixels = Tests::RenderSurface(material, MakeReferenceMesh(reference));
+			CheckLodDrawRanges(fixture, material, pixels, 8, true);
+			const auto cacheTime = sourceTime - std::chrono::hours(48);
+			for (uint32_t level = 1; level <= 8; ++level)
+				std::filesystem::last_write_time(fixture.CachePath(level), cacheTime);
+			CheckLodDrawRanges(fixture, material, pixels, 8, true);
+			for (uint32_t level = 1; level <= 8; ++level)
+				Require(std::filesystem::last_write_time(fixture.CachePath(level)) == cacheTime,
+					"the rebuilt reduced LODs must be reusable without another cache write");
+			std::cout << "External LOD " << (changeIndices ? "indices" : "vertices")
+				<< ": unchanged glTF/revisions/sizes, rebuilt reduced GPU ranges and pixels, warm reuse passed\n";
+		}
+	}
+
 	void TestLodRendering(const std::filesystem::path& workspace, const ModelFixture& fixture)
 	{
 		MaterialAsset::Data data;
@@ -1133,6 +1182,7 @@ namespace
 					"warm LOD rendering must reuse every cache file without rewriting it");
 		}
 		std::cout << "Cold/warm triangle, locked plane and reduced-grid LOD ranges and pixels passed\n";
+		TestExternalLodBuffers(fixture, material);
 	}
 }
 
@@ -1178,7 +1228,7 @@ namespace Sailor::Tests
 		std::cout << "Asset relative paths preserve nested names and virtual mount overrides passed\n";
 	}
 
-	void RunModelLodCommandTests(const std::filesystem::path& workspace)
+	FileId RunModelLodCommandTests(const std::filesystem::path& workspace)
 	{
 		TestAssetRelativePaths();
 		TestColdModelMaterialPublication(workspace, false);
@@ -1188,6 +1238,40 @@ namespace Sailor::Tests
 		TestCpuPreparationDoesNotUseRhi(cpuFixture);
 		TestImportedWideMaterialSlots(cpuFixture);
 		ModelFixture fixture(workspace);
+		for (const auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+		{
+			FreshImporter fresh;
+			ModelPtr rejected;
+			bool loaded = false;
+			Tests::RequireWorkerUploadRefusal([&]()
+				{
+					loaded = fresh.m_importer.LoadModel_Immediate(fixture.m_id, rejected);
+					Drain();
+				}, error, true);
+			std::cout << "Model upload refusal: loaded=" << loaded << ", published=" << static_cast<bool>(rejected) << '\n';
+			Require(!loaded && !rejected, "a rejected native mesh upload must fail the model loading result");
+			ModelPtr repaired;
+			Tests::RequirePendingMeshUpload([&]()
+				{
+					Require(fresh.m_importer.LoadModel_Immediate(fixture.m_id, repaired) && repaired,
+						"the same model request must retry after native upload refusal");
+				}, [&]()
+				{
+					Require(repaired->IsStructurallyReady() && !repaired->IsReady() &&
+						!repaired->GetMeshes()[0]->HasInitializationFailed(),
+						"accepted model publication must remain pending until its native upload fence completes");
+				});
+			Drain();
+			Require(repaired->IsReady(), "retried model meshes must become ready after native completion");
+			const auto geometry = LoadGeometry(fixture, fresh.m_importer);
+			CheckLods(geometry);
+			for (uint32_t level = 1; level < geometry.Num(); ++level)
+				CheckGpuGeometry(repaired->GetMeshes()[0]->GetLod(level), geometry[level]);
+			ModelPtr warm;
+			Require(fresh.m_importer.LoadModel_Immediate(fixture.m_id, warm) && warm == repaired,
+				"a warm model load must keep the recovered owner");
+		}
+		std::cout << "Model native upload: refused loading result, pending publication, all LOD bytes, unchanged-source recovery and warm reuse passed\n";
 		const auto rootTime = std::filesystem::last_write_time(fixture.m_path);
 		const auto verticesTime = std::filesystem::last_write_time(fixture.m_verticesPath);
 		const auto indicesTime = std::filesystem::last_write_time(fixture.m_indicesPath);
@@ -1258,23 +1342,31 @@ namespace Sailor::Tests
 				"the public model loader must clear its output for an unknown ID");
 		}
 		Drain();
+		std::cout << "Model LOD external buffers, warm cache, native import and repaired model retry passed\n";
+		TestLodRendering(workspace, fixture);
+		return fixture.m_id;
+	}
+
+	void RunModelPreviewCommandTests(FileId modelId)
+	{
+		const auto* info = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(modelId);
+		Require(info != nullptr, "the preview must use the imported model fixture");
+		const auto modelPath = Workspace::PathFromUtf8(info->GetAssetFilepath());
 		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
-		const auto previewId = fixture.m_id.ToString();
-		const auto preview = workspace / "Cache" / "Fingerprints" / (previewId + ".png");
+		const auto previewId = modelId.ToString();
+		const auto preview = App::GetWorkspaceContext().GetCache() / "Fingerprints" / (previewId + ".png");
 		Require(App::RequestModelFingerprint(previewId.c_str()), "the editor bridge must accept a registered model preview");
 		scheduler->WaitIdle({ EThreadType::Background, EThreadType::Main });
 		Require(App::GetModelFingerprintStatus(previewId.c_str()) == static_cast<uint32_t>(ModelImporter::EFingerprintStatus::Ready) &&
 			std::filesystem::is_regular_file(preview) && std::filesystem::file_size(preview) > 0,
 			"the initialized engine must publish the requested preview into the active workspace cache");
-		const auto modelTime = std::filesystem::last_write_time(fixture.m_path);
+		const auto modelTime = std::filesystem::last_write_time(modelPath);
 		Require(std::filesystem::remove(preview), "remove only the generated fixture preview");
 		Require(App::RequestModelFingerprint(previewId.c_str()), "the editor bridge must permit retrying a missing preview");
 		scheduler->WaitIdle({ EThreadType::Background, EThreadType::Main });
 		Require(App::GetModelFingerprintStatus(previewId.c_str()) == static_cast<uint32_t>(ModelImporter::EFingerprintStatus::Ready) &&
-			std::filesystem::is_regular_file(preview) && std::filesystem::last_write_time(fixture.m_path) == modelTime,
+			std::filesystem::is_regular_file(preview) && std::filesystem::last_write_time(modelPath) == modelTime,
 			"native preview retry must complete without another model edit");
 		std::cout << "Explicit model preview bridge, workspace cache and missing-output retry passed\n";
-		std::cout << "Model LOD external buffers, warm cache, native import and repaired model retry passed\n";
-		TestLodRendering(workspace, fixture);
 	}
 }

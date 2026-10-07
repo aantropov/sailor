@@ -2,6 +2,7 @@
 #include "Core/Defines.h"
 #include "Containers/Concepts.h"
 #include <atomic>
+#include <cstddef>
 #include <type_traits>
 
 namespace Sailor
@@ -43,7 +44,7 @@ namespace Sailor
 
 	protected:
 
-		TSmartPtrCounter m_refCounter = 0;
+		mutable TSmartPtrCounter m_refCounter = 0;
 		friend class TRefPtrBase;
 	};
 
@@ -66,7 +67,7 @@ namespace Sailor
 
 		TRefPtrBase() = default;
 
-		TRefBase* m_pRawPtr = nullptr;
+		const TRefBase* m_pRawPtr = nullptr;
 		TSmartPtrCounter& GetRefCounter() const noexcept { return m_pRawPtr->m_refCounter; }
 	};
 
@@ -82,9 +83,10 @@ namespace Sailor
 		}
 
 		TRefPtr() noexcept = default;
+		TRefPtr(std::nullptr_t) noexcept {}
 
 		// Raw pointers
-		TRefPtr(TRefBase* pRawPtr) noexcept
+		TRefPtr(T* pRawPtr) noexcept
 		{
 			AssignRawPtr(pRawPtr);
 		}
@@ -92,6 +94,12 @@ namespace Sailor
 		TRefPtr& operator=(T* pRawPtr)
 		{
 			AssignRawPtr(pRawPtr);
+			return *this;
+		}
+
+		TRefPtr& operator=(std::nullptr_t) noexcept
+		{
+			Clear();
 			return *this;
 		}
 
@@ -113,44 +121,45 @@ namespace Sailor
 		}
 
 		// Other types copy/assignment
-		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R>>>
+		template<typename R, typename = std::enable_if_t<std::is_convertible_v<R*, T*>>>
 		TRefPtr(const TRefPtr<R>& pRefPtr) noexcept
 		{
 			AssignRawPtr(pRefPtr.GetRawPtr());
 		}
 
-		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R>>>
+		template<typename R, typename = std::enable_if_t<std::is_convertible_v<R*, T*>>>
 		TRefPtr(TRefPtr<R>&& pRefPtr) noexcept
 		{
 			Swap(std::move(pRefPtr));
 		}
 
-		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R>>>
+		template<typename R, typename = std::enable_if_t<std::is_convertible_v<R*, T*>>>
 		TRefPtr& operator=(TRefPtr<R> pRefPtr) noexcept
 		{
 			Swap(std::move(pRefPtr));
 			return *this;
 		}
 
-		template<typename R>
-		TRefPtr<R> DynamicCast() noexcept
+		template<typename R, typename = std::enable_if_t<!std::is_const_v<T> || std::is_const_v<R>>>
+		TRefPtr<R> DynamicCast() const noexcept
 		{
 			return TRefPtr<R>(dynamic_cast<R*>(GetRawPtr()));
 		}
 
-		template<typename R>
-		inline TRefPtr<R> StaticCast() noexcept
+		template<typename R, typename = std::enable_if_t<!std::is_const_v<T> || std::is_const_v<R>>>
+		inline TRefPtr<R> StaticCast() const noexcept
 		{
 			return TRefPtr<R>(static_cast<R*>(GetRawPtr()));
 		}
 
-		T* GetRawPtr() const noexcept { return static_cast<T*>(m_pRawPtr); }
+		// Constructors and conversions preserve T's constness across the erased base.
+		T* GetRawPtr() const noexcept { return static_cast<T*>(const_cast<TRefBase*>(m_pRawPtr)); }
 
-		T* operator->()  noexcept { return static_cast<T*>(m_pRawPtr); }
-		const T* operator->() const { return static_cast<T*>(m_pRawPtr); }
+		T* operator->()  noexcept { return GetRawPtr(); }
+		const T* operator->() const { return GetRawPtr(); }
 
-		T& operator*()  noexcept { return *static_cast<T*>(m_pRawPtr); }
-		const T& operator*() const { return *static_cast<T*>(m_pRawPtr); }
+		T& operator*()  noexcept { return *GetRawPtr(); }
+		const T& operator*() const { return *GetRawPtr(); }
 
 		uint32_t NumRefs() const noexcept { return GetRefCounter().load(); }
 		bool IsShared() const  noexcept { return GetRefCounter() > 1; }
@@ -177,7 +186,7 @@ namespace Sailor
 
 	private:
 
-		void AssignRawPtr(TRefBase* pRawPtr)
+		void AssignRawPtr(const TRefBase* pRawPtr)
 		{
 			if (m_pRawPtr == pRawPtr)
 			{
@@ -210,7 +219,7 @@ namespace Sailor
 			}
 		}
 
-		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> || std::is_same_v<T, R>>>
+		template<typename R, typename = std::enable_if_t<std::is_convertible_v<R*, T*>>>
 		void Swap(TRefPtr<R>&& pRefPtr)
 		{
 			if (m_pRawPtr == pRefPtr.m_pRawPtr)

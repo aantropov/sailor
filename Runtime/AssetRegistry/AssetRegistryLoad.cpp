@@ -13,18 +13,19 @@
 
 using namespace Sailor;
 using namespace Sailor::AssetRegistryInternal;
+using namespace Sailor::Workspace;
 
-bool AssetRegistry::ResolveDirectLoadPath(const std::string& requestedPath, AssetReadLocation& outLocation) const
+bool AssetRegistry::ResolveDirectLoadPath(std::string_view requestedPath, AssetReadLocation& outLocation) const
 {
 	if (IsSafeVirtualPath(requestedPath))
 	{
 		std::error_code workspaceError;
 		const std::filesystem::path workspaceCandidate =
-			std::filesystem::weakly_canonical(m_workspaceContext.GetContent() / requestedPath, workspaceError);
+			std::filesystem::weakly_canonical(m_workspaceContext.GetContent() / PathFromUtf8(requestedPath), workspaceError);
 		if (!workspaceError && std::filesystem::is_regular_file(workspaceCandidate, workspaceError) &&
 			!workspaceError && IsInside(m_workspaceContext.GetContent(), workspaceCandidate))
 		{
-			const std::string virtualPath = std::filesystem::path(requestedPath).generic_string();
+			const std::string virtualPath = PathToUtf8(PathFromUtf8(requestedPath));
 			const auto winner = m_contentFileWinners.Find(VirtualPathKey(virtualPath));
 			if (winner == m_contentFileWinners.end() || winner.Value().m_mountKind == EAssetMountKind::Engine ||
 				PathKey(winner.Value().m_physicalPath) == PathKey(workspaceCandidate))
@@ -40,7 +41,7 @@ bool AssetRegistry::ResolveDirectLoadPath(const std::string& requestedPath, Asse
 	}
 
 	std::error_code error;
-	const std::filesystem::path requested(requestedPath);
+	const auto requested = PathFromUtf8(requestedPath);
 	const std::filesystem::path candidate = std::filesystem::weakly_canonical(
 		requested.is_absolute() ? requested : m_workspaceContext.GetContent() / requested, error);
 	if (error || !std::filesystem::is_regular_file(candidate, error) || error)
@@ -52,7 +53,7 @@ bool AssetRegistry::ResolveDirectLoadPath(const std::string& requestedPath, Asse
 	{
 		if (IsInside(mount.m_root, candidate))
 		{
-			const std::string virtualPath = candidate.lexically_relative(mount.m_root).generic_string();
+			const std::string virtualPath = PathToUtf8(candidate.lexically_relative(mount.m_root));
 			const auto winner = m_contentFileWinners.Find(VirtualPathKey(virtualPath));
 			if (winner != m_contentFileWinners.end() && PathKey(winner.Value().m_physicalPath) == PathKey(candidate))
 			{
@@ -78,7 +79,7 @@ bool AssetRegistry::ResolveDirectLoadPath(const std::string& requestedPath, Asse
 	if (!error && PathKey(candidate) == PathKey(tempWorld))
 	{
 		outLocation.m_physicalPath = candidate;
-		outLocation.m_virtualPath = candidate.lexically_relative(m_workspaceContext.GetContent()).generic_string();
+		outLocation.m_virtualPath = PathToUtf8(candidate.lexically_relative(m_workspaceContext.GetContent()));
 		outLocation.m_mountKind = EAssetMountKind::Workspace;
 		outLocation.m_bWritable = true;
 		return true;
@@ -86,7 +87,7 @@ bool AssetRegistry::ResolveDirectLoadPath(const std::string& requestedPath, Asse
 	return false;
 }
 
-const FileId& AssetRegistry::GetOrLoadFile(const std::string& assetFilepath)
+const FileId& AssetRegistry::GetOrLoadFile(std::string_view assetFilepath)
 {
 	return LoadFile(assetFilepath);
 }
@@ -107,7 +108,7 @@ void AssetRegistry::RequestAssetUpdate(const FileId& fileId)
 
 	// Main may be waiting for this caller. Enqueue without entering App's
 	// synchronous dispatch, and leave the live asset unchanged until Main runs.
-	auto update = Tasks::CreateTask("Reload requested asset", [this, fileId]()
+	auto update = Tasks::CreateTask("Reload requested asset"_h, [this, fileId]()
 		{
 			{
 				std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
@@ -118,12 +119,13 @@ void AssetRegistry::RequestAssetUpdate(const FileId& fileId)
 	update->Run();
 }
 
-const FileId& AssetRegistry::LoadFile(const std::string& requestedPath)
+const FileId& AssetRegistry::LoadFile(std::string_view requestedPath)
 {
 	AssetReadLocation location;
 	if (!ResolveDirectLoadPath(requestedPath, location))
 	{
-		SAILOR_LOG_ERROR("Asset file could not be resolved: %s", requestedPath.c_str());
+		SAILOR_LOG_ERROR("Asset file could not be resolved: %.*s",
+			static_cast<int>(requestedPath.size()), requestedPath.empty() ? "" : requestedPath.data());
 		return FileId::Invalid;
 	}
 
@@ -156,20 +158,22 @@ const FileId& AssetRegistry::LoadFile(const std::string& requestedPath)
 		return loadedInfo ? loadedInfo->GetFileId() : physicalId.Value();
 	}
 
-	if (Extension(location.m_physicalPath.string()) == MetaFileExtension)
+	if (Extension(PathToUtf8(location.m_physicalPath)) == MetaFileExtension)
 	{
-		SAILOR_LOG_ERROR("Direct metadata loading is not supported: %s", requestedPath.c_str());
+		SAILOR_LOG_ERROR("Direct metadata loading is not supported: %.*s",
+			static_cast<int>(requestedPath.size()), requestedPath.data());
 		return FileId::Invalid;
 	}
 
-	IAssetInfoHandler* handler = GetAssetInfoHandler(Extension(location.m_physicalPath.string()));
+	IAssetInfoHandler* handler = GetAssetInfoHandler(Extension(PathToUtf8(location.m_physicalPath)));
 	check(handler);
-	const std::filesystem::path metaPath = GetMetaFilePath(location.m_physicalPath.string());
+	auto metaPath = location.m_physicalPath;
+	metaPath += "." + std::string(MetaFileExtension);
 	AssetInfoPtr assetInfo = nullptr;
 	bool bImported = false;
 	if (std::filesystem::is_regular_file(metaPath))
 	{
-		assetInfo = handler->LoadAssetInfo(metaPath.string(),
+		assetInfo = handler->LoadAssetInfo(PathToUtf8(metaPath),
 			location.m_virtualPath + "." + MetaFileExtension,
 			location.m_mountKind,
 			location.m_bWritable,
@@ -178,7 +182,7 @@ const FileId& AssetRegistry::LoadFile(const std::string& requestedPath)
 	}
 	else if (location.m_bWritable)
 	{
-		assetInfo = handler->ImportAsset(location.m_physicalPath.string(), location.m_virtualPath, false, false);
+		assetInfo = handler->ImportAsset(PathToUtf8(location.m_physicalPath), location.m_virtualPath, false, false);
 		bImported = assetInfo != nullptr;
 	}
 	else
@@ -189,7 +193,7 @@ const FileId& AssetRegistry::LoadFile(const std::string& requestedPath)
 	}
 	if (assetInfo == nullptr)
 	{
-		SAILOR_LOG_ERROR("Failed to load asset metadata: %s", metaPath.generic_string().c_str());
+		SAILOR_LOG_ERROR("Failed to load asset metadata: %s", PathToUtf8(metaPath).c_str());
 		return FileId::Invalid;
 	}
 
@@ -198,7 +202,7 @@ const FileId& AssetRegistry::LoadFile(const std::string& requestedPath)
 	if (existingAssetInfo != m_loadedAssetInfo.end())
 	{
 		const bool bSamePhysicalAsset =
-			PathKey(existingAssetInfo.Value()->GetAssetFilepath()) == PathKey(location.m_physicalPath);
+			PathKey(PathFromUtf8(existingAssetInfo.Value()->GetAssetFilepath())) == PathKey(location.m_physicalPath);
 		if (bImported)
 		{
 			handler->DiscardImportedMetadataIfUnchanged(assetInfo);
@@ -224,7 +228,7 @@ const FileId& AssetRegistry::LoadFile(const std::string& requestedPath)
 	if (IsSafeVirtualPath(location.m_virtualPath))
 	{
 		const std::string virtualPathKey = VirtualPathKey(location.m_virtualPath);
-		Utils::TryGetFileRevision(location.m_physicalPath.generic_string(), location.m_revision);
+		Utils::TryGetFileRevision(PathToUtf8(location.m_physicalPath), location.m_revision);
 		m_fileIds[virtualPathKey] = fileId;
 		m_contentFileWinners[virtualPathKey] = location;
 	}
@@ -276,10 +280,10 @@ AssetInfoPtr AssetRegistry::MaterializeLazyAssetInfo(FileId uid) const
 		return nullptr;
 	}
 
-	const std::filesystem::path sourcePath(record.m_sourcePath);
-	const std::filesystem::path metadataPath = sourcePath.parent_path() / record.m_metadataFilename;
+	const auto sourcePath = PathFromUtf8(record.m_sourcePath);
+	const std::filesystem::path metadataPath = sourcePath.parent_path() / PathFromUtf8(record.m_metadataFilename);
 	FileRevision currentMetadataRevision;
-	if (!Utils::TryGetFileRevision(metadataPath.string(), currentMetadataRevision))
+	if (!Utils::TryGetFileRevision(PathToUtf8(metadataPath), currentMetadataRevision))
 	{
 		return nullptr;
 	}
@@ -292,10 +296,10 @@ AssetInfoPtr AssetRegistry::MaterializeLazyAssetInfo(FileId uid) const
 		std::string assetInfoType;
 		std::string metadataError;
 		if (!ReadMetadataIdentity(metadataPath, fileId, filename, assetInfoType, metadataError) ||
-			ParseFileId(fileId) != uid || PathKey(metadataPath.parent_path() / filename) != PathKey(sourcePath))
+			ParseFileId(fileId) != uid || PathKey(metadataPath.parent_path() / PathFromUtf8(filename)) != PathKey(sourcePath))
 		{
 			SAILOR_LOG_ERROR(
-				"Changed lazy asset metadata no longer matches its cached identity: %s", metadataPath.string().c_str());
+				"Changed lazy asset metadata no longer matches its cached identity: %s", PathToUtf8(metadataPath).c_str());
 			return nullptr;
 		}
 		resolvedAssetInfoType = std::move(assetInfoType);
@@ -311,14 +315,14 @@ AssetInfoPtr AssetRegistry::MaterializeLazyAssetInfo(FileId uid) const
 	}
 	if (metadataMount == nullptr)
 	{
-		SAILOR_LOG_ERROR("Lazy asset metadata is outside active Content mounts: %s", metadataPath.string().c_str());
+		SAILOR_LOG_ERROR("Lazy asset metadata is outside active Content mounts: %s", PathToUtf8(metadataPath).c_str());
 		return nullptr;
 	}
 
-	const bool bPrimary = PathKey(metadataPath) == PathKey(record.m_sourcePath + "." + MetaFileExtension);
+	const bool bPrimary = PathKey(metadataPath) == PathKey(PathFromUtf8(record.m_sourcePath + "." + MetaFileExtension));
 	std::filesystem::path metadataAssetPath = metadataPath;
 	const std::string handlerExtension =
-		bPrimary ? Extension(record.m_sourcePath) : Extension(metadataAssetPath.replace_extension().generic_string());
+		bPrimary ? Extension(record.m_sourcePath) : Extension(PathToUtf8(metadataAssetPath.replace_extension()));
 	AssetRegistry* registry = const_cast<AssetRegistry*>(this);
 	IAssetInfoHandler* handler = registry->GetAssetInfoHandler(handlerExtension, resolvedAssetInfoType, bPrimary);
 	if (handler == nullptr)
@@ -327,14 +331,14 @@ AssetInfoPtr AssetRegistry::MaterializeLazyAssetInfo(FileId uid) const
 	}
 
 	// Cached paths are case-folded on Windows; the mount root must use the same spelling.
-	const auto mountRootKey = PathKey(metadataMount->m_root);
-	const std::string virtualMetadataPath = std::filesystem::path(PathKey(metadataPath)).lexically_relative(mountRootKey).generic_string();
+	const auto mountRootKey = PathFromUtf8(PathKey(metadataMount->m_root));
+	const std::string virtualMetadataPath = PathToUtf8(PathFromUtf8(PathKey(metadataPath)).lexically_relative(mountRootKey));
 	AssetInfoPtr info = handler->LoadAssetInfo(
-		metadataPath.string(), virtualMetadataPath, metadataMount->m_kind, metadataMount->m_bWritable, false, false);
-	if (info == nullptr || info->GetFileId() != uid || PathKey(info->GetAssetFilepath()) != PathKey(sourcePath))
+		PathToUtf8(metadataPath), virtualMetadataPath, metadataMount->m_kind, metadataMount->m_bWritable, false, false);
+	if (info == nullptr || info->GetFileId() != uid || PathKey(PathFromUtf8(info->GetAssetFilepath())) != PathKey(sourcePath))
 	{
 		delete info;
-		SAILOR_LOG_ERROR("Lazy asset metadata no longer matches its cache index: %s", metadataPath.string().c_str());
+		SAILOR_LOG_ERROR("Lazy asset metadata no longer matches its cache index: %s", PathToUtf8(metadataPath).c_str());
 		return nullptr;
 	}
 
@@ -344,13 +348,13 @@ AssetInfoPtr AssetRegistry::MaterializeLazyAssetInfo(FileId uid) const
 	info->m_bPendingUpdateNotification = false;
 	if (bPrimary)
 	{
-		const std::string virtualSourcePath = std::filesystem::path(PathKey(sourcePath)).lexically_relative(mountRootKey).generic_string();
+		const std::string virtualSourcePath = PathToUtf8(PathFromUtf8(PathKey(sourcePath)).lexically_relative(mountRootKey));
 		const std::string virtualSourcePathKey = VirtualPathKey(virtualSourcePath);
 		const auto effectiveWinner = registry->m_contentFileWinners.Find(virtualSourcePathKey);
 		if (effectiveWinner != registry->m_contentFileWinners.end() &&
 			PathKey(effectiveWinner.Value().m_physicalPath) == PathKey(sourcePath))
 		{
-			registry->m_physicalFileIds[PathKey(record.m_sourcePath)] = uid;
+			registry->m_physicalFileIds[PathKey(PathFromUtf8(record.m_sourcePath))] = uid;
 			registry->m_fileIds[virtualSourcePathKey] = uid;
 		}
 	}
@@ -359,7 +363,7 @@ AssetInfoPtr AssetRegistry::MaterializeLazyAssetInfo(FileId uid) const
 	return info;
 }
 
-void AssetRegistry::GetLazyAssetInfoIds(const std::string& assetInfoType, TVector<FileId>& outIds) const
+void AssetRegistry::GetLazyAssetInfoIds(std::string_view assetInfoType, TVector<FileId>& outIds) const
 {
 	outIds.Clear();
 	std::lock_guard<std::recursive_mutex> lazyLock(m_lazyAssetInfoMutex);
@@ -372,18 +376,18 @@ void AssetRegistry::GetLazyAssetInfoIds(const std::string& assetInfoType, TVecto
 	}
 }
 
-void AssetRegistry::GetAssetInfoIdsByTypeAndSource(const std::string& assetInfoType,
-	const std::string& sourcePath,
+void AssetRegistry::GetAssetInfoIdsByTypeAndSource(std::string_view assetInfoType,
+	std::string_view sourcePath,
 	TVector<FileId>& outIds) const
 {
 	outIds.Clear();
 	TSet<FileId> resultIds;
-	const std::string sourcePathKey = PathKey(sourcePath);
+	const std::string sourcePathKey = PathKey(PathFromUtf8(sourcePath));
 	for (const auto& loaded : m_loadedAssetInfo)
 	{
 		AssetInfoPtr info = *loaded.m_second;
 		if (info != nullptr && info->GetAssetInfoType() == assetInfoType &&
-			PathKey(info->GetAssetFilepath()) == sourcePathKey)
+			PathKey(PathFromUtf8(info->GetAssetFilepath())) == sourcePathKey)
 		{
 			resultIds.Insert(loaded.m_first);
 		}
@@ -393,7 +397,7 @@ void AssetRegistry::GetAssetInfoIdsByTypeAndSource(const std::string& assetInfoT
 		for (const auto& lazy : m_lazyAssetInfos)
 		{
 			if (lazy.m_second->m_assetInfoType == assetInfoType &&
-				PathKey(lazy.m_second->m_sourcePath) == sourcePathKey)
+				PathKey(PathFromUtf8(lazy.m_second->m_sourcePath)) == sourcePathKey)
 			{
 				resultIds.Insert(lazy.m_first);
 			}
@@ -406,11 +410,11 @@ void AssetRegistry::GetAssetInfoIdsByTypeAndSource(const std::string& assetInfoT
 	}
 }
 
-AssetInfoPtr AssetRegistry::GetAssetInfoPtr_Internal(const std::string& assetFilepath) const
+AssetInfoPtr AssetRegistry::GetAssetInfoPtr_Internal(std::string_view assetFilepath) const
 {
 	if (IsSafeVirtualPath(assetFilepath))
 	{
-		auto virtualId = m_fileIds.Find(VirtualPathKey(assetFilepath));
+		auto virtualId = m_fileIds.Find(VirtualPathKey(std::string(assetFilepath)));
 		if (virtualId != m_fileIds.end())
 		{
 			return GetAssetInfoPtr_Internal(virtualId.Value());

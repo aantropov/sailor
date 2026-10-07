@@ -11,6 +11,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -34,11 +35,11 @@ using namespace Sailor;
 
 namespace
 {
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -1175,6 +1176,43 @@ namespace
 		world.Clear();
 	}
 
+	void TestSelectedSkyControlsLinkedSun()
+	{
+		SkyTestWorld world;
+		auto otherOwner = world.Instantiate("Other sky", InstanceId("00000000000000000003"));
+		auto selectedOwner = world.Instantiate("Selected sky", InstanceId("00000000000000000002"));
+		auto other = otherOwner->AddComponent<SkyComponent>();
+		auto selected = selectedOwner->AddComponent<SkyComponent>();
+		auto light = world.Instantiate("Shared sun")->AddComponent<LightComponent>();
+		selected->SetDirectionalLight(light);
+		other->SetDirectionalLight(light);
+		selected->SetSunAngle(20);
+		other->SetSunAngle(70);
+		const auto expected = Raytracing::CalculateDirectSunIlluminance(selected->GetSkyParameters());
+		for (uint32_t frame = 0; frame < 3; ++frame)
+		{
+			selected->Tick(0);
+			other->Tick(0);
+			Require(IsNear(light->GetIntensity(), expected),
+				"the lowest-instance-ID sky must own the linked sun regardless of component tick order");
+		}
+		Require(otherOwner->RemoveComponent(other), "the nonselected sky must be removable");
+		selected->EditorTick(0);
+		Require(IsNear(light->GetIntensity(), expected), "removing a nonselected sky must preserve the selected sun");
+		auto replacementOwner = world.Instantiate("Replacement sky", InstanceId("00000000000000000001"));
+		auto replacement = replacementOwner->AddComponent<SkyComponent>();
+		replacement->SetDirectionalLight(light);
+		replacement->SetSunAngle(45);
+		replacement->EditorTick(0);
+		selected->EditorTick(0);
+		Require(IsNear(light->GetIntensity(), Raytracing::CalculateDirectSunIlluminance(replacement->GetSkyParameters())),
+			"a newly selected sky must take ownership in editor ticks as well as play ticks");
+		world.DestroyImmediate(replacementOwner);
+		selected->Tick(0);
+		Require(IsNear(light->GetIntensity(), expected), "destroying the selected sky must restore the surviving owner");
+		world.Clear();
+	}
+
 	void TestSkyNodeRenderState()
 	{
 		SkyNodeProbe node;
@@ -1486,6 +1524,7 @@ int main()
 		{ "TransientBakeEnvironmentUsesClearSkyParameters", TestTransientBakeEnvironmentUsesClearSkyParameters },
 		{ "GroundEnvironmentUsesTheSameSkyAndSun", TestGroundEnvironmentUsesTheSameSkyAndSun },
 		{ "SkyNodeRenderState", TestSkyNodeRenderState },
+		{ "SelectedSkyControlsLinkedSun", TestSelectedSkyControlsLinkedSun },
 		{ "StarCatalogueEpochs", TestStarCatalogueEpochs },
 		{ "StarCatalogueColorsAndIndependentParses", TestStarCatalogueColorsAndIndependentParses },
 		{ "OwnedStarCatalogueParity", TestOwnedStarCatalogueParity },

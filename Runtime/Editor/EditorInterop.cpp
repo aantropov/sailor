@@ -52,7 +52,7 @@ namespace
 		return globalIllumination;
 	}
 
-	bool TryParseOptionalParent(const std::string& value, InstanceId& outParent)
+	bool TryParseOptionalParent(std::string_view value, InstanceId& outParent)
 	{
 		outParent = InstanceId::Invalid;
 		if (value.empty())
@@ -64,7 +64,7 @@ namespace
 		return outParent.IsGameObjectId();
 	}
 
-	bool TryParseOptionalGameObjectId(const std::string& value, InstanceId& outInstanceId)
+	bool TryParseOptionalGameObjectId(std::string_view value, InstanceId& outInstanceId)
 	{
 		outInstanceId = InstanceId::Invalid;
 		if (value.empty())
@@ -76,7 +76,7 @@ namespace
 		return outInstanceId.IsGameObjectId();
 	}
 
-	bool TryParseOptionalComponentId(const std::string& value, InstanceId& outInstanceId)
+	bool TryParseOptionalComponentId(std::string_view value, InstanceId& outInstanceId)
 	{
 		outInstanceId = InstanceId::Invalid;
 		if (value.empty())
@@ -89,10 +89,10 @@ namespace
 			outInstanceId.GameObjectId() != InstanceId::Invalid;
 	}
 
-	void SetInteropString(const std::string& value, char** outValue)
+	void SetInteropString(std::string_view value, char** outValue)
 	{
 		auto result = TUniquePtr<char[]>::Make(value.size() + 1);
-		memcpy(result.GetRawPtr(), value.c_str(), value.size());
+		std::copy(value.begin(), value.end(), result.GetRawPtr());
 		result[value.size()] = '\0';
 		outValue[0] = result.Release();
 	}
@@ -220,30 +220,24 @@ uint32_t App::PullEditorMessages(char** messages, uint32_t num)
 	return numMsg;
 }
 
-uint32_t App::PullEditorViewportEvents(char** events, uint32_t num)
+TVector<EditorViewport::Event> App::PullEditorViewportEvents(uint32_t num)
 {
-	if (!events || num == 0)
-	{
-		return 0;
-	}
-
-	return ExecuteOnEngineMainThread<uint32_t>(0, [events, num]()
+	return ExecuteOnEngineMainThread<TVector<EditorViewport::Event>>({}, [num]()
 		{
+			TVector<EditorViewport::Event> events;
 			auto editor = GetSubmodule<Editor>();
 			if (!editor)
 			{
-				return 0u;
+				return events;
 			}
 
-			uint32_t numEvents = 0;
-			std::string event;
-			while (numEvents < num && editor->PullViewportEvent(event))
+			EditorViewport::Event event;
+			while (events.Num() < num && editor->PullViewportEvent(event))
 			{
-				SetInteropString(event, &events[numEvents]);
-				++numEvents;
+				events.Add(std::move(event));
 			}
 
-			return numEvents;
+			return events;
 		});
 }
 
@@ -358,7 +352,7 @@ uint32_t App::SerializeEngineTypes(char** yamlNode)
 		std::string serializedNode = YAML::Dump(node);
 		size_t length = serializedNode.length();
 
-		std::filesystem::create_directories(AssetRegistry::GetCacheFolder());
+		std::filesystem::create_directories(Workspace::PathFromUtf8(AssetRegistry::GetCacheFolder()));
 		AssetRegistry::WriteTextFile(AssetRegistry::GetCacheFolder() + "EngineTypes.yaml", serializedNode);
 
 		yamlNode[0] = new char[length + 1];
@@ -432,11 +426,16 @@ uint32_t App::SerializeWorkspaceCacheIdentity(char** yamlNode)
 	}
 
 	yamlNode[0] = nullptr;
-	const auto identity = Workspace::MakeWorkspaceCacheIdentity(
+	auto identity = Workspace::MakeWorkspaceCacheIdentity(
 		"editor-types",
 		"editor-types-v1",
 		1,
 		GetWorkspaceContext());
+	const auto& module = GetInstance()->m_pWorkspaceModuleManager;
+	if (module && module->IsRegistered())
+	{
+		identity.m_producerIdentity += ";module-types=" + std::to_string(module->GetTypeCatalogHash());
+	}
 
 	YAML::Node identityNode;
 	identityNode["workspaceIdentity"] = identity.m_workspaceId;
@@ -835,7 +834,7 @@ bool App::SetEditorAnimatorParameter(
 	}
 
 	const std::string instanceIdValue = strInstanceId;
-	const std::string name = strName;
+	const auto name = StringHash::Runtime(strName);
 	return ExecuteOnEngineMainThread<bool>(false,
 		[instanceIdValue, name, valueKind, floatValue, intValue, boolValue]()
 		{
@@ -1426,8 +1425,7 @@ bool App::InstantiateEditorPrefabFromYaml(
 				parentInstanceId,
 				nullptr,
 				createdInstanceId,
-				bStrictInstanceIds,
-				!bStrictInstanceIds);
+				bStrictInstanceIds ? EPrefabInstanceIdPolicy::RequireExact : EPrefabInstanceIdPolicy::GenerateNew);
 			if (bInstantiated && outInstanceId)
 			{
 				SetInteropString(
@@ -1557,15 +1555,9 @@ bool App::GetEditorViewportToolState(
 		});
 }
 
-bool App::SetEditorSelection(const char* strSelectionYaml)
+bool App::SetEditorSelection(TVector<InstanceId> selection)
 {
-	if (!strSelectionYaml)
-	{
-		return false;
-	}
-
-	const std::string selectionYaml = strSelectionYaml;
-	return ExecuteOnEngineMainThread<bool>(false, [selectionYaml]()
+	return ExecuteOnEngineMainThread<bool>(false, [selection = std::move(selection)]()
 		{
 			auto editor = GetSubmodule<Editor>();
 			auto* world = editor ? editor->GetWorld() : nullptr;
@@ -1574,52 +1566,9 @@ bool App::SetEditorSelection(const char* strSelectionYaml)
 				return false;
 			}
 
-			TVector<InstanceId> selection;
-			const YAML::Node yaml = YAML::Load(selectionYaml);
-			if (yaml && yaml.IsSequence())
-			{
-				selection.Reserve(yaml.size());
-				for (const auto& entry : yaml)
-				{
-					InstanceId instanceId{};
-					instanceId.Deserialize(entry);
-					if (instanceId)
-					{
-						selection.Add(instanceId);
-					}
-				}
-			}
-
 			world->SetEditorSelection(selection);
 			editor->NotifyManagedSelectionMutation();
 			return true;
-		});
-}
-
-bool App::RenderPathTracedImage(const char* strOutputPath, const char* strInstanceId, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces)
-{
-	if (!strOutputPath || strOutputPath[0] == '\0')
-	{
-		return false;
-	}
-
-	const std::string outputPath = strOutputPath;
-	const std::string instanceIdValue = strInstanceId ? strInstanceId : "";
-	return ExecuteOnEngineMainThread<bool>(false, [outputPath, instanceIdValue, height, samplesPerPixel, maxBounces]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return false;
-			}
-
-			const InstanceId instanceId(instanceIdValue);
-
-			const bool bSuccess = editor->RenderPathTracedImage(instanceId, outputPath, height, samplesPerPixel, maxBounces);
-			editor->PushMessage(bSuccess ?
-				("Path tracer export succeeded: " + outputPath) :
-				("Path tracer export failed: " + outputPath));
-			return bSuccess;
 		});
 }
 

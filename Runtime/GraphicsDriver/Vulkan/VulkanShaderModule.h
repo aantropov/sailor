@@ -3,6 +3,7 @@
 #include "vulkan/vulkan.h"
 #include "VulkanDevice.h"
 #include "RHI/Types.h"
+#include "Core/StringHash.h"
 #include "Memory/RefPtr.hpp"
 #include "Containers/Set.h"
 #include <spirv_reflect.h>
@@ -44,14 +45,14 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 	public:
 		SAILOR_API VulkanShaderStage() = default;
-		SAILOR_API VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, VulkanShaderModulePtr shaderModule);
-		SAILOR_API VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, VulkanDevicePtr pDevice, const RHI::ShaderByteCode& spirv);
+		SAILOR_API VulkanShaderStage(VkShaderStageFlagBits stage, StringHash entryPointName, VulkanShaderModulePtr shaderModule);
+		SAILOR_API VulkanShaderStage(VkShaderStageFlagBits stage, StringHash entryPointName, VulkanDevicePtr pDevice, const RHI::ShaderByteCode& spirv);
 
 		/// Vulkan VkPipelineShaderStageCreateInfo settings
 		VkPipelineShaderStageCreateFlags m_flags = 0;
 		VkShaderStageFlagBits m_stage = {};
 		VulkanShaderModulePtr m_module;
-		std::string m_entryPointName;
+		StringHash m_entryPointName;
 
 		SAILOR_API virtual void Apply(VkPipelineShaderStageCreateInfo& stageInfo) const override;
 		SAILOR_API virtual void Compile() override;

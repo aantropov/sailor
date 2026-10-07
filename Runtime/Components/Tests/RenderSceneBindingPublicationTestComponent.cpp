@@ -130,17 +130,17 @@ namespace
 		scene.m_submissionContext->BeginSubmission(78u, 0u);
 		scene.m_frameBindings = driver->CreateShaderBindings();
 		scene.m_rhiLightsData = driver->CreateShaderBindings();
-		if (!driver->AddSamplerToShaderBindings(scene.m_rhiLightsData, "lightingSampler", textureA, 7u))
+		if (!driver->AddSamplerToShaderBindings(scene.m_rhiLightsData, "lightingSampler"_h, textureA, 7u))
 			return "RenderScene initial lighting source could not be created";
 		auto graph = RHIFrameGraphPtr::Make();
-		graph->SetRenderTarget("DepthBuffer", depth);
+		graph->SetRenderTarget("DepthBuffer"_h, depth);
 		auto node = TRefPtr<RenderSceneProbe>::Make();
-		node->SetString("Tag", "BindingPublication");
-		node->SetString("GPUCulling", "false");
-		node->SetRHIResource("color", color);
-		node->SetRHIResource("transmissionFramebuffer", transmission);
-		node->SetRHIResource("sceneDepth", sceneDepth);
-		node->SetRHIResource("globalIlluminationProbeCellIndicesSampler", cells);
+		node->SetString("Tag"_h, "BindingPublication");
+		node->SetString("GPUCulling"_h, "false");
+		node->SetRHIResource("color"_h, color);
+		node->SetRHIResource("transmissionFramebuffer"_h, transmission);
+		node->SetRHIResource("sceneDepth"_h, sceneDepth);
+		node->SetRHIResource("globalIlluminationProbeCellIndicesSampler"_h, cells);
 		auto resources = node->GetResources(scene);
 		RHIBatch batch(material, mesh);
 		batch.m_textureBindings = driver->CreateShaderBindings();
@@ -188,9 +188,9 @@ namespace
 				!resources->m_perInstanceData->m_vulkan.m_descriptorSet ||
 				!resources->m_perInstanceData->m_vulkan.m_descriptorSet->IsCompiled() ||
 				resources->m_perInstanceData->GetShaderBindings().Num() != 5u ||
-				resources->m_perInstanceData->GetOrAddShaderBinding("g_transmissionFramebufferSampler")->GetTextureBinding() != transmission ||
-				resources->m_perInstanceData->GetOrAddShaderBinding("g_sceneDepthSampler")->GetTextureBinding() != sceneDepth ||
-				resources->m_perInstanceData->GetOrAddShaderBinding("g_globalIlluminationProbeCellIndicesSampler")->GetTextureBinding() != cells))
+				resources->m_perInstanceData->GetOrAddShaderBinding("g_transmissionFramebufferSampler"_h)->GetTextureBinding() != transmission ||
+				resources->m_perInstanceData->GetOrAddShaderBinding("g_sceneDepthSampler"_h)->GetTextureBinding() != sceneDepth ||
+				resources->m_perInstanceData->GetOrAddShaderBinding("g_globalIlluminationProbeCellIndicesSampler"_h)->GetTextureBinding() != cells))
 			{
 				discard();
 				return std::format("{}: pass bindings did not publish the current inputs", name);
@@ -231,7 +231,7 @@ namespace
 		};
 
 		if (auto error = draw("initial A"); !error.empty()) return error;
-		const char* inputs[] = { "transmissionFramebuffer", "sceneDepth", "globalIlluminationProbeCellIndicesSampler" };
+		const StringHash inputs[] = { "transmissionFramebuffer"_h, "sceneDepth"_h, "globalIlluminationProbeCellIndicesSampler"_h };
 		RHITexturePtr* textures[] = { &transmission, &sceneDepth, &cells };
 		for (uint32_t scenario = 0u; scenario < 3u; ++scenario)
 		{
@@ -241,27 +241,27 @@ namespace
 			node->SetRHIResource(inputs[scenario], texture);
 			RestoreView restore(texture);
 			texture->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, texture->m_vulkan.m_image);
-			if (auto error = draw(inputs[scenario], &before); !error.empty()) return error;
+			if (auto error = draw(inputs[scenario].ToString().c_str(), &before); !error.empty()) return error;
 			restore.Restore();
 			useTextureB[scenario] = true;
 			if (auto error = draw("same-request retry"); !error.empty()) return error;
 			if (resources->m_perInstanceData != before.m_bindings ||
 				resources->m_perInstanceData->m_vulkan.m_descriptorSet == before.m_native ||
 				resources->m_perInstanceData->GetDescriptorRevision() != before.m_revision + 1u || !before.m_native->IsCompiled())
-				return std::format("{}: retry did not update exactly one pass binding", inputs[scenario]);
+				return std::format("{}: retry did not update exactly one pass binding", inputs[scenario].ToString());
 			const PublishedBindings stable(resources->m_perInstanceData);
 			if (auto error = draw("stable request"); !error.empty()) return error;
 			if (!stable.Unchanged(resources->m_perInstanceData)) return "unchanged pass inputs rebuilt descriptors";
 		}
 
 		const PublishedBindings pass(resources->m_perInstanceData);
-		if (!driver->AddSamplerToShaderBindings(scene.m_rhiLightsData, "lightingSampler", textureB, 7u))
+		if (!driver->AddSamplerToShaderBindings(scene.m_rhiLightsData, "lightingSampler"_h, textureB, 7u))
 			return "lighting update failed";
 		useTextureB[3] = true;
 		if (auto error = draw("lighting revision changed"); !error.empty()) return error;
 		if (!pass.Unchanged(resources->m_perInstanceData)) return "lighting revision rebuilt pass bindings";
 		scene.m_rhiLightsData = driver->CreateShaderBindings();
-		if (!driver->AddSamplerToShaderBindings(scene.m_rhiLightsData, "lightingSampler", textureA, 7u))
+		if (!driver->AddSamplerToShaderBindings(scene.m_rhiLightsData, "lightingSampler"_h, textureA, 7u))
 			return "replacement lighting set failed";
 		useTextureB[3] = false;
 		if (auto error = draw("lighting identity changed"); !error.empty()) return error;
@@ -270,11 +270,11 @@ namespace
 		auto firstNode = node;
 		auto firstResources = resources;
 		node = TRefPtr<RenderSceneProbe>::Make();
-		node->SetString("Tag", "BindingPublicationOtherPass");
-		node->SetString("GPUCulling", "false");
-		node->SetRHIResource("color", color);
+		node->SetString("Tag"_h, "BindingPublicationOtherPass");
+		node->SetString("GPUCulling"_h, "false");
+		node->SetRHIResource("color"_h, color);
 		transmission = sceneDepth = cells = textureA;
-		for (const auto* input : inputs) node->SetRHIResource(input, textureA);
+		for (const auto input : inputs) node->SetRHIResource(input, textureA);
 		resources = node->GetResources(scene);
 		resources->m_packet.Add(batch, mesh, instance);
 		resources->m_packet.Finalize();
@@ -284,9 +284,9 @@ namespace
 			!pass.Unchanged(firstResources->m_perInstanceData)) return "passes did not retain independent local inputs";
 		node = firstNode;
 		resources = firstResources;
-		transmission = resources->m_perInstanceData->GetOrAddShaderBinding("g_transmissionFramebufferSampler")->GetTextureBinding();
-		sceneDepth = resources->m_perInstanceData->GetOrAddShaderBinding("g_sceneDepthSampler")->GetTextureBinding();
-		cells = resources->m_perInstanceData->GetOrAddShaderBinding("g_globalIlluminationProbeCellIndicesSampler")->GetTextureBinding();
+		transmission = resources->m_perInstanceData->GetOrAddShaderBinding("g_transmissionFramebufferSampler"_h)->GetTextureBinding();
+		sceneDepth = resources->m_perInstanceData->GetOrAddShaderBinding("g_sceneDepthSampler"_h)->GetTextureBinding();
+		cells = resources->m_perInstanceData->GetOrAddShaderBinding("g_globalIlluminationProbeCellIndicesSampler"_h)->GetTextureBinding();
 		useTextureB = { true, true, true, false };
 		if (auto error = draw("first pass reused"); !error.empty()) return error;
 		if (!pass.Unchanged(resources->m_perInstanceData)) return "second pass invalidated the first pass";
@@ -314,7 +314,7 @@ void RenderSceneBindingPublicationTestComponent::Tick(float)
 	}
 	if (m_shader && m_shader->IsReady())
 	{
-		m_validation = Tasks::CreateTaskWithResult<std::string>("RenderScene binding publication validation",
+		m_validation = Tasks::CreateTaskWithResult<std::string>("RenderScene binding publication validation"_h,
 			[shader = m_shader]() { return ValidatePublication(shader); }, EThreadType::RHI);
 		m_validation->Run();
 	}

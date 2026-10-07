@@ -1,6 +1,6 @@
 #include <array>
 #include <atomic>
-#include <barrier>
+#include <latch>
 #include <compare>
 #include <cstddef>
 #include <cstdint>
@@ -9,12 +9,14 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <type_traits>
 #include <unordered_set>
 #include <utility>
 
 #include "Memory/SharedPtr.hpp"
+#include "Memory/RefPtr.hpp"
 #include "Memory/UniquePtr.hpp"
 #include "Memory/WeakPtr.hpp"
 #include "Memory/MemoryPtr.hpp"
@@ -26,11 +28,11 @@ using namespace Sailor;
 
 namespace
 {
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -65,6 +67,57 @@ namespace
 		static inline std::thread::id s_destroyedOn;
 		int m_value = 0;
 	};
+
+	struct RefLifetimeProbe : TRefBase
+	{
+		explicit RefLifetimeProbe(int value) : m_value(value) {}
+		~RefLifetimeProbe() override { ++s_destroyed; }
+		static inline std::atomic<uint32_t> s_destroyed = 0;
+		int m_value;
+	};
+
+	static_assert(std::is_constructible_v<TRefPtr<const RefLifetimeProbe>, TRefPtr<RefLifetimeProbe>>);
+	static_assert(!std::is_constructible_v<TRefPtr<RefLifetimeProbe>, TRefPtr<const RefLifetimeProbe>>);
+	static_assert(!std::is_assignable_v<TRefPtr<RefLifetimeProbe>&, TRefPtr<const RefLifetimeProbe>>);
+	static_assert(!std::is_constructible_v<TRefPtr<RefLifetimeProbe>, TRefBase*>);
+
+	void TestRefPtrConstOwnership()
+	{
+		RefLifetimeProbe::s_destroyed = 0;
+		auto producer = TRefPtr<RefLifetimeProbe>::Make(37);
+		TRefPtr<const RefLifetimeProbe> published = producer;
+		TRefPtr<const TRefBase> retained = published;
+		Require(published->m_value == 37 && published.NumRefs() == 3 && published == producer,
+			"const publication must share the original intrusive ownership and object identity");
+		producer.Clear();
+		auto downcast = retained.DynamicCast<const RefLifetimeProbe>();
+		Require(downcast == published && downcast->m_value == 37, "a const base may cast back without losing ownership");
+		retained.Clear();
+		downcast.Clear();
+		std::array<std::thread, 4> readers;
+		for (auto& reader : readers)
+		{
+			reader = std::thread([published]()
+			{
+				for (uint32_t i = 0; i < 1000; ++i)
+				{
+					TRefPtr<const TRefBase> copy = published;
+					TRefPtr<const TRefBase> moved = std::move(copy);
+				}
+			});
+		}
+		for (auto& reader : readers) reader.join();
+		Require(published.NumRefs() == 1 && RefLifetimeProbe::s_destroyed == 0,
+			"concurrent const readers must release only their own references");
+		published.Clear();
+		Require(RefLifetimeProbe::s_destroyed == 1, "the final const owner must destroy the resource exactly once");
+
+		auto immutable = TRefPtr<const RefLifetimeProbe>::Make(19);
+		TRefPtr<const TRefBase> base = std::move(immutable);
+		Require(!immutable && base.NumRefs() == 1, "moving a natively const allocation must transfer its reference");
+		base.Clear();
+		Require(RefLifetimeProbe::s_destroyed == 2, "a natively const allocation must also be destroyed once");
+	}
 
 	struct VectorLifetimeProbe
 	{
@@ -230,13 +283,19 @@ namespace
 		constexpr uint32_t iterations = 4000;
 		std::atomic<uint32_t> destroyed = 0;
 		std::atomic<bool> invalidLifetime = false;
-		std::barrier phase(2);
+		struct RacePhase
+		{
+			std::latch m_start{ 2 };
+			std::latch m_finished{ 2 };
+		};
+		// Header-defined latches keep both handoffs visible to TSAN on macOS.
+		std::array<RacePhase, iterations> phases;
 		TWeakPtr<ConcurrentProbe> observer;
 		std::jthread consumer([&]()
 			{
 				for (uint32_t i = 0; i < iterations; ++i)
 				{
-					phase.arrive_and_wait();
+					phases[i].m_start.arrive_and_wait();
 					if (auto retained = observer.TryLock())
 					{
 						if (retained->m_value != i || destroyed.load() != i)
@@ -244,16 +303,16 @@ namespace
 							invalidLifetime = true;
 						}
 					}
-					phase.arrive_and_wait();
+					phases[i].m_finished.arrive_and_wait();
 				}
 			});
 		for (uint32_t i = 0; i < iterations; ++i)
 		{
 			auto owner = TSharedPtr<ConcurrentProbe>::Make(destroyed, i);
 			observer = owner;
-			phase.arrive_and_wait();
+			phases[i].m_start.arrive_and_wait();
 			owner.Clear();
-			phase.arrive_and_wait();
+			phases[i].m_finished.arrive_and_wait();
 			if (destroyed.load() != i + 1 || observer.TryLock())
 			{
 				invalidLifetime = true;
@@ -317,6 +376,44 @@ namespace
 		Memory::Delete(allocator, value);
 	}
 
+	template<typename TAllocator>
+	void CheckAllocatorFragmentedReuse(TAllocator& allocator)
+	{
+		struct Block
+		{
+			uint8_t* m_data = nullptr;
+			size_t m_size = 0;
+			uint8_t m_value = 0;
+		};
+		std::array<Block, 128> blocks{};
+		for (uint32_t round = 0; round < 4; ++round)
+		{
+			for (size_t i = 0; i < blocks.size(); ++i)
+			{
+				auto& block = blocks[i];
+				if (block.m_data) continue;
+				block.m_size = 1 + (i * 137 + round * 73) % 4096;
+				block.m_value = static_cast<uint8_t>(i + round * 31);
+				const size_t alignment = size_t(1) << (i % 8);
+				block.m_data = static_cast<uint8_t*>(allocator.Allocate(block.m_size, alignment));
+				Require(block.m_data && reinterpret_cast<uintptr_t>(block.m_data) % alignment == 0,
+					"fragmented allocation must retain requested alignment");
+				std::memset(block.m_data, block.m_value, block.m_size);
+			}
+			for (const auto& block : blocks)
+				for (size_t byte = 0; byte < block.m_size; ++byte)
+					Require(block.m_data[byte] == block.m_value,
+						"reusing holes must preserve all live allocations, not just their count");
+			for (size_t i = round % 2; i < blocks.size(); i += 2)
+			{
+				allocator.Free(blocks[i].m_data);
+				blocks[i].m_data = nullptr;
+			}
+		}
+		for (auto& block : blocks)
+			if (block.m_data) allocator.Free(block.m_data);
+	}
+
 	void TestAllocatorAlignmentAndGrowth()
 	{
 		Memory::MallocAllocator malloc;
@@ -325,6 +422,9 @@ namespace
 		CheckAllocatorAlignment(malloc);
 		CheckAllocatorAlignment(heap);
 		CheckAllocatorAlignment(shared);
+		CheckAllocatorFragmentedReuse(malloc);
+		CheckAllocatorFragmentedReuse(heap);
+		CheckAllocatorFragmentedReuse(shared);
 
 		Memory::HeapAllocator growHeap;
 		void* growing = growHeap.Allocate(257, 64);
@@ -664,6 +764,7 @@ namespace
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "RefPtrConstOwnership", TestRefPtrConstOwnership },
 		{ "WeakPointerConversionsAndAllocator", TestWeakPointerConversionsAndAllocator },
 		{ "WeakPointerReusedAddress", TestWeakPointerReusedAddress },
 		{ "WeakPromotionAgainstLastOwner", TestWeakPromotionAgainstLastOwner },

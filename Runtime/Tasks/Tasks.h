@@ -5,6 +5,7 @@
 #include <atomic>
 #include <thread>
 #include "Sailor.h"
+#include "Core/StringHash.h"
 #include "Memory/UniquePtr.hpp"
 #include "Memory/SharedPtr.hpp"
 #include "Scheduler.h"
@@ -29,7 +30,7 @@ namespace Sailor
 		using TaskPtr = TSharedPtr<Task<TResult, TArgs>>;
 
 		template<typename TResult = void, typename TArgs = void>
-		TaskPtr<TResult, TArgs> CreateTask(const std::string& name, typename TFunction<TResult, TArgs>::type lambda, EThreadType thread = EThreadType::Worker)
+		TaskPtr<TResult, TArgs> CreateTask(StringHash name, typename TFunction<TResult, TArgs>::type lambda, EThreadType thread = EThreadType::Worker)
 		{
 			auto task = TaskPtr<TResult, TArgs>::Make(name, std::move(lambda), thread);
 			task->m_self = task;
@@ -37,13 +38,13 @@ namespace Sailor
 		}
 
 		template<typename TArgs>
-		TaskPtr<void, TArgs> CreateTaskWithArgs(const std::string& name, typename TFunction<void, TArgs>::type lambda, EThreadType thread = EThreadType::Worker)
+		TaskPtr<void, TArgs> CreateTaskWithArgs(StringHash name, typename TFunction<void, TArgs>::type lambda, EThreadType thread = EThreadType::Worker)
 		{
 			return CreateTask<void, TArgs>(name, lambda, thread);
 		}
 
 		template<typename TResult>
-		TaskPtr<TResult, void> CreateTaskWithResult(const std::string& name, typename TFunction<TResult, void>::type lambda, EThreadType thread = EThreadType::Worker)
+		TaskPtr<TResult, void> CreateTaskWithResult(StringHash name, typename TFunction<TResult, void>::type lambda, EThreadType thread = EThreadType::Worker)
 		{
 			return CreateTask<TResult, void>(name, lambda, thread);
 		}
@@ -74,7 +75,7 @@ namespace Sailor
 
 			SAILOR_API virtual ~ITask() = default;
 
-			SAILOR_API const std::string& GetName() const { return m_name; }
+			SAILOR_API std::string_view GetName() const { return m_name.ToString(); }
 
 			// Register prerequisites before Run. The prerequisites may already be running.
 			SAILOR_API void Join(const TWeakPtr<ITask>& taskDependent);
@@ -108,7 +109,7 @@ namespace Sailor
 			SAILOR_API void ChainTasks(const ITaskPtr& nextTask);
 			virtual void SetContinuationArgs(ITask&) const {}
 
-			SAILOR_API ITask(const std::string& name, EThreadType thread);
+			SAILOR_API ITask(StringHash name, EThreadType thread);
 
 			EThreadType m_threadType;
 			std::atomic<DWORD> m_threadAffinity{ static_cast<DWORD>(-1) };
@@ -123,12 +124,12 @@ namespace Sailor
 
 			TVector<TWeakPtr<ITask>> m_dependencies;
 
-			std::string m_name; // TODO: remove name, to save 40 bytes
+			StringHash m_name;
 
 			friend class Scheduler;
 
 			template<typename TResult, typename TArgs>
-			friend TaskPtr<TResult, TArgs> CreateTask(const std::string& name, typename TFunction<TResult, TArgs>::type lambda, EThreadType thread);
+			friend TaskPtr<TResult, TArgs> CreateTask(StringHash name, typename TFunction<TResult, TArgs>::type lambda, EThreadType thread);
 		};
 
 		template<typename TResult>
@@ -219,13 +220,13 @@ namespace Sailor
 
 			template<typename TResult1>
 			Task(TResult1 result) requires NotVoid<TResult1>&& NotVoid<TResult>
-				: ITask("TaskResult", EThreadType::Worker)
+				: ITask("TaskResult"_h, EThreadType::Worker)
 			{
 				ResultBase::m_result = std::move(result);
 				ITask::m_state |= StateMask::IsFinishedBit;
 			}
 
-			Task(const std::string& name, Function function, EThreadType thread) : ITask(name, thread)
+			Task(StringHash name, Function function, EThreadType thread) : ITask(name, thread)
 			{
 				m_function = std::move(function);
 			}
@@ -233,7 +234,7 @@ namespace Sailor
 			template<typename TContinuationResult = void>
 			TaskPtr<TContinuationResult, TResult> Then(
 				typename TFunction<TContinuationResult, TResult>::type function,
-				std::string name = "ChainedTask",
+				StringHash name = "ChainedTask"_h,
 				EThreadType thread = EThreadType::Worker)
 			{
 				auto resultTask = Tasks::CreateTask<TContinuationResult, TResult>(
@@ -256,7 +257,7 @@ namespace Sailor
 				{
 					function = [this]() { return ResultBase::m_result; };
 				}
-				auto resultTask = Tasks::CreateTask<TResult>("Get result task",
+				auto resultTask = Tasks::CreateTask<TResult>("Get result task"_h,
 					std::move(function), ITask::m_threadType);
 
 				ChainTasks(resultTask);
@@ -289,7 +290,7 @@ namespace Sailor
 
 			Function m_function;
 
-			friend TaskPtr<TResult, TArgs> CreateTask(const std::string& name, typename TFunction<TResult, TArgs>::type lambda, EThreadType thread);
+			friend TaskPtr<TResult, TArgs> CreateTask(StringHash name, typename TFunction<TResult, TArgs>::type lambda, EThreadType thread);
 		};
 	}
 }

@@ -159,7 +159,7 @@ void MeshRendererComponent::RebuildMaterials()
 	GetData().MarkDirty();
 }
 
-bool MeshRendererComponent::LoadModel(const std::string& path)
+bool MeshRendererComponent::LoadModel(std::string_view path)
 {
 	auto assetRegistry = App::GetSubmodule<AssetRegistry>();
 	auto modelImporter = App::GetSubmodule<ModelImporter>();

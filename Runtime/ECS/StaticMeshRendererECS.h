@@ -75,7 +75,7 @@ namespace Sailor
 
 		SAILOR_API virtual void BeginPlay() override;
 		SAILOR_API virtual void EndPlay() override;
-		SAILOR_API virtual Tasks::ITaskPtr Tick(float deltaTime) override;
+		SAILOR_API virtual void Tick(float deltaTime) override;
 		void CopySceneView(RHI::RHISceneViewPtr& outProxies);
 		void MarkDirty(GameObjectPtr owner);
 		const RHI::RHIScenePtr& GetRHIScene() const { return m_rhiScene; }
@@ -104,7 +104,6 @@ namespace Sailor
 			std::optional<RHI::RHISceneViewProxy> m_staticProxy{};
 			RHI::RHISceneInstanceUpdate m_sceneUpdate{};
 			RHI::RHIShadowCasterProxyPtr m_shadowCaster{};
-			Math::AABB m_worldBounds{};
 			RHI::SceneChangeMask m_changeMask = RHI::ToMask(RHI::ESceneChangeBit::None);
 			bool m_bStateOnly = false;
 			uint8_t m_spatialChangeMask = 0u;
@@ -131,6 +130,8 @@ namespace Sailor
 		TVector<PreparedProxyBatch> m_preparedBatchesScratch{};
 		TVector<Tasks::ITaskPtr> m_prepareTasksScratch{};
 		bool m_bHasCustomDepthShadowCasters = false;
+		uint8_t m_pendingSpatialChangeMask = 0u;
+		bool m_bHasPendingSceneChanges = false;
 	};
 
 	template class ECS::TSystem<StaticMeshRendererECS, StaticMeshRendererData>;

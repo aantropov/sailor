@@ -123,7 +123,7 @@ void RHIShaderBindingSet::RecalculateCompatibility()
 	}
 }
 
-RHI::RHIShaderBindingPtr& RHIShaderBindingSet::GetOrAddShaderBinding(const std::string& binding)
+RHI::RHIShaderBindingPtr& RHIShaderBindingSet::GetOrAddShaderBinding(StringHash binding)
 {
 	auto& pBinding = m_shaderBindings.At_Lock(binding);
 	if (!pBinding)
@@ -135,7 +135,7 @@ RHI::RHIShaderBindingPtr& RHIShaderBindingSet::GetOrAddShaderBinding(const std::
 	return pBinding;
 }
 
-void RHIShaderBindingSet::RemoveShaderBinding(const std::string& binding)
+void RHIShaderBindingSet::RemoveShaderBinding(StringHash binding)
 {
 	m_shaderBindings.Remove(binding);
 }
@@ -171,7 +171,7 @@ bool RHIShaderBindingSet::PerInstanceDataStoredInSsbo() const
 	return std::find_if(m_layoutBindings.begin(), m_layoutBindings.end(), [](const auto& binding) { return binding.m_type == EShaderBindingType::StorageBuffer; }) != m_layoutBindings.end();
 }
 
-uint32_t RHIShaderBindingSet::GetStorageInstanceIndex(const std::string& bindingName) const
+uint32_t RHIShaderBindingSet::GetStorageInstanceIndex(StringHash bindingName) const
 {
 	if (m_shaderBindings.ContainsKey(bindingName))
 	{
@@ -187,14 +187,16 @@ void RHIShaderBindingSet::SetLayoutShaderBindings(TVector<RHI::ShaderLayoutBindi
 	m_bNeedsStorageBuffer = PerInstanceDataStoredInSsbo();
 }
 
-void RHIShaderBindingSet::ParseParameter(const std::string& parameter, std::string& outBinding, std::string& outVariable)
+void RHIShaderBindingSet::ParseParameter(StringHash parameter, StringHash& outBinding, StringHash& outVariable)
 {
-	TVector<std::string> splittedString = Utils::SplitString(parameter, ".");
-	outBinding = splittedString[0];
-	outVariable = splittedString[1];
+	const std::string_view text = parameter.ToString();
+	const size_t separator = text.find('.');
+	check(separator != std::string_view::npos);
+	outBinding = StringHash::Runtime(text.substr(0, separator));
+	outVariable = StringHash::Runtime(text.substr(separator + 1));
 }
 
-bool RHIShaderBindingSet::HasBinding(const std::string& binding) const
+bool RHIShaderBindingSet::HasBinding(StringHash binding) const
 {
 	auto it = std::find_if(m_layoutBindings.begin(), m_layoutBindings.end(), [&binding](const RHI::ShaderLayoutBinding& shaderLayoutBinding)
 		{
@@ -204,12 +206,16 @@ bool RHIShaderBindingSet::HasBinding(const std::string& binding) const
 	return it != m_layoutBindings.end();
 }
 
-bool RHIShaderBindingSet::HasParameter(const std::string& parameter) const
+bool RHIShaderBindingSet::HasParameter(StringHash parameter) const
 {
-	TVector<std::string> splittedString = Utils::SplitString(parameter, ".");
-	const std::string& binding = splittedString[0];
-	const std::string& variable = splittedString[1];
+	StringHash binding;
+	StringHash variable;
+	ParseParameter(parameter, binding, variable);
+	return HasParameter(binding, variable);
+}
 
+bool RHIShaderBindingSet::HasParameter(StringHash binding, StringHash variable) const
+{
 	auto index = m_layoutBindings.FindIf([&binding](const RHI::ShaderLayoutBinding& shaderLayoutBinding)
 		{
 			return shaderLayoutBinding.m_name == binding;

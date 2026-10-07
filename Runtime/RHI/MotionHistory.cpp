@@ -1,17 +1,66 @@
 #include "MotionHistory.h"
 #include "RHI/SceneView.h"
+#include "RHI/Renderer.h"
+#include "RHI/Shader.h"
+#include "RHI/ViewSubmissionResources.h"
 
 #include <cmath>
 
 using namespace Sailor;
 using namespace Sailor::RHI;
 
+namespace
+{
+	class MotionSubmissionResources final : public RHIFrameGraphSubmissionResource
+	{
+	public:
+		void ResetForSubmission() override { m_bIsUploaded = false; }
+		size_t m_boneCapacity = 0;
+		bool m_bIsUploaded = false;
+	};
+}
+
+void Sailor::RHI::UploadMotionData(RHICommandListPtr commandList,
+	const RHISceneViewSnapshot& snapshot, const glm::ivec2& extent)
+{
+	auto bindings = snapshot.m_frameBindings;
+	auto resources = snapshot.m_submissionContext->GetOrAddFrameGraphResources<MotionSubmissionResources>(
+		bindings.GetRawPtr(), snapshot.m_cameraIndex, 0u);
+	if (resources->m_bIsUploaded) return;
+
+	auto& driver = Renderer::GetDriver();
+	auto commands = Renderer::GetDriverCommands();
+	if (!bindings->HasBinding("previousFrameData"_h))
+	{
+		driver->AddBufferToShaderBindings(bindings, "previousFrameData"_h,
+			sizeof(UboFrameData), 1u, EShaderBindingType::UniformBuffer);
+	}
+	const auto previous = snapshot.m_previousMotionFrame;
+	const auto frame = previous ? previous->m_frameData : snapshot.GetFrameData(extent);
+	commands->UpdateShaderBinding(commandList,
+		bindings->GetOrAddShaderBinding("previousFrameData"_h), &frame, sizeof(frame));
+
+	const auto bones = previous ? previous->m_bones : snapshot.m_cpuBoneMatrices;
+	const size_t count = bones ? bones->Num() : 0u;
+	auto& capacity = resources->m_boneCapacity;
+	if (capacity < (std::max)(size_t{ 1u }, count))
+	{
+		capacity = GrowSubmissionCapacity(capacity, count);
+		driver->AddSsboToShaderBindings(bindings, "previousBones"_h, sizeof(glm::mat4), capacity, 2u, true);
+	}
+	const glm::mat4 identity(1.0f);
+	commands->UpdateShaderBinding(commandList, bindings->GetOrAddShaderBinding("previousBones"_h),
+		count ? bones->GetData() : &identity, (std::max)(size_t{ 1u }, count) * sizeof(glm::mat4));
+	commands->MemoryBarrier(commandList, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+		static_cast<EAccessFlags>(EAccessBit::UniformRead_Bit) | static_cast<EAccessFlags>(EAccessBit::ShaderRead_Bit));
+	resources->m_bIsUploaded = true;
+}
+
 RHIMotionHistoryFrame Sailor::RHI::CaptureMotionHistory(
-	const RHISceneViewSnapshot& snapshot, WorldPtr world,
-	float worldTime, const glm::ivec2& extent)
+	const RHISceneViewSnapshot& snapshot, const glm::ivec2& extent)
 {
 	RHIMotionHistoryFrame result;
-	result.m_world = world;
+	result.m_world = snapshot.m_world;
 	result.m_cameraOwner = snapshot.m_camera->GetOwner();
 	result.m_cameraRevision = snapshot.m_camera->GetMotionHistoryRevision();
 	result.m_renderMode = snapshot.m_renderMode;
@@ -19,15 +68,7 @@ RHIMotionHistoryFrame Sailor::RHI::CaptureMotionHistory(
 	result.m_bones = snapshot.m_cpuBoneMatrices;
 	for (const auto mobility : { EMobilityType::Static, EMobilityType::Stationary, EMobilityType::Dynamic })
 		result.m_mobilityRevisions[static_cast<size_t>(mobility)] = snapshot.GetMobilityRevision(mobility);
-	auto& frame = result.m_frameData;
-	frame.m_cameraPosition = snapshot.m_cameraTransform.m_position;
-	frame.m_projection = snapshot.m_camera->GetProjectionMatrix();
-	frame.m_invProjection = snapshot.m_camera->GetInvProjection();
-	frame.m_cameraZNearZFar = glm::vec2(snapshot.m_camera->GetZNear(), snapshot.m_camera->GetZFar());
-	frame.m_currentTime = worldTime;
-	frame.m_deltaTime = snapshot.m_deltaTime;
-	frame.m_view = snapshot.m_camera->GetViewMatrix();
-	frame.m_viewportSize = extent;
+	result.m_frameData = snapshot.GetFrameData(extent);
 	return result;
 }
 
@@ -71,9 +112,9 @@ bool Sailor::RHI::ResolvePreviousMotionProxy(
 	const RHISceneViewSnapshot& snapshot, const RHIVisibleSceneProxy& current,
 	RHIVisibleSceneProxy& previous)
 {
-	previous = {};
+	previous = current;
 	if (!snapshot.m_previousMotionFrame || !snapshot.m_sceneVersions ||
-		!snapshot.m_previousMotionFrame->m_sceneVersions || !current.m_record)
+		!snapshot.m_previousMotionFrame->m_sceneVersions)
 	{
 		return false;
 	}

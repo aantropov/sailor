@@ -1,17 +1,26 @@
 #include "Submodules/ImGuiApi.h"
+#include "Engine/Frame.h"
+#include "Engine/World.h"
+#include "RHI/CommandList.h"
+#include "Tasks/Tasks.h"
 #include <atomic>
+#include <cmath>
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 #include <thread>
 
 namespace
 {
-	void Require(bool condition, const char* message)
+	using namespace Sailor;
+
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -19,6 +28,76 @@ namespace
 	void ReadCopiedCallback(const ImDrawList*, const ImDrawCmd* command)
 	{
 		std::memcpy(&copiedCallbackValue, command->UserCallbackData, sizeof(int));
+	}
+
+	class FrameTestWorld final : public World
+	{
+	public:
+		FrameTestWorld() : World("Frame copy test", 0, {}) {}
+	};
+
+	class FrameProbe final : public FrameState
+	{
+	public:
+		using FrameState::FrameState;
+		using FrameState::operator=;
+		const void* Storage() const { return m_pData.GetRawPtr(); }
+		void SetCommand(uint32_t index, RHI::RHICommandListPtr command)
+		{
+			m_pData->m_updateResourcesCommandBuffers[index] = std::move(command);
+		}
+	};
+
+	class FrameTestInput final : public FrameInputState
+	{
+	public:
+		FrameTestInput(int32_t x, int32_t y, Win32::KeyState key = Win32::KeyState::Up)
+		{
+			m_cursorPosition[0] = x;
+			m_cursorPosition[1] = y;
+			m_keyboard['W'] = key;
+			m_mouse[0] = key;
+		}
+	};
+
+	void CheckFrameCopyAndMove()
+	{
+		FrameProbe empty;
+		Require(!empty.GetWorld() && empty.GetTime() == 0 && empty.GetDeltaTime() == 0.0f &&
+			!empty.GetDrawImGuiTask(), "a default frame must contain no borrowed world or UI task");
+		for (uint32_t i = 0; i < empty.GetNumCommandLists(); ++i)
+			Require(!empty.GetCommandBuffer(i), "a default frame must contain no update commands");
+		FrameTestWorld world;
+		FrameProbe previous(&world, 100, FrameTestInput(10, 20), { 5, 8 });
+		FrameTestInput input(13, 17, Win32::KeyState::Pressed);
+		FrameProbe original(&world, 125, input, { 5, 8 }, &previous);
+		input = FrameTestInput(400, 500);
+		original.SetCommand(0, RHI::RHICommandListPtr::Make(RHI::ECommandListQueue::Transfer));
+		original.GetDrawImGuiTask() = Tasks::TaskPtr<RHI::RHICommandListPtr>::Make(
+			RHI::RHICommandListPtr::Make(RHI::ECommandListQueue::Graphics));
+		const auto* commands = original.GetCommandBuffer(0).GetRawPtr();
+		const auto* drawTask = original.GetDrawImGuiTask().GetRawPtr();
+		FrameProbe copy(original);
+		Require(copy.Storage() != original.Storage(), "copied frame values must have independent storage");
+		original = FrameState{};
+		Require(copy.GetWorld() == &world && copy.GetTime() == 125 && std::abs(copy.GetDeltaTime() - 0.025f) < 0.0001f &&
+			copy.GetMouseDelta() == glm::ivec2(3, -3) && copy.GetMouseDeltaToCenterViewport() == glm::ivec2(8, 9) &&
+			copy.GetInputState().GetCursorPos() == glm::ivec2(13, 17),
+			"a copy must preserve input values, deltas and world after its source is replaced");
+		Require(copy.GetInputState().IsKeyPressed('W') && copy.GetInputState().IsButtonClick(VK_LBUTTON),
+			"a copy must preserve the pressed key and mouse button after its source is replaced");
+		Require(copy.GetCommandBuffer(0).GetRawPtr() == commands && copy.GetDrawImGuiTask().GetRawPtr() == drawTask &&
+			copy.GetDrawImGuiTask()->IsFinished(), "a copy must retain its RHI commands and prepared draw task");
+		const auto* storage = copy.Storage();
+		FrameProbe moved(std::move(copy));
+		Require(moved.Storage() == storage && !copy.Storage(), "moving a frame must transfer the original allocation");
+		FrameProbe assigned;
+		assigned = moved;
+		Require(assigned.Storage() != moved.Storage() && assigned.GetCommandBuffer(0) == moved.GetCommandBuffer(0),
+			"copy assignment must copy values and share retained resources");
+		assigned = std::move(moved);
+		Require(assigned.Storage() == storage && !moved.Storage() && assigned.GetDrawImGuiTask().GetRawPtr() == drawTask,
+			"move assignment must transfer storage and retain the draw task");
 	}
 
 	void CheckRetainedFrame()
@@ -75,7 +154,9 @@ namespace
 		ImGui::GetForegroundDrawList()->AddText({ 50, 60 }, IM_COL32_WHITE, "Replacement");
 		ImGui::Render();
 		std::atomic<bool> changed{ false };
-		std::jthread consumer([snapshot, expectedVertices, expectedX, &changed]
+		FrameState frame;
+		frame.GetDrawImGuiTask() = Tasks::CreateTask<RHI::RHICommandListPtr>("Read retained ImGui frame"_h,
+			[snapshot, expectedVertices, expectedX, &changed]() -> RHI::RHICommandListPtr
 			{
 				const ImDrawData& retained = snapshot->DrawData.GetDrawData();
 				for (int i = 0; i < 100000; ++i)
@@ -86,6 +167,13 @@ namespace
 						changed.store(true);
 					}
 				}
+				return {};
+			});
+		FrameState submitted(frame);
+		frame = FrameState{};
+		std::jthread consumer([frame = std::move(submitted)]
+			{
+				frame.GetDrawImGuiTask()->Execute();
 			});
 		for (int i = 0; i < 30; ++i)
 		{
@@ -127,6 +215,7 @@ int main()
 		unsigned char* pixels;
 		int width, height;
 		io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+		CheckFrameCopyAndMove();
 		CheckRetainedFrame();
 		Sailor::ImGuiDrawDataSnapshot empty(nullptr);
 		Require(!empty.GetDrawData().Valid && empty.GetDrawData().CmdListsCount == 0,

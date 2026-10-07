@@ -28,7 +28,6 @@ namespace Sailor::RHI
 		RHIShaderBindingSetPtr m_sharedLightsStorage{};
 		RHIShaderBindingSetPtr m_sharedGlobalIlluminationStorage{};
 		RHIShaderBindingSetPtr m_frameBindings{};
-		size_t m_previousBoneCapacity = 0u;
 		RHIShaderBindingSetPtr m_lightCullingBindings{};
 		size_t m_lightCullingTileCapacity = 0u;
 		size_t m_shadowMatrixCapacity = 0u;
@@ -60,8 +59,8 @@ namespace Sailor::RHI
 		RHIShaderBindingSetPtr m_lightsStorage{};
 		RHIShaderBindingSetPtr m_boneBindings{};
 		RHIShaderBindingSetPtr m_globalIlluminationStorage{};
-		TSharedPtr<TVector<RHILightShaderData>> m_lightsSource{};
-		TSharedPtr<TVector<glm::mat4>> m_bonesSource{};
+		TSharedPtr<const TVector<RHILightShaderData>> m_lightsSource{};
+		TSharedPtr<const TVector<glm::mat4>> m_bonesSource{};
 		size_t m_lightCapacity = 0u;
 		size_t m_boneCapacity = 0u;
 		size_t m_globalIlluminationNodeCapacity = 0u;

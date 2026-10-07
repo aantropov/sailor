@@ -9,6 +9,7 @@
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#include <string_view>
 #include <thread>
 
 using namespace Sailor;
@@ -73,11 +74,11 @@ namespace
 {
 	using Access = RuntimeGIProbesServiceTestAccess;
 
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 

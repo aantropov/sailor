@@ -230,8 +230,7 @@ endif()
 
 if(APPLE)
 	list(REMOVE_ITEM SAILOR_RUNTIME_SOURCES
-		"${SAILOR_RUNTIME_DIR}/Platform/Win32/Window.cpp"
-		"${SAILOR_RUNTIME_DIR}/Platform/Win32/ConsoleWindow.cpp")
+		"${SAILOR_RUNTIME_DIR}/Platform/Win32/Window.cpp")
 endif()
 
 if(NOT WIN32)
@@ -327,11 +326,13 @@ endif()
 
 if(SAILOR_BUILD_TESTS)
   target_sources(SailorLib PRIVATE "${PROJECT_SOURCE_DIR}/Tests/Support/TaskTestApp.cpp")
+  # Some public classes contain test-only fields; installed SDK clients need the same layout.
   target_compile_definitions(SailorLib PUBLIC
-    $<BUILD_INTERFACE:SAILOR_SHADER_CACHE_TEST_HOOKS>
-    $<BUILD_INTERFACE:SAILOR_FILE_IO_TEST_HOOKS>
-    $<BUILD_INTERFACE:SAILOR_GI_BAKE_TEST_HOOKS>
-    $<BUILD_INTERFACE:SAILOR_MODEL_IMPORT_TEST_HOOKS>)
+    SAILOR_SHADER_CACHE_TEST_HOOKS
+    SAILOR_FILE_IO_TEST_HOOKS
+    SAILOR_GI_BAKE_TEST_HOOKS
+    SAILOR_ECS_TEST_HOOKS
+    SAILOR_MODEL_IMPORT_TEST_HOOKS)
 endif()
 
 target_compile_definitions(SailorLib INTERFACE _SAILOR_IMPORT_)
@@ -344,6 +345,7 @@ if(MSVC)
   target_compile_options(SailorLib PUBLIC /arch:AVX2)
   target_compile_options(SailorLib PUBLIC /Zc:wchar_t)
   target_compile_options(SailorLib PUBLIC /Zc:preprocessor)
+  target_compile_options(SailorLib PUBLIC /Zc:__cplusplus)
   target_compile_options(SailorLib PUBLIC /external:anglebrackets)
   target_compile_options(SailorLib PUBLIC /external:W0)
   target_compile_options(SailorLib PRIVATE /WX)
@@ -381,7 +383,7 @@ if(SAILOR_MEMORY_USE_LOCK_FREE_HEAP_ALLOCATOR_AS_DEFAULT)
 endif()
 
 if(SAILOR_MEMORY_HEAP_DISABLE_FREE)
-  add_compile_definitions(SAILOR_MEMORY_HEAP_DISABLE_FREE)
+  target_compile_definitions(SailorLib PUBLIC SAILOR_MEMORY_HEAP_DISABLE_FREE)
 endif()
 
 if(SAILOR_BUILD_WITH_RENDER_DOC)
@@ -484,6 +486,16 @@ set_target_properties(SailorLib PROPERTIES OUTPUT_NAME_RELEASE "Sailor-Release")
 set_target_properties(SailorLib PROPERTIES OUTPUT_NAME_RELWITHDEBINFO "Sailor-RelWithDebInfo")
 set_target_properties(SailorLib PROPERTIES OUTPUT_NAME_MINSIZEREL "Sailor-MinSizeRel")
 
+include("${PROJECT_SOURCE_DIR}/CMake/WorkspaceInterface.cmake")
+get_target_property(SAILOR_INTERFACE_DEFINITIONS SailorLib INTERFACE_COMPILE_DEFINITIONS)
+get_target_property(SAILOR_INTERFACE_OPTIONS SailorLib INTERFACE_COMPILE_OPTIONS)
+get_target_property(SAILOR_INTERFACE_FEATURES SailorLib INTERFACE_COMPILE_FEATURES)
+get_directory_property(SAILOR_DIRECTORY_DEFINITIONS COMPILE_DEFINITIONS)
+set(SAILOR_GENERATED_INCLUDE_DIR "${PROJECT_BINARY_DIR}/Generated")
+set(SAILOR_GENERATED_INCLUDE_DIR "${SAILOR_GENERATED_INCLUDE_DIR}" PARENT_SCOPE)
+sailor_generate_workspace_interface(SailorLib "${PROJECT_SOURCE_DIR}" "${SAILOR_GENERATED_INCLUDE_DIR}"
+    "${SAILOR_INTERFACE_DEFINITIONS}\n${SAILOR_INTERFACE_OPTIONS}\n${SAILOR_INTERFACE_FEATURES}\n${SAILOR_DIRECTORY_DEFINITIONS}")
+
 if(SAILOR_CONFIGURED_WITH_DEPENDENCY_STUBS)
 	install(CODE [[
 		message(FATAL_ERROR "Sailor cannot be installed from a configuration that uses dependency stubs. Install dependencies and configure again with SAILOR_ALLOW_MISSING_DEPS=OFF.")
@@ -502,6 +514,9 @@ install(DIRECTORY "${SAILOR_RUNTIME_DIR}/"
 	PATTERN "Protocol/Generated" EXCLUDE
 	PATTERN "*.h"
 	PATTERN "*.hpp")
+
+install(FILES "${SAILOR_GENERATED_INCLUDE_DIR}/Workspace/WorkspaceInterface.h"
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/Sailor/Runtime/Workspace")
 
 install(FILES
 	"${SAILOR_EXTERNAL_DIR}/YamlExceptionBoundary.h"

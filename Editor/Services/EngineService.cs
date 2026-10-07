@@ -138,10 +138,9 @@ namespace SailorEditor.Services
         readonly object remoteViewportStateLock = new();
         readonly Dictionary<ulong, RemoteViewportSessionState> remoteViewportStates = [];
         readonly Dictionary<ulong, string> remoteViewportDiagnostics = [];
-        // Windows acknowledges an upsert after applying it. Other native hosts
-        // can defer an update and still need the next layout retry.
+        // Native upsert acknowledges only an applied update on every platform.
         readonly KeyedLatestQueuedCommand<ulong, RemoteViewportUpdate> remoteViewportUpdates = new(
-            deduplicateSuccessfulValues: OperatingSystem.IsWindows());
+            deduplicateSuccessfulValues: true);
         readonly LatestQueuedCommand<Rect> editorViewportUpdate = new();
         readonly LatestQueuedCommand<(uint Width, uint Height)> renderTargetUpdate = new();
         readonly KeyedLatestQueuedCommand<ulong, RemoteViewportInput> pointerMoves = new();
@@ -717,36 +716,12 @@ namespace SailorEditor.Services
                     return;
                 }
 
-                appliedMacRemoteViewportHosts[viewportId] =
-                    (generation, hostHandle);
-            }
-
-            if (!QueuePlatformInterop(async cancellationToken =>
-            {
-                if (await protocolClient.SetRemoteViewportMacHostHandleAsync(
-                        viewportId,
-                        2u,
-                        (ulong)hostHandle,
-                        cancellationToken).ConfigureAwait(false))
+                // Transfer the native reference before the UI handler can dispose its layer.
+                if (EngineProtocolNative.SailorProtocolSetMacViewportHost(viewportId, hostHandle) != 0)
                 {
-                    return true;
+                    appliedMacRemoteViewportHosts[viewportId] = (generation, hostHandle);
                 }
-
-                lock (macRemoteViewportHostLock)
-                {
-                    if (appliedMacRemoteViewportHosts.TryGetValue(
-                            viewportId,
-                            out var pending) &&
-                        pending.Generation == generation &&
-                        pending.Handle == hostHandle)
-                    {
-                        appliedMacRemoteViewportHosts.Remove(viewportId);
-                    }
-                }
-                return false;
-            }))
-            {
-                lock (macRemoteViewportHostLock)
+                else
                 {
                     appliedMacRemoteViewportHosts.Remove(viewportId);
                 }
@@ -3703,51 +3678,6 @@ namespace SailorEditor.Services
                 .Where(id => id is not null && !id.IsEmpty())
                 .Select(id => id!.Value)
                 .ToArray() ?? Array.Empty<string>();
-
-        public async Task<bool> ExportPathTracedImageAsync(
-            string outputPath,
-            InstanceId? targetInstance = null,
-            uint height = 720,
-            uint samplesPerPixel = 64,
-            uint maxBounces = 4,
-            CancellationToken cancellationToken = default)
-        {
-            string strInstanceId = targetInstance?.Value ?? string.Empty;
-            EngineSession? session;
-            CancellationToken backgroundCancellationToken;
-            lock (runLock)
-            {
-                session = State == EngineLifecycleState.Running
-                    ? activeSession
-                    : null;
-                backgroundCancellationToken =
-                    session?.BackgroundCancellation.Token ?? default;
-            }
-            if (session is null)
-            {
-                return false;
-            }
-
-            try
-            {
-                using var linkedCancellation =
-                    CancellationTokenSource.CreateLinkedTokenSource(
-                        backgroundCancellationToken,
-                        cancellationToken);
-                return await protocolClient.RenderPathTracedImageAsync(
-                    outputPath,
-                    strInstanceId,
-                    height,
-                    samplesPerPixel,
-                    maxBounces,
-                    linkedCancellation.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-                when (backgroundCancellationToken.IsCancellationRequested)
-            {
-                return false;
-            }
-        }
 
         public void RunWorld(string world, bool bDebug)
             => RunWorld(world, bDebug, GetLaunchContext());

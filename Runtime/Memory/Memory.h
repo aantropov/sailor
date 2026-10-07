@@ -194,5 +194,4 @@ namespace Sailor::Memory
 		return false;
 	}
 
-	void SAILOR_API RunMemoryBenchmark();
 }

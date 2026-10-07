@@ -84,6 +84,8 @@ namespace Sailor
 		SAILOR_API bool LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate = true) override;
 		SAILOR_API bool LoadTexture_Immediate(FileId uid, TexturePtr& outTexture);
 		SAILOR_API Tasks::TaskPtr<TexturePtr> LoadTexture(FileId uid, TexturePtr& outTexture);
+		// Shared CPU-only decode for the captured source revision; no GPU texture or sampler slot.
+		SAILOR_API Tasks::TaskPtr<CpuTextureSnapshot> LoadCpuTexture(FileId uid);
 		SAILOR_API static bool DecodeTextureCpu(FileId uid, ByteCode& decodedData,
 			int32_t& width, int32_t& height, uint32_t& mipLevels);
 		SAILOR_API static bool CaptureCpuDecodeRequest(const TextureAssetInfo& assetInfo,
@@ -120,6 +122,15 @@ namespace Sailor
 			bool operator==(const TextureEntry&) const = default;
 		};
 		TConcurrentMap<FileId, TextureEntry> m_textures;
+
+		struct CpuTextureEntry
+		{
+			CpuDecodeRequest m_source;
+			RHI::ETextureClamping m_clamping = RHI::ETextureClamping::Repeat;
+			Tasks::TaskPtr<CpuTextureSnapshot> m_load;
+			bool operator==(const CpuTextureEntry&) const = default;
+		};
+		TConcurrentMap<FileId, CpuTextureEntry> m_cpuTextures;
 
 		Memory::ObjectAllocatorPtr m_allocator;
 

@@ -16,11 +16,11 @@ namespace
 		return "'" + value + "'";
 	}
 
-	void RequireSetting(bool condition, const std::string& field, const char* requirement)
+	void RequireSetting(bool condition, std::string_view field, std::string_view requirement)
 	{
 		if (!condition)
 		{
-			throw YAML::RepresentationException(YAML::Mark::null_mark(), field + ": " + requirement);
+			throw YAML::RepresentationException(YAML::Mark::null_mark(), std::string(field).append(": ").append(requirement));
 		}
 	}
 
@@ -56,7 +56,7 @@ namespace
 		std::string diagnostic;
 		if (!profile.m_runtimeGIProbes.Validate(diagnostic))
 		{
-			RequireSetting(false, "runtimeGIProbes", diagnostic.c_str());
+			RequireSetting(false, "runtimeGIProbes", diagnostic);
 		}
 	}
 
@@ -118,7 +118,7 @@ namespace
 	}
 
 	template<typename TResult>
-	TResult ParseSettings(const std::string& payload, const std::string& source)
+	TResult ParseSettings(const std::string& payload, std::string_view source)
 	{
 		TResult result;
 		YAML::Node document;
@@ -126,7 +126,7 @@ namespace
 		if (!Utils::TryLoadSingleYamlDocument(payload, document, diagnostic))
 		{
 			result.m_status = EGraphicsSettingsLoadStatus::Invalid;
-			result.m_diagnostic = source + " is invalid YAML: " + diagnostic;
+			result.m_diagnostic = std::string(source) + " is invalid YAML: " + diagnostic;
 			return result;
 		}
 
@@ -142,7 +142,7 @@ namespace
 				if (parsed.m_version != version)
 				{
 					result.m_status = EGraphicsSettingsLoadStatus::UnsupportedVersion;
-					result.m_diagnostic = source + " has unsupported settingsVersion " +
+					result.m_diagnostic = std::string(source) + " has unsupported settingsVersion " +
 						std::to_string(parsed.m_version) + "; expected " + std::to_string(version) + ".";
 					return;
 				}
@@ -159,8 +159,9 @@ namespace
 					RequireMap(presets);
 					for (const auto quality : magic_enum::enum_values<EGraphicsQuality>())
 					{
-						const std::string name(magic_enum::enum_name(quality));
-						path = "graphics.presets." + name;
+						const std::string_view name = magic_enum::enum_name(quality);
+						path = "graphics.presets.";
+						path += name;
 						YAML::convert<GraphicsQualityProfile>::decode(presets[name],
 							parsed.m_presets[static_cast<size_t>(quality)]);
 					}
@@ -172,11 +173,11 @@ namespace
 
 				result.m_settings = std::move(parsed);
 				result.m_status = EGraphicsSettingsLoadStatus::Loaded;
-				result.m_diagnostic = "Loaded " + source + ".";
+				result.m_diagnostic = std::string("Loaded ").append(source).append(".");
 			}, diagnostic))
 		{
 			result.m_status = EGraphicsSettingsLoadStatus::Invalid;
-			result.m_diagnostic = source + " is invalid at " + path + ": " + diagnostic;
+			result.m_diagnostic = std::string(source) + " is invalid at " + path + ": " + diagnostic;
 		}
 		return result;
 	}
@@ -216,14 +217,14 @@ bool YAML::convert<GraphicsQualityProfile>::decode(const Node& node, GraphicsQua
 }
 
 ProjectGraphicsSettingsLoadResult Sailor::Settings::ParseProjectGraphicsSettings(
-	const std::string& payload, const std::string& sourceName) noexcept
+	const std::string& payload, std::string_view sourceName) noexcept
 {
 	return ParseSettings<ProjectGraphicsSettingsLoadResult>(payload,
 		sourceName.empty() ? "ProjectSettings.yaml" : sourceName);
 }
 
 EditorGraphicsSettingsLoadResult Sailor::Settings::ParseEditorGraphicsSettings(
-	const std::string& payload, const std::string& sourceName) noexcept
+	const std::string& payload, std::string_view sourceName) noexcept
 {
 	return ParseSettings<EditorGraphicsSettingsLoadResult>(payload,
 		sourceName.empty() ? "EditorSettings.yaml" : sourceName);

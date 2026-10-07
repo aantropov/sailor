@@ -1,14 +1,18 @@
 #pragma once
 
 #include "Core/Defines.h"
+#include "Containers/Vector.h"
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 namespace google::protobuf
 {
 	class Message;
 }
+
+namespace Sailor::EditorViewport { struct Event; }
 
 namespace sailor::editor::v1
 {
@@ -43,7 +47,7 @@ namespace Sailor::Protocol
 		using FDispatchEditorEngineProtocolOperation = bool (*)(void* dispatchContext,
 			FEditorEngineProtocolOperation operation,
 			void* operationContext);
-		using FPullEditorViewportEvents = uint32_t (*)(void* context, char** events, uint32_t capacity);
+		using FPullEditorViewportEvents = TVector<EditorViewport::Event> (*)(void* context, uint32_t capacity);
 		using FLifecycleRoutine = void (*)(void* context);
 
 		void* m_context = nullptr;
@@ -71,7 +75,7 @@ namespace Sailor::Protocol
 			sailor::editor::v1::ProtocolResponse& response,
 			const EditorEngineProtocolDependencies& dependencies);
 		void StopEngine(const EditorEngineProtocolDependencies& dependencies);
-		void SetError(sailor::editor::v1::ProtocolResponse& response, const std::string& error);
+		void SetError(sailor::editor::v1::ProtocolResponse& response, std::string_view error);
 		void SetEmptyResult(sailor::editor::v1::ProtocolResponse& response);
 		void SetBoolResult(sailor::editor::v1::ProtocolResponse& response, bool value);
 		void SetStringResult(sailor::editor::v1::ProtocolResponse& response, const char* value, uint32_t length);
@@ -100,8 +104,10 @@ namespace Sailor::Protocol
 		const EditorEngineProtocolDependencies& dependencies);
 
 	void FreeEditorEngineProtocolBuffer(uint8_t* buffer) noexcept;
+	bool SetMacViewportHost(uint64_t viewportId, uintptr_t layer);
 	void RequestEditorEngineProtocolStop();
 	void WaitForEditorEngineProtocolStartDrain();
+	void DrainEditorEngineProtocolForShutdown();
 	void ResetEditorEngineProtocolLifecycle();
 	void FailEditorEngineProtocolShutdown();
 }

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <string_view>
 
 namespace Sailor::Platform
 {
@@ -38,7 +39,7 @@ namespace Sailor::Platform
 
 	inline EAtomicWriteResult AtomicWriteFile(
 		const std::filesystem::path& target,
-		const std::string& text,
+		std::string_view text,
 		std::string& outDiagnostic,
 		EAtomicWriteMode mode = EAtomicWriteMode::ReplaceExisting) noexcept
 	{

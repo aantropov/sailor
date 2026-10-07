@@ -8,6 +8,7 @@
 #include "VertexDescription.h"
 #include "Tasks/Scheduler.h"
 #include "Core/LogMacros.h"
+#include "Material.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -26,7 +27,7 @@ void IGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const void* pVertices, si
 	const VkDeviceSize indexBufferSize = indexBuffer;
 
 	RHI::RHICommandListPtr cmdList = CreateCommandList(false, RHI::ECommandListQueue::Transfer);
-	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "UpdateMesh");
+	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "UpdateMesh"_h);
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 
 	// Handle both buffers in memory closier each other
@@ -46,16 +47,12 @@ void IGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const void* pVertices, si
 
 	// Create fences to track the state of mesh creation
 	RHI::RHIFencePtr fence = RHI::RHIFencePtr::Make();
-	RHI::Renderer::GetDriver()->SetDebugName(fence, "Update Mesh");
+	RHI::Renderer::GetDriver()->SetDebugName(fence, "Update Mesh"_h);
 
 	TrackDelayedInitialization(mesh.GetRawPtr(), fence);
 
-	// Submit cmd lists
-	SAILOR_ENQUEUE_TASK_RENDER_THREAD("Create mesh",
-		([this, cmdList, fence]()
-			{
-				SubmitCommandList(cmdList, fence);
-			}));
+	// Keep submission failure visible to the importing task; GPU completion stays asynchronous.
+	SubmitCommandList(cmdList, fence);
 }
 
 TRefPtr<RHI::RHIMesh> IGraphicsDriver::CreateMesh()
@@ -113,7 +110,7 @@ bool IGraphicsDriver::SubmitCommandList_Immediate(RHICommandListPtr commandList)
 {
 	RHIFencePtr fence = RHIFencePtr::Make();
 	if (!SubmitCommandList(commandList, fence)) return false;
-	SetDebugName(fence, "SubmitCommandList_Immediate");
+	SetDebugName(fence, "SubmitCommandList_Immediate"_h);
 	const auto status = fence->Wait();
 	TrackResources_ThreadSafe();
 	return status == EFenceStatus::Finished;
@@ -160,7 +157,7 @@ RHI::RHIRenderTargetPtr IGraphicsDriver::GetOrAddTemporaryRenderTarget(RHI::EFor
 	}
 
 	auto rt = CreateRenderTarget(extent, mipLevels, textureFormat, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage);
-	if (rt) SetDebugName(rt, "Temporary render target");
+	if (rt) SetDebugName(rt, "Temporary render target"_h);
 
 	return rt;
 }
@@ -179,14 +176,12 @@ void IGraphicsDriver::ReleaseTemporaryRenderTarget(RHI::RHIRenderTargetPtr rende
 	m_temporaryRenderTargets.Unlock(hash);
 }
 
-void IGraphicsDriverCommands::ParseParameter(const std::string& parameter, std::string& outBinding, std::string& outVariable)
+void IGraphicsDriverCommands::ParseParameter(StringHash parameter, StringHash& outBinding, StringHash& outVariable)
 {
-	TVector<std::string> splittedString = Utils::SplitString(parameter, ".");
-	outBinding = splittedString[0];
-	outVariable = splittedString[1];
+	RHIShaderBindingSet::ParseParameter(parameter, outBinding, outVariable);
 }
 
-void IGraphicsDriverCommands::UpdateShaderBindingVariable(RHI::RHICommandListPtr cmd, RHI::RHIShaderBindingPtr shaderBinding, const std::string& variable, const void* value, size_t size, uint32_t indexInArray)
+void IGraphicsDriverCommands::UpdateShaderBindingVariable(RHI::RHICommandListPtr cmd, RHI::RHIShaderBindingPtr shaderBinding, StringHash variable, const void* value, size_t size, uint32_t indexInArray)
 {
 	SAILOR_PROFILE_FUNCTION();
 

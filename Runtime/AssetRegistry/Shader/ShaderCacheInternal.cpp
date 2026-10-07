@@ -2,15 +2,19 @@
 
 #include "AssetRegistry/AssetRegistry.h"
 
+#include "Workspace/WorkspacePathEncoding.h"
+
 #include <algorithm>
 #include <cctype>
+
+using namespace Sailor::Workspace;
 
 namespace
 {
 	bool PathsEqual(const std::filesystem::path& lhs, const std::filesystem::path& rhs)
 	{
-		std::string left = lhs.generic_string();
-		std::string right = rhs.generic_string();
+		std::string left = PathToUtf8(lhs);
+		std::string right = PathToUtf8(rhs);
 #if defined(_WIN32)
 		std::transform(left.begin(),
 			left.end(),
@@ -36,7 +40,7 @@ bool Sailor::ShaderCacheInternal::ResolveDirectCacheChild(const std::filesystem:
 	if (error)
 	{
 		outDiagnostic =
-			"Cannot canonicalize shader cache root '" + cacheRoot.generic_string() + "': " + error.message();
+			"Cannot canonicalize shader cache root '" + PathToUtf8(cacheRoot) + "': " + error.message();
 		return false;
 	}
 
@@ -45,14 +49,14 @@ bool Sailor::ShaderCacheInternal::ResolveDirectCacheChild(const std::filesystem:
 	if (error)
 	{
 		outDiagnostic =
-			"Cannot canonicalize shader cache path '" + candidate.generic_string() + "': " + error.message();
+			"Cannot canonicalize shader cache path '" + PathToUtf8(candidate) + "': " + error.message();
 		return false;
 	}
 
 	if (!PathsEqual(outCanonical.parent_path(), canonicalRoot))
 	{
 		outDiagnostic =
-			"Refusing shader cache access outside canonical cache root: '" + candidate.generic_string() + "'.";
+			"Refusing shader cache access outside canonical cache root: '" + PathToUtf8(candidate) + "'.";
 		return false;
 	}
 	return true;
@@ -61,10 +65,10 @@ bool Sailor::ShaderCacheInternal::ResolveDirectCacheChild(const std::filesystem:
 std::string Sailor::ShaderCacheInternal::NormalizeDependencyPath(const std::filesystem::path& path)
 {
 	std::error_code error;
-	std::string result = std::filesystem::weakly_canonical(path, error).generic_string();
+	std::string result = PathToUtf8(std::filesystem::weakly_canonical(path, error));
 	if (error)
 	{
-		result = path.lexically_normal().generic_string();
+		result = PathToUtf8(path.lexically_normal());
 	}
 #if defined(_WIN32)
 	std::transform(result.begin(),
@@ -75,9 +79,9 @@ std::string Sailor::ShaderCacheInternal::NormalizeDependencyPath(const std::file
 	return result;
 }
 
-std::string Sailor::ShaderCacheInternal::NormalizeDependencyVirtualPath(const std::string& path)
+std::string Sailor::ShaderCacheInternal::NormalizeDependencyVirtualPath(std::string_view path)
 {
-	std::string result = std::filesystem::path(path).lexically_normal().generic_string();
+	std::string result = PathToUtf8(PathFromUtf8(path).lexically_normal());
 #if defined(_WIN32)
 	std::transform(result.begin(),
 		result.end(),
@@ -89,22 +93,30 @@ std::string Sailor::ShaderCacheInternal::NormalizeDependencyVirtualPath(const st
 
 std::filesystem::path Sailor::ShaderCacheInternal::GetCacheChildPath(const char* child)
 {
-	return std::filesystem::path(AssetRegistry::GetCacheFolder()) / child;
+	return PathFromUtf8(AssetRegistry::GetCacheFolder()) / child;
 }
 
 std::filesystem::path Sailor::ShaderCacheInternal::GetShaderFilepath(const std::filesystem::path& folder,
 	const FileId& uid,
 	int32_t permutation,
-	const std::string& shaderKind,
-	const char* extension,
-	const std::string& generation)
+	std::string_view shaderKind,
+	std::string_view extension,
+	std::string_view generation)
 {
-	const std::string filename = uid.ToString() + shaderKind + std::to_string(permutation) +
-								 (generation.empty() ? std::string() : "." + generation) + "." + extension;
-	return folder / filename;
+	std::string filename = uid.ToString();
+	filename += shaderKind;
+	filename += std::to_string(permutation);
+	if (!generation.empty())
+	{
+		filename += '.';
+		filename += generation;
+	}
+	filename += '.';
+	filename += extension;
+	return folder / PathFromUtf8(filename);
 }
 
-void Sailor::ShaderCacheInternal::AppendDiagnostic(std::string& diagnostic, const std::string& suffix)
+void Sailor::ShaderCacheInternal::AppendDiagnostic(std::string& diagnostic, std::string_view suffix)
 {
 	if (suffix.empty())
 	{
@@ -143,7 +155,7 @@ bool Sailor::ShaderCacheInternal::RemovePath(const std::filesystem::path& cacheR
 	if (error)
 	{
 		AppendDiagnostic(
-			outDiagnostic, "Cannot remove shader cache path '" + path.generic_string() + "': " + error.message());
+			outDiagnostic, "Cannot remove shader cache path '" + PathToUtf8(path) + "': " + error.message());
 		return false;
 	}
 	return true;
@@ -163,13 +175,13 @@ bool Sailor::ShaderCacheInternal::ResolveOwnedArtifactPath(const std::filesystem
 	{
 		outIoFailure = error != std::errc::no_such_file_or_directory;
 		outDiagnostic =
-			"Cannot inspect owned shader cache directory '" + ownedDirectory.generic_string() + "': " + error.message();
+			"Cannot inspect owned shader cache directory '" + PathToUtf8(ownedDirectory) + "': " + error.message();
 		return false;
 	}
 	if (std::filesystem::is_symlink(status))
 	{
 		outDiagnostic = "Refusing shader artifact access through symlinked cache directory '" +
-						ownedDirectory.generic_string() + "'.";
+						PathToUtf8(ownedDirectory) + "'.";
 		return false;
 	}
 
@@ -178,7 +190,7 @@ bool Sailor::ShaderCacheInternal::ResolveOwnedArtifactPath(const std::filesystem
 	{
 		outIoFailure = true;
 		outDiagnostic =
-			"Cannot canonicalize shader cache root '" + cacheRoot.generic_string() + "': " + error.message();
+			"Cannot canonicalize shader cache root '" + PathToUtf8(cacheRoot) + "': " + error.message();
 		return false;
 	}
 
@@ -187,14 +199,14 @@ bool Sailor::ShaderCacheInternal::ResolveOwnedArtifactPath(const std::filesystem
 	if (error)
 	{
 		outIoFailure = true;
-		outDiagnostic = "Cannot canonicalize owned shader cache directory '" + ownedDirectory.generic_string() +
+		outDiagnostic = "Cannot canonicalize owned shader cache directory '" + PathToUtf8(ownedDirectory) +
 						"': " + error.message();
 		return false;
 	}
 	if (!PathsEqual(canonicalDirectory.parent_path(), canonicalRoot))
 	{
 		outDiagnostic =
-			"Refusing shader artifact access outside the canonical cache root: '" + artifact.generic_string() + "'.";
+			"Refusing shader artifact access outside the canonical cache root: '" + PathToUtf8(artifact) + "'.";
 		return false;
 	}
 
@@ -203,13 +215,13 @@ bool Sailor::ShaderCacheInternal::ResolveOwnedArtifactPath(const std::filesystem
 	if (error)
 	{
 		outIoFailure = error != std::errc::no_such_file_or_directory;
-		outDiagnostic = "Cannot canonicalize shader artifact '" + artifact.generic_string() + "': " + error.message();
+		outDiagnostic = "Cannot canonicalize shader artifact '" + PathToUtf8(artifact) + "': " + error.message();
 		return false;
 	}
 	if (!PathsEqual(outCanonicalArtifact.parent_path(), canonicalDirectory))
 	{
 		outDiagnostic = "Refusing shader artifact access outside owned directory '" +
-						canonicalDirectory.generic_string() + "': '" + artifact.generic_string() + "'.";
+						PathToUtf8(canonicalDirectory) + "': '" + PathToUtf8(artifact) + "'.";
 		return false;
 	}
 	return true;
@@ -233,7 +245,7 @@ bool Sailor::ShaderCacheInternal::RemoveOwnedArtifact(const std::filesystem::pat
 	if (error)
 	{
 		AppendDiagnostic(outDiagnostic,
-			"Cannot remove shader cache artifact '" + artifact.generic_string() + "': " + error.message());
+			"Cannot remove shader cache artifact '" + PathToUtf8(artifact) + "': " + error.message());
 		return false;
 	}
 	return true;

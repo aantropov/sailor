@@ -21,12 +21,12 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 		return;
 	}
 	const uint32_t flightSlot = sceneView->m_submissionContext->GetFlightSlot();
-	if (m_shadowFlightResources.Num() <= flightSlot)
+	if (m_shadows.m_flights.Num() <= flightSlot)
 	{
-		m_shadowFlightResources.Resize(static_cast<size_t>(flightSlot) + 1u);
+		m_shadows.m_flights.Resize(static_cast<size_t>(flightSlot) + 1u);
 	}
-	auto& flightResources = m_shadowFlightResources[flightSlot];
-	m_writableLocalShadowAtlases.reset();
+	auto& flightResources = m_shadows.m_flights[flightSlot];
+	m_shadows.m_writableLocalAtlases.reset();
 	uint32_t snapshotIndex = 0;
 	const glm::ivec2 viewportExtent = App::GetMainWindow()->GetRenderArea();
 	const Settings::GraphicsExtent renderExtent =
@@ -85,28 +85,31 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 			camera.GetZFar());
 
 		// Sort all the lights per camera
-		m_directionalLightsScratch.Clear(false);
-		m_pointLightsScratch.Clear(false);
-		m_spotLightsScratch.Clear(false);
+		std::optional<RHI::RHILightProxy> directionalLight;
+		m_shadows.m_pointLightsScratch.Clear(false);
+		m_shadows.m_spotLightsScratch.Clear(false);
 
 		GetLightsInFrustum(frustum,
 			sceneView->m_cameraTransforms[i],
-			m_directionalLightsScratch,
-			m_pointLightsScratch,
-			m_spotLightsScratch);
+			directionalLight,
+			m_shadows.m_pointLightsScratch,
+			m_shadows.m_spotLightsScratch);
 
 		const uint32_t cameraCsmSnapshotStart = snapshotIndex;
-		PrepareCSMPasses(sceneView,
-			sceneView->m_cameraTransforms[i],
-			camera,
-			m_directionalLightsScratch,
-			flightSlot,
-			flightResources,
-			snapshotIndex,
-			updateShadowMaps);
+		if (directionalLight)
+		{
+			PrepareCSMPasses(sceneView,
+				sceneView->m_cameraTransforms[i],
+				camera,
+				*directionalLight,
+				flightSlot,
+				flightResources,
+				snapshotIndex,
+				updateShadowMaps);
+		}
 		PrepareLocalShadowPasses(sceneView,
-			m_spotLightsScratch,
-			m_pointLightsScratch,
+			m_shadows.m_spotLightsScratch,
+			m_shadows.m_pointLightsScratch,
 			sceneView->m_cameraTransforms[i],
 			camera,
 			viewportHeight,
@@ -116,13 +119,14 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 			shadowAtlasTiles,
 			updateShadowMaps);
 		for (uint32_t cascadeIndex = 0u;
-			cascadeIndex < NumCascades && cameraCsmSnapshotStart + cascadeIndex < flightResources.m_csmSnapshots.Num();
+			cascadeIndex < snapshotIndex - cameraCsmSnapshotStart &&
+				cameraCsmSnapshotStart + cascadeIndex < flightResources.m_csmSnapshots.Num();
 			++cascadeIndex)
 		{
 			shadowMatrices[cascadeIndex] =
 				flightResources.m_csmSnapshots[cameraCsmSnapshotStart + cascadeIndex].m_lightMatrix;
 		}
-		for (const auto& allocation : m_localShadowAllocations)
+		for (const auto& allocation : m_shadows.m_localAllocations)
 		{
 			if (allocation.m_componentIndex == InvalidShadowMapIndex ||
 				allocation.m_componentIndex >= shadowIndices.Num() ||
@@ -152,11 +156,11 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 				shadowMatrices[slot] = flightSnapshots[face].m_lightMatrix;
 			}
 		}
-		if (m_bShadowMapBindingsDirty)
+		if (m_shadows.m_bBindingsDirty)
 		{
 			PublishShadowMapBindings();
 		}
-		sceneView->m_rhiLightsDataPerCamera.Add(m_lightsData);
+		sceneView->m_rhiLightsDataPerCamera.Add(m_shadows.m_bindings);
 	}
 
 	if (flightResources.m_csmSnapshots.Num() > snapshotIndex)
@@ -166,13 +170,13 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 
 	ReleaseUnusedLocalShadowAllocations(GetWorld()->GetCurrentFrame());
 	ReleaseUnusedLocalShadowAtlases();
-	if (m_bShadowMapBindingsDirty)
+	if (m_shadows.m_bBindingsDirty)
 	{
 		PublishShadowMapBindings();
 	}
 
 	sceneView->m_totalNumLights = m_numLights;
-	sceneView->m_rhiLightsData = m_lightsData;
+	sceneView->m_rhiLightsData = m_shadows.m_bindings;
 	sceneView->m_cpuLightsData = m_publishedLightsData;
 	sceneView->m_lightingRevision = m_lightingRevision;
 }

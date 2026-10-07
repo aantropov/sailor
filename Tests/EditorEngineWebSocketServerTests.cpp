@@ -18,6 +18,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #if !defined(_WIN32)
@@ -46,29 +47,11 @@ namespace
 
 	using namespace Sailor::Tests::ProtocolWire;
 
-	bool ReadNestedScalar(
-		const std::string& payload,
-		uint64_t& outValue)
-	{
-		outValue = 0u;
-		if (payload.empty())
-		{
-			return true;
-		}
-
-		size_t offset = 0u;
-		uint64_t key = 0u;
-		return ReadVarint(payload, offset, key) &&
-			key == 8u &&
-			ReadVarint(payload, offset, outValue) &&
-			offset == payload.size();
-	}
-
-	void Require(const bool condition, const std::string& message)
+	void Require(const bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 

@@ -1,6 +1,8 @@
 #include "TaskTestApp.h"
 #include "Sailor.h"
 #include "Tasks/Scheduler.h"
+#include "AssetRegistry/Animation/AnimationImporter.h"
+#include "Audio/AudioSystem.h"
 
 #include <stdexcept>
 
@@ -18,6 +20,8 @@ Tests::TaskTestApp::TaskTestApp()
 
 Tests::TaskTestApp::~TaskTestApp()
 {
+	App::RemoveSubmodule<AnimationImporter>();
+	App::RemoveSubmodule<AudioSystem>();
 	App::RemoveSubmodule<Tasks::Scheduler>();
 	delete App::s_pInstance;
 	App::s_pInstance = nullptr;
@@ -26,4 +30,14 @@ Tests::TaskTestApp::~TaskTestApp()
 Tasks::Scheduler& Tests::TaskTestApp::GetScheduler() const
 {
 	return *App::GetSubmodule<Tasks::Scheduler>();
+}
+
+AnimationImporter& Tests::TaskTestApp::AddAnimationImporter(AnimationAssetInfoHandler& handler)
+{
+	return *App::AddSubmodule(TSubmodule<AnimationImporter>::Make(&handler));
+}
+
+AudioSystem& Tests::TaskTestApp::AddAudioSystem()
+{
+	return *App::AddSubmodule(TSubmodule<AudioSystem>::Make(true));
 }

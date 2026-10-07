@@ -197,9 +197,9 @@ public class ComponentYamlConverter : IYamlTypeConverter
     readonly IDeserializer bufferedDeserializer = SerializationUtils
         .CreateDeserializerBuilder()
         .Build();
-    readonly ISerializer bufferedSerializer = SerializationUtils
+    readonly IValueSerializer bufferedValueSerializer = SerializationUtils
         .CreateSerializerBuilder()
-        .Build();
+        .BuildValueSerializer();
 
     public bool Accepts(Type type) => type == typeof(Component);
 
@@ -215,6 +215,7 @@ public class ComponentYamlConverter : IYamlTypeConverter
             throw new YamlException($"Unknown component type '{document.Typename}'.");
 
         var component = new Component { Typename = componentType };
+        var values = new ReflectedValueCodec(catalog);
         foreach (var property in document.OverrideProperties ?? [])
         {
             var propertyAccess = EditorComponentPropertyContract.Classify(
@@ -232,212 +233,11 @@ public class ComponentYamlConverter : IYamlTypeConverter
                     $"Unknown property '{property.Key}' for component type '{componentType.Name}'.");
             }
 
-            var propType = componentType.Properties[property.Key];
-            var scalar = Convert.ToString(property.Value, CultureInfo.InvariantCulture) ?? string.Empty;
-            ObservableObject value = propType switch
-            {
-                RotationProperty => DeserializeBuffered<Rotation>(property.Value, bufferedSerializer, bufferedDeserializer),
-                Vec4Property => DeserializeBuffered<Vec4>(property.Value, bufferedSerializer, bufferedDeserializer),
-                Vec3Property => DeserializeBuffered<Vec3>(property.Value, bufferedSerializer, bufferedDeserializer),
-                Vec2Property => DeserializeBuffered<Vec2>(property.Value, bufferedSerializer, bufferedDeserializer),
-                FileIdProperty => new Observable<FileId>(scalar),
-                Property<List<FileId>> => DeserializeFileIdList(
-                    property.Value,
-                    bufferedSerializer,
-                    bufferedDeserializer),
-                Property<List<float>> => DeserializeFloatList(
-                    property.Value,
-                    bufferedSerializer,
-                    bufferedDeserializer),
-                InstanceIdProperty => new Observable<InstanceId>(scalar),
-                FloatProperty => new Observable<float>((float)EditorComponentScalarCodec.Parse(
-                    EditorComponentScalarKind.Float,
-                    scalar)),
-                ObjectPtrProperty => property.Value is null
-                    ? new ObjectPtr()
-                    : DeserializeBuffered<ObjectPtr>(property.Value, bufferedSerializer, bufferedDeserializer),
-                EnumProperty enumProperty => new Observable<string>(ParseEnumOverride(
-                    catalog,
-                    componentType,
-                    property.Key,
-                    enumProperty,
-                    scalar)),
-                Property<string> => new Observable<string>((string)EditorComponentScalarCodec.Parse(
-                    EditorComponentScalarKind.String,
-                    scalar)),
-                Property<bool> => new Observable<bool>((bool)EditorComponentScalarCodec.Parse(
-                    EditorComponentScalarKind.Boolean,
-                    scalar)),
-                Property<int> => new Observable<int>((int)EditorComponentScalarCodec.Parse(
-                    EditorComponentScalarKind.Int32,
-                    scalar)),
-                Property<uint> => new Observable<uint>((uint)EditorComponentScalarCodec.Parse(
-                    EditorComponentScalarKind.UInt32,
-                    scalar)),
-                _ => throw new InvalidOperationException($"Unexpected property type: {propType.GetType().Name}")
-            };
-
-            component.OverrideProperties[property.Key] = value;
+            component.OverrideProperties[property.Key] = values.Read(
+                componentType.Properties[property.Key], property.Value, componentType.Name, property.Key);
         }
-
-        AddMissingLandscapeVegetationProperties(component, document.Typename);
 
         return component;
-    }
-
-    static void AddMissingLandscapeVegetationProperties(
-        Component component,
-        string componentTypeName)
-    {
-        if (!string.Equals(
-                componentTypeName,
-                "Sailor::LandscapeComponent",
-                StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        if (component.Typename.Properties.ContainsKey("heightmapTexture") &&
-            !component.OverrideProperties.ContainsKey("heightmapTexture"))
-        {
-            component.OverrideProperties["heightmapTexture"] =
-                new Observable<FileId>(new FileId());
-        }
-
-        if (component.Typename.Properties.ContainsKey("materialMasks") &&
-            !component.OverrideProperties.ContainsKey("materialMasks"))
-        {
-            component.OverrideProperties["materialMasks"] = new ObservableFileIdList();
-        }
-
-        if (component.Typename.Properties.ContainsKey("lodDistances") &&
-            !component.OverrideProperties.ContainsKey("lodDistances"))
-        {
-            component.OverrideProperties["lodDistances"] =
-                new ObservableFloatList([96.0f, 192.0f]);
-        }
-        if (component.Typename.Properties.ContainsKey("lodSkirtDepth") &&
-            !component.OverrideProperties.ContainsKey("lodSkirtDepth"))
-        {
-            component.OverrideProperties["lodSkirtDepth"] = new Observable<float>(2.0f);
-        }
-        if (component.Typename.Properties.ContainsKey("grassResidencyHysteresis") &&
-            !component.OverrideProperties.ContainsKey("grassResidencyHysteresis"))
-        {
-            component.OverrideProperties["grassResidencyHysteresis"] = new Observable<float>(12.0f);
-        }
-        if (component.Typename.Properties.ContainsKey("vegetation") &&
-            !component.OverrideProperties.ContainsKey("vegetation"))
-        {
-            component.OverrideProperties["vegetation"] =
-                new Observable<FileId>(new FileId());
-        }
-        if (component.Typename.Properties.ContainsKey("saveVegetation") &&
-            !component.OverrideProperties.ContainsKey("saveVegetation"))
-        {
-            component.OverrideProperties["saveVegetation"] =
-                new Observable<bool>(false);
-        }
-
-        if (!component.OverrideProperties.TryGetValue(
-                "vegetationModels",
-                out var modelsProperty) ||
-            modelsProperty is not ObservableFileIdList models)
-        {
-            return;
-        }
-
-        (string Name, float DefaultValue)[] properties =
-        [
-            ("vegetationMeshIndex", -1.0f),
-            ("vegetationResidency", 0.0f),
-            ("vegetationPriority", 1.0f),
-            ("vegetationMinLod", 0.0f),
-            ("vegetationMaxLod", 2.0f),
-            ("vegetationLod1ScreenCoverage", 0.25f),
-            ("vegetationLod2ScreenCoverage", 0.05f),
-            ("vegetationCullDistance", 120.0f),
-            ("vegetationColliderRadius", 0.0f),
-            ("vegetationColliderHeight", 2.0f),
-            ("vegetationColliderOffsetY", 1.0f)
-        ];
-
-        foreach (var property in properties)
-        {
-            if (!component.Typename.Properties.ContainsKey(property.Name) ||
-                component.OverrideProperties.ContainsKey(property.Name))
-            {
-                continue;
-            }
-
-            component.OverrideProperties[property.Name] = new ObservableFloatList(
-                Enumerable.Repeat(property.DefaultValue, models.Values.Count));
-        }
-    }
-
-    static string ParseEnumOverride(
-        EngineTypes catalog,
-        ComponentType componentType,
-        string propertyName,
-        EnumProperty enumProperty,
-        string scalar)
-    {
-        if (!catalog.Enums.TryGetValue(enumProperty.Typename, out var allowedValues))
-        {
-            throw new YamlException(
-                $"Missing enum metadata '{enumProperty.Typename}' for " +
-                $"'{componentType.Name}.{propertyName}'.");
-        }
-
-        var value = (string)EditorComponentScalarCodec.Parse(
-            EditorComponentScalarKind.String,
-            scalar);
-        try
-        {
-            return EditorComponentPropertyContract.ValidateEnumValue(
-                componentType.Name,
-                propertyName,
-                enumProperty.Typename,
-                value,
-                allowedValues);
-        }
-        catch (InvalidDataException ex)
-        {
-            throw new YamlException(ex.Message);
-        }
-    }
-
-    static T DeserializeBuffered<T>(object value, ISerializer serializer, IDeserializer deserializer)
-        => deserializer.Deserialize<T>(serializer.Serialize(value));
-
-    static ObservableFileIdList DeserializeFileIdList(
-        object? value,
-        ISerializer serializer,
-        IDeserializer deserializer)
-    {
-        if (value is null)
-            return new ObservableFileIdList();
-
-        return new ObservableFileIdList(
-            DeserializeBuffered<List<FileId>>(
-                value,
-                serializer,
-                deserializer) ?? []);
-    }
-
-    static ObservableFloatList DeserializeFloatList(
-        object? value,
-        ISerializer serializer,
-        IDeserializer deserializer)
-    {
-        if (value is null)
-            return new ObservableFloatList();
-
-        return new ObservableFloatList(
-            DeserializeBuffered<List<float>>(
-                value,
-                serializer,
-                deserializer) ?? []);
     }
 
     public void WriteYaml(IEmitter emitter, object value, Type type)
@@ -453,100 +253,17 @@ public class ComponentYamlConverter : IYamlTypeConverter
         emitter.Emit(new Scalar(null, "overrideProperties"));
         emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));
 
-        var vec3Converter = new Vec3YamlConverter();
-        var vec4Converter = new Vec4YamlConverter();
-        var vec2Converter = new Vec2YamlConverter();
-        var quatConverter = new QuatYamlConverter();
-        var rotationConverter = new RotationYamlConverter();
-        var fileIdConverter = new FileIdYamlConverter();
-        var instanceIdConverter = new InstanceIdYamlConverter();
-        var objPtrConverter = new ObjectPtrYamlConverter();
-
+        var values = new ReflectedValueCodec(MauiProgram.GetService<EngineService>().EngineTypes);
         foreach (var kvp in component.OverrideProperties)
         {
             emitter.Emit(new Scalar(null, kvp.Key));
-
-            switch (kvp.Value)
-            {
-                case Quat quat:
-                    quatConverter.WriteYaml(emitter, quat, typeof(Quat));
-                    break;
-                case Rotation rot:
-                    rotationConverter.WriteYaml(emitter, rot, typeof(Rotation));
-                    break;
-                case Vec3 vec3:
-                    vec3Converter.WriteYaml(emitter, vec3, typeof(Vec3));
-                    break;
-                case Vec4 vec4:
-                    vec4Converter.WriteYaml(emitter, vec4, typeof(Vec4));
-                    break;
-                case Vec2 vec2:
-                    vec2Converter.WriteYaml(emitter, vec2, typeof(Vec2));
-                    break;
-                case Observable<FileId> assetId:
-                    fileIdConverter.WriteYaml(emitter, assetId.Value, typeof(FileId));
-                    break;
-                case ObservableFileIdList assetIds:
-                    emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
-                    foreach (var assetId in assetIds.Values)
-                    {
-                        fileIdConverter.WriteYaml(
-                            emitter,
-                            assetId.Value ?? new FileId(),
-                            typeof(FileId));
-                    }
-                    emitter.Emit(new SequenceEnd());
-                    break;
-                case ObservableFloatList floatValues:
-                    emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
-                    foreach (var floatValue in floatValues.Values)
-                    {
-                        emitter.Emit(new Scalar(null, EditorComponentScalarCodec.Format(
-                            EditorComponentScalarKind.Float,
-                            floatValue.Value)));
-                    }
-                    emitter.Emit(new SequenceEnd());
-                    break;
-                case Observable<InstanceId> id:
-                    instanceIdConverter.WriteYaml(emitter, id.Value, typeof(InstanceId));
-                    break;
-                case Observable<string> str:
-                    emitter.Emit(new Scalar(null, EditorComponentScalarCodec.Format(
-                        EditorComponentScalarKind.String,
-                        str.Value)));
-                    break;
-                case Observable<bool> boolValue:
-                    emitter.Emit(new Scalar(null, EditorComponentScalarCodec.Format(
-                        EditorComponentScalarKind.Boolean,
-                        boolValue.Value)));
-                    break;
-                case Observable<int> intValue:
-                    emitter.Emit(new Scalar(null, EditorComponentScalarCodec.Format(
-                        EditorComponentScalarKind.Int32,
-                        intValue.Value)));
-                    break;
-                case Observable<uint> uintValue:
-                    emitter.Emit(new Scalar(null, EditorComponentScalarCodec.Format(
-                        EditorComponentScalarKind.UInt32,
-                        uintValue.Value)));
-                    break;
-                case Observable<float> floatVal:
-                    emitter.Emit(new Scalar(null, EditorComponentScalarCodec.Format(
-                        EditorComponentScalarKind.Float,
-                        floatVal.Value)));
-                    break;
-                case ObjectPtr objPtr:
-                    objPtrConverter.WriteYaml(emitter, objPtr, typeof(ObjectPtr));
-                    break;
-                default:
-                    throw new InvalidOperationException($"Unexpected property type: {kvp.Value.GetType().Name}");
-            }
+            values.Write(emitter, kvp.Value);
         }
 
         foreach (var kvp in component.PreservedReadOnlyProperties)
         {
             emitter.Emit(new Scalar(null, kvp.Key));
-            bufferedSerializer.Serialize(emitter, kvp.Value);
+            bufferedValueSerializer.SerializeValue(emitter, kvp.Value, null);
         }
 
         emitter.Emit(new MappingEnd());

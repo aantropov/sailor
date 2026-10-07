@@ -12,7 +12,7 @@
 using namespace Sailor;
 using namespace Sailor::Tasks;
 
-GameObject::GameObject(WorldPtr world, const std::string& name) : m_name(name), m_pWorld(world)
+GameObject::GameObject(WorldPtr world, std::string_view name) : m_name(name), m_pWorld(world)
 {
 	m_transformHandle = m_pWorld->GetECS<TransformECS>()->RegisterComponent();
 }

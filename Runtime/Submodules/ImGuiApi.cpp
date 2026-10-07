@@ -9,6 +9,7 @@
 #include "Core/LogMacros.h"
 #include "Tasks/Scheduler.h"
 #include "AssetRegistry/AssetRegistry.h"
+#include "Platform/Win32/Input.h"
 
 #include "Memory/MemoryBlockAllocator.hpp"
 #include "RHI/Renderer.h"
@@ -17,6 +18,7 @@
 #include "RHI/VertexDescription.h"
 #include "Sailor.h"
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 
@@ -32,184 +34,135 @@ void ImGuiApi::GetAllocatorFunctions(ImGuiMemAllocFunc* alloc, ImGuiMemFreeFunc*
 	ImGui::GetAllocatorFunctions(alloc, free, userData);
 }
 
-#if defined(_WIN32)
-extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-#endif
-
-#if defined(_WIN32)
-void ImGuiApi::HandleWin32(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+namespace
 {
-	SAILOR_PROFILE_FUNCTION();
-	ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
+	// COUNT represents no native cursor override; None hides the native cursor.
+	std::atomic<ImGuiMouseCursor> g_requestedMouseCursor{ ImGuiMouseCursor_COUNT };
+
+	// Native adapters and the editor protocol use the same virtual-key codes.
+	ImGuiKey MapInputKey(uint32_t key)
+	{
+		if (key >= '0' && key <= '9') return static_cast<ImGuiKey>(ImGuiKey_0 + key - '0');
+		if (key >= 'A' && key <= 'Z') return static_cast<ImGuiKey>(ImGuiKey_A + key - 'A');
+		if (key >= 0x70 && key <= 0x87) return static_cast<ImGuiKey>(ImGuiKey_F1 + key - 0x70);
+		if (key >= 0x60 && key <= 0x69) return static_cast<ImGuiKey>(ImGuiKey_Keypad0 + key - 0x60);
+		switch (key)
+		{
+		case 0x08: return ImGuiKey_Backspace;
+		case 0x09: return ImGuiKey_Tab;
+		case 0x0D: return ImGuiKey_Enter;
+		case 0x13: return ImGuiKey_Pause;
+		case 0x14: return ImGuiKey_CapsLock;
+		case 0x1B: return ImGuiKey_Escape;
+		case 0x20: return ImGuiKey_Space;
+		case 0x21: return ImGuiKey_PageUp;
+		case 0x22: return ImGuiKey_PageDown;
+		case 0x23: return ImGuiKey_End;
+		case 0x24: return ImGuiKey_Home;
+		case 0x25: return ImGuiKey_LeftArrow;
+		case 0x26: return ImGuiKey_UpArrow;
+		case 0x27: return ImGuiKey_RightArrow;
+		case 0x28: return ImGuiKey_DownArrow;
+		case 0x2C: return ImGuiKey_PrintScreen;
+		case 0x2D: return ImGuiKey_Insert;
+		case 0x2E: return ImGuiKey_Delete;
+		case 0x5B: return ImGuiKey_LeftSuper;
+		case 0x5C: return ImGuiKey_RightSuper;
+		case 0x5D: return ImGuiKey_Menu;
+		case 0x6A: return ImGuiKey_KeypadMultiply;
+		case 0x6B: return ImGuiKey_KeypadAdd;
+		case 0x6D: return ImGuiKey_KeypadSubtract;
+		case 0x6E: return ImGuiKey_KeypadDecimal;
+		case 0x6F: return ImGuiKey_KeypadDivide;
+		case 0x90: return ImGuiKey_NumLock;
+		case 0x91: return ImGuiKey_ScrollLock;
+		case 0xA0: return ImGuiKey_LeftShift;
+		case 0xA1: return ImGuiKey_RightShift;
+		case 0xA2: return ImGuiKey_LeftCtrl;
+		case 0xA3: return ImGuiKey_RightCtrl;
+		case 0xA4: return ImGuiKey_LeftAlt;
+		case 0xA5: return ImGuiKey_RightAlt;
+		case 0xBA: return ImGuiKey_Semicolon;
+		case 0xBB: return ImGuiKey_Equal;
+		case 0xBC: return ImGuiKey_Comma;
+		case 0xBD: return ImGuiKey_Minus;
+		case 0xBE: return ImGuiKey_Period;
+		case 0xBF: return ImGuiKey_Slash;
+		case 0xC0: return ImGuiKey_GraveAccent;
+		case 0xDB: return ImGuiKey_LeftBracket;
+		case 0xDC: return ImGuiKey_Backslash;
+		case 0xE2: return ImGuiKey_Backslash;
+		case 0xDD: return ImGuiKey_RightBracket;
+		case 0xDE: return ImGuiKey_Apostrophe;
+		default: return ImGuiKey_None;
+		}
+	}
 }
 
-static ImGuiKey SailorMapWindowsVirtualKey(uint32_t key)
+std::optional<ImGuiMouseCursor> ImGuiApi::GetRequestedMouseCursor()
 {
-	if (key >= '0' && key <= '9')
-	{
-		return static_cast<ImGuiKey>(ImGuiKey_0 + key - '0');
-	}
-
-	if (key >= 'A' && key <= 'Z')
-	{
-		return static_cast<ImGuiKey>(ImGuiKey_A + key - 'A');
-	}
-
-	if (key >= VK_F1 && key <= VK_F12)
-	{
-		return static_cast<ImGuiKey>(ImGuiKey_F1 + key - VK_F1);
-	}
-
-	switch (key)
-	{
-	case VK_TAB: return ImGuiKey_Tab;
-	case VK_LEFT: return ImGuiKey_LeftArrow;
-	case VK_RIGHT: return ImGuiKey_RightArrow;
-	case VK_UP: return ImGuiKey_UpArrow;
-	case VK_DOWN: return ImGuiKey_DownArrow;
-	case VK_PRIOR: return ImGuiKey_PageUp;
-	case VK_NEXT: return ImGuiKey_PageDown;
-	case VK_HOME: return ImGuiKey_Home;
-	case VK_END: return ImGuiKey_End;
-	case VK_INSERT: return ImGuiKey_Insert;
-	case VK_DELETE: return ImGuiKey_Delete;
-	case VK_BACK: return ImGuiKey_Backspace;
-	case VK_SPACE: return ImGuiKey_Space;
-	case VK_RETURN: return ImGuiKey_Enter;
-	case VK_ESCAPE: return ImGuiKey_Escape;
-	case VK_SHIFT:
-	case VK_LSHIFT:
-	case VK_RSHIFT:
-		return ImGuiKey_ModShift;
-	case VK_CONTROL:
-	case VK_LCONTROL:
-	case VK_RCONTROL:
-		return ImGuiKey_ModCtrl;
-	case VK_MENU:
-	case VK_LMENU:
-	case VK_RMENU:
-		return ImGuiKey_ModAlt;
-	case VK_LWIN:
-	case VK_RWIN:
-		return ImGuiKey_ModSuper;
-	default:
-		return ImGuiKey_None;
-	}
+	const auto cursor = g_requestedMouseCursor.load(std::memory_order_relaxed);
+	if (cursor == ImGuiMouseCursor_COUNT) return std::nullopt;
+	return cursor;
 }
 
-void ImGuiApi::HandleWindowsEditorInput(const WindowsEditorInputEvent& event)
+void ImGuiApi::HandleInput(const Platform::InputEvent& event)
 {
-	SAILOR_PROFILE_FUNCTION();
+	if (!ImGui::GetCurrentContext()) return;
 
-	if (!ImGui::GetCurrentContext())
-	{
-		return;
-	}
-
+	using Type = Platform::InputEvent::Type;
 	ImGuiIO& io = ImGui::GetIO();
-	switch (event.EventType)
+	if (event.m_type == Type::Reset || (event.m_type == Type::Focus && !event.m_bIsPressed))
 	{
-	case WindowsEditorInputEvent::Type::MousePos:
-		io.AddMousePosEvent(event.X, event.Y);
-		break;
-	case WindowsEditorInputEvent::Type::MouseButton:
-		if (event.Button >= 0 && event.Button < ImGuiMouseButton_COUNT)
-		{
-			io.AddMouseButtonEvent(event.Button, event.bPressed);
-		}
-		break;
-	case WindowsEditorInputEvent::Type::MouseWheel:
-		io.AddMouseWheelEvent(event.X, event.Y);
-		break;
-	case WindowsEditorInputEvent::Type::Key:
+		io.ClearEventsQueue();
+		io.ClearInputKeys();
+		io.ClearInputMouse();
+	}
+	switch (event.m_type)
 	{
-		const ImGuiKey imguiKey = SailorMapWindowsVirtualKey(event.Key);
-		if (imguiKey != ImGuiKey_None)
-		{
-			io.AddKeyEvent(imguiKey, event.bPressed);
-		}
+	case Type::MousePos:
+		io.AddMousePosEvent(event.m_x, event.m_y);
+		break;
+	case Type::MouseButton:
+		io.AddMousePosEvent(event.m_x, event.m_y);
+		if (event.m_button >= 0 && event.m_button < ImGuiMouseButton_COUNT)
+			io.AddMouseButtonEvent(event.m_button, event.m_bIsPressed);
+		break;
+	case Type::MouseWheel:
+		io.AddMouseWheelEvent(event.m_x, event.m_y);
+		break;
+	case Type::Key:
+	{
+		const auto& state = Win32::GlobalInput::GetInputState();
+		io.AddKeyEvent(ImGuiKey_ModShift, state.IsKeyDown(VK_SHIFT));
+		io.AddKeyEvent(ImGuiKey_ModCtrl, state.IsKeyDown(VK_CONTROL));
+		io.AddKeyEvent(ImGuiKey_ModAlt, state.IsKeyDown(VK_MENU));
+		io.AddKeyEvent(ImGuiKey_ModSuper, state.IsKeyDown(VK_LWIN) || state.IsKeyDown(VK_RWIN));
+		const auto key = event.m_key == 0x0D && event.m_bIsKeypad ? ImGuiKey_KeypadEnter : MapInputKey(event.m_key);
+		if (key != ImGuiKey_None)
+			io.AddKeyEvent(key, event.m_bIsPressed);
 		break;
 	}
-	case WindowsEditorInputEvent::Type::Focus:
-		io.AddFocusEvent(event.bPressed);
+	case Type::Text:
+		io.AddInputCharactersUTF8(event.m_text.c_str());
+		break;
+	case Type::CharacterUtf16:
+		io.AddInputCharacterUTF16(static_cast<ImWchar16>(event.m_key));
+		break;
+	case Type::Focus:
+		io.AddFocusEvent(event.m_bIsPressed);
 		break;
 	default:
 		break;
 	}
 }
-#elif defined(__APPLE__)
-static ImGuiKey SailorMapMacVirtualKey(uint32_t key)
-{
-	if (key >= '0' && key <= '9') return static_cast<ImGuiKey>(ImGuiKey_0 + key - '0');
-	if (key >= 'A' && key <= 'Z') return static_cast<ImGuiKey>(ImGuiKey_A + key - 'A');
-	switch (key)
-	{
-	case 0x09: return ImGuiKey_Tab;
-	case 0x20: return ImGuiKey_Space;
-	case 0x0D: return ImGuiKey_Enter;
-	case 0x08: return ImGuiKey_Backspace;
-	case 0x25: return ImGuiKey_LeftArrow;
-	case 0x27: return ImGuiKey_RightArrow;
-	case 0x26: return ImGuiKey_UpArrow;
-	case 0x28: return ImGuiKey_DownArrow;
-	case VK_SHIFT: return ImGuiKey_ModShift;
-	case VK_CONTROL: return ImGuiKey_ModCtrl;
-	case VK_MENU: return ImGuiKey_ModAlt;
-	case VK_LWIN: return ImGuiKey_ModSuper;
-	case VK_ESCAPE: return ImGuiKey_Escape;
-	case VK_F5: return ImGuiKey_F5;
-	case VK_F6: return ImGuiKey_F6;
-	default: return ImGuiKey_None;
-	}
-}
-
-void ImGuiApi::HandleMac(const MacEvent& event)
-{
-	SAILOR_PROFILE_FUNCTION();
-
-	ImGuiIO& io = ImGui::GetIO();
-
-	switch (event.EventType)
-	{
-	case MacEvent::Type::MousePos:
-		io.AddMousePosEvent(event.X, event.Y);
-		break;
-	case MacEvent::Type::MouseButton:
-		io.AddMouseButtonEvent(event.Button, event.bPressed);
-		break;
-	case MacEvent::Type::MouseWheel:
-		io.AddMouseWheelEvent(event.X, event.Y);
-		break;
-	case MacEvent::Type::Key:
-	{
-		const ImGuiKey imguiKey = SailorMapMacVirtualKey(event.Key);
-		if (imguiKey != ImGuiKey_None)
-		{
-			io.AddKeyEvent(imguiKey, event.bPressed);
-		}
-		break;
-	}
-	case MacEvent::Type::Text:
-		if (event.TextUtf8 && event.TextUtf8[0] != '\0')
-		{
-			io.AddInputCharactersUTF8(event.TextUtf8);
-		}
-		break;
-	case MacEvent::Type::Focus:
-		io.AddFocusEvent(event.bPressed);
-		break;
-	default:
-		break;
-	}
-}
-#endif
 
 ImGuiApi::ImGuiApi(void* hWnd)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	ImGui::CreateContext();
-	ImGuizmo::SetImGuiContext(ImGui::GetCurrentContext());
+	m_pContext = ImGui::CreateContext();
+	ImGuizmo::SetImGuiContext(m_pContext);
 #if defined(_WIN32)
 	ImGui_ImplWin32_Init(hWnd);
 #else
@@ -228,6 +181,8 @@ ImGuiApi::ImGuiApi(void* hWnd)
 ImGuiApi::~ImGuiApi()
 {
 	SAILOR_PROFILE_FUNCTION();
+	ImGui::SetCurrentContext(m_pContext);
+	g_requestedMouseCursor.store(ImGuiMouseCursor_COUNT, std::memory_order_relaxed);
 	m_preparedFrames.clear();
 	m_textureBindings.clear();
 
@@ -235,6 +190,8 @@ ImGuiApi::~ImGuiApi()
 	ImGui_ImplWin32_Shutdown();
 #endif
 	ImGuiApi::ImGui_Shutdown();
+	ImGui::DestroyContext(m_pContext);
+	ImGuizmo::SetImGuiContext(nullptr);
 }
 
 void ImGuiApi::NewFrame()
@@ -250,22 +207,14 @@ void ImGuiApi::NewFrame()
 	if (!bd->FontTexture) ImGui_CreateFontsTexture();
 
 #if defined(_WIN32)
-	ImGui_ImplWin32_NewFrame();
-	if (App::HasEditor())
+	if (!App::IsEditorMode())
 	{
-		auto& window = App::GetMainWindow();
-		if (window)
-		{
-			const glm::ivec2 renderArea = window->GetRenderArea();
-			if (renderArea.x > 0 && renderArea.y > 0)
-			{
-				ImGuiIO& io = ImGui::GetIO();
-				io.DisplaySize = ImVec2((float)renderArea.x, (float)renderArea.y);
-				io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
-			}
-		}
+		ImGui_ImplWin32_NewFrame();
+		ImGui::NewFrame();
+		ImGuizmo::BeginFrame();
+		return;
 	}
-#elif defined(__APPLE__)
+#endif
 	static auto s_prevFrameTime = std::chrono::steady_clock::now();
 	const auto now = std::chrono::steady_clock::now();
 	const float deltaTime = std::chrono::duration<float>(now - s_prevFrameTime).count();
@@ -280,6 +229,10 @@ void ImGuiApi::NewFrame()
 		io.DisplaySize = ImVec2(displayWidth, displayHeight);
 
 		const glm::ivec2 renderArea = window->GetRenderArea();
+#if defined(_WIN32)
+		io.DisplaySize = ImVec2(static_cast<float>(renderArea.x), static_cast<float>(renderArea.y));
+		io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+#else
 		if (displayWidth > 0.0f && displayHeight > 0.0f && renderArea.x > 0 && renderArea.y > 0)
 		{
 			io.DisplayFramebufferScale = ImVec2((float)renderArea.x / displayWidth, (float)renderArea.y / displayHeight);
@@ -288,13 +241,13 @@ void ImGuiApi::NewFrame()
 		{
 			io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
 		}
+#endif
 	}
 	io.DeltaTime = deltaTime > 0.0f ? deltaTime : (1.0f / 60.0f);
 	if (!window)
 	{
 		io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
 	}
-#endif
 	ImGui::NewFrame();
 	ImGuizmo::BeginFrame();
 }
@@ -303,6 +256,10 @@ ImGuiApi::PreparedFramePtr ImGuiApi::PrepareFrame(RHI::RHICommandListPtr transfe
 {
 	SAILOR_PROFILE_FUNCTION();
 	ImGui::Render();
+	const auto& io = ImGui::GetIO();
+	const auto cursor = (io.ConfigFlags & ImGuiConfigFlags_NoMouseCursorChange) ? ImGuiMouseCursor_COUNT
+		: io.MouseDrawCursor ? ImGuiMouseCursor_None : ImGui::GetMouseCursor();
+	g_requestedMouseCursor.store(cursor, std::memory_order_relaxed);
 	const Data* bd = ImGui_GetBackendData();
 	if (!bd->FontTexture) return {};
 	auto frame = TSharedPtr<PreparedFrame>::Make(ImGui::GetDrawData());
@@ -325,7 +282,7 @@ ImGuiApi::PreparedFramePtr ImGuiApi::PrepareFrame(RHI::RHICommandListPtr transfe
 			}
 			auto texture = reinterpret_cast<RHI::RHITexture*>(textureId)->ToRefPtr<RHI::RHITexture>();
 			auto bindings = RHI::Renderer::GetDriver()->CreateShaderBindings();
-			RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(bindings, "sTexture", texture, 0u);
+			RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(bindings, "sTexture"_h, texture, 0u);
 			frame->TextureBindings.emplace(textureId, std::move(bindings));
 		}
 	}
@@ -562,7 +519,7 @@ void ImGuiApi::ImGui_CreateFontsTexture()
 		RHI::ETextureClamping::Repeat,
 		RHI::ETextureUsageBit::Sampled_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit);
 	if (!texture) return;
-	if (!RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(bd->ShaderBindings, "sTexture", texture, 0)) return;
+	if (!RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(bd->ShaderBindings, "sTexture"_h, texture, 0)) return;
 	bd->FontTexture = std::move(texture);
 	io.Fonts->SetTexID((ImTextureID)(bd->FontTexture.GetRawPtr()));
 }

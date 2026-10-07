@@ -186,14 +186,11 @@ public sealed class WorkspaceProjectGeneratorTests
         Assert.Contains("func(GetMoveSpeed, property(\"moveSpeed\"))", header);
         Assert.Contains("void SandboxLogic::SampleComponent::BeginPlay()", source);
         Assert.Contains("TWorkspaceTypeList<SampleComponent>", workspaceTypes);
-        Assert.Contains("SailorGetWorkspaceTypeMetadataV1", workspaceModule);
-        Assert.Contains("ExportWorkspaceTypeMetadataV1<SandboxLogic::WorkspaceTypes>", workspaceModule);
         Assert.Contains("constexpr char WorkspaceModuleName[] = \"SandboxLogic\"", workspaceModule);
         Assert.Contains("SailorGetWorkspaceModuleApiV1", workspaceModule);
         Assert.Contains("WorkspaceModuleApiVersion", workspaceModule);
         Assert.Contains("GetWorkspaceModuleAbiTagV1()", workspaceModule);
         Assert.Contains("RegisterWorkspaceTypesV1<SandboxLogic::WorkspaceTypes>", workspaceModule);
-        Assert.Contains("&SailorGetWorkspaceTypeMetadataV1", workspaceModule);
         Assert.Contains("&RegisterWorkspaceTypes", workspaceModule);
     }
 

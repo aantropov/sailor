@@ -1,5 +1,5 @@
 #include "Sailor.h"
-#include "TextureImporterTestAccess.h"
+#include "TextureCommandFixtures.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
@@ -7,6 +7,7 @@
 #include "RHI/Texture.h"
 
 #include <array>
+#include <barrier>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -22,8 +23,9 @@ using namespace Sailor;
 
 namespace Sailor::Tests
 {
-	void RequireWorkerImageInitializationRefusal(const std::function<void()>& load, VkResult error);
+	void RequireWorkerUploadRefusal(const std::function<void()>& load, VkResult error, bool transfer = false);
 	void RequireTexturePixels(RHI::RHITexturePtr texture, const std::vector<uint32_t>& expected);
+	void RequireNoTransferSubmission(const std::function<void()>& record);
 }
 
 namespace
@@ -33,154 +35,92 @@ namespace
 		if (!condition) throw std::runtime_error(message);
 	}
 
-	class TextureFixture final
+	using Tests::TextureFixture;
+	using Tests::DecodeProbe;
+
+	void TestCpuOnlyCache(const std::filesystem::path& workspace)
 	{
-	public:
-		TextureFixture(const std::filesystem::path& workspace, const char* name) :
-			m_path(workspace / "Content" / (std::string(name) + ".tga"))
+		TextureFixture fixture(workspace, "CpuOnlyCache");
+		DecodeProbe decode(fixture.m_id, true);
+		auto* importer = App::GetSubmodule<TextureImporter>();
+		const auto samplerCount = importer->GetTextureSamplersCount();
+		Tests::RequireNoTransferSubmission([&]()
 		{
-			Write(255, 0);
-			TextureAssetInfo metadataSource;
-			auto metadata = metadataSource.Serialize();
-			m_id = FileId::CreateNewFileId();
-			metadata["fileId"] = m_id;
-			metadata["filename"] = m_path.filename().string();
-			metadata["bShouldKeepCpuBuffers"] = false;
-			metadata["bShouldGenerateMips"] = false;
-			{
-				std::ofstream output(m_path.string() + ".asset");
-				output << metadata;
-			}
-			auto* registry = App::GetSubmodule<AssetRegistry>();
-			Require(registry->GetOrLoadFile(m_path.string()) == m_id, "texture fixture must register");
-			m_info = registry->GetAssetInfoPtr<TextureAssetInfoPtr>(m_id);
-		}
-
-		void Write(uint8_t red, uint8_t blue, uint16_t width = 1)
-		{
-			const bool existed = std::filesystem::exists(m_path);
-			const auto previousTime = existed ? std::filesystem::last_write_time(m_path) :
-				std::filesystem::file_time_type{};
-			std::array<uint8_t, 18> header{};
-			header[2] = 2;
-			header[12] = static_cast<uint8_t>(width);
-			header[13] = static_cast<uint8_t>(width >> 8);
-			header[14] = 1;
-			header[16] = 24;
-			const std::array<uint8_t, 3> pixel{ blue, 0, red };
-			std::ofstream output(m_path, std::ios::binary);
-			output.write(reinterpret_cast<const char*>(header.data()), header.size());
-			for (uint16_t i = 0; i < width; ++i)
-			{
-				output.write(reinterpret_cast<const char*>(pixel.data()), pixel.size());
-			}
-			output.close();
-			Require(static_cast<bool>(output), "texture fixture must be written");
-			if (existed && std::filesystem::last_write_time(m_path) <= previousTime)
-			{
-				std::filesystem::last_write_time(m_path, previousTime + std::chrono::seconds(1));
-			}
-		}
-
-		void KeepCpu(bool enabled)
-		{
-			auto metadata = m_info->Serialize();
-			metadata["bShouldKeepCpuBuffers"] = enabled;
-			m_info->Deserialize(metadata);
-		}
-
-		void Clamp(RHI::ETextureClamping clamping)
-		{
-			auto metadata = m_info->Serialize();
-			metadata["clamping"] = clamping;
-			m_info->Deserialize(metadata);
-		}
-
-		void SaveMetadata() const
-		{
-			std::ofstream output(m_path.string() + ".asset");
-			output << m_info->Serialize();
-			Require(static_cast<bool>(output), "texture fixture metadata must be written");
-		}
-
-		std::filesystem::path m_path;
-		FileId m_id;
-		TextureAssetInfoPtr m_info = nullptr;
-	};
-
-	class DecodeProbe final
-	{
-	public:
-		DecodeProbe(FileId id, bool holdFirst = false) : m_id(id), m_holdFirst(holdFirst)
-		{
-			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(
-				{ EThreadType::Worker, EThreadType::Render, EThreadType::RHI });
-			s_active = this;
-			m_original = TextureImporterTestAccess::ExchangeDecoder(*App::GetSubmodule<TextureImporter>(), &Decode);
-		}
-		~DecodeProbe()
-		{
-			Release();
-			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(
-				{ EThreadType::Worker, EThreadType::Render, EThreadType::RHI });
-			TextureImporterTestAccess::ExchangeDecoder(*App::GetSubmodule<TextureImporter>(), m_original);
-			s_active = nullptr;
-		}
-		void Release()
-		{
-			if (!m_released.exchange(true)) m_release.count_down();
-		}
-		void WaitDecoded(uint32_t count)
-		{
-			const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
-			while (m_decoded.load() < count && std::chrono::steady_clock::now() < deadline)
-			{
-				std::this_thread::yield();
-			}
-			Require(m_decoded.load() >= count, "the real texture decoder must reach the controlled publication boundary");
-		}
-		void CheckWorker(uint32_t count) const
-		{
-			Require(m_decoded.load() == count && !m_wrongThread.load(),
-				"all cold, enrichment and reload decoding must execute on Worker");
-		}
-		void WaitOtherDecoded()
-		{
-			const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
-			while (!m_otherDecoded && std::chrono::steady_clock::now() < deadline) std::this_thread::yield();
-			Require(m_otherDecoded > 0, "another texture must finish decoding while the first is held");
-		}
-
-	private:
-		static bool Decode(const TextureImporter::CpuDecodeRequest& request, TextureImporter::ByteCode& bytes,
-			int32_t& width, int32_t& height, uint32_t& mips)
-		{
-			auto* probe = s_active;
-			const bool result = TextureImporter::DecodeTextureCpu(request, bytes, width, height, mips);
-			if (request.m_fileId == probe->m_id)
-			{
-				if (App::GetSubmodule<Tasks::Scheduler>()->GetCurrentThreadType() != EThreadType::Worker)
+			auto first = importer->LoadCpuTexture(fixture.m_id);
+			Require(static_cast<bool>(first), "CPU-only requests must return a task");
+			decode.WaitDecoded(1);
+			std::array<Tasks::TaskPtr<TextureImporter::CpuTextureSnapshot>, 8> requests;
+			std::array<std::jthread, 8> callers;
+			std::barrier start(static_cast<ptrdiff_t>(callers.size()));
+			for (size_t index = 0; index < callers.size(); ++index)
+				callers[index] = std::jthread([&, index]()
 				{
-					probe->m_wrongThread = true;
-				}
-				const auto index = probe->m_decoded.fetch_add(1);
-				if (index == 0 && probe->m_holdFirst) probe->m_release.wait();
-			}
-			else
+					start.arrive_and_wait();
+					requests[index] = importer->LoadCpuTexture(fixture.m_id);
+				});
+			for (auto& caller : callers) caller.join();
+			for (const auto& request : requests)
+				Require(request == first, "concurrent CPU readers must share the pending decode for one source revision");
+			decode.Release();
+			first->Wait();
+			const auto pixels = first->GetResult().m_pixels;
+			Require(pixels && pixels->Num() == 4 && (*pixels)[0] == 255 && (*pixels)[2] == 0,
+				"CPU-only decoding must publish the real RGBA pixels without a GPU texture");
+			importer->CollectGarbage();
+			Require(importer->LoadCpuTexture(fixture.m_id) == first,
+				"collecting completed GPU promises must not discard the CPU image cache");
+			fixture.Write(0, 255);
+			auto changed = importer->LoadCpuTexture(fixture.m_id);
+			changed->Wait();
+			Require(changed != first && changed->GetResult().m_pixels != pixels &&
+				(*changed->GetResult().m_pixels)[2] == 255 && (*pixels)[0] == 255,
+				"a new source revision must not mutate retained pixels from the preceding revision");
+			auto metadata = fixture.m_info->Serialize();
+			metadata["format"] = RHI::ETextureFormat::R32G32B32A32_SFLOAT;
+			fixture.m_info->Deserialize(metadata);
+			auto floating = importer->LoadCpuTexture(fixture.m_id);
+			floating->Wait();
+			Require(floating != changed && floating->GetResult().m_source.m_bDecodeAsFloat && floating->GetResult().m_pixels &&
+				floating->GetResult().m_pixels->Num() == 4 * sizeof(float),
+				"decode settings must participate in the CPU cache key even when the file revision is unchanged");
+			const auto lastWrite = std::filesystem::last_write_time(fixture.m_path);
 			{
-				++probe->m_otherDecoded;
+				std::ofstream output(fixture.m_path, std::ios::binary);
+				output << "not an image";
 			}
-			return result;
-		}
-		static inline DecodeProbe* s_active = nullptr;
-		FileId m_id;
-		bool m_holdFirst;
-		TextureImporterTestAccess::Decoder m_original;
-		std::atomic<uint32_t> m_decoded{ 0 };
-		std::atomic<uint32_t> m_otherDecoded{ 0 };
-		std::atomic<bool> m_wrongThread{ false }, m_released{ false };
-		std::latch m_release{ 1 };
-	};
+			std::filesystem::last_write_time(fixture.m_path, lastWrite + std::chrono::seconds(1));
+			auto failed = importer->LoadCpuTexture(fixture.m_id);
+			failed->Wait();
+			Require(!failed->GetResult().m_pixels && importer->LoadCpuTexture(fixture.m_id) == failed,
+				"failed CPU decodes must be cached for their revision instead of retried by every reader");
+			fixture.Write(255, 0);
+			auto repaired = importer->LoadCpuTexture(fixture.m_id);
+			repaired->Wait();
+			Require(repaired != failed && repaired->GetResult().m_pixels &&
+				importer->GetTextureSamplersCount() == samplerCount && !importer->GetLoadedTexture(fixture.m_id),
+				"a repaired revision must decode without registering a rendered texture or bindless sampler");
+		});
+		decode.CheckWorker(5);
+	}
+
+	void TestCpuOnlySourceChangesDuringDecode(const std::filesystem::path& workspace)
+	{
+		TextureFixture fixture(workspace, "CpuOnlyChangedWhilePending");
+		DecodeProbe decode(fixture.m_id, true);
+		auto* importer = App::GetSubmodule<TextureImporter>();
+		auto first = importer->LoadCpuTexture(fixture.m_id);
+		decode.WaitDecoded(1);
+		fixture.Write(0, 255);
+		auto changed = importer->LoadCpuTexture(fixture.m_id);
+		changed->Wait();
+		Require(changed != first && changed->GetResult().m_pixels && !first->IsFinished(),
+			"the new CPU source must decode independently of a superseded pending request");
+		decode.Release();
+		first->Wait();
+		Require(!first->GetResult().m_pixels && importer->LoadCpuTexture(fixture.m_id) == changed,
+			"a stale completion must neither publish pixels nor replace the current cached request");
+		decode.CheckWorker(2);
+	}
 
 	void TestCpuEnrichment(const std::filesystem::path& workspace, bool collectPromises)
 	{
@@ -330,12 +270,12 @@ namespace
 		auto* registry = App::GetSubmodule<AssetRegistry>();
 		for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
 		{
-			TextureFixture fixture(workspace, ("NativeUploadFailure" + std::to_string(error)).c_str());
+			TextureFixture fixture(workspace, "NativeUploadFailure" + std::to_string(error));
 			fixture.KeepCpu(true);
 			fixture.SaveMetadata();
 			const auto slots = importer->GetTextureSamplersCount();
 			TexturePtr texture;
-			Tests::RequireWorkerImageInitializationRefusal([&]()
+			Tests::RequireWorkerUploadRefusal([&]()
 			{
 				Require(!importer->LoadTexture_Immediate(fixture.m_id, texture), "native upload refusal must fail the actual cold texture task");
 			}, error);
@@ -350,7 +290,7 @@ namespace
 			const auto before = importer->GetTextureSamplersSnapshot({ slot });
 			const auto cpuPixels = texture->GetDecodedData().GetData();
 			fixture.Write(0, 255, 3);
-			Tests::RequireWorkerImageInitializationRefusal([&]()
+			Tests::RequireWorkerUploadRefusal([&]()
 			{
 				Require(!App::UpdateAsset(fixture.m_id.ToString().c_str()), "native upload refusal must fail the actual registry reload");
 			}, error);
@@ -619,7 +559,7 @@ namespace
 
 		auto allocator = App::GetSubmodule<MaterialImporter>()->GetAllocator();
 		auto material = MaterialPtr::Make(allocator, FileId{});
-		material->SetSampler("baseColorSampler", texture);
+		material->SetSampler("baseColorSampler"_h, texture);
 		Raytracing::PathTracer::MaterialSnapshots snapshots;
 		std::atomic<bool> captured{ false };
 		std::jthread capture([&]()
@@ -760,6 +700,8 @@ namespace Sailor::Tests
 			}
 		}
 		run("Pending CPU request", [&]() { TestPendingCpuRequest(workspace); });
+		run("CPU-only cache", [&]() { TestCpuOnlyCache(workspace); });
+		run("CPU source changed during decode", [&]() { TestCpuOnlySourceChangesDuringDecode(workspace); });
 		run("Reload ordering", [&]() { TestReloadOrdering(workspace, false); });
 		run("Missing source ordering", [&]() { TestReloadOrdering(workspace, true); });
 		run("Enrichment and reload", [&]() { TestEnrichmentAndReload(workspace); });

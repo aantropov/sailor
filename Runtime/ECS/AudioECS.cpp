@@ -283,12 +283,12 @@ void AudioECS::TickListener(
 	data.m_bIsDirty = false;
 }
 
-Tasks::ITaskPtr AudioECS::Tick(float deltaTime)
+void AudioECS::Tick(float deltaTime)
 {
 	AudioSystem* audioSystem = GetAudioSystem();
 	if (!audioSystem || !audioSystem->IsInitialized())
 	{
-		return nullptr;
+		return;
 	}
 
 	for (AudioSourceData& data : m_components)
@@ -308,8 +308,6 @@ Tasks::ITaskPtr AudioECS::Tick(float deltaTime)
 	}
 
 	audioSystem->Update();
-
-	return nullptr;
 }
 
 void AudioECS::EndPlay()

@@ -55,7 +55,7 @@ void Sailor::RHI::UploadSharedLighting(RHICommandListPtr commandList,
 		resources.m_lightsStorage = driver->CreateShaderBindings();
 		driver->AddSsboToShaderBindings(
 			resources.m_lightsStorage,
-			"light",
+			"light"_h,
 			sizeof(RHILightShaderData),
 			resources.m_lightCapacity,
 			0u,
@@ -72,7 +72,7 @@ void Sailor::RHI::UploadSharedLighting(RHICommandListPtr commandList,
 		{
 			commands->UpdateShaderBinding(
 				commandList,
-				resources.m_lightsStorage->GetOrAddShaderBinding("light"),
+				resources.m_lightsStorage->GetOrAddShaderBinding("light"_h),
 				snapshot.m_cpuLightsData->GetData(),
 				snapshot.m_cpuLightsData->Num() * sizeof(RHILightShaderData),
 				0u);
@@ -170,42 +170,42 @@ RHIGlobalIlluminationRenderStats Sailor::RHI::UploadGlobalIllumination(RHIComman
 			driver->CreateShaderBindings();
 		driver->AddSsboToShaderBindings(
 			resources.m_globalIlluminationStorage,
-			"globalIlluminationHeader",
+			"globalIlluminationHeader"_h,
 			sizeof(RHIGlobalIlluminationGpuHeader),
 			1u,
 			0u,
 			true);
 		driver->AddSsboToShaderBindings(
 			resources.m_globalIlluminationStorage,
-			"globalIlluminationBvh",
+			"globalIlluminationBvh"_h,
 			sizeof(RHIGlobalIlluminationGpuBvhNode),
 			resources.m_globalIlluminationNodeCapacity,
 			1u,
 			true);
 		driver->AddSsboToShaderBindings(
 			resources.m_globalIlluminationStorage,
-			"globalIlluminationBricks",
+			"globalIlluminationBricks"_h,
 			sizeof(RHIGlobalIlluminationGpuBrick),
 			resources.m_globalIlluminationBrickCapacity,
 			2u,
 			true);
 		driver->AddSsboToShaderBindings(
 			resources.m_globalIlluminationStorage,
-			"globalIlluminationProbes",
+			"globalIlluminationProbes"_h,
 			sizeof(RHIGlobalIlluminationGpuProbe),
 			resources.m_globalIlluminationProbeCapacity,
 			3u,
 			true);
 		driver->AddSsboToShaderBindings(
 			resources.m_globalIlluminationStorage,
-			"globalIlluminationCoefficients",
+			"globalIlluminationCoefficients"_h,
 			sizeof(RHIGlobalIlluminationGpuCoefficients),
 			resources.m_globalIlluminationCoefficientCapacity,
 			4u,
 			true);
 		driver->AddSsboToShaderBindings(
 			resources.m_globalIlluminationStorage,
-			"globalIlluminationStates",
+			"globalIlluminationStates"_h,
 			sizeof(RHIGlobalIlluminationGpuState),
 			resources.m_globalIlluminationStateCapacity,
 			5u,
@@ -261,7 +261,7 @@ RHIGlobalIlluminationRenderStats Sailor::RHI::UploadGlobalIllumination(RHIComman
 				commands->UpdateShaderBinding(
 					commandList,
 					resources.m_globalIlluminationStorage
-						->GetOrAddShaderBinding("globalIlluminationBvh"),
+						->GetOrAddShaderBinding("globalIlluminationBvh"_h),
 					gpuLayout.m_nodes.GetData(),
 					gpuLayout.m_nodes.Num() *
 						sizeof(RHIGlobalIlluminationGpuBvhNode),
@@ -269,7 +269,7 @@ RHIGlobalIlluminationRenderStats Sailor::RHI::UploadGlobalIllumination(RHIComman
 				commands->UpdateShaderBinding(
 					commandList,
 					resources.m_globalIlluminationStorage
-						->GetOrAddShaderBinding("globalIlluminationBricks"),
+						->GetOrAddShaderBinding("globalIlluminationBricks"_h),
 					gpuLayout.m_bricks.GetData(),
 					gpuLayout.m_bricks.Num() *
 						sizeof(RHIGlobalIlluminationGpuBrick),
@@ -277,7 +277,7 @@ RHIGlobalIlluminationRenderStats Sailor::RHI::UploadGlobalIllumination(RHIComman
 				commands->UpdateShaderBinding(
 					commandList,
 					resources.m_globalIlluminationStorage
-						->GetOrAddShaderBinding("globalIlluminationProbes"),
+						->GetOrAddShaderBinding("globalIlluminationProbes"_h),
 					gpuLayout.m_probes.GetData(),
 					gpuLayout.m_probes.Num() *
 						sizeof(RHIGlobalIlluminationGpuProbe),
@@ -311,7 +311,7 @@ RHIGlobalIlluminationRenderStats Sailor::RHI::UploadGlobalIllumination(RHIComman
 					commandList,
 					resources.m_globalIlluminationStorage
 						->GetOrAddShaderBinding(
-							"globalIlluminationCoefficients"),
+							"globalIlluminationCoefficients"_h),
 					coefficients.GetData(),
 					coefficients.Num() *
 						sizeof(RHIGlobalIlluminationGpuCoefficients),
@@ -343,7 +343,7 @@ RHIGlobalIlluminationRenderStats Sailor::RHI::UploadGlobalIllumination(RHIComman
 				commands->UpdateShaderBinding(
 					commandList,
 					resources.m_globalIlluminationStorage
-						->GetOrAddShaderBinding("globalIlluminationStates"),
+						->GetOrAddShaderBinding("globalIlluminationStates"_h),
 					states.GetData(),
 					states.Num() *
 						sizeof(RHIGlobalIlluminationGpuState),
@@ -377,7 +377,7 @@ RHIGlobalIlluminationRenderStats Sailor::RHI::UploadGlobalIllumination(RHIComman
 		commands->UpdateShaderBinding(
 			commandList,
 			resources.m_globalIlluminationStorage
-				->GetOrAddShaderBinding("globalIlluminationHeader"),
+				->GetOrAddShaderBinding("globalIlluminationHeader"_h),
 			&header,
 			sizeof(header),
 			0u);
@@ -416,7 +416,7 @@ void Sailor::RHI::UploadSharedBones(RHICommandListPtr commandList,
 		resources.m_boneBindings = driver->CreateShaderBindings();
 		driver->AddSsboToShaderBindings(
 			resources.m_boneBindings,
-			"bones",
+			"bones"_h,
 			sizeof(glm::mat4),
 			resources.m_boneCapacity,
 			0u,
@@ -432,7 +432,7 @@ void Sailor::RHI::UploadSharedBones(RHICommandListPtr commandList,
 		const glm::mat4 identity(1.0f);
 		commands->UpdateShaderBinding(
 			commandList,
-			resources.m_boneBindings->GetOrAddShaderBinding("bones"),
+			resources.m_boneBindings->GetOrAddShaderBinding("bones"_h),
 			numBoneMatrices ? snapshot.m_cpuBoneMatrices->GetData() : &identity,
 			requiredBoneCapacity * sizeof(glm::mat4),
 			0u);

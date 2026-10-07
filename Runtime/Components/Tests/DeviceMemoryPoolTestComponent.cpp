@@ -288,7 +288,7 @@ void DeviceMemoryPoolTestComponent::Tick(float)
 	{
 		if (!m_validation)
 		{
-			m_validation = Tasks::CreateTaskWithResult<ValidationResult>("Device memory pool GPU validation", []()
+			m_validation = Tasks::CreateTaskWithResult<ValidationResult>("Device memory pool GPU validation"_h, []()
 			{
 				ValidationResult result;
 				result.m_error = ValidateMemoryPools(result.m_evidence, result.m_linearBuffer);
@@ -342,7 +342,7 @@ void DeviceMemoryPoolTestComponent::Tick(float)
 			++m_resizeCount;
 		}
 	}
-	m_depthSnapshot = Tasks::CreateTaskWithResult<DepthSnapshot>("Device memory pool depth snapshot", [linearBuffer = m_linearBuffer]() mutable
+	m_depthSnapshot = Tasks::CreateTaskWithResult<DepthSnapshot>("Device memory pool depth snapshot"_h, [linearBuffer = m_linearBuffer]() mutable
 	{
 		DepthSnapshot snapshot;
 		auto target = Renderer::GetDriver()->GetDepthBuffer();

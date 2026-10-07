@@ -1,7 +1,5 @@
 #include "ECS/LandscapeECSInternal.h"
 
-#include "AssetRegistry/Texture/TextureImporter.h"
-
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -50,10 +48,10 @@ namespace Sailor::LandscapeECSInternal
 		const uint32_t randomSeed = data.m_seed ^ static_cast<uint32_t>(chunkX * 92821u + chunkZ * 68917u +
 																		profileIndex * 4099u + instanceIndex * 131u);
 		const glm::vec3 position(originX + VegetationRandom01(randomSeed) * data.m_chunkSize,
-			height + profile.m_groundOffset,
+			height + profile.m_settings.m_groundOffset,
 			originZ + VegetationRandom01(randomSeed + 1u) * data.m_chunkSize);
 		const float angle = VegetationRandom01(randomSeed + 2u) * glm::two_pi<float>();
-		const float scale = glm::mix(profile.m_minScale, profile.m_maxScale, VegetationRandom01(randomSeed + 3u));
+		const float scale = glm::mix(profile.m_settings.m_minScale, profile.m_settings.m_maxScale, VegetationRandom01(randomSeed + 3u));
 
 		LandscapeVegetationInstance result;
 		result.m_stableId = MakeVegetationStableId(chunkX, chunkZ, profileIndex, instanceIndex);
@@ -112,7 +110,7 @@ namespace Sailor::LandscapeECSInternal
 			return result;
 		}
 		return profileIndex < data.m_vegetationProfiles.Num()
-				   ? data.m_vegetationProfiles[profileIndex].m_instancesPerChunk
+				   ? data.m_vegetationProfiles[profileIndex].m_settings.m_instancesPerChunk
 				   : 0u;
 	}
 
@@ -138,22 +136,6 @@ namespace Sailor::LandscapeECSInternal
 		return glm::mix(a, b, tz);
 	}
 
-	bool DecodeCpuTexture(const FileId& fileId, LandscapeCpuTexture& result)
-	{
-		if (!fileId)
-		{
-			return false;
-		}
-		uint32_t mipLevels = 1u;
-		if (!TextureImporter::DecodeTextureCpu(fileId, result.m_pixels, result.m_width, result.m_height, mipLevels))
-		{
-			return false;
-		}
-		const size_t pixelCount = static_cast<size_t>(result.m_width) * result.m_height;
-		result.m_bFloat = pixelCount > 0u && result.m_pixels.Num() == pixelCount * sizeof(float) * 4u;
-		return result.IsValid();
-	}
-
 	static float ReadTextureChannel(const LandscapeCpuTexture& texture, int32_t x, int32_t y, uint32_t channel)
 	{
 		x = (std::clamp)(x, 0, texture.m_width - 1);
@@ -162,11 +144,11 @@ namespace Sailor::LandscapeECSInternal
 		const size_t pixel = static_cast<size_t>(y) * texture.m_width + x;
 		if (!texture.m_bFloat)
 		{
-			return static_cast<float>(texture.m_pixels[pixel * 4u + channel]) / 255.0f;
+			return static_cast<float>((*texture.m_pixels)[pixel * 4u + channel]) / 255.0f;
 		}
 
 		float value = 0.0f;
-		memcpy(&value, texture.m_pixels.GetData() + (pixel * 4u + channel) * sizeof(float), sizeof(float));
+		memcpy(&value, texture.m_pixels->GetData() + (pixel * 4u + channel) * sizeof(float), sizeof(float));
 		return (std::clamp)(value, 0.0f, 1.0f);
 	}
 
@@ -189,10 +171,10 @@ namespace Sailor::LandscapeECSInternal
 		return glm::mix(a, b, ty);
 	}
 
-	static float BrushFalloff(float x, float z, const TVector<float>& stamps, size_t offset)
+	static float BrushFalloff(float x, float z, float stampX, float stampZ, float stampRadius)
 	{
-		const float radius = (std::max)(stamps[offset + 2u], 0.001f);
-		const float distance = glm::distance(glm::vec2(x, z), glm::vec2(stamps[offset], stamps[offset + 1u]));
+		const float radius = (std::max)(stampRadius, 0.001f);
+		const float distance = glm::distance(glm::vec2(x, z), glm::vec2(stampX, stampZ));
 		const float linear = (std::clamp)(1.0f - distance / radius, 0.0f, 1.0f);
 		return linear * linear * (3.0f - 2.0f * linear);
 	}
@@ -204,7 +186,7 @@ namespace Sailor::LandscapeECSInternal
 		float noiseScale,
 		float heightScale,
 		uint32_t seed,
-		const TVector<float>& sculptStamps,
+		const TVector<LandscapeSculptStamp>& sculptStamps,
 		const LandscapeCpuTexture& heightmap)
 	{
 		float height = 0.0f;
@@ -229,14 +211,13 @@ namespace Sailor::LandscapeECSInternal
 			}
 			height = heightScale > 0.0f ? sum / normalization * heightScale : 0.0f;
 		}
-		for (size_t stamp = 0u; stamp + 4u < sculptStamps.Num(); stamp += 5u)
+		for (const auto& stamp : sculptStamps)
 		{
-			const float falloff = BrushFalloff(x, z, sculptStamps, stamp);
-			const float strength = sculptStamps[stamp + 3u] * falloff;
-			const uint32_t operation = static_cast<uint32_t>(sculptStamps[stamp + 4u]);
-			if (operation == 0u)
+			const float falloff = BrushFalloff(x, z, stamp.m_x, stamp.m_z, stamp.m_radius);
+			const float strength = stamp.m_strength * falloff;
+			if (stamp.m_operation == ELandscapeSculptOperation::Raise)
 				height += strength;
-			else if (operation == 1u)
+			else if (stamp.m_operation == ELandscapeSculptOperation::Lower)
 				height -= strength;
 			else
 				height = glm::mix(height, 0.0f, (std::clamp)(strength, 0.0f, 1.0f));
@@ -299,6 +280,34 @@ namespace Sailor::LandscapeECSInternal
 			result.m_lodIndexCounts.Add(
 				static_cast<uint32_t>(result.m_indices.Num()) - *result.m_lodFirstIndices.Last());
 			stride *= 2u;
+		}
+	}
+
+	void AppendVegetationInstances(const LandscapeData& data, const LandscapeCpuTexture& heightmap,
+		uint32_t chunkX, uint32_t chunkZ, size_t profileIndex, TVector<LandscapeVegetationInstance>& instances)
+	{
+		const auto& profile = data.m_vegetationProfiles[profileIndex];
+		if (!profile.m_settings.m_modelFileId || profile.m_settings.m_residency == ELandscapeVegetationResidency::Grass) return;
+		if (const auto* authored = GetAuthoredVegetationChunk(data, chunkX, chunkZ))
+		{
+			for (const auto& instance : authored->m_instances)
+				if (instance.IsEnabled() && instance.m_profileIndex == profileIndex) instances.Add(instance);
+			return;
+		}
+		const float width = data.m_chunksX * data.m_chunkSize;
+		const float depth = data.m_chunksZ * data.m_chunkSize;
+		const float originX = chunkX * data.m_chunkSize - width * 0.5f;
+		const float originZ = chunkZ * data.m_chunkSize - depth * 0.5f;
+		instances.Reserve(instances.Num() + profile.m_settings.m_instancesPerChunk);
+		for (uint32_t instance = 0; instance < profile.m_settings.m_instancesPerChunk; ++instance)
+		{
+			const uint32_t randomSeed = data.m_seed ^ static_cast<uint32_t>(chunkX * 92821u + chunkZ * 68917u +
+				profileIndex * 4099u + instance * 131u);
+			const float x = originX + VegetationRandom01(randomSeed) * data.m_chunkSize;
+			const float z = originZ + VegetationRandom01(randomSeed + 1u) * data.m_chunkSize;
+			const float height = SampleHeight(x, z, width, depth, data.m_noiseScale, data.m_heightScale,
+				data.m_seed, data.m_sculptStamps, heightmap);
+			instances.Add(BuildProceduralVegetationInstance(data, chunkX, chunkZ, profileIndex, instance, height));
 		}
 	}
 
@@ -382,14 +391,14 @@ namespace Sailor::LandscapeECSInternal
 						weights = importedWeights / importedWeightSum;
 					}
 				}
-				for (size_t stamp = 0u; stamp + 4u < data.m_paintStamps.Num(); stamp += 5u)
+				for (const auto& stamp : data.m_paintStamps)
 				{
-					const float alpha = (std::clamp)(data.m_paintStamps[stamp + 3u] *
-														 BrushFalloff(localX, localZ, data.m_paintStamps, stamp),
+					const float alpha = (std::clamp)(stamp.m_strength *
+														 BrushFalloff(localX, localZ, stamp.m_x, stamp.m_z, stamp.m_radius),
 						0.0f,
 						1.0f);
 					glm::vec4 target(0.0f);
-					target[(std::min)(static_cast<uint32_t>(data.m_paintStamps[stamp + 4u]), 3u)] = 1.0f;
+					target[(std::min)(stamp.m_layer, 3u)] = 1.0f;
 					weights = glm::mix(weights, target, alpha);
 				}
 
@@ -428,41 +437,7 @@ namespace Sailor::LandscapeECSInternal
 
 		for (size_t profileIndex = 0u; profileIndex < data.m_vegetationProfiles.Num(); ++profileIndex)
 		{
-			const auto& profile = data.m_vegetationProfiles[profileIndex];
-			if (!profile.m_modelFileId || profile.m_residency == ELandscapeVegetationResidency::Grass)
-			{
-				continue;
-			}
-			if (const auto* authored = GetAuthoredVegetationChunk(data, chunkX, chunkZ))
-			{
-				for (const auto& instance : authored->m_instances)
-				{
-					if (instance.IsEnabled() && instance.m_profileIndex == profileIndex)
-					{
-						result.m_vegetation.Add(instance);
-					}
-				}
-				continue;
-			}
-			result.m_vegetation.Reserve(result.m_vegetation.Num() + profile.m_instancesPerChunk);
-			for (uint32_t instance = 0u; instance < profile.m_instancesPerChunk; ++instance)
-			{
-				const uint32_t randomSeed = data.m_seed ^ static_cast<uint32_t>(chunkX * 92821u + chunkZ * 68917u +
-																				profileIndex * 4099u + instance * 131u);
-				const float positionX = originX + VegetationRandom01(randomSeed) * data.m_chunkSize;
-				const float positionZ = originZ + VegetationRandom01(randomSeed + 1u) * data.m_chunkSize;
-				const float height = SampleHeight(positionX,
-					positionZ,
-					landscapeWidth,
-					landscapeDepth,
-					data.m_noiseScale,
-					data.m_heightScale,
-					data.m_seed,
-					data.m_sculptStamps,
-					heightmap);
-				result.m_vegetation.Add(
-					BuildProceduralVegetationInstance(data, chunkX, chunkZ, profileIndex, instance, height));
-			}
+			AppendVegetationInstances(data, heightmap, chunkX, chunkZ, profileIndex, result.m_vegetation);
 		}
 		return result;
 	}

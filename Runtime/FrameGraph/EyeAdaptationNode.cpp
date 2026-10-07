@@ -13,10 +13,6 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 
-#ifndef _SAILOR_IMPORT_
-const char* EyeAdaptationNode::m_name = "EyeAdaptation";
-#endif
-
 void EyeAdaptationNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -41,8 +37,8 @@ void EyeAdaptationNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		}
 	}
 
-	RHI::RHITexturePtr hdrColor = GetResolvedAttachment("hdrColor");
-	RHI::RHITexturePtr averageLuminance = GetResolvedAttachment("averageLuminance");
+	RHI::RHITexturePtr hdrColor = GetResolvedAttachment("hdrColor"_h, frameGraph.GetRawPtr());
+	RHI::RHITexturePtr averageLuminance = GetResolvedAttachment("averageLuminance"_h, frameGraph.GetRawPtr());
 	if (!m_pComputeHistogramShader || !m_pComputeHistogramShader->IsReady() ||
 		!m_pComputeAverageShader || !m_pComputeAverageShader->IsReady() ||
 		!hdrColor || !averageLuminance)
@@ -70,13 +66,13 @@ void EyeAdaptationNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		m_computeHistogramShaderBindings = driver->CreateShaderBindings();
 		auto histogramResource = driver->AddSsboToShaderBindings(
 			m_computeHistogramShaderBindings,
-			"histogram",
+			"histogram"_h,
 			sizeof(uint32_t),
 			HistogramShades,
 			0,
 			true);
 
-		driver->AddStorageImageToShaderBindings(m_computeHistogramShaderBindings, "s_texColor", hdrColor, 1);
+		driver->AddStorageImageToShaderBindings(m_computeHistogramShaderBindings, "s_texColor"_h, hdrColor, 1);
 		static TVector<uint32_t> initialData(HistogramShades);
 
 		commands->UpdateShaderBinding(transferCommandList, histogramResource,
@@ -88,25 +84,25 @@ void EyeAdaptationNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	{
 		driver->UpdateShaderBinding(
 			m_computeHistogramShaderBindings,
-			"s_texColor",
+			"s_texColor"_h,
 			hdrColor);
 	}
 
 	if (!m_computeAverageShaderBindings)
 	{
-		auto& histogram = m_computeHistogramShaderBindings->GetOrAddShaderBinding("histogram");
+		auto& histogram = m_computeHistogramShaderBindings->GetOrAddShaderBinding("histogram"_h);
 
 		check(histogram->IsBind());
 
 		m_computeAverageShaderBindings = driver->CreateShaderBindings();
-		driver->AddShaderBinding(m_computeAverageShaderBindings, histogram, "histogram", 0);
-		driver->AddStorageImageToShaderBindings(m_computeAverageShaderBindings, "s_texColor", averageLuminance, 1);
+		driver->AddShaderBinding(m_computeAverageShaderBindings, histogram, "histogram"_h, 0);
+		driver->AddStorageImageToShaderBindings(m_computeAverageShaderBindings, "s_texColor"_h, averageLuminance, 1);
 	}
 	else
 	{
 		driver->UpdateShaderBinding(
 			m_computeAverageShaderBindings,
-			"s_texColor",
+			"s_texColor"_h,
 			averageLuminance);
 	}
 
@@ -115,8 +111,8 @@ void EyeAdaptationNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 		const float minLogLuminance = -16.0f;
 		const float maxLogLuminance = 16.0f;
-		const glm::vec4 metering = GetVec4("metering");
-		const glm::vec4 adaptation = GetVec4("adaptation");
+		const glm::vec4 metering = GetVec4("metering"_h);
+		const glm::vec4 adaptation = GetVec4("adaptation"_h);
 		const float centerWeight = std::max(metering.x, 0.0f);
 		const float lowPercentile = std::clamp(metering.y, 0.0f, 0.99f);
 		const float highPercentile = std::clamp(

@@ -3,6 +3,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -52,11 +53,11 @@ namespace
 	}
 #endif
 
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -396,6 +397,11 @@ namespace
 	void TestMacLoopbackPresentFailure()
 	{
 		Sailor::Tests::TestViewportPresentFailure<MacViewportLoopbackBinding, FakeMacIOSurfaceProvider, FakeMacViewportPresenter>(MakeViewport());
+	}
+
+	void TestMacLoopbackProducerFailure()
+	{
+		Sailor::Tests::TestViewportProducerFailure<MacViewportLoopbackBinding, FakeMacIOSurfaceProvider, FakeMacViewportPresenter>(MakeViewport());
 	}
 
 	void TestMacLoopbackResizeIsTransactional()
@@ -890,6 +896,7 @@ int main()
 		{ "MacBackendCreateResizeExportAndRelease", TestMacBackendCreateResizeExportAndRelease },
 		{ "MacBackendFailurePropagationAndOrdering", TestMacBackendFailurePropagationAndOrdering },
 		{ "MacLoopbackPresentFailure", TestMacLoopbackPresentFailure },
+		{ "MacLoopbackProducerFailure", TestMacLoopbackProducerFailure },
 		{ "MacLoopbackBindingCreateResizeVisibilityAndDestroy", TestMacLoopbackBindingCreateResizeVisibilityAndDestroy },
 		{ "MacLoopbackRecoveryUsesElapsedTime", TestMacLoopbackRecoveryUsesElapsedTime },
 		{ "MacLoopbackResizeAndRecoveryLoop", TestMacLoopbackResizeAndRecoveryLoop },

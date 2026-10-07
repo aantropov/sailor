@@ -1,59 +1,51 @@
 #include "ConsoleWindow.h"
-#ifdef _WIN32
-#include <windows.h>
-#include <io.h>
-#include <fcntl.h>
-#include <conio.h>
-#include <string>
 #include "Core/Utils.h"
-
+#include <algorithm>
+#include <atomic>
+#include <cstring>
 using namespace Sailor::Win32;
 
 namespace
 {
-	volatile bool consoleExit = false;
+	// Only the standalone host opens a console; its runtime stays loaded until process exit.
+	// Control callbacks may outlive the console object and only access these signals.
+	std::atomic<bool> g_bIsExitRequested{ false };
+	std::atomic<bool> g_bIsShutdownCompleted{ false };
 }
 
 ConsoleWindow::ConsoleWindow(bool bInShouldAttach)
-	: m_stdout_file(0)
-	, m_stderr_file(0)
-	, m_stdin_file(0)
+	: m_stdout_file(nullptr)
+	, m_stderr_file(nullptr)
+	, m_stdin_file(nullptr)
 	, m_bShouldAttach(bInShouldAttach)
-	, m_bufferSize(0)
 {
-	if (bInShouldAttach)
-	{
-		Attach();
-	}
+	if (m_bShouldAttach) Attach();
 }
 
 void ConsoleWindow::Initialize(bool bInShouldAttach)
 {
-	SAILOR_PROFILE_FUNCTION();
-
+	g_bIsExitRequested.store(false, std::memory_order_relaxed);
+	g_bIsShutdownCompleted.store(false, std::memory_order_relaxed);
 	s_pInstance = new ConsoleWindow(bInShouldAttach);
 }
 
-BOOL WINAPI ConsoleHandler(DWORD signal)
+void ConsoleWindow::Shutdown()
 {
-	if (signal == CTRL_C_EVENT || signal == CTRL_BREAK_EVENT || signal == CTRL_CLOSE_EVENT)
-	{
-		consoleExit = true;
-		Sleep(100);
-	}
-	return FALSE;
+	TSingleton<ConsoleWindow>::Shutdown();
+	g_bIsShutdownCompleted.store(true, std::memory_order_release);
+	g_bIsShutdownCompleted.notify_all();
 }
 
-void ConsoleWindow::Attach()
+bool ConsoleWindow::IsExitRequested()
 {
-	printf("");
+	return g_bIsExitRequested.load(std::memory_order_acquire);
+}
 
-	if (AttachConsole(ATTACH_PARENT_PROCESS)) {
-		freopen_s(&m_stdout_file, "CONOUT$", "wb", stdout);
-		freopen_s(&m_stderr_file, "CONOUT$", "wb", stderr);
-		freopen_s(&m_stdin_file, "CONIN$", "rb", stdin);
-		SetConsoleCtrlHandler(ConsoleHandler, TRUE);
-	}
+void ConsoleWindow::RequestExit(bool bWaitForShutdown)
+{
+	g_bIsExitRequested.store(true, std::memory_order_release);
+	// Returning from CTRL_CLOSE_EVENT terminates the process, even when handled.
+	if (bWaitForShutdown) g_bIsShutdownCompleted.wait(false, std::memory_order_acquire);
 }
 
 ConsoleWindow::~ConsoleWindow()
@@ -61,8 +53,41 @@ ConsoleWindow::~ConsoleWindow()
 	Free();
 }
 
+void ConsoleWindow::CloseWindow()
+{
+	Free();
+	if (m_bShouldAttach) Attach();
+}
+
+#ifdef _WIN32
+#include <windows.h>
+
+BOOL WINAPI ConsoleWindow::HandleControl(DWORD signal)
+{
+	if (signal != CTRL_C_EVENT && signal != CTRL_BREAK_EVENT && signal != CTRL_CLOSE_EVENT) return FALSE;
+	RequestExit(signal == CTRL_CLOSE_EVENT);
+	return TRUE;
+}
+
+void ConsoleWindow::Attach()
+{
+	if (AttachConsole(ATTACH_PARENT_PROCESS))
+	{
+		m_bIsOpen = true;
+		freopen_s(&m_stdout_file, "CONOUT$", "wb", stdout);
+		freopen_s(&m_stderr_file, "CONOUT$", "wb", stderr);
+		freopen_s(&m_stdin_file, "CONIN$", "rb", stdin);
+		SetConsoleCtrlHandler(HandleControl, TRUE);
+	}
+}
+
 void ConsoleWindow::Free()
 {
+	m_bufferSize = 0;
+	m_bIsLineOverflowed = false;
+	if (!m_bIsOpen) return;
+	SetConsoleCtrlHandler(HandleControl, FALSE);
+	m_bIsOpen = false;
 	if (m_stdout_file != 0)
 	{
 		fclose(m_stdout_file);
@@ -91,7 +116,8 @@ void ConsoleWindow::OpenWindow(const wchar_t* Title)
 	BOOL result = AllocConsole();
 	if (result)
 	{
-		SetConsoleCtrlHandler(ConsoleHandler, TRUE);
+		m_bIsOpen = true;
+		SetConsoleCtrlHandler(HandleControl, TRUE);
 
 		SetConsoleTitleW(Title);
 
@@ -101,153 +127,64 @@ void ConsoleWindow::OpenWindow(const wchar_t* Title)
 	}
 }
 
-void ConsoleWindow::CloseWindow()
-{
-	Free();
-
-	if (m_bShouldAttach)
-	{
-		Attach();
-	}
-}
-
-void ConsoleWindow::Write(wchar_t c)
+void ConsoleWindow::Write(std::wstring_view text)
 {
 	DWORD written;
-	WriteConsoleW(GetStdHandle(STD_OUTPUT_HANDLE), &c, 1, &written, 0);
+	WriteConsoleW(GetStdHandle(STD_OUTPUT_HANDLE), text.data(), static_cast<DWORD>(text.size()), &written, nullptr);
 }
 
 void ConsoleWindow::Update()
 {
+	if (!m_bIsOpen) return;
 	SAILOR_PROFILE_FUNCTION();
+	if (std::find(m_buffer, m_buffer + m_bufferSize, L'\r') != m_buffer + m_bufferSize) return;
 
-	DWORD num_events;
-	BOOL result = GetNumberOfConsoleInputEvents(GetStdHandle(STD_INPUT_HANDLE), &num_events);
-	if (!result)
-		return;
+	DWORD numEvents;
+	const auto input = GetStdHandle(STD_INPUT_HANDLE);
+	if (!GetNumberOfConsoleInputEvents(input, &numEvents)) return;
 
-	for (uint32_t i = 0; i < num_events; ++i)
+	for (uint32_t i = 0; i < numEvents; ++i)
 	{
-		INPUT_RECORD ir;
-		DWORD was_read;
-		result = ReadConsoleInputW(GetStdHandle(STD_INPUT_HANDLE), &ir, 1, &was_read);
-		if (!result)
-			break;
+		INPUT_RECORD event;
+		DWORD read;
+		if (!ReadConsoleInputW(input, &event, 1, &read) || read == 0) break;
+		if (event.EventType != KEY_EVENT || !event.Event.KeyEvent.bKeyDown) continue;
 
-		if (ir.EventType != KEY_EVENT)
-			continue;
-		if (!ir.Event.KeyEvent.bKeyDown)
-			continue;
-
-		WCHAR c = ir.Event.KeyEvent.uChar.UnicodeChar;
-		if (c == 0)
-			continue;
-
-		if (c == 8)
+		const wchar_t c = event.Event.KeyEvent.uChar.UnicodeChar;
+		for (uint32_t repeat = 0; repeat < event.Event.KeyEvent.wRepeatCount; ++repeat)
 		{
-			if (m_bufferSize == 0)
-				continue;
-
-			CONSOLE_SCREEN_BUFFER_INFO info;
-			BOOL result = GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &info);
-			if (!result)
-				continue;
-
-			if (info.dwCursorPosition.X == 0)
+			if (!AppendInput(c)) continue;
+			if (c == L'\b')
 			{
-				info.dwCursorPosition.X = info.dwSize.X - 1;
-				if (info.dwCursorPosition.Y > 0)
-					--info.dwCursorPosition.Y;
+				CONSOLE_SCREEN_BUFFER_INFO info;
+				const auto output = GetStdHandle(STD_OUTPUT_HANDLE);
+				if (!GetConsoleScreenBufferInfo(output, &info)) continue;
+				if (info.dwCursorPosition.X == 0)
+				{
+					info.dwCursorPosition.X = info.dwSize.X - 1;
+					if (info.dwCursorPosition.Y > 0) --info.dwCursorPosition.Y;
+				}
+				else --info.dwCursorPosition.X;
+				SetConsoleCursorPosition(output, info.dwCursorPosition);
+				Write(L" ");
+				SetConsoleCursorPosition(output, info.dwCursorPosition);
 			}
-			else
+			else if (c == L'\r')
 			{
-				--info.dwCursorPosition.X;
+				Write(L"\r\n");
+				return; // Leave the next line in the native input queue until Read consumes this one.
 			}
-
-			SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), info.dwCursorPosition);
-			Write(' ');
-			SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), info.dwCursorPosition);
-
-			--m_bufferSize;
-			continue;
+			else if (c >= 0xdc00 && c <= 0xdfff && m_bufferSize >= 2 &&
+				m_buffer[m_bufferSize - 2] >= 0xd800 && m_buffer[m_bufferSize - 2] <= 0xdbff)
+			{
+				Write(std::wstring_view(m_buffer + m_bufferSize - 2, 2));
+			}
+			else if (c < 0xd800 || c > 0xdbff) Write(std::wstring_view(&c, 1));
 		}
-
-		if (c == 0x1b)
-			continue;
-
-		if (m_bufferSize == LINE_BUFFER_SIZE)
-			continue;
-
-		if (c == 13)
-		{
-			Write(13);
-			Write(10);
-		}
-		else
-			Write(c);
-
-		m_buffer[m_bufferSize++] = c;
 	}
 }
 
-uint32_t ConsoleWindow::Read(char* OutBuffer, uint32_t BufferSize)
-{
-	// find EOL
-	static const uint32_t NO_POS = 0xffffffff;
-	unsigned eol_pos = NO_POS;
-	for (uint32_t i = 0; i < BufferSize; ++i)
-	{
-		if (m_buffer[i] == 13) {
-			eol_pos = i;
-			break;
-		}
-	}
-
-	if (eol_pos == NO_POS)
-		return 0;
-
-	char* out = OutBuffer;
-	bool bSkipFirstSpaces = true;
-	uint32_t j = 0;
-	for (uint32_t i = 0; i < eol_pos; ++i)
-	{
-		char c = Utils::wchar_to_UTF8(&m_buffer[i]).c_str()[0];
-		if (bSkipFirstSpaces)
-		{
-			if (c == '\0' || c == ' ')
-			{
-				continue;
-			}
-			bSkipFirstSpaces = false;
-		}
-
-		out[j++] = c;
-	}
-	out[j] = '\0';
-
-	memmove(m_buffer, m_buffer + eol_pos + 1, BufferSize - eol_pos - 1);
-
-	return (uint32_t)strlen(out);
-}
 #else
-
-using namespace Sailor::Win32;
-
-ConsoleWindow::ConsoleWindow(bool bInShouldAttach)
-	: m_stdout_file(0)
-	, m_stderr_file(0)
-	, m_stdin_file(0)
-	, m_bShouldAttach(bInShouldAttach)
-	, m_bufferSize(0)
-{
-}
-
-void ConsoleWindow::Initialize(bool bInShouldAttach)
-{
-	s_pInstance = new ConsoleWindow(bInShouldAttach);
-}
-
-ConsoleWindow::~ConsoleWindow() = default;
 
 void ConsoleWindow::Attach()
 {
@@ -255,33 +192,75 @@ void ConsoleWindow::Attach()
 
 void ConsoleWindow::Free()
 {
+	m_bufferSize = 0;
+	m_bIsLineOverflowed = false;
 }
 
 void ConsoleWindow::OpenWindow(const wchar_t* Title)
 {
 	(void)Title;
+	Free();
 }
 
-void ConsoleWindow::CloseWindow()
+void ConsoleWindow::Write(std::wstring_view text)
 {
-}
-
-void ConsoleWindow::Write(wchar_t c)
-{
-	(void)c;
+	(void)text;
 }
 
 void ConsoleWindow::Update()
 {
 }
 
-uint32_t ConsoleWindow::Read(char* OutBuffer, uint32_t BufferSize)
+#endif
+
+bool ConsoleWindow::AppendInput(wchar_t c)
 {
-	if (OutBuffer && BufferSize > 0)
+	if (c == 0 || c == L'\x1b' || c == L'\n') return false;
+	if (c == L'\b')
 	{
-		OutBuffer[0] = '\0';
+		if (m_bIsLineOverflowed || m_bufferSize == 0 || m_buffer[m_bufferSize - 1] == L'\r') return false;
+		const auto last = m_buffer[--m_bufferSize];
+		if (last >= 0xdc00 && last <= 0xdfff && m_bufferSize > 0 &&
+			m_buffer[m_bufferSize - 1] >= 0xd800 && m_buffer[m_bufferSize - 1] <= 0xdbff) --m_bufferSize;
+		return true;
 	}
-	return 0;
+	if (c == L'\r')
+	{
+		if (m_bIsLineOverflowed)
+		{
+			// Discard the overlong command, never execute its truncated prefix.
+			while (m_bufferSize > 0 && m_buffer[m_bufferSize - 1] != L'\r') --m_bufferSize;
+			m_bIsLineOverflowed = false;
+			return true;
+		}
+		if (m_bufferSize == LineBufferSize) return false;
+	}
+	else if (m_bIsLineOverflowed || m_bufferSize >= LineBufferSize - 1)
+	{
+		m_bIsLineOverflowed = true;
+		return false;
+	}
+	m_buffer[m_bufferSize++] = c;
+	return true;
 }
 
-#endif
+uint32_t ConsoleWindow::Read(char* outBuffer, uint32_t bufferSize)
+{
+	if (!outBuffer || bufferSize == 0) return 0;
+	outBuffer[0] = '\0';
+	const auto end = std::find(m_buffer, m_buffer + m_bufferSize, L'\r');
+	if (end == m_buffer + m_bufferSize) return 0;
+
+	std::wstring_view line(m_buffer, static_cast<size_t>(end - m_buffer));
+	while (!line.empty() && line.front() == L' ') line.remove_prefix(1);
+	const std::string text = Sailor::Utils::wchar_to_UTF8(line);
+	// A smaller caller may retry; do not consume or split a UTF-8 command.
+	if (text.size() >= bufferSize) return 0;
+	std::memcpy(outBuffer, text.data(), text.size());
+	outBuffer[text.size()] = '\0';
+
+	const auto consumed = static_cast<uint32_t>(end - m_buffer) + 1;
+	m_bufferSize -= consumed;
+	std::memmove(m_buffer, m_buffer + consumed, m_bufferSize * sizeof(wchar_t));
+	return static_cast<uint32_t>(text.size());
+}

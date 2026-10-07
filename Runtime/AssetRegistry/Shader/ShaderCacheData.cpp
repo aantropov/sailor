@@ -55,16 +55,16 @@ void ShaderCache::ArtifactMetadata::Deserialize(const YAML::Node& inData)
 	}
 }
 
-bool ShaderCache::ArtifactMetadata::Validate(const std::string& context, std::string& outDiagnostic) const
+bool ShaderCache::ArtifactMetadata::Validate(std::string_view context, std::string& outDiagnostic) const
 {
 	if (!IsPresent() && m_checksum != 0)
 	{
-		outDiagnostic = context + " has a checksum for an absent artifact.";
+		outDiagnostic = std::string(context) + " has a checksum for an absent artifact.";
 		return false;
 	}
 	if (IsPresent() && m_byteLength % sizeof(uint32_t) != 0)
 	{
-		outDiagnostic = context + " byteLength is not aligned to uint32 SPIR-V words.";
+		outDiagnostic = std::string(context) + " byteLength is not aligned to uint32 SPIR-V words.";
 		return false;
 	}
 	return true;
@@ -132,40 +132,41 @@ void ShaderCache::ShaderCacheData::Entry::Deserialize(const YAML::Node& inData)
 
 bool ShaderCache::ShaderCacheData::Entry::Validate(const FileId& key, std::string& outDiagnostic) const
 {
-	const std::string context = "Shader cache entry '" + key.ToString() + "'";
+	const auto fail = [&](std::string_view reason)
+	{
+		std::string message = "Shader cache entry '" + key.ToString() + "' ";
+		message += reason;
+		outDiagnostic = std::move(message);
+		return false;
+	};
 	if (!m_fileId || m_fileId != key)
 	{
-		outDiagnostic = context + " has a mismatched fileId field.";
-		return false;
+		return fail("has a mismatched fileId field.");
 	}
 	if (!IsValidGeneration(m_generation))
 	{
-		outDiagnostic = context + " has an invalid immutable artifact generation.";
-		return false;
+		return fail("has an invalid immutable artifact generation.");
 	}
-	if (!m_regular.m_vertex.Validate(context + " regular vertex artifact", outDiagnostic) ||
-		!m_regular.m_fragment.Validate(context + " regular fragment artifact", outDiagnostic) ||
-		!m_regular.m_compute.Validate(context + " regular compute artifact", outDiagnostic) ||
-		!m_debug.m_vertex.Validate(context + " debug vertex artifact", outDiagnostic) ||
-		!m_debug.m_fragment.Validate(context + " debug fragment artifact", outDiagnostic) ||
-		!m_debug.m_compute.Validate(context + " debug compute artifact", outDiagnostic))
+	if (!m_regular.m_vertex.Validate("regular vertex artifact", outDiagnostic) ||
+		!m_regular.m_fragment.Validate("regular fragment artifact", outDiagnostic) ||
+		!m_regular.m_compute.Validate("regular compute artifact", outDiagnostic) ||
+		!m_debug.m_vertex.Validate("debug vertex artifact", outDiagnostic) ||
+		!m_debug.m_fragment.Validate("debug fragment artifact", outDiagnostic) ||
+		!m_debug.m_compute.Validate("debug compute artifact", outDiagnostic))
 	{
-		return false;
+		return fail(outDiagnostic);
 	}
 	if (!IsValidArtifactSet(m_regular, false))
 	{
-		outDiagnostic = context + " regular artifacts must contain a vertex/fragment pair or compute artifact.";
-		return false;
+		return fail("regular artifacts must contain a vertex/fragment pair or compute artifact.");
 	}
 	if (!IsValidArtifactSet(m_debug, false))
 	{
-		outDiagnostic = context + " debug artifacts must contain a vertex/fragment pair or compute artifact.";
-		return false;
+		return fail("debug artifacts must contain a vertex/fragment pair or compute artifact.");
 	}
 	if (!HasMatchingArtifactTopology(m_regular, m_debug))
 	{
-		outDiagnostic = context + " regular and debug artifacts must contain identical shader stages.";
-		return false;
+		return fail("regular and debug artifacts must contain identical shader stages.");
 	}
 	return true;
 }

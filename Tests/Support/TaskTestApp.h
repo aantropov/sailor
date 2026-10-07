@@ -3,6 +3,7 @@
 #include "Core/Defines.h"
 
 namespace Sailor::Tasks { class Scheduler; }
+namespace Sailor { class AnimationAssetInfoHandler; class AnimationImporter; class AudioSystem; }
 
 namespace Sailor::Tests
 {
@@ -17,5 +18,7 @@ namespace Sailor::Tests
 		TaskTestApp& operator=(const TaskTestApp&) = delete;
 
 		Tasks::Scheduler& GetScheduler() const;
+		AnimationImporter& AddAnimationImporter(AnimationAssetInfoHandler& handler);
+		AudioSystem& AddAudioSystem();
 	};
 }

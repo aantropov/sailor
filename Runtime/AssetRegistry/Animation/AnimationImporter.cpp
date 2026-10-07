@@ -375,12 +375,7 @@ namespace
 
 	bool IsTransformFinite(const Math::Transform& transform)
 	{
-		return Math::AllFinite(transform.m_position) &&
-			Math::AllFinite(transform.m_scale) &&
-			std::isfinite(transform.m_rotation.x) &&
-			std::isfinite(transform.m_rotation.y) &&
-			std::isfinite(transform.m_rotation.z) &&
-			std::isfinite(transform.m_rotation.w);
+		return Math::AllFinite(transform.m_position) && Math::AllFinite(transform.m_scale);
 	}
 
 }
@@ -458,7 +453,7 @@ Tasks::TaskPtr<AnimationPtr> AnimationImporter::LoadAnimation(FileId uid, Animat
 	{
 		AnimationPtr anim = AnimationPtr::Make(m_allocator, uid);
 
-		promise = Tasks::CreateTaskWithResult<AnimationPtr>("Load Animation",
+		promise = Tasks::CreateTaskWithResult<AnimationPtr>("Load Animation"_h,
 			[this, uid, anim]() mutable
 			{
 				ImportAnimation(uid, anim);
@@ -843,12 +838,16 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationAssetInfoPtr info, 
 					Math::Transform& target = local[channel.m_targetNode];
 					if (channel.m_target == EAnimationTarget::Rotation)
 					{
-						AnimationClipSampler::SampleRotationValidated(
+						glm::quat rotation;
+						if (AnimationClipSampler::SampleRotationValidated(
 							channel.m_timestamps,
 							channel.m_values,
 							channel.m_interpolation,
 							sampleTime,
-							target.m_rotation);
+							rotation))
+						{
+							target.SetRotation(rotation);
+						}
 					}
 					else
 					{

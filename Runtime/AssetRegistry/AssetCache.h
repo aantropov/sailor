@@ -9,6 +9,7 @@
 #include <mutex>
 #include <filesystem>
 #include <string>
+#include <string_view>
 
 namespace Sailor
 {
@@ -105,11 +106,11 @@ namespace Sailor
 		SAILOR_API bool Update(
 			const FileId& id,
 			std::time_t assetImportTime,
-			const std::string& sourcePath,
+			std::string_view sourcePath,
 			const FileRevision& sourceRevision,
-			const std::string& metadataFilename,
+			std::string_view metadataFilename,
 			const FileRevision& metadataRevision,
-			const std::string& assetInfoType);
+			std::string_view assetInfoType);
 		SAILOR_API bool RestoreAssetImportTime(
 			class AssetInfo* info,
 			const FileRevision& sourceRevision) const;

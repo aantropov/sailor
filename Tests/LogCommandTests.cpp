@@ -8,6 +8,7 @@
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -73,13 +74,24 @@ namespace
 			"error logs must use stderr and the same formatting bound");
 	}
 
+	void TestBorrowedTextFormatting()
+	{
+		ConsoleCapture capture;
+		const auto status = std::string_view("Corrupt::ignored").substr(0, 7);
+		const std::string_view empty;
+		SAILOR_LOG("status=%.*s: report", static_cast<int>(status.size()), status.data());
+		SAILOR_LOG_ERROR("status=%.*s: report", static_cast<int>(empty.size()), empty.empty() ? "" : empty.data());
+		Require(capture.output.str() == "status=Corrupt: report\n" && capture.errors.str() == "status=: report\n",
+			"logging must respect bounded and default-empty views without requiring a temporary C string");
+	}
+
 	void TestQueuedMessages(Tasks::Scheduler& scheduler, EThreadType producer, bool hasEditor)
 	{
 		ConsoleCapture capture;
 		std::vector<std::string> expectedMessages;
 		std::string expectedOutput, expectedErrors;
 		const std::string prefix = producer == EThreadType::Render ? "Renderer thread: " : "";
-		auto task = Tasks::CreateTask("Produce log messages", [&]()
+		auto task = Tasks::CreateTask("Produce log messages"_h, [&]()
 			{
 				for (int i = 0; i < 24; ++i)
 				{
@@ -121,7 +133,7 @@ namespace
 		std::barrier start(static_cast<std::ptrdiff_t>(producers.size()));
 		for (size_t producer = 0; producer < producers.size(); ++producer)
 		{
-			tasks[producer] = Tasks::CreateTask("Concurrent log producer", [&, producer]()
+			tasks[producer] = Tasks::CreateTask("Concurrent log producer"_h, [&, producer]()
 				{
 					start.arrive_and_wait();
 					for (int i = 0; i < 16; ++i)
@@ -167,10 +179,27 @@ namespace
 
 namespace Sailor::Tests
 {
+	void RunEditorMessageViewTests()
+	{
+		auto* editor = App::GetSubmodule<Editor>();
+		Require(editor != nullptr, "borrowed messages must be tested through the real editor queue");
+		PullEditorMessages();
+		{
+			std::string source = "prefix:borrowed editor message:suffix";
+			editor->PushMessage(std::string_view(source).substr(7, 23));
+			source.assign(1024, 'x');
+		}
+		editor->PushMessage({});
+		Require(PullEditorMessages() == std::vector<std::string>{ "borrowed editor message", "" },
+			"queued messages must own bounded input and accept a default-empty view");
+		std::cout << "Editor message views: bounded input survived source modification and destruction\n";
+	}
+
 	void RunLoggingWithoutAppTests()
 	{
 		Require(!App::GetInstance(), "standalone logging test must not borrow a live App");
 		TestFormatting();
+		TestBorrowedTextFormatting();
 		{
 			ConsoleCapture capture;
 			std::thread producer([]()
@@ -208,7 +237,7 @@ namespace Sailor::Tests
 		TestConcurrentProducers(*scheduler);
 		{
 			ConsoleCapture capture;
-			auto pending = Tasks::CreateTask("Log before editor detach", []()
+			auto pending = Tasks::CreateTask("Log before editor detach"_h, []()
 				{
 					SAILOR_LOG("editor-detach-pending");
 				}, EThreadType::Worker);
@@ -231,7 +260,7 @@ namespace Sailor::Tests
 		std::string output, errors;
 		{
 			ConsoleCapture capture;
-			auto task = Tasks::CreateTask("Log before shutdown", []()
+			auto task = Tasks::CreateTask("Log before shutdown"_h, []()
 				{
 					SAILOR_LOG("pending-shutdown-message");
 					SAILOR_LOG_ERROR("pending-shutdown-error");

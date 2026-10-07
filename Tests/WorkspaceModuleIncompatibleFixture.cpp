@@ -21,15 +21,6 @@ namespace
 		return abiTag;
 	}
 
-	uint32_t SAILOR_WORKSPACE_CALL GetMetadata(char*, uint64_t, uint64_t* outPayloadSize) noexcept
-	{
-		if (outPayloadSize != nullptr)
-		{
-			*outPayloadSize = 0;
-		}
-		return static_cast<uint32_t>(Sailor::Workspace::EWorkspaceModuleResult::SerializationFailed);
-	}
-
 	uint32_t SAILOR_WORKSPACE_CALL RegisterTypes(
 		const Sailor::Workspace::WorkspaceHostApiV1*) noexcept
 	{
@@ -49,7 +40,6 @@ extern "C" SAILOR_WORKSPACE_MODULE_EXPORT const Sailor::Workspace::WorkspaceModu
 		static_cast<uint64_t>(sizeof(ModuleName) - 1),
 		staleAbiTag.data(),
 		static_cast<uint64_t>(staleAbiTag.size()),
-		&GetMetadata,
 		&RegisterTypes
 	};
 

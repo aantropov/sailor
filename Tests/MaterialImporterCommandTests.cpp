@@ -124,19 +124,19 @@ namespace
 	glm::vec4 Color(MaterialPtr material)
 	{
 		glm::vec4 value;
-		Require(material->GetUniformsVec4().TryGet("material.baseColorFactor", value), "material color must exist");
+		Require(material->GetUniformsVec4().TryGet("material.baseColorFactor"_h, value), "material color must exist");
 		return value;
 	}
 
 	TVector<uint8_t> ReadGpu(RHI::RHIShaderBindingSetPtr bindings)
 	{
 		TVector<uint8_t> bytes;
-		auto read = Tasks::CreateTask("Read material fixture GPU bytes", [&]()
+		auto read = Tasks::CreateTask("Read material fixture GPU bytes"_h, [&]()
 			{
 				using namespace RHI;
 				auto& driver = Renderer::GetDriver();
 				auto* commands = Renderer::GetDriverCommands();
-				auto binding = bindings->GetOrAddShaderBinding("material");
+				auto binding = bindings->GetOrAddShaderBinding("material"_h);
 				Require(binding && binding->m_vulkan.m_valueBinding, "material must own reflected storage");
 				const size_t size = (std::max)(binding->GetLayout().m_size, binding->GetLayout().m_paddedSize);
 				Require(size > 0, "material storage must have a reflected size");
@@ -164,7 +164,7 @@ namespace
 	void CheckGpuColor(RHI::RHIShaderBindingSetPtr bindings, const TVector<uint8_t>& bytes, glm::vec4 expected)
 	{
 		RHI::ShaderLayoutBindingMember member;
-		Require(bindings->GetOrAddShaderBinding("material")->FindVariableInUniformBuffer("baseColorFactor", member) &&
+		Require(bindings->GetOrAddShaderBinding("material"_h)->FindVariableInUniformBuffer("baseColorFactor"_h, member) &&
 			member.m_absoluteOffset + sizeof(expected) <= bytes.Num(), "color must fit reflected GPU storage");
 		glm::vec4 value;
 		std::memcpy(&value, bytes.GetData() + member.m_absoluteOffset, sizeof(value));
@@ -338,7 +338,7 @@ namespace Sailor::Tests
 	SurfacePixels RenderSurface(MaterialPtr source, RHI::RHIMeshPtr inputMesh)
 	{
 		SurfacePixels pixels{};
-		auto task = Tasks::CreateTaskWithResult<std::string>("Render Standard glTF material reference", [&]() -> std::string
+		auto task = Tasks::CreateTaskWithResult<std::string>("Render Standard glTF material reference"_h, [&]() -> std::string
 			{
 				try
 				{
@@ -371,7 +371,7 @@ namespace Sailor::Tests
 					frame.m_cameraPosition = glm::vec4(0, 0, 3, 1);
 					frame.m_viewportSize = glm::ivec2(side);
 					frame.m_cameraZNearZFar = glm::vec2(0.1f, 10);
-					auto frameBinding = driver->AddBufferToShaderBindings(scene.m_frameBindings, "frameData",
+					auto frameBinding = driver->AddBufferToShaderBindings(scene.m_frameBindings, "frameData"_h,
 						sizeof(frame), 0, EShaderBindingType::UniformBuffer);
 					commands->UpdateShaderBinding(upload, frameBinding, &frame, sizeof(frame));
 					scene.m_rhiLightsData = driver->CreateShaderBindings();
@@ -387,7 +387,7 @@ namespace Sailor::Tests
 						{
 							TVector<uint8_t> zeros;
 							// Match the GI producer: reflection does not size this flat SSBO header.
-							const size_t size = layout.m_name == "globalIlluminationHeader" ? sizeof(RHIGlobalIlluminationGpuHeader) :
+							const size_t size = layout.m_name == "globalIlluminationHeader"_h ? sizeof(RHIGlobalIlluminationGpuHeader) :
 								(std::max)({ layout.m_size, layout.m_paddedSize, 16u });
 							zeros.Resize(size);
 							auto binding = layout.m_type == EShaderBindingType::StorageBuffer ?
@@ -410,9 +410,9 @@ namespace Sailor::Tests
 					sunlight.m_type = static_cast<uint32_t>(ELightType::Directional);
 					sunlight.m_direction = glm::vec3(0, 0, -1);
 					sunlight.m_intensity = glm::vec3(2);
-					commands->UpdateShaderBinding(upload, scene.m_rhiLightsData->GetOrAddShaderBinding("light"), &sunlight, sizeof(sunlight));
+					commands->UpdateShaderBinding(upload, scene.m_rhiLightsData->GetOrAddShaderBinding("light"_h), &sunlight, sizeof(sunlight));
 					const glm::uvec2 grid(0, 1);
-					commands->UpdateShaderBinding(upload, scene.m_rhiLightsData->GetOrAddShaderBinding("lightsGrid"), &grid, sizeof(grid));
+					commands->UpdateShaderBinding(upload, scene.m_rhiLightsData->GetOrAddShaderBinding("lightsGrid"_h), &grid, sizeof(grid));
 
 					auto mesh = inputMesh;
 					if (!mesh)
@@ -440,11 +440,11 @@ namespace Sailor::Tests
 					auto material = source->GetOrAddRHI(mesh->m_vertexDescription);
 					Require(material.IsValid(), "surface graphics material must be ready");
 					auto graph = RHIFrameGraphPtr::Make();
-					graph->SetRenderTarget("DepthBuffer", depth);
+					graph->SetRenderTarget("DepthBuffer"_h, depth);
 					auto node = TRefPtr<SurfaceRenderNode>::Make();
-					node->SetString("Tag", "SurfaceReference");
-					node->SetString("GPUCulling", "false");
-					node->SetRHIResource("color", RHISurfacePtr::Make(color, color, false));
+					node->SetString("Tag"_h, "SurfaceReference");
+					node->SetString("GPUCulling"_h, "false");
+					node->SetRHIResource("color"_h, RHISurfacePtr::Make(color, color, false));
 					auto resources = node->GetResources(scene);
 					RHIBatch batch(material, mesh);
 #if defined(__APPLE__)
@@ -462,7 +462,7 @@ namespace Sailor::Tests
 #endif
 					SurfaceRenderNode::PerInstanceData instance{};
 					instance.model = glm::mat4(1);
-					instance.materialInstance = source->GetShaderBindings()->GetStorageInstanceIndex("material");
+					instance.materialInstance = source->GetShaderBindings()->GetStorageInstanceIndex("material"_h);
 					resources->m_packet.Add(batch, mesh, instance);
 					resources->m_packet.Finalize();
 					commands->MemoryBarrier(draw, static_cast<EAccessFlags>(EAccessBit::HostWrite_Bit),
@@ -475,7 +475,7 @@ namespace Sailor::Tests
 					commands->ImageMemoryBarrier(draw, color, EImageLayout::TransferSrcOptimal);
 					commands->CopyImageToBuffer(draw, color, readback);
 					auto headerReadback = driver->CreateBuffer(sizeof(RHIGlobalIlluminationGpuHeader), EBufferUsageBit::BufferTransferDst_Bit, hostMemory);
-					auto header = scene.m_rhiLightsData->GetOrAddShaderBinding("globalIlluminationHeader");
+					auto header = scene.m_rhiLightsData->GetOrAddShaderBinding("globalIlluminationHeader"_h);
 					draw->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
 					draw->m_vulkan.m_commandBuffer->CopyBuffer(*header->m_vulkan.m_valueBinding->Get(),
 						*headerReadback->m_vulkan.m_buffer->Get(), sizeof(RHIGlobalIlluminationGpuHeader));
@@ -614,7 +614,7 @@ namespace
 	public:
 		HoldRenderQueue()
 		{
-			m_task = Tasks::CreateTask("Hold shader publication", [this]()
+			m_task = Tasks::CreateTask("Hold shader publication"_h, [this]()
 				{
 					m_entered = true;
 					m_release.wait();
@@ -705,7 +705,7 @@ namespace
 		TVector<Tasks::TaskPtr<bool>> lookups;
 		for (uint32_t caller = 0; caller < 4; ++caller)
 		{
-			auto lookup = Tasks::CreateTask<bool>("Request live asset from Worker", [&]()
+			auto lookup = Tasks::CreateTask<bool>("Request live asset from Worker"_h, [&]()
 				{
 					bool sameId = true;
 					for (uint32_t i = 0; i < 16; ++i)
@@ -755,7 +755,7 @@ namespace
 			SetColor(document, newColor);
 			fixture->Write(document);
 		}
-		auto lookup = Tasks::CreateTask<bool>("Lookup during Main asset dispatch", [&]()
+		auto lookup = Tasks::CreateTask<bool>("Lookup during Main asset dispatch"_h, [&]()
 			{
 				return registry->GetOrLoadFile(target.path.string()) == target.id;
 			});
@@ -789,7 +789,7 @@ namespace
 		auto reload = [&](EThreadType thread)
 		{
 			const auto notifications = observer.m_notifications.load();
-			auto lookup = Tasks::CreateTask<bool>("Request asset retry", [&]()
+			auto lookup = Tasks::CreateTask<bool>("Request asset retry"_h, [&]()
 				{
 					return registry->GetOrLoadFile(fixture.path.string()) == fixture.id;
 				}, thread);
@@ -855,9 +855,9 @@ namespace
 		auto material = fixture.Load();
 		auto document = fixture.Read();
 		auto vectors = document["uniformsVec4"].as<TMap<std::string, glm::vec4>>();
-		for (const char* name : { "material.emissiveFactor", "material.emissive", "material.emission" })
+		for (const auto name : { "material.emissiveFactor"_h, "material.emissive"_h, "material.emission"_h })
 		{
-			vectors[name] = glm::vec4(2, 4, 8, 0);
+			vectors[name.ToString()] = glm::vec4(2, 4, 8, 0);
 		}
 		document["uniformsVec4"] = vectors;
 		auto floats = document["uniformsFloat"].as<TMap<std::string, float>>();
@@ -900,7 +900,7 @@ namespace
 		bool replacedSampler = false;
 		for (const auto& sampler : snapshots[0]->m_samplers)
 		{
-			if (sampler.m_first == "baseColorSampler")
+			if (sampler.m_first == "baseColorSampler"_h)
 			{
 				replacedSampler = sampler.m_second.m_texture && sampler.m_second.m_texture->m_fileId == newTexture;
 			}
@@ -941,11 +941,11 @@ namespace
 		for (uint32_t step = 1; step <= 16; ++step)
 		{
 			const float value = static_cast<float>(step) / 16.0f;
-			for (const char* name : { "material.emissiveFactor", "material.emissive", "material.emission" })
+			for (const auto name : { "material.emissiveFactor"_h, "material.emissive"_h, "material.emission"_h })
 			{
 				material->SetUniform(name, glm::vec4(value, value * 2, value * 4, 0));
 			}
-			material->SetUniform("material.alphaCutoff", value);
+			material->SetUniform("material.alphaCutoff"_h, value);
 			const auto captured = Tracer::CaptureMaterials({ material }, &cache);
 			Require(captured[0]->m_parameters.m_emissiveFactor == glm::vec3(value, value * 2, value * 4) &&
 				captured[0]->m_parameters.m_alphaCutoff == value &&
@@ -953,7 +953,7 @@ namespace
 				first[0]->m_parameters.m_alphaCutoff == originalCutoff,
 				"successive owner updates must publish coherent captures while retained values remain unchanged");
 		}
-		auto onRender = Tasks::CreateTask<Tracer::MaterialSnapshots>("Capture from Render owner", [material]()
+		auto onRender = Tasks::CreateTask<Tracer::MaterialSnapshots>("Capture from Render owner"_h, [material]()
 			{
 				return Tracer::CaptureMaterials({ material });
 			}, EThreadType::Render);
@@ -1015,7 +1015,7 @@ namespace
 		{
 			HoldRenderQueue hold;
 			hold.Wait();
-			auto lookup = Tasks::CreateTask<FileId>("Register a late shader include", [registry, includePath]()
+			auto lookup = Tasks::CreateTask<FileId>("Register a late shader include"_h, [registry, includePath]()
 				{
 					return registry->GetOrLoadFile(includePath.string());
 				}, EThreadType::Worker);
@@ -1023,7 +1023,7 @@ namespace
 			lookup->Wait();
 			includeId = lookup->GetResult();
 			Require(static_cast<bool>(includeId), "cold registration must return its ID without waiting for Main or Render");
-			material->SetUniform("material.baseColorFactor", color);
+			material->SetUniform("material.baseColorFactor"_h, color);
 			const auto revision = material->GetContentRevision();
 			hold.Release();
 			Drain();
@@ -1038,7 +1038,7 @@ namespace
 		}
 		else
 		{
-			material->SetUniform("material.baseColorFactor", color);
+			material->SetUniform("material.baseColorFactor"_h, color);
 			includeId = registry->GetOrLoadFile(includePath.string());
 			Require(static_cast<bool>(includeId), "Main must register the late include");
 		}
@@ -1089,7 +1089,7 @@ namespace
 		const auto id = WriteShader(workspace, "QueuedShader", true, true, "QueuedShader.glsl");
 		ShaderSetPtr shader;
 		bool loaded = false;
-		auto cold = Tasks::CreateTask("Load shader from Render", [&]()
+		auto cold = Tasks::CreateTask("Load shader from Render"_h, [&]()
 			{
 				loaded = compiler->LoadShader_Immediate(id, shader);
 			}, EThreadType::Render);
@@ -1605,7 +1605,7 @@ namespace
 		const auto revision = material->GetContentRevision();
 		const auto metadataRevision = material->GetRenderMetadataRevision();
 		TexturePtr originalTexture;
-		Require(material->GetSamplers().TryGet("baseColorSampler", originalTexture), "original sampler must exist");
+		Require(material->GetSamplers().TryGet("baseColorSampler"_h, originalTexture), "original sampler must exist");
 		auto document = fixture.Read();
 		auto samplers = document["samplers"].as<TMap<std::string, FileId>>();
 		samplers["baseColorSampler"] = invalid;
@@ -1621,8 +1621,8 @@ namespace
 		Require(material->GetShaderBindings() == bindings &&
 			material->GetContentRevision() == revision &&
 			material->GetRenderMetadataRevision() == metadataRevision &&
-			material->GetUniformsVec4().TryGet("material.baseColorFactor", color) && color == glm::vec4(1, 0.5f, 0.25f, 1) &&
-			material->GetSamplers().TryGet("baseColorSampler", texture) && texture == originalTexture,
+			material->GetUniformsVec4().TryGet("material.baseColorFactor"_h, color) && color == glm::vec4(1, 0.5f, 0.25f, 1) &&
+			material->GetSamplers().TryGet("baseColorSampler"_h, texture) && texture == originalTexture,
 			"failed texture reload must preserve the complete last-good material and bindings");
 		Require(ReadGpu(bindings) == bytes && observed.m_observer->m_notifications == 0,
 			"failed dependency must not change retained GPU data or notify dependants");
@@ -1690,8 +1690,8 @@ namespace
 			float roughness = 0;
 			Require(material->GetShader() && material->GetShaderBindings() &&
 				Color(material) == glm::vec4(1, 0.5f, 0.25f, 1) &&
-				material->GetUniformsFloat().TryGet("material.roughnessFactor", roughness) && roughness == 0.75f &&
-				material->GetSamplers().TryGet("baseColorSampler", sampler) && sampler && sampler->GetFileId() == texture,
+				material->GetUniformsFloat().TryGet("material.roughnessFactor"_h, roughness) && roughness == 0.75f &&
+				material->GetSamplers().TryGet("baseColorSampler"_h, sampler) && sampler && sampler->GetFileId() == texture,
 				"readiness must expose complete shader, binding, uniform and sampler state");
 			load->Wait();
 			Require(load->GetResult() == material, "the load task and readiness poll must publish the same material");
@@ -1935,14 +1935,14 @@ namespace
 		Require(App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(image, layer), "private layer must load");
 		InstanceWorld world;
 		MaterialPtr instance;
-		auto create = Tasks::CreateTask("Create private material instance", [&]()
+		auto create = Tasks::CreateTask("Create private material instance"_h, [&]()
 			{
 				using namespace RHI;
 				auto command = Renderer::GetDriver()->CreateCommandList(false, ECommandListQueue::Transfer);
 				Renderer::GetDriverCommands()->BeginCommandList(command, true);
 				world.SetCommandList(command);
 				instance = Material::CreateInstance(&world, source);
-				instance->SetSampler("layer0Sampler", layer);
+				instance->SetSampler("layer0Sampler"_h, layer);
 				Renderer::GetDriverCommands()->EndCommandList(command);
 				auto fence = RHIFencePtr::Make();
 				Require(Renderer::GetDriver()->SubmitCommandList(command, fence) &&
@@ -1957,9 +1957,9 @@ namespace
 		const auto oldBindings = instance->GetShaderBindings();
 		const auto oldBytes = ReadGpu(oldBindings);
 		const auto metadata = source->GetRenderMetadataRevision();
-		auto synchronize = Tasks::CreateTask("Synchronize private material values", [&]()
+		auto synchronize = Tasks::CreateTask("Synchronize private material values"_h, [&]()
 			{
-				source->SetUniform("material.baseColorFactor", glm::vec4(0.5f, 0.75f, 0.125f, 1));
+				source->SetUniform("material.baseColorFactor"_h, glm::vec4(0.5f, 0.75f, 0.125f, 1));
 				instance->SynchronizeUniformValues(*source);
 			}, EThreadType::Render);
 		synchronize->Run();
@@ -1967,11 +1967,11 @@ namespace
 		Drain();
 		TexturePtr retainedLayer;
 		Require(instance == identity && source->GetRenderMetadataRevision() == metadata &&
-			instance->GetSamplers().TryGet("layer0Sampler", retainedLayer) && retainedLayer == layer,
+			instance->GetSamplers().TryGet("layer0Sampler"_h, retainedLayer) && retainedLayer == layer,
 			"content-only synchronization must reuse a private instance without losing its layer samplers");
 		CheckGpuColor(instance->GetShaderBindings(), ReadGpu(instance->GetShaderBindings()), Color(source));
 		Require(ReadGpu(oldBindings) == oldBytes, "private synchronization must retain earlier GPU contents");
-		auto destroy = Tasks::CreateTask("Destroy private material fixture", [&]()
+		auto destroy = Tasks::CreateTask("Destroy private material fixture"_h, [&]()
 			{
 				instance.DestroyObject(world.GetAllocator());
 			}, EThreadType::Render);
@@ -1982,6 +1982,11 @@ namespace
 
 namespace Sailor::Tests
 {
+	TVector<uint8_t> ReadMaterialGpuBytes(RHI::RHIShaderBindingSetPtr bindings)
+	{
+		return ReadGpu(std::move(bindings));
+	}
+
 	void RunMaterialImporterCommandTests(const std::filesystem::path& workspace)
 	{
 		std::string failures;

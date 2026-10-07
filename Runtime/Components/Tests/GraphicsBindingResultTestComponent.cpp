@@ -272,11 +272,11 @@ namespace
 	{
 		auto& driver = Renderer::GetDriver();
 		auto result = driver->CreateShaderBindings();
-		if (!driver->AddSamplerToShaderBindings(result, "source", texture, 0u)) return {};
+		if (!driver->AddSamplerToShaderBindings(result, "source"_h, texture, 0u)) return {};
 		if (extraBinding)
 		{
 			auto extra = driver->CreateBuffer(16u, EBufferUsageBit::UniformBuffer_Bit, HostMemory);
-			if (!driver->AddBufferToShaderBindings(result, extra, "unused", 1u)) return {};
+			if (!driver->AddBufferToShaderBindings(result, extra, "unused"_h, 1u)) return {};
 		}
 		return result;
 	}
@@ -413,7 +413,7 @@ namespace
 					packet.m_metrics.m_dirtyInstanceRanges != uploadRanges ||
 					draw.m_stats.m_numInstances != handles.Num()) return "unexpected flight upload bytes, ranges or draw count";
 				auto readback = driver->CreateBuffer(sizeof(Instance) * expected.Num(), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
-				const auto binding = draw.m_resources->m_perInstanceData->GetOrAddShaderBinding("data");
+				const auto binding = draw.m_resources->m_perInstanceData->GetOrAddShaderBinding("data"_h);
 				graphics->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
 				graphics->m_vulkan.m_commandBuffer->CopyBuffer(*binding->m_vulkan.m_valueBinding->Get(),
 					*readback->m_vulkan.m_buffer->Get(), readback->GetSize());
@@ -497,7 +497,7 @@ namespace
 		if (surface->NeedsResolve() || static_cast<uint32_t>(color->GetMsaaSamples()) != 1u)
 			return "fixture target must be a real single-sample no-resolve surface";
 		auto graph = RHIFrameGraphPtr::Make();
-		graph->SetRenderTarget("DepthBuffer", depth);
+		graph->SetRenderTarget("DepthBuffer"_h, depth);
 		auto lights = driver->CreateShaderBindings();
 		const auto lightsRevision = lights->GetDescriptorRevision();
 		std::array<SceneDraw, 5> draws;
@@ -505,9 +505,9 @@ namespace
 		{
 			auto& draw = draws[i];
 			draw.m_node = TRefPtr<RenderSceneProbe>::Make();
-			draw.m_node->SetString("Tag", "GraphicsBindingResult");
-			draw.m_node->SetString("GPUCulling", "false");
-			draw.m_node->SetRHIResource("color", surface);
+			draw.m_node->SetString("Tag"_h, "GraphicsBindingResult");
+			draw.m_node->SetString("GPUCulling"_h, "false");
+			draw.m_node->SetRHIResource("color"_h, surface);
 			draw.m_scene.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
 			draw.m_scene.m_submissionContext->BeginSubmission(800u + i, 0u);
 			draw.m_scene.m_frameBindings = driver->CreateShaderBindings();
@@ -769,7 +769,7 @@ void GraphicsBindingResultTestComponent::Tick(float)
 		if (!ImGui::GetCurrentContext() || ImGui::GetCurrentContext() != ImGuiApi::GetCurrentContext())
 		{ MarkFailed("fixture requires the actual engine ImGui context on Main"); return; }
 		m_imguiFrame = PrepareImGui(m_callbacks);
-		m_validation = Tasks::CreateTaskWithResult<std::string>("Graphics binding result validation",
+		m_validation = Tasks::CreateTaskWithResult<std::string>("Graphics binding result validation"_h,
 			[shaders = m_shaders, frame = m_imguiFrame.GetRawPtr(), callbacks = &m_callbacks]()
 			{
 				auto error = ValidateAttachmentLifetime(AttachmentCase::SingleSample, false);

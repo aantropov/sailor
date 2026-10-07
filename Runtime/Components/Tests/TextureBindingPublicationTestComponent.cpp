@@ -84,7 +84,7 @@ namespace
 		~RestoreTextureView() { m_texture->m_vulkan.m_imageView = m_view; }
 	};
 
-	void Prepare(BaseFrameGraphNode& node, const RHISceneViewSnapshot& snapshot)
+	void Prepare(BaseFrameGraphNode& node, RHISceneViewSnapshot& snapshot)
 	{
 		// The coordinator is Render; these real leaves run on Worker or RHI, never Render.
 		auto task = node.Prepare(RHIFrameGraphPtr::Make(), snapshot);
@@ -120,9 +120,9 @@ namespace
 		if (entry.m_sourceDescriptorRevision != source.m_descriptorRevision)
 			return fail(std::format("source descriptor revision: cached={}, snapshot={}", entry.m_sourceDescriptorRevision, source.m_descriptorRevision));
 		RHIShaderBindingPtr remapBinding, samplerBinding;
-		if (!entry.m_textureBindings->GetShaderBindings().TryGet("textureSamplerRemap", remapBinding) || !remapBinding)
+		if (!entry.m_textureBindings->GetShaderBindings().TryGet("textureSamplerRemap"_h, remapBinding) || !remapBinding)
 			return fail("missing textureSamplerRemap CPU binding");
-		if (!entry.m_textureBindings->GetShaderBindings().TryGet("textureSamplers", samplerBinding) || !samplerBinding)
+		if (!entry.m_textureBindings->GetShaderBindings().TryGet("textureSamplers"_h, samplerBinding) || !samplerBinding)
 			return fail("missing textureSamplers CPU binding");
 		if (samplerBinding->GetTextureBindings().Num() != 3u || samplerBinding->GetLayout().m_arrayCount != 3u)
 			return fail(std::format("sampler counts: textures={}, layout={}", samplerBinding->GetTextureBindings().Num(), samplerBinding->GetLayout().m_arrayCount));
@@ -215,14 +215,7 @@ namespace
 		const TVector<uint32_t>& requested, uint32_t textureIndex, bool ordinary, bool instanced)
 	{
 		RHISceneViewProxy proxy;
-		proxy.m_staticMeshEcs = 1u;
-		proxy.m_mobility = EMobilityType::Static;
-		proxy.m_worldMatrix = glm::mat4(1.0f);
-		proxy.m_worldAabb = Math::AABB(glm::vec3(0.0f), glm::vec3(3.0f));
-		proxy.m_bCastShadows = true;
-		proxy.m_shadowCaster = RHIShadowCasterProxyPtr::Make();
-		proxy.m_shadowCaster->m_staticMeshEcs = 1u;
-		proxy.m_shadowCaster->m_worldAabb = proxy.m_worldAabb;
+		auto shadowCaster = TSharedPtr<RHIShadowCasterProxy>::Make();
 		const size_t tag = material->GetRenderState().GetTag();
 		if (ordinary)
 		{
@@ -241,7 +234,7 @@ namespace
 			proxy.m_materialTextureSamplers.Add(requested);
 			shadow.m_materialTextureSamplers = requested;
 #endif
-			proxy.m_shadowCaster->m_meshes.Add(std::move(shadow));
+			shadowCaster->m_meshes.Add(std::move(shadow));
 		}
 		if (instanced)
 		{
@@ -260,21 +253,23 @@ namespace
 #endif
 			proxy.m_instancedGroups.Add(std::move(group));
 		}
+		proxy.m_shadowCaster = std::move(shadowCaster);
 		auto topology = RHISceneProxyResourcePtr::Make(std::move(proxy));
 		RHISceneInstanceRecord record;
 		record.m_producerKey = 1u;
 		record.m_mobility = EMobilityType::Static;
-		record.m_worldBounds = topology->m_proxy.m_worldAabb;
+		record.m_worldBounds = Math::AABB(glm::vec3(0.0f), glm::vec3(3.0f));
 		record.m_topology = topology;
 		record.m_topologyRevision = topology->m_mainRevision;
 		record.m_shadowRevision = topology->m_shadowRevision;
 		record.m_renderFlags = 1u;
-		auto result = RHISpatialSceneVersionPtr::Make();
+		auto result = TSharedPtr<RHISpatialSceneVersion>::Make();
 		result->m_scene = RHIScenePtr::Make();
 		const auto handle = result->m_scene->AddInstance(record);
 		result->m_sceneVersion = result->m_scene->PublishVersion();
-		result->m_staticOctree = TSharedPtr<RHISceneSpatialIndex>::Make(glm::ivec3(0), 128u, 2u);
-		result->m_staticOctree->Update(glm::ivec3(0), glm::ivec3(3), handle);
+		auto index = TSharedPtr<RHISceneSpatialIndex>::Make(glm::ivec3(0), 128u, 2u);
+		index->Update(glm::ivec3(0), glm::ivec3(3), handle);
+		result->m_staticOctree = std::move(index);
 		return result;
 	}
 
@@ -284,8 +279,8 @@ namespace
 		snapshot.m_submissionContext->BeginSubmission(79u, 0u);
 		snapshot.m_camera = TUniquePtr<CameraData>::Make(CreateCamera());
 		snapshot.m_cameraTransform = Math::Transform(glm::vec4(0, 2, 12, 1));
-		snapshot.m_sceneVersions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make();
-		snapshot.m_sceneVersions->Add(scene->m_sceneVersion);
+		snapshot.m_sceneVersions = TSharedPtr<const TVector<RHISceneVersionPtr>>::Make(
+			TVector<RHISceneVersionPtr>{ scene->m_sceneVersion });
 		RHIUpdateShadowMapCommand shadow;
 		shadow.m_shadowType = EShadowType::PCF;
 		shadow.m_lightMatrix = glm::mat4(1.0f);
@@ -293,10 +288,7 @@ namespace
 		snapshot.ForEachSceneProxy(EMobilityType::Static, [&](const RHIVisibleSceneProxy& proxy)
 		{
 			snapshot.m_proxies.Add(proxy);
-			RHIVisibleShadowCaster caster;
-			caster.m_handle = proxy.m_handle;
-			caster.m_record = proxy.m_record;
-			caster.m_resource = proxy.m_resource;
+			RHIVisibleShadowCaster caster(proxy.m_handle, *proxy.m_record, *proxy.m_resource);
 			shadow.m_meshList.Add(caster);
 		});
 		snapshot.m_shadowMapsToUpdate.Add(std::move(shadow));
@@ -359,13 +351,13 @@ namespace
 			test.m_main = TRefPtr<MainNode>::Make();
 			test.m_depth = TRefPtr<DepthNode>::Make();
 			test.m_shadow = TRefPtr<ShadowNode>::Make();
-			test.m_main->SetString("Tag", "Masked");
-			test.m_depth->SetString("Tag", "Masked");
+			test.m_main->SetString("Tag"_h, "Masked");
+			test.m_depth->SetString("Tag"_h, "Masked");
 			if (i >= 2u)
 			{
-				test.m_main->SetString("VirtualizeInstancePayloads", "false");
-				test.m_depth->SetString("VirtualizeInstancePayloads", "false");
-				test.m_shadow->SetString("VirtualizeInstancePayloads", "false");
+				test.m_main->SetString("VirtualizeInstancePayloads"_h, "false");
+				test.m_depth->SetString("VirtualizeInstancePayloads"_h, "false");
+				test.m_shadow->SetString("VirtualizeInstancePayloads"_h, "false");
 			}
 			Prepare(*test.m_main, test.m_snapshot);
 			Prepare(*test.m_depth, test.m_snapshot);
@@ -416,8 +408,8 @@ namespace
 			test.m_scene = CreateScene(mesh, customMaterial, state.m_requested, state.m_indices[0], true, true);
 			CreateSnapshot(test.m_snapshot, test.m_scene);
 			test.m_depth = TRefPtr<DepthNode>::Make();
-			test.m_depth->SetString("Tag", "Opaque");
-			if (i) test.m_depth->SetString("VirtualizeInstancePayloads", "false");
+			test.m_depth->SetString("Tag"_h, "Opaque");
+			if (i) test.m_depth->SetString("VirtualizeInstancePayloads"_h, "false");
 			Prepare(*test.m_depth, test.m_snapshot);
 #if defined(__APPLE__)
 			auto* entry = FindEntry(test.m_depth->Cache(), state.m_requestedIndices);
@@ -550,14 +542,14 @@ namespace
 		texture->m_vulkan.m_imageView = unavailable;
 		// Safe old-78 gate: do not Process/submit a remap-only descriptor set.
 		auto cold = TRefPtr<MainNode>::Make();
-		cold->SetString("Tag", "Masked");
+		cold->SetString("Tag"_h, "Masked");
 		Prepare(*cold, state.m_cases[0].m_snapshot);
 		const bool emptyCache = cold->Cache().IsEmpty();
 		const uint32_t coldInstances = cold->Resources(state.m_cases[0].m_snapshot)->m_packet.GetNumInstances();
 		if (!emptyCache || coldInstances != 0u)
 			return std::format("cold failed request published partial texture state: empty cache={}, draw instances={}", emptyCache, coldInstances);
 		auto coldDepth = TRefPtr<DepthNode>::Make();
-		coldDepth->SetString("Tag", "Masked");
+		coldDepth->SetString("Tag"_h, "Masked");
 		Prepare(*coldDepth, state.m_cases[0].m_snapshot);
 		if (!coldDepth->Cache().IsEmpty() || coldDepth->Resources(state.m_cases[0].m_snapshot)->m_packet.GetNumInstances() != 0u)
 			return "cold depth request retained partial bindings or draw instances";
@@ -705,7 +697,7 @@ void TextureBindingPublicationTestComponent::Tick(float)
 		if (!state.m_sourceA.m_slots[1].m_texture || state.m_sourceA.m_slots[2].m_texture || !state.m_unrelatedA.m_texture)
 		{ MarkFailed("private sampler snapshot did not contain A plus an actually absent slot"); return; }
 		state.m_phase = Phase::Warm;
-		m_validation = Tasks::CreateTaskWithResult<std::string>("Warm texture publication nodes", [hold = m_state]() { return WarmNodes(*hold); }, EThreadType::Render);
+		m_validation = Tasks::CreateTaskWithResult<std::string>("Warm texture publication nodes"_h, [hold = m_state]() { return WarmNodes(*hold); }, EThreadType::Render);
 		m_validation->Run();
 		return;
 	}
@@ -718,13 +710,13 @@ void TextureBindingPublicationTestComponent::Tick(float)
 		if (unrelated)
 		{
 			state.m_phase = Phase::CheckUnrelated;
-			m_validation = Tasks::CreateTaskWithResult<std::string>("Check unrelated sampler reload", [hold = m_state]() { return CheckUnrelatedReload(*hold); }, EThreadType::Render);
+			m_validation = Tasks::CreateTaskWithResult<std::string>("Check unrelated sampler reload"_h, [hold = m_state]() { return CheckUnrelatedReload(*hold); }, EThreadType::Render);
 		}
 		else
 		{
 			state.m_sourceB = importer->GetTextureSamplersSnapshot(state.m_requestedIndices);
 			state.m_phase = Phase::Validate;
-			m_validation = Tasks::CreateTaskWithResult<std::string>("Validate texture publication and shadow retry", [hold = m_state]() { return ValidateReload(*hold); }, EThreadType::Render);
+			m_validation = Tasks::CreateTaskWithResult<std::string>("Validate texture publication and shadow retry"_h, [hold = m_state]() { return ValidateReload(*hold); }, EThreadType::Render);
 		}
 		m_validation->Run();
 		return;

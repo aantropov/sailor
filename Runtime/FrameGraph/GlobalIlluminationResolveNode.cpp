@@ -12,18 +12,13 @@ using namespace Sailor;
 using namespace Sailor::Framegraph;
 using namespace Sailor::RHI;
 
-#ifndef _SAILOR_IMPORT_
-const char* GlobalIlluminationResolveNode::m_name =
-	"GlobalIlluminationResolve";
-#endif
-
 namespace
 {
 	constexpr uint32_t ResolveGroupSize = 8u;
 }
 
 void GlobalIlluminationResolveNode::Process(
-	RHIFrameGraphPtr,
+	RHIFrameGraphPtr frameGraph,
 	RHICommandListPtr,
 	RHICommandListPtr commandList,
 	const RHISceneViewSnapshot& sceneView)
@@ -34,21 +29,13 @@ void GlobalIlluminationResolveNode::Process(
 	auto& driver = App::GetSubmodule<Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<Renderer>()->GetDriverCommands();
 
-	RHITexturePtr depthTexture = GetResolvedAttachment("depthSampler");
+	RHITexturePtr depthTexture = GetSampledAttachment("depthSampler"_h, frameGraph.GetRawPtr());
 	RHITexturePtr probeCellIndicesTexture =
-		GetResolvedAttachment("probeCellIndices");
+		GetResolvedAttachment("probeCellIndices"_h, frameGraph.GetRawPtr());
 	if (!depthTexture || !probeCellIndicesTexture)
 	{
 		return;
 	}
-	if (const auto depthTarget = depthTexture.DynamicCast<RHIRenderTarget>())
-	{
-		if (const auto depthAspect = depthTarget->GetDepthAspect())
-		{
-			depthTexture = depthAspect;
-		}
-	}
-
 	if (!m_shader)
 	{
 		if (const auto shaderInfo = App::GetSubmodule<AssetRegistry>()
@@ -85,12 +72,12 @@ void GlobalIlluminationResolveNode::Process(
 		m_bindings = driver->CreateShaderBindings();
 		driver->AddSamplerToShaderBindings(
 			m_bindings,
-			"depthSampler",
+			"depthSampler"_h,
 			depthTexture,
 			0u);
 		driver->AddStorageImageToShaderBindings(
 			m_bindings,
-			"probeCellIndices",
+			"probeCellIndices"_h,
 			probeCellIndicesTexture,
 			1u);
 		m_bindings->RecalculateCompatibility();

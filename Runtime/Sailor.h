@@ -17,6 +17,8 @@
 namespace Sailor
 {
 	namespace Tests { class TaskTestApp; }
+	namespace EditorViewport { struct Event; }
+	class InstanceId;
 
 	struct EditorGIProbesBakeRequest;
 	struct EditorGIProbesBakeStatus;
@@ -95,6 +97,8 @@ namespace Sailor
 		SAILOR_API static bool IsEditorMode();
 		SAILOR_API static void SetEditorViewport(uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height);
 		SAILOR_API static void SetEditorRenderTargetSize(uint32_t width, uint32_t height);
+		// True means applied. Busy/resize-deferred updates return false and retain
+		// the latest request for the viewport pump; GetState reports actual state.
 		SAILOR_API static bool UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height, bool bVisible, bool bFocused);
 		SAILOR_API static bool DestroyEditorRemoteViewport(uint64_t viewportId);
 		SAILOR_API static uint32_t GetEditorRemoteViewportState(uint64_t viewportId);
@@ -105,7 +109,7 @@ namespace Sailor
 		SAILOR_API static bool SetEditorRemoteViewportWindowsHost(uint64_t viewportId, void* swapChainPanelInspectable, float compositionScale);
 		SAILOR_API static bool SendEditorRemoteViewportInput(uint64_t viewportId, uint32_t kind, float pointerX, float pointerY, float wheelDeltaX, float wheelDeltaY, uint32_t keyCode, uint32_t button, uint32_t modifiers, bool bPressed, bool bFocused, bool bCaptured);
 		SAILOR_API static uint32_t PullEditorMessages(char** messages, uint32_t num);
-		SAILOR_API static uint32_t PullEditorViewportEvents(char** events, uint32_t num);
+		SAILOR_API static TVector<EditorViewport::Event> PullEditorViewportEvents(uint32_t num);
 		SAILOR_API static bool TraceViewportRay(
 			uint64_t viewportId,
 			float normalizedX,
@@ -215,8 +219,7 @@ namespace Sailor
 		SAILOR_API static bool BreakEditorPrefabLink(const char* strInstanceId);
 		SAILOR_API static bool SetEditorViewportToolState(uint32_t operation, uint32_t space);
 		SAILOR_API static bool GetEditorViewportToolState(uint32_t& outOperation, uint32_t& outSpace);
-		SAILOR_API static bool SetEditorSelection(const char* strSelectionYaml);
-		SAILOR_API static bool RenderPathTracedImage(const char* strOutputPath, const char* strInstanceId, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces);
+		SAILOR_API static bool SetEditorSelection(TVector<InstanceId> selection);
 		SAILOR_API static void ShowMainWindow(bool bShow);
 
 		static SubmoduleBase* GetSubmodule(uint32_t index)

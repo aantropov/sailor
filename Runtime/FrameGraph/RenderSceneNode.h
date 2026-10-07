@@ -7,7 +7,7 @@
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
 #include "FrameGraph/RenderSceneTextureCache.h"
-#include "RHI/Batch.hpp"
+#include "RHI/PackedDraw.hpp"
 #include "RHI/MotionHistory.h"
 
 namespace Sailor::RHI
@@ -47,9 +47,9 @@ namespace Sailor::Framegraph
 
 		};
 
-		SAILOR_API static const char* GetName() { return m_name; }
+		SAILOR_API static StringHash GetName() { return "RenderScene"_h; }
 
-		SAILOR_API virtual Sailor::Tasks::TaskPtr<void, void> Prepare(RHI::RHIFrameGraphPtr frameGraph, const RHI::RHISceneViewSnapshot& sceneView) override;
+		SAILOR_API virtual Sailor::Tasks::TaskPtr<void, void> Prepare(RHI::RHIFrameGraphPtr frameGraph, RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandLists, const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override;
 		SAILOR_API RHI::ESortingOrder GetSortingOrder() const;
@@ -108,8 +108,6 @@ namespace Sailor::Framegraph
 			RHI::RHIMaterialPreparationCache& preparedMaterials, size_t queueTagHash,
 			bool bUsesPagedArenas, bool bBackToFront);
 
-		SAILOR_SHARED_API static const char* m_name;
-
 		// Shared by concurrent Worker preparation tasks; Process belongs to Render.
 		SpinLock m_syncSharedResources;
 
@@ -119,6 +117,7 @@ namespace Sailor::Framegraph
 		// Shared cache across platforms; macOS relies on it most because of descriptor pressure.
 		TextureBindingCache m_textureBindingCache;
 		RHI::TPackedDrawPagedArenaCache<PerInstanceData> m_pagedArenaCache;
+		RHI::RHIPackedDrawSceneChanges m_arenaChanges;
 	};
 
 	template class TFrameGraphNode<RenderSceneNode>;

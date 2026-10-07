@@ -1,10 +1,35 @@
 #pragma once
 #include <atomic>
 #include <cstdint>
+#include <functional>
+#include <vector>
 #include <vulkan/vulkan.h>
 
 namespace Sailor::Tests
 {
+	struct VulkanBufferWrite
+	{
+		VkBuffer m_buffer;
+		VkDeviceSize m_offset;
+		VkDeviceSize m_size;
+	};
+
+	// Observe the calling thread's real transfer commands; Vulkan still executes them.
+	std::vector<VulkanBufferWrite> CaptureVulkanBufferWrites(const std::function<void()>& record);
+
+	struct VulkanComputeInputEvent
+	{
+		enum class Kind { Copy, Barrier, Dispatch };
+		Kind m_kind;
+		VkCommandBuffer m_command;
+		VkBuffer m_buffer = VK_NULL_HANDLE;
+		VkDeviceSize m_offset = 0, m_size = 0;
+		VkPipelineStageFlags m_sourceStage = 0, m_destinationStage = 0;
+		VkAccessFlags m_sourceAccess = 0, m_destinationAccess = 0;
+	};
+
+	std::vector<VulkanComputeInputEvent> CaptureVulkanComputeInputs(const std::function<void()>& record);
+
 	enum class MissingVulkanFeature
 	{
 		None, Anisotropy, FirstInstance, IndependentBlend, RuntimeArray,

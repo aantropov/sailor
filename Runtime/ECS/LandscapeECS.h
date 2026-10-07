@@ -2,28 +2,18 @@
 
 #include "ECS/ECS.h"
 #include "ECS/LandscapeStreaming.h"
+#include "ECS/LandscapeSettings.h"
 #include "AssetRegistry/Landscape/LandscapeVegetationAsset.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
 #include "Math/Bounds.h"
 #include "RHI/SceneView.h"
 
 #include <string>
+#include <limits>
 
 namespace Sailor
 {
 	class CameraData;
-
-	enum class ELandscapeVegetationShadowMode : uint8_t
-	{
-		None = 0u,
-		NearOnly,
-		All
-	};
-
-	enum class ELandscapeVegetationResidency : uint8_t
-	{
-		Persistent = 0u,
-		Grass
-	};
 
 	constexpr EMobilityType ResolveLandscapeProxyMobility(
 		EMobilityType ownerMobility,
@@ -35,41 +25,29 @@ namespace Sailor
 
 	struct LandscapeVegetationProfile final
 	{
-		FileId m_modelFileId{};
-		FileId m_materialFileId{};
+		LandscapeVegetationSettings m_settings{};
 		ModelPtr m_model{};
 		MaterialPtr m_material{};
+		Tasks::TaskPtr<ModelPtr> m_modelLoad{};
+		Tasks::TaskPtr<MaterialPtr> m_materialLoad{};
+		Tasks::TaskPtr<bool> m_modelMaterialsLoad{};
+		TVector<MaterialPtr> m_loadingModelMaterials{};
 		TVector<MaterialPtr> m_modelMaterials{};
-		bool m_bModelMaterialsRequested = false;
-		uint64_t m_cachedMaterialRenderMetadataRevision = 0ull;
-		int32_t m_meshIndex = -1;
-		uint32_t m_instancesPerChunk = 0u;
-		ELandscapeVegetationResidency m_residency =
-			ELandscapeVegetationResidency::Persistent;
-		float m_priority = 1.0f;
-		float m_minScale = 0.75f;
-		float m_maxScale = 1.25f;
-		float m_groundOffset = 0.0f;
-		ELandscapeVegetationShadowMode m_shadowMode = ELandscapeVegetationShadowMode::NearOnly;
-		float m_shadowDistance = 35.0f;
-		uint32_t m_minLod = 0u;
-		uint32_t m_maxLod = 2u;
-		TVector<float> m_screenCoverageThresholds{ 0.25f, 0.05f };
-		float m_cullDistance = 120.0f;
-		float m_colliderRadius = 0.0f;
-		float m_colliderHeight = 2.0f;
-		float m_colliderOffsetY = 1.0f;
+		bool m_bAreModelMaterialsPublished = false;
+		uint64_t m_cachedRenderRevision = 0ull;
 	};
 
 	struct LandscapeVegetationRenderProxy final
 	{
 		RHI::RHISceneProxyResourcePtr m_resource{};
+		Math::AABB m_localBounds{};
 		glm::ivec3 m_octreeCenter{};
 		glm::ivec3 m_octreeExtents{ 1 };
 		size_t m_profileIndex = 0u;
 		uint32_t m_instanceCount = 0u;
 		uint64_t m_revision = 0u;
 		uint64_t m_viewRevision = 0u;
+		uint64_t m_renderRevision = 0u;
 		ELandscapeVegetationResidency m_residency =
 			ELandscapeVegetationResidency::Persistent;
 		EMobilityType m_mobility = EMobilityType::Static;
@@ -89,10 +67,11 @@ namespace Sailor
 		TVector<float> m_shadowDistanceScales{};
 	};
 
-	struct LandscapeBakeVegetationInstance final
+	struct LandscapePendingVegetation final
 	{
+		size_t m_chunkIndex = 0u;
 		size_t m_profileIndex = 0u;
-		glm::mat4 m_localMatrix{ 1.0f };
+		LandscapeVegetationRenderInstances m_instances{};
 	};
 
 	struct LandscapeChunk final
@@ -105,11 +84,13 @@ namespace Sailor
 		uint32_t m_heightResolution = 0u;
 		uint32_t m_chunkX = 0u;
 		uint32_t m_chunkZ = 0u;
-		TVector<uint32_t> m_physicsBodies{};
+		uint32_t m_terrainBodyId = (std::numeric_limits<uint32_t>::max)();
+		uint32_t m_vegetationBodyId = (std::numeric_limits<uint32_t>::max)();
 		TSharedPtr<TVector<Math::Triangle>> m_bakeTriangles{};
-		TVector<LandscapeBakeVegetationInstance> m_bakeVegetation{};
+		TVector<LandscapeVegetationInstance> m_bakeVegetation{};
 		Math::AABB m_localBounds{};
 		uint64_t m_buildRevision = 0u;
+		uint64_t m_vegetationRevision = 0u;
 	};
 
 	struct LandscapeBakeGeometrySnapshot final
@@ -139,32 +120,13 @@ namespace Sailor
 		SAILOR_API void SetLayerTextures(const TVector<FileId>& textures);
 		SAILOR_API void SetImportMaps(const FileId& heightmapTexture,
 			const TVector<FileId>& materialMasks);
-		SAILOR_API void SetAuthoredStamps(const TVector<float>& sculptStamps,
-			const TVector<float>& paintStamps);
+		SAILOR_API void SetAuthoredStamps(const TVector<LandscapeSculptStamp>& sculptStamps,
+			const TVector<LandscapePaintStamp>& paintStamps);
 		SAILOR_API void SetVegetationAsset(const FileId& vegetationAsset);
 		SAILOR_API void RequestVegetationAssetReload();
 		SAILOR_API void RequestSaveVegetation();
 		SAILOR_API void RequestFullRebuild();
-		SAILOR_API void SetVegetationProfiles(
-			const TVector<FileId>& models,
-			const TVector<FileId>& materials,
-			const TVector<float>& meshIndex,
-			const TVector<float>& instancesPerChunk,
-			const TVector<float>& residency,
-			const TVector<float>& priority,
-			const TVector<float>& minScale,
-			const TVector<float>& maxScale,
-			const TVector<float>& groundOffset,
-			const TVector<float>& shadowMode,
-			const TVector<float>& shadowDistance,
-			const TVector<float>& minLod,
-			const TVector<float>& maxLod,
-			const TVector<float>& lod1ScreenCoverage,
-			const TVector<float>& lod2ScreenCoverage,
-			const TVector<float>& cullDistance,
-			const TVector<float>& colliderRadius,
-			const TVector<float>& colliderHeight,
-			const TVector<float>& colliderOffsetY);
+		SAILOR_API void SetVegetationProfiles(const TVector<LandscapeVegetationSettings>& settings);
 
 	public:
 		// Immutable while worker tasks build a dirty landscape revision.
@@ -186,10 +148,12 @@ namespace Sailor
 		uint64_t m_cachedSourceMaterialContentRevision = 0ull;
 		uint64_t m_cachedSourceMaterialRenderMetadataRevision = 0ull;
 		TVector<FileId> m_layerTextures{};
+		TVector<Tasks::TaskPtr<TexturePtr>> m_layerTextureLoads{};
 		FileId m_heightmapTexture{};
 		TVector<FileId> m_materialMasks{};
-		TVector<float> m_sculptStamps{};
-		TVector<float> m_paintStamps{};
+		TVector<Tasks::TaskPtr<TextureImporter::CpuTextureSnapshot>> m_importMapLoads{};
+		TVector<LandscapeSculptStamp> m_sculptStamps{};
+		TVector<LandscapePaintStamp> m_paintStamps{};
 		FileId m_vegetationAsset{};
 		LandscapeVegetationAssetData m_vegetationAssetData{};
 		bool m_bVegetationAssetLoaded = false;
@@ -197,11 +161,16 @@ namespace Sailor
 		bool m_bSaveVegetationRequested = false;
 		TVector<LandscapeVegetationProfile> m_vegetationProfiles{};
 		TVector<LandscapeChunk> m_chunks{};
+		TVector<LandscapePendingVegetation> m_pendingVegetation{};
 		TVector<uint32_t> m_physicsBodies{};
 		TSet<uint32_t> m_dirtyChunks{};
+		TSet<uint32_t> m_dirtyVegetationProfiles{};
+		bool m_bIsVegetationCollisionDirty = false;
+		glm::vec3 m_physicsScale{ 1.0f };
 		bool m_bRebuildAllChunks = true;
 		uint64_t m_buildRevision = 0u;
 		uint64_t m_streamingRevision = 0u;
+		uint64_t m_vegetationRevision = 0u;
 		uint32_t m_activeGrassInstances = 0u;
 
 		friend class LandscapeECS;
@@ -211,10 +180,10 @@ namespace Sailor
 	{
 	public:
 		SAILOR_API virtual void BeginPlay() override;
-		SAILOR_API virtual Tasks::ITaskPtr Tick(float deltaTime) override;
+		SAILOR_API virtual void Tick(float deltaTime) override;
 		SAILOR_API virtual void EndPlay() override;
 		SAILOR_API void MarkDirty(GameObjectPtr owner);
-		SAILOR_API void AppendSceneView(RHI::RHISceneViewPtr& sceneView) const;
+		SAILOR_API void AppendSceneView(RHI::RHISceneViewPtr& sceneView);
 		SAILOR_API bool CollectBakeGeometrySnapshots(
 			TVector<LandscapeBakeGeometrySnapshot>& outSnapshots,
 			std::string& outDiagnostic) const;
@@ -238,11 +207,24 @@ namespace Sailor
 		};
 
 		void DestroyPhysicsBodies(LandscapeData& component);
+		void DestroyPhysicsBody(LandscapeData& component, uint32_t& bodyId);
 		void DestroyChunkPhysicsBodies(LandscapeData& component, LandscapeChunk& chunk);
+		void CreateChunkPhysicsBodies(LandscapeData& component, LandscapeChunk& chunk,
+			const TVector<glm::vec3>& vertices, const TVector<uint32_t>& indices, const Math::Transform& transform);
+		void UpdatePhysicsTransform(LandscapeData& component, const Math::Transform& transform);
+		void RebuildVegetationPhysics(LandscapeData& component, LandscapeChunk& chunk, const Math::Transform& transform);
+		void UpdateTerrainRenderProxy(size_t componentIndex, size_t chunkIndex, RHI::RHIMeshPtr mesh);
+		void UpdateVegetationResources(LandscapeData& component);
+		void UpdateChunkVegetation(size_t componentIndex, size_t chunkIndex,
+			const TVector<LandscapeVegetationInstance>& placements, const TVector<uint32_t>& profiles);
+		bool UpdateVegetationSources(size_t componentIndex, uint64_t previousTerrainRevision);
+		bool UpdateVegetationRenderProxies(size_t componentIndex);
+		bool UpdatePendingVegetation(size_t componentIndex);
 		bool UpdateGrassResidency(
 			const TVector<Math::Transform>& cameraTransforms,
 			const TVector<CameraData>& cameras);
 		void PublishSceneVersion();
+		bool m_bHasPendingSceneChanges = false;
 		uint64_t m_shadowCastersRevision = 0u;
 		uint64_t m_sceneVersionRevision = 0u;
 		uint64_t m_spatialRevision = 0u;
@@ -252,7 +234,6 @@ namespace Sailor
 		RHI::RHISpatialSceneVersionPtr m_publishedSceneVersion{};
 		RHI::RHIScenePtr m_rhiScene{};
 		TMap<size_t, RHI::RenderInstanceHandle> m_renderInstanceHandles{};
-		TMap<size_t, uint64_t> m_publishedBuildRevisions{};
 		TVector<LandscapeGrassCandidate> m_grassCandidatesScratch{};
 		TVector<LandscapeGrassSelection> m_grassSelectionsScratch{};
 		TVector<glm::ivec2> m_cameraChunkCoordinatesScratch{};

@@ -20,6 +20,7 @@
 #ifndef STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_MSC_SECURE_CRT
+#define STBI_WINDOWS_UTF8
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image.h>
 #endif
@@ -41,7 +42,7 @@ bool ExtractTextureFromGLB(const std::string& filePath, int32_t textureIndex, Sa
 		uint32_t chunkType;
 	};
 
-	std::ifstream file(filePath, std::ios::binary);
+	std::ifstream file(Workspace::PathFromUtf8(filePath), std::ios::binary);
 	if (!file.is_open())
 	{
 		SAILOR_LOG_ERROR("Failed to open file");
@@ -327,13 +328,13 @@ bool TextureImporter::CaptureCpuDecodeRequest(const TextureAssetInfo& assetInfo,
 	{
 		// TinyGLTF reads external images and buffers while extracting an image.
 		// Capture their revisions too; the document timestamp alone is insufficient.
-		std::ifstream input(request.m_filepath, std::ios::binary);
+		std::ifstream input(Workspace::PathFromUtf8(request.m_filepath), std::ios::binary);
 		const auto document = nlohmann::json::parse(input, nullptr, false);
 		if (document.is_discarded() || !document.is_object())
 		{
 			return false;
 		}
-		const auto folder = std::filesystem::path(request.m_filepath).parent_path();
+		const auto folder = Workspace::PathFromUtf8(request.m_filepath).parent_path();
 		for (const char* collection : { "buffers", "images" })
 		{
 			const auto entries = document.find(collection);
@@ -362,7 +363,7 @@ bool TextureImporter::CaptureCpuDecodeRequest(const TextureAssetInfo& assetInfo,
 				{
 					return false;
 				}
-				const auto path = (folder / decoded).lexically_normal().string();
+				const auto path = Workspace::PathToUtf8((folder / Workspace::PathFromUtf8(decoded)).lexically_normal());
 				if (!Utils::TryGetFileRevision(path, revision))
 				{
 					return false;
@@ -420,7 +421,7 @@ TextureImporter::TextureImporter(TextureAssetInfoHandler* infoHandler)
 
 	m_textureSamplersCurrentIndex = 1;
 
-	auto textures = driver->AddSamplerToShaderBindings(m_textureSamplersBindings, "textureSamplers", defaultTextures, 0, true, static_cast<uint32_t>(MaxTexturesInScene));
+	auto textures = driver->AddSamplerToShaderBindings(m_textureSamplersBindings, "textureSamplers"_h, defaultTextures, 0, true, static_cast<uint32_t>(MaxTexturesInScene));
 	m_textureSamplersBindings->RecalculateCompatibility();
 
 	m_textureSamplerSlotRevisions.Resize(1);
@@ -474,7 +475,7 @@ Tasks::TaskPtr<TVector<TextureImporter::CpuTextureSnapshot>> TextureImporter::Ca
 			loaded.Add({});
 		}
 	}
-	auto capture = Tasks::CreateTask<TVector<CpuTextureSnapshot>>("Capture texture CPU state",
+	auto capture = Tasks::CreateTask<TVector<CpuTextureSnapshot>>("Capture texture CPU state"_h,
 		[textures, loaded]()
 		{
 			TVector<CpuTextureSnapshot> snapshots;
@@ -528,7 +529,7 @@ TextureImporter::TextureSamplersSnapshot TextureImporter::GetTextureSamplersSnap
 	if (m_textureSamplersBindings)
 	{
 		const auto& shaderBindings = m_textureSamplersBindings->GetShaderBindings();
-		const auto textureSamplers = shaderBindings.Find("textureSamplers");
+		const auto textureSamplers = shaderBindings.Find("textureSamplers"_h);
 		const TVector<RHI::RHITexturePtr>* textures = nullptr;
 		if (textureSamplers != shaderBindings.end() && textureSamplers->m_second)
 		{
@@ -631,7 +632,7 @@ bool TextureImporter::UpdateTextureSamplerBinding(RHI::RHITexturePtr texture, ui
 bool TextureImporter::UpdateTextureSamplerBindingLocked(RHI::RHITexturePtr texture, uint32_t index)
 {
 	const uint64_t previousRevision = m_textureSamplersBindings->GetDescriptorRevision();
-	RHI::Renderer::GetDriver()->UpdateShaderBinding(m_textureSamplersBindings, "textureSamplers", texture, index);
+	RHI::Renderer::GetDriver()->UpdateShaderBinding(m_textureSamplersBindings, "textureSamplers"_h, texture, index);
 	const uint64_t currentRevision = m_textureSamplersBindings->GetDescriptorRevision();
 
 	if (currentRevision == previousRevision)
@@ -673,13 +674,13 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpir
 	else
 	{
 		// Rejected reloads still preserve the publication/read ordering for this texture.
-		entry.m_load = Tasks::CreateTask<TexturePtr>("Reject texture reload", []() { return TexturePtr{}; }, EThreadType::RHI);
+		entry.m_load = Tasks::CreateTask<TexturePtr>("Reject texture reload"_h, []() { return TexturePtr{}; }, EThreadType::RHI);
 		entry.m_load->Join(entry.m_lastAccess);
 	}
 	entry.m_lastAccess = entry.m_load;
 	auto task = entry.m_load;
 	m_textures.Unlock(uid);
-	auto acknowledge = Tasks::CreateTask<bool>("Acknowledge texture reload", [registry, token, task]()
+	auto acknowledge = Tasks::CreateTask<bool>("Acknowledge texture reload"_h, [registry, token, task]()
 		{
 			const bool succeeded = task->GetResult().IsValid();
 			registry->CompleteAssetProcessing(token, succeeded);
@@ -825,6 +826,45 @@ bool TextureImporter::DecodeTextureCpu(FileId uid, ByteCode& decodedData,
 	return ImportTexture(uid, decodedData, width, height, mipLevels);
 }
 
+Tasks::TaskPtr<TextureImporter::CpuTextureSnapshot> TextureImporter::LoadCpuTexture(FileId uid)
+{
+	auto* info = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid);
+	CpuDecodeRequest source;
+	if (!info || !CaptureCpuDecodeRequest(*info, source)) return {};
+	const auto clamping = info->GetClamping();
+	auto& entry = m_cpuTextures.At_Lock(uid);
+	if (entry.m_load && entry.m_source == source && entry.m_clamping == clamping)
+	{
+		auto task = entry.m_load;
+		m_cpuTextures.Unlock(uid);
+		return task;
+	}
+	entry.m_source = source;
+	entry.m_clamping = clamping;
+	entry.m_load = Tasks::CreateTask<CpuTextureSnapshot>("Decode CPU texture"_h,
+		[source = std::move(source), clamping, decode = m_decodeTexture]()
+		{
+			CpuTextureSnapshot result;
+			result.m_source = source;
+			result.m_clamping = clamping;
+			ByteCode pixels;
+			uint32_t mipLevels = 1;
+			if (decode(source, pixels, result.m_width, result.m_height, mipLevels) && HasCurrentTextureSources(source))
+			{
+				result.m_pixels = TSharedPtr<ByteCode>::Make(std::move(pixels));
+			}
+			else
+			{
+				SAILOR_LOG_ERROR("Cannot decode CPU texture '%s': decoding failed or the source changed.", source.m_filepath.c_str());
+			}
+			return result;
+		});
+	auto task = entry.m_load;
+	m_cpuTextures.Unlock(uid);
+	task->Run();
+	return task;
+}
+
 bool TextureImporter::LoadTexture_Immediate(FileId uid, TexturePtr& outTexture)
 {
 	auto task = LoadTexture(uid, outTexture);
@@ -863,7 +903,7 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::CreateTextureTask(
 		uint32_t m_mipLevels = 1;
 		bool m_bDecoded = false;
 	};
-	auto decode = Tasks::CreateTask<TSharedPtr<Data>>("Decode texture",
+	auto decode = Tasks::CreateTask<TSharedPtr<Data>>("Decode texture"_h,
 		[source, decodeTexture = m_decodeTexture]()
 		{
 			auto data = TSharedPtr<Data>::Make();
@@ -938,7 +978,7 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::CreateTextureTask(
 				texture->TraceHotReload(nullptr);
 			}
 			return texture;
-		}, "Publish texture", EThreadType::RHI);
+		}, "Publish texture"_h, EThreadType::RHI);
 	// Decodes may overlap, but one texture's publications follow request order.
 	if (previous)
 	{

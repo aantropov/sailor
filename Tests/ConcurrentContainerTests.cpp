@@ -284,6 +284,7 @@ namespace
 			const bool expected = (i / numWorkers) % 2 != 0;
 			Require(set.Contains(Key{ i }) == expected && map.ContainsKey(Key{ i }) == expected,
 				"independent stripe mutation must preserve exact membership");
+			if (expected) Require(map[Key{ i }] == i + 100, "independent stripe mutation must preserve each writer's own value");
 		}
 	}
 

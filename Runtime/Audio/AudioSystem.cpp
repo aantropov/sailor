@@ -11,6 +11,7 @@
 #include "Core/SpinLock.h"
 #include "Tasks/Scheduler.h"
 #include "Tasks/Tasks.h"
+#include "Workspace/WorkspacePathEncoding.h"
 
 #include <algorithm>
 #include <atomic>
@@ -158,7 +159,7 @@ public:
 		if (bScheduleDrain)
 		{
 			scheduler->Run(Tasks::CreateTask(
-				"Process audio commands",
+				"Process audio commands"_h,
 				[this]() { DrainCommands(); },
 				EThreadType::Audio));
 		}
@@ -207,9 +208,15 @@ public:
 			const ma_uint32 flags = command.m_clip.m_bStream
 				? MA_SOUND_FLAG_STREAM | MA_SOUND_FLAG_ASYNC
 				: MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_ASYNC;
-			const ma_result result = ma_sound_init_from_file(
+			const auto sourcePath = Workspace::PathFromUtf8(command.m_clip.m_sourcePath);
+#if defined(_WIN32)
+			const auto initializeSound = ma_sound_init_from_file_w;
+#else
+			const auto initializeSound = ma_sound_init_from_file;
+#endif
+			const ma_result result = initializeSound(
 				&m_engine,
-				command.m_clip.m_sourcePath.c_str(),
+				sourcePath.c_str(),
 				flags,
 				nullptr,
 				nullptr,
@@ -414,7 +421,7 @@ AudioSystem::AudioSystem(bool bForceNullDevice) :
 	}
 
 	auto initialize = Tasks::CreateTask(
-		"Initialize audio backend",
+		"Initialize audio backend"_h,
 		[this, bForceNullDevice]() { m_pImpl->InitializeBackend(bForceNullDevice); },
 		EThreadType::Audio);
 	scheduler->Run(initialize);
@@ -431,7 +438,7 @@ AudioSystem::~AudioSystem()
 
 	Flush();
 	auto shutdown = Tasks::CreateTask(
-		"Shutdown audio backend",
+		"Shutdown audio backend"_h,
 		[this]() { m_pImpl->ShutdownBackend(); },
 		EThreadType::Audio);
 	scheduler->Run(shutdown);

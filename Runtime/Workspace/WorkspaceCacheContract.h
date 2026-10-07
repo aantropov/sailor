@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <string_view>
 
 namespace Sailor::Workspace
 {
@@ -50,35 +51,35 @@ namespace Sailor::Workspace
 	};
 
 	SAILOR_SHARED_API std::string ResolveWorkspaceCacheIdentity(
-		const std::string& workspaceId,
+		std::string_view workspaceId,
 		const std::filesystem::path& canonicalWorkspaceRoot);
 
 	SAILOR_SHARED_API const std::string& GetWorkspaceCacheEngineVersion();
 	SAILOR_SHARED_API const std::string& GetWorkspaceCacheBuildIdentity();
 
 	SAILOR_SHARED_API WorkspaceCacheIdentity MakeWorkspaceCacheIdentity(
-		const std::string& cacheKind,
-		const std::string& producerIdentity,
+		std::string_view cacheKind,
+		std::string_view producerIdentity,
 		uint32_t payloadVersion,
 		const WorkspaceContext& workspaceContext);
 
 	SAILOR_SHARED_API WorkspaceCacheIdentity MakeWorkspaceCacheIdentity(
-		const std::string& cacheKind,
-		const std::string& producerIdentity,
+		std::string_view cacheKind,
+		std::string_view producerIdentity,
 		uint32_t payloadVersion,
-		const std::string& workspaceId,
+		std::string_view workspaceId,
 		const std::filesystem::path& canonicalWorkspaceRoot);
 
 	SAILOR_SHARED_API bool SerializeWorkspaceCacheEnvelope(
 		const WorkspaceCacheIdentity& identity,
-		const std::string& payload,
+		std::string_view payload,
 		std::string& outEnvelope,
 		std::string& outDiagnostic) noexcept;
 
 	SAILOR_SHARED_API WorkspaceCacheLoadResult ParseWorkspaceCacheEnvelope(
 		const std::string& envelope,
 		const WorkspaceCacheIdentity& expectedIdentity,
-		const std::string& sourceName = "workspace cache") noexcept;
+		std::string_view sourceName = "workspace cache") noexcept;
 
 	SAILOR_SHARED_API WorkspaceCacheLoadResult LoadWorkspaceCacheEnvelope(
 		const std::filesystem::path& path,

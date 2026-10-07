@@ -9,10 +9,6 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 
-#ifndef _SAILOR_IMPORT_
-const char* LightCullingNode::m_name = "LightCulling";
-#endif
-
 void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -31,7 +27,7 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdCompute);
 
-	const auto linearDepthAttachment = sceneView.m_rhiLightCullingData->GetShaderBindings()["linearDepth"]->GetTextureBinding();
+	const auto linearDepthAttachment = sceneView.m_rhiLightCullingData->GetShaderBindings()["linearDepth"_h]->GetTextureBinding();
 
 #ifdef _DEBUG
 	if (RHIShaderPtr computeShader = m_pComputeShader->GetDebugComputeShaderRHI())

@@ -134,7 +134,7 @@ Tasks::TaskPtr<GIProbesAssetPtr> GIProbesImporter::LoadGIProbes(
 	}
 	outAsset = loadedAsset;
 	promise = Tasks::CreateTaskWithResult<GIProbesAssetPtr>(
-		"Load GI Probes",
+		"Load GI Probes"_h,
 		[this, uid, asset = loadedAsset]() mutable
 		{
 			ImportGIProbes(uid, asset);
@@ -231,7 +231,7 @@ bool GIProbesImporter::ImportGIProbes(
 	}
 
 	GIProbesBinaryResult result = GIProbesBinary::Load(
-		info->GetAssetFilepath());
+		Workspace::PathFromUtf8(info->GetAssetFilepath()));
 	if (!outAsset)
 	{
 		outAsset = GIProbesAssetPtr::Make(m_allocator, uid);

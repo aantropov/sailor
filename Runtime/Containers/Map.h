@@ -494,5 +494,4 @@ namespace Sailor
 		friend TConstIterator;
 	};
 
-	SAILOR_API void RunMapBenchmark();
 }

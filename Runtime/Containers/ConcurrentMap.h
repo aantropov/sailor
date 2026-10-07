@@ -315,5 +315,4 @@ namespace Sailor
 
 	};
 
-	SAILOR_API void RunMapBenchmark();
 }

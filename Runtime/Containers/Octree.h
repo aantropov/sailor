@@ -625,5 +625,4 @@ namespace Sailor
 		TMap<TElementType, TNode*> m_map{};
 	};
 
-	SAILOR_API void RunOctreeBenchmark();
 }

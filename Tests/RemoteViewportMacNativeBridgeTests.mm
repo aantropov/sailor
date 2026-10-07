@@ -16,6 +16,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 
@@ -24,7 +25,11 @@
 #include "RHI/Fence.h"
 #include "RHI/Texture.h"
 #include "Memory/SharedPtr.hpp"
+#include "Sailor.h"
 #include "Support/MacViewportTestSource.h"
+#include "Support/ScopeExit.h"
+#include "Support/TaskTestApp.h"
+#include "Tasks/Scheduler.h"
 
 using Sailor::TUniquePtr;
 using namespace Sailor::EditorRemote;
@@ -317,15 +322,15 @@ namespace
 		return static_cast<uint32_t>(b) | (static_cast<uint32_t>(g) << 8u) | (static_cast<uint32_t>(r) << 16u) | 0xff000000u;
 	}
 
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
-	void RequireNativeReleases(const Sailor::TSharedPtr<std::atomic<uint32_t>>& releases, uint32_t expected, const std::string& message)
+	void RequireNativeReleases(const Sailor::TSharedPtr<std::atomic<uint32_t>>& releases, uint32_t expected, std::string_view message)
 	{
 		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
 		while (releases->load() < expected && std::chrono::steady_clock::now() < deadline)
@@ -337,7 +342,8 @@ namespace
 			}
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
-		Require(releases->load() == expected, message + ": " + std::to_string(releases->load()));
+		const uint32_t actual = releases->load();
+		if (actual != expected) throw std::runtime_error(std::string(message) + ": " + std::to_string(actual));
 	}
 
 	Sailor::TSharedPtr<MacIOSurfaceAllocation> MakeNativeProducer(IOSurfaceRef surface, uint32_t width, uint32_t height)
@@ -738,6 +744,115 @@ namespace
 		}
 	}
 
+	void TestNativeHostValueOwnership()
+	{
+		auto releases = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+		MacNativeHostHandle owner;
+		@autoreleasepool
+		{
+			CAMetalLayer* layer = [CAMetalLayer layer];
+			ObserveNativeRelease(layer, releases);
+			const CFIndex retainCount = CFGetRetainCount((__bridge CFTypeRef)layer);
+			owner = LayerHandle(layer);
+			Require(CFGetRetainCount((__bridge CFTypeRef)layer) == retainCount + 1,
+				"host construction must acquire one native reference");
+			auto copy = owner;
+			Require(copy == owner && CFGetRetainCount((__bridge CFTypeRef)layer) == retainCount + 2,
+				"copied host handles must each retain their native object");
+			auto moved = std::move(copy);
+			Require(!copy.IsValid() && moved == owner && CFGetRetainCount((__bridge CFTypeRef)layer) == retainCount + 2,
+				"moving a host must transfer ownership without an extra retain");
+			moved = moved;
+			Require(moved == owner && CFGetRetainCount((__bridge CFTypeRef)layer) == retainCount + 2,
+				"self assignment must preserve native ownership");
+		}
+		owner = {};
+		RequireNativeReleases(releases, 1, "the last host value must release its native object exactly once");
+	}
+
+	void TestPendingAppHostRetainsLayer()
+	{
+		TaskTestApp app;
+		app.GetScheduler().Initialize();
+		auto releases = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+		constexpr uint64_t viewportId = 257;
+		bool bWasRetained = false;
+		@autoreleasepool
+		{
+			CAMetalLayer* layer = [CAMetalLayer layer];
+			ObserveNativeRelease(layer, releases);
+			const CFIndex retainCount = CFGetRetainCount((__bridge CFTypeRef)layer);
+			Require(Sailor::App::SetEditorRemoteViewportMacHostHandle(viewportId,
+				static_cast<uint32_t>(MacNativeHostHandleKind::CAMetalLayer), reinterpret_cast<uintptr_t>(layer)),
+				"App must accept a host before the viewport has been created");
+			bWasRetained = CFGetRetainCount((__bridge CFTypeRef)layer) > retainCount;
+		}
+		Require(Sailor::App::SetEditorRemoteViewportMacHostHandle(viewportId, 0, 0),
+			"disconnect must cancel a pending native host");
+		app.GetScheduler().WaitIdle({ Sailor::EThreadType::Editor });
+		Require(bWasRetained, "pending App host must own the layer after its UI owner releases it");
+		RequireNativeReleases(releases, 1, "cancelled pending host must release its layer exactly once");
+	}
+
+	void TestPendingAppHostReplacementAndDestroy()
+	{
+		TaskTestApp app;
+		app.GetScheduler().Initialize();
+		auto oldReleases = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+		auto newReleases = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+		constexpr uint64_t viewportId = 259;
+		@autoreleasepool
+		{
+			CAMetalLayer* first = [CAMetalLayer layer];
+			CAMetalLayer* second = [CAMetalLayer layer];
+			ObserveNativeRelease(first, oldReleases);
+			ObserveNativeRelease(second, newReleases);
+			Require(Sailor::App::SetEditorRemoteViewportMacHostHandle(viewportId, 2u, reinterpret_cast<uintptr_t>(first)) &&
+				Sailor::App::SetEditorRemoteViewportMacHostHandle(viewportId, 2u, reinterpret_cast<uintptr_t>(second)),
+				"a reconnect must replace the pending native host before a viewport exists");
+		}
+		app.GetScheduler().WaitIdle({ Sailor::EThreadType::Editor });
+		RequireNativeReleases(oldReleases, 1, "reconnect must release the superseded pending host");
+		Require(newReleases->load() == 0, "replacement host must survive the UI autorelease pool");
+		Require(Sailor::App::DestroyEditorRemoteViewport(viewportId), "destroy must cancel a host whose viewport is still pending");
+		RequireNativeReleases(newReleases, 1, "destroy must release pending ownership without a future layout update");
+		Require(!Sailor::App::DestroyEditorRemoteViewport(viewportId), "destroyed pending host must not remain registered");
+	}
+
+	void TestPresenterRetainsHostBeforeImport()
+	{
+		auto releases = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+		MacLoopbackViewportPresenter presenter;
+		constexpr ViewportId viewportId = 258;
+		bool bWasRetained = false;
+		@autoreleasepool
+		{
+			CAMetalLayer* layer = [CAMetalLayer layer];
+			ObserveNativeRelease(layer, releases);
+			const CFIndex retainCount = CFGetRetainCount((__bridge CFTypeRef)layer);
+			presenter.BindHostHandle(viewportId, LayerHandle(layer));
+			bWasRetained = CFGetRetainCount((__bridge CFTypeRef)layer) > retainCount;
+		}
+		if (!bWasRetained)
+		{
+			presenter.BindHostHandle(viewportId, {});
+			Require(false, "presenter must retain its pending host before the first surface import");
+		}
+		NativeSurface surface(64, 48);
+		ViewportDescriptor viewport;
+		viewport.m_viewportId = viewportId;
+		viewport.m_width = 64;
+		viewport.m_height = 48;
+		viewport.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+		Require(presenter.ImportSurface(viewport, surface.m_transport, 1, 1).IsOk(),
+			"surface import must bind the retained host after the UI owner has gone away");
+		const auto* state = presenter.FindImportedState(viewportId);
+		Require(state && state->m_layerBinding && state->m_layerBinding->IsValid(),
+			"delayed import must create a real Metal layer binding");
+		presenter.BindHostHandle(viewportId, {});
+		RequireNativeReleases(releases, 1, "detaching the presenter must release its pending and bound layer ownership");
+	}
+
 	void TestNativeBindingReleasesOwnedObjects()
 	{
 		auto layers = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
@@ -1090,6 +1205,101 @@ namespace
 		watchdog.join();
 	}
 
+	void TestMailboxKeepsLatestSourceWhilePresentationIsPending()
+	{
+		for (bool bPaused : { false, true })
+		{
+			constexpr uint64_t start = 3'600'000;
+			constexpr FrameIndex firstSource = 100'000;
+			CpuSource source;
+			source.m_immutableSource = MakeMacReadbackSource(64, 48, 0x11, firstSource);
+			MacLoopbackIOSurfaceProvider provider(&source);
+			MacLoopbackViewportPresenter presenter;
+			ViewportDescriptor viewport;
+			viewport.m_viewportId = 108;
+			viewport.m_width = 64;
+			viewport.m_height = 48;
+			viewport.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+			viewport.m_colorSpace = ColorSpace::Srgb;
+			viewport.m_presentMode = PresentMode::Mailbox;
+			MacViewportLoopbackBinding binding(viewport, provider, presenter);
+			presenter.BindHostHandle(viewport.m_viewportId, LayerHandle([CAMetalLayer layer]));
+			Require(binding.Create(start).IsOk(), "mailbox test needs a real native transport");
+			auto allocation = std::as_const(binding.GetTransportBackend()).FindSurface(viewport.m_viewportId, 1, 1)->m_nativeAllocation;
+			const auto native = presenter.FindImportedState(viewport.m_viewportId)->m_layerBinding.GetRawPtr();
+			id<MTLCommandQueue> queue = (id<MTLCommandQueue>)native->m_commandQueueObject;
+			DelayedReadQueue* probe = [[[DelayedReadQueue alloc] initWithQueue:queue source:(id<MTLTexture>)allocation->m_producerTextureObject] autorelease];
+			[queue release];
+			native->m_commandQueueObject = reinterpret_cast<uintptr_t>([probe retain]);
+			Require(probe->m_gate && probe->m_pixel, "mailbox test needs an actual delayed GPU reader");
+			std::promise<void> finished;
+			auto finish = finished.get_future();
+			std::thread watchdog([&]()
+			{
+				if (finish.wait_for(std::chrono::seconds(5)) == std::future_status::timeout) probe->m_gate.signaledValue = UINT64_MAX;
+			});
+			ScopeExit release([&]()
+			{
+				probe->m_gate.signaledValue = UINT64_MAX;
+				finished.set_value();
+				watchdog.join();
+			});
+
+			Require(binding.PumpFrame(start + 1).IsOk() && probe->m_read && probe->m_gate.signaledValue == 0 &&
+				probe->m_read.status != MTLCommandBufferStatusCompleted, "first native presentation must remain pending");
+			const auto firstCopy = allocation->m_currentCopyToken;
+			constexpr uint64_t payload = 64u * 48u * 4u;
+			Require(binding.SetVisible(!bPaused).IsOk(), "mailbox visibility must follow the caller");
+			uint8_t latestValue = 0;
+			for (FrameIndex frame = 1; frame <= 256; ++frame)
+			{
+				latestValue = static_cast<uint8_t>(0x20 + frame % 200);
+				source.m_immutableSource = MakeMacReadbackSource(64, 48, latestValue, firstSource + frame);
+				Require(binding.PumpFrame(start + frame * 10'000).IsOk(), "producer-ahead pumping must remain nonblocking");
+				Require(source.m_calls == 1 && probe->m_commandCount == 1 && probe->m_gate.signaledValue == 0 &&
+					allocation->m_currentCopyToken == firstCopy && allocation->m_cpuUploadedBytes == payload &&
+					binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 1 &&
+					presenter.FindImportedState(viewport.m_viewportId)->m_presentedFrameCount == 1,
+					"pending consumption must not upload, queue or present every incoming source frame");
+				Require(!source.m_immutableSource.m_readback.IsShared() && provider.GetLiveAllocationCount() == 1 &&
+					binding.GetTransportBackend().GetSurfaceCount() == 1,
+					"superseded source frames must not accumulate in the transport");
+			}
+			Require(ReadIOSurfaceBGRA8Pixel((IOSurfaceRef)allocation->m_surfaceObject, allocation->m_plane.m_bytesPerRow, 0, 0) == 0x11111111u,
+				"newer source frames must not overwrite pixels still owned by the native reader");
+			probe->m_gate.signaledValue = 1;
+			[probe->m_read waitUntilCompleted];
+			Require(probe->m_read.status == MTLCommandBufferStatusCompleted && *(const uint32_t*)probe->m_pixel.contents == 0x11111111u,
+				"the delayed GPU read must observe its original frame");
+			if (bPaused)
+			{
+				Require(binding.PumpFrame(start + 3'000'000).IsOk() && source.m_calls == 1 && probe->m_commandCount == 1 &&
+					binding.GetRuntimeSession().GetState() == SessionState::Paused,
+					"a completed read must not resume hidden presentation or turn elapsed time into frames");
+				Require(binding.SetVisible(true).IsOk(), "mailbox must resume on request");
+			}
+			[probe prepareNextReadWithSource:(id<MTLTexture>)allocation->m_producerTextureObject];
+			Require(binding.PumpFrame(start + 3'000'001).IsOk() && source.m_calls == 2 && probe->m_commandCount == 2 &&
+				binding.GetRuntimeSession().GetLastPublishedFrameIndex() == 2 &&
+				binding.GetRuntimeSession().GetDiagnostics().m_lastGoodFrameIndex == 2 &&
+				allocation->m_lastRendererSource.m_sourceToken == firstSource + 256 &&
+				allocation->m_lastRendererSource.m_readback->m_frameIndex == firstSource + 256,
+				"consumption must resume with the latest source, not a backlog or the renderer's frame index");
+			probe->m_gate.signaledValue = 2;
+			[probe->m_read waitUntilCompleted];
+			const uint32_t latestPixel = static_cast<uint32_t>(latestValue) * 0x01010101u;
+			Require(probe->m_read.status == MTLCommandBufferStatusCompleted &&
+				*(const uint32_t*)probe->m_pixel.contents == latestPixel &&
+				ReadIOSurfaceBGRA8Pixel((IOSurfaceRef)allocation->m_surfaceObject, allocation->m_plane.m_bytesPerRow, 63, 47) == latestPixel,
+				"resumed native presentation must read the latest source pixels, not a stale cached image");
+			Require(allocation->m_cpuUploadedBytes == 2 * payload && allocation->m_currentCopyToken != firstCopy &&
+				presenter.FindImportedState(viewport.m_viewportId)->m_presentedFrameCount == 2,
+				"the source burst must produce exactly two uploads and presentations");
+			Require(binding.Destroy().IsOk() && provider.GetLiveAllocationCount() == 0, "mailbox teardown must release its transport");
+			std::cout << "Native mailbox paused=" << bPaused << ": 256 newer sources, two uploads/presentations, bounded ownership and latest GPU pixels passed" << std::endl;
+		}
+	}
+
 	void TestPresentFailuresAndCompletedReadRetention(bool immutable)
 	{
 		CpuSource source;
@@ -1114,14 +1324,20 @@ namespace
 		[queue release];
 		native->m_commandQueueObject = reinterpret_cast<uintptr_t>([probe retain]);
 		layer->m_refuseDrawable = true;
-		Require(!binding.PumpFrame().IsOk() && allocation->m_presentCommandBufferObject == 0, "drawable refusal must not reserve a surface reader");
+		Require(binding.PumpFrame().m_code == ResultCode::Retryable && allocation->m_presentCommandBufferObject == 0,
+			"drawable refusal must leave presentation retryable without reserving a surface reader");
 		const auto initialCopy = allocation->m_currentCopyToken;
+		const auto pendingFrame = binding.GetRuntimeSession().GetLastFrame();
 		layer->m_refuseDrawable = false;
 		probe->m_refuseCommandBuffer = true;
-		Require(!binding.PumpFrame().IsOk() && allocation->m_presentCommandBufferObject == 0, "command refusal must leave the surface reusable");
+		Require(binding.PumpFrame().m_code == ResultCode::Retryable && allocation->m_presentCommandBufferObject == 0 &&
+			binding.GetRuntimeSession().GetLastFrame() == pendingFrame && allocation->m_currentCopyToken == initialCopy,
+			"command refusal must retain the original frame without repeating its upload");
 		probe->m_refuseCommandBuffer = false;
 		probe->m_failCompletion = true;
-		Require(binding.PumpFrame().IsOk(), "native submission may be accepted before its terminal result");
+		Require(binding.PumpFrame().IsOk() && binding.GetRuntimeSession().GetLastFrame() == pendingFrame &&
+			allocation->m_currentCopyToken == initialCopy,
+			"native submission retry must present the original upload before its asynchronous terminal result");
 		id<MTLTexture> firstImport = [[(id<MTLTexture>)native->m_lastSourceTextureObject retain] autorelease];
 		[(id<MTLCommandBuffer>)allocation->m_presentCommandBufferObject waitUntilCompleted];
 		const auto priorFrame = binding.GetRuntimeSession().GetLastPublishedFrameIndex();
@@ -1798,6 +2014,10 @@ namespace
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "NativeHostValueOwnership", TestNativeHostValueOwnership },
+		{ "PendingAppHostRetainsLayer", TestPendingAppHostRetainsLayer },
+		{ "PendingAppHostReplacementAndDestroy", TestPendingAppHostReplacementAndDestroy },
+		{ "PresenterRetainsHostBeforeImport", TestPresenterRetainsHostBeforeImport },
 		{ "NativeSourceTextureReuse", TestNativeSourceTextureReuse },
 		{ "NativeSourceImportReplacement", TestNativeSourceImportReplacement },
 		{ "PresentationDoesNotCapturePixelsAutomatically", TestPresentationDoesNotCapturePixelsAutomatically },
@@ -1808,6 +2028,7 @@ int main()
 		{ "DelayedProducerCopyPublicationAndRetirement", TestDelayedProducerCopyPublicationAndRetirement },
 		{ "ProducerCopyReturnsBeforeSourceCompletion", TestProducerCopyReturnsBeforeSourceCompletion },
 		{ "LoopbackDefersWritesUntilPresentationCompletes", TestLoopbackDefersWritesUntilPresentationCompletes },
+		{ "MailboxKeepsLatestSourceWhilePresentationIsPending", TestMailboxKeepsLatestSourceWhilePresentationIsPending },
 		{ "PresentFailuresAndCompletedReadRetention", []() { TestPresentFailuresAndCompletedReadRetention(false); } },
 		{ "ImmutableReadbackPresentationRetry", []() { TestPresentFailuresAndCompletedReadRetention(true); } },
 		{ "FailedNativeWriteInvalidatesReadbackReuse", TestFailedNativeWriteInvalidatesReadbackReuse },

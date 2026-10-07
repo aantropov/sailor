@@ -228,7 +228,7 @@ ThreadContext& VulkanDevice::GetOrAddThreadContext(DWORD threadId)
 
 #ifndef _SHIPPING
 		VkDescriptorPool pool = *res->m_descriptorPool;
-		SetDebugName(VkObjectType::VK_OBJECT_TYPE_DESCRIPTOR_POOL, (uint64_t)pool, Utils::GetCurrentThreadName());
+		SetDebugName(VkObjectType::VK_OBJECT_TYPE_DESCRIPTOR_POOL, (uint64_t)pool, Utils::GetCurrentThreadName().ToString());
 #endif 
 		// Same-process editor interop adds a managed engine thread and can touch Vulkan from
 		// MAUI-triggered viewport probing before work moves fully onto engine scheduler threads.
@@ -926,7 +926,7 @@ void VulkanDevice::PrepareFrameCommands(const TVector<VulkanCommandBufferPtr>& p
 	if (initializeImage || !m_bDepthBufferInitialized)
 	{
 		VulkanCommandBufferPtr transitCmd = CreateCommandBuffer(RHI::ECommandListQueue::Graphics);
-		SetDebugName(VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*transitCmd, "Initialize swapchain attachments");
+		SetDebugName(VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*transitCmd, "Initialize swapchain attachments"_h);
 		transitCmd->BeginCommandList();
 		if (initializeImage)
 		{

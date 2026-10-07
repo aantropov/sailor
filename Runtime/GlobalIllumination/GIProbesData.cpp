@@ -152,6 +152,34 @@ bool Sailor::ComputeGIProbesTransportHash(
 	return true;
 }
 
+bool Sailor::ComputeGIProbesLightingHash(const GIProbesData& data,
+	uint64_t& outHash, const std::atomic<bool>* cancel) noexcept
+{
+	uint64_t hash = Fnv1aOffsetBasis;
+	HashValue(hash, data.m_layoutHash);
+	HashValue(hash, data.m_bakeSettings.m_raysPerProbe);
+	HashValue(hash, data.m_bakeSettings.m_bounceCount);
+	HashValue(hash, data.m_bakeSettings.m_randomSeed);
+	HashValue(hash, data.m_bakeSettings.m_skyIndirectIntensity);
+	for (size_t i = 0; i < data.m_probes.Num(); ++i)
+	{
+		if (i % 256u == 0u && cancel && cancel->load(std::memory_order_acquire))
+		{
+			return false;
+		}
+		for (const glm::vec3& coefficient : data.m_probes[i].m_irradiance)
+		{
+			HashValues(hash, coefficient.x, coefficient.y, coefficient.z);
+		}
+	}
+	if (cancel && cancel->load(std::memory_order_acquire))
+	{
+		return false;
+	}
+	outHash = hash;
+	return true;
+}
+
 float Sailor::CalculateGIProbeVisibilityMaxDistance(
 	const GIProbesData& data,
 	const GIProbeBrick& brick) noexcept

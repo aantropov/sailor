@@ -3,6 +3,7 @@ includes:
 - Shaders/Math.glsl
 defines:
 - OCCLUSION_CULLING
+- DEPTH_INSTANCE_LAYOUT
 glslCommon: |
   #version 450
   #extension GL_ARB_separate_shader_objects : enable

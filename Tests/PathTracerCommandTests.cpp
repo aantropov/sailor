@@ -1,4 +1,5 @@
 #include "Sailor.h"
+#include "RHI/Surface.h"
 #include "Core/FileRevision.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
@@ -53,10 +54,14 @@ namespace Sailor::Tests
 	void RunAudioCommandTests(const std::filesystem::path& workspace);
 	void RunLoggingCommandTests();
 	void RunLoggingShutdownTests();
-	void RunModelLodCommandTests(const std::filesystem::path& workspace);
+	FileId RunModelLodCommandTests(const std::filesystem::path& workspace);
+	void RunModelPreviewCommandTests(FileId modelId);
+	void RunLandscapeCommandTests(const std::filesystem::path& workspace);
 	void RunPrefabImporterCommandTests(const std::filesystem::path& workspace);
 	void RunFrameGraphNodeCommandTests(const std::filesystem::path& workspace);
+	void RunShaderLifecycleCommandTests(const std::filesystem::path& workspace);
 	void RunCloudNoiseCommandTests(const std::filesystem::path& workspace);
+	void RunSkyStarsCommandTests(const std::filesystem::path& workspace);
 	void RequireImageInitializationRefusal(const std::function<void()>& record,
 		uint32_t precedingSubmits, uint32_t refusals, VkResult error);
 }
@@ -154,6 +159,7 @@ namespace
 )";
 		std::ofstream(workspace.Path("Content/Quad.gltf")) << scene << R"("scenes": [{"nodes": [0,1,2,3]}], "scene": 0})";
 		std::ofstream(workspace.Path("Content/NoView.gltf")) << scene << R"("scenes": [{"nodes": [0]}], "scene": 0})";
+		std::ofstream(workspace.Path("Content/Cold.gltf")) << scene << R"("scenes": [{"nodes": [0]}], "scene": 0})";
 		YAML::Node model;
 		model["assetInfoType"] = "Sailor::ModelAssetInfo";
 		model["fileId"] = "{00000000-0000-0000-0000-000000000121}";
@@ -166,6 +172,10 @@ namespace
 		model["fileId"] = "{00000000-0000-0000-0000-000000000122}";
 		model["filename"] = "NoView.gltf";
 		std::ofstream(workspace.Path("Content/NoView.gltf.asset")) << model;
+		model["fileId"] = "{00000000-0000-0000-0000-000000000123}";
+		model["filename"] = "Cold.gltf";
+		model["bGenerateBLAS"] = false;
+		std::ofstream(workspace.Path("Content/Cold.gltf.asset")) << model;
 	}
 
 	void CheckCoverage(const TVector<u8vec4>& pixels)
@@ -282,6 +292,48 @@ namespace
 		return view;
 	}
 
+	void TestColdTracerSceneDemand()
+	{
+		auto* importer = App::GetSubmodule<ModelImporter>();
+		const auto info = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Cold.gltf");
+		ModelPtr model;
+		Require(info && importer->LoadModel_Immediate(info->GetFileId(), model), "the cold tracer model must import");
+		App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Worker, EThreadType::RHI });
+		RHI::Renderer::GetDriver()->WaitIdle();
+		RHI::Renderer::GetDriver()->TrackResources_ThreadSafe();
+		Require(model->IsReady() && model->HasCpuMeshes() && !model->HasBLAS(),
+			"the imported model must be ready without building its optional BLAS");
+
+		TracerWorld world;
+		auto object = world.Instantiate("Cold tracer geometry");
+		object->AddComponent<MeshRendererComponent>()->GetData().SetModel(model);
+		auto proxy = object->AddComponent<PathTracerProxyComponent>();
+		auto* ecs = world.GetECS<PathTracerECS>();
+		auto view = CreateTracerView(world);
+		proxy->SetEnabled(true);
+		for (uint32_t frame = 0; frame < 8; ++frame) world.Publish(view);
+		Require(!view->m_pathTracerScene && !model->HasBLAS(),
+			"an enabled proxy in a raster-only world must neither collect a tracer scene nor build BLAS");
+		proxy->SetEnabled(false);
+		ecs->SetPathTracingEnabled(true);
+		world.Publish(view);
+		Require(view->m_pathTracerScene && view->m_pathTracerScene->m_instances.IsEmpty() && !model->HasBLAS(),
+			"a disabled proxy must not build geometry even when a tracer requests the scene");
+		proxy->SetEnabled(true);
+		ecs->Tick(0);
+		Require(!model->HasBLAS(), "ordinary ECS Tick must not build cold tracer geometry");
+		world.Publish(view);
+		const auto scene = view->m_pathTracerScene;
+		Require(model->HasBLAS() && scene && scene->m_instances.Num() == 1 && scene->m_instances[0].m_model == model,
+			"the first requested enabled scene must build and publish its cold model");
+		PathTracer tracer;
+		PathTracer::PreparedRaySample hit;
+		Require(tracer.InitializeSceneSnapshot(scene->m_instances, scene->m_materials, scene->m_lights) &&
+			tracer.SamplePreparedSceneVisibility(vec3(0, 0, 3), vec3(0, 0, -1), 10, hit) && hit.m_bHit,
+			"the collected cold model must produce an actual ray hit");
+		std::cout << "Tracer cold collection: disabled world/proxy and Tick skip BLAS; first demand publishes traceable geometry passed\n";
+	}
+
 	void TestTracerSceneDemand(ModelPtr model)
 	{
 		TracerWorld world;
@@ -291,8 +343,8 @@ namespace
 		auto proxy = object->AddComponent<PathTracerProxyComponent>();
 		proxy->SetEnabled(true);
 		auto material = MaterialPtr::Make(world.GetAllocator(), FileId::Invalid);
-		material->SetUniform("material.baseColorFactor", vec4(0, 0, 0, 1));
-		material->SetUniform("material.emissiveFactor", vec4(2, 0.5f, 0.25f, 0));
+		material->SetUniform("material.baseColorFactor"_h, vec4(0, 0, 0, 1));
+		material->SetUniform("material.emissiveFactor"_h, vec4(2, 0.5f, 0.25f, 0));
 		mesh->GetMaterials() = { material };
 		auto light = world.Instantiate("Tracer sun")->AddComponent<LightComponent>();
 		light->SetLightType(ELightType::Directional);
@@ -340,13 +392,13 @@ namespace
 				"a scene edit must publish one new generation to both cameras in the same frame");
 			return view->m_pathTracerScene;
 		};
-		material->SetUniform("material.emissiveFactor", vec4(0.25f, 2, 0.5f, 0));
+		material->SetUniform("material.emissiveFactor"_h, vec4(0.25f, 2, 0.5f, 0));
 		const auto edited = publishChange();
 		Require(original->m_materials[0]->m_parameters.m_emissiveFactor == vec3(2, 0.5f, 0.25f) &&
 			edited->m_materials[0]->m_parameters.m_emissiveFactor == vec3(0.25f, 2, 0.5f),
 			"material edits must not mutate the retained frame's material parameters");
 		auto replacement = MaterialPtr::Make(world.GetAllocator(), FileId::Invalid);
-		replacement->SetUniform("material.emissiveFactor", vec4(3, 1, 0.5f, 0));
+		replacement->SetUniform("material.emissiveFactor"_h, vec4(3, 1, 0.5f, 0));
 		mesh->GetMaterials()[0] = replacement;
 		Require(publishChange()->m_materials[0]->m_parameters.m_emissiveFactor == vec3(3, 1, 0.5f),
 			"replacing a material must reach both cameras");
@@ -370,8 +422,12 @@ namespace
 		auto* importer = App::GetSubmodule<ModelImporter>();
 		const auto otherInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("NoView.gltf");
 		ModelPtr otherModel;
-		Require(otherInfo && importer->LoadModel_Immediate(otherInfo->GetFileId(), otherModel) && otherModel->IsReady(),
-			"the alternate fixture model must have completed its earlier CLI load");
+		Require(otherInfo && importer->LoadModel_Immediate(otherInfo->GetFileId(), otherModel),
+			"the alternate fixture model must load independently of the CLI tests");
+		App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Worker, EThreadType::RHI });
+		RHI::Renderer::GetDriver()->WaitIdle();
+		RHI::Renderer::GetDriver()->TrackResources_ThreadSafe();
+		Require(otherModel->IsReady(), "the alternate model's GPU uploads must complete before scene publication");
 		mesh->GetData().SetModel(otherModel);
 		Require(publishChange()->m_instances[0].m_model == otherModel && original->m_instances[0].m_model == model,
 			"model replacement must not change an old frame's model selection");
@@ -455,7 +511,7 @@ namespace
 		const auto originalMode = App::GetEditorRenderMode();
 		auto observer = TRefPtr<ScenePublicationNode>::Make();
 		auto tracer = TRefPtr<Framegraph::CPUPathTracerNode>::Make();
-		tracer->SetTag("AuthoredTracer");
+		tracer->SetTag("AuthoredTracer"_h);
 		graph->GetGraph() = { observer };
 		auto world = TSharedPtr<World>::Make("Tracer demand", static_cast<uint8_t>(EWorldBehaviourBit::EcsTickable));
 		world->Instantiate("First camera")->AddComponent<CameraComponent>();
@@ -485,7 +541,7 @@ namespace
 		push(false);
 		graph->GetGraph() = { tracer, observer };
 		push(false);
-		tracer->SetFloat("enabled", 1);
+		tracer->SetFloat("enabled"_h, 1);
 		const auto original = push(true);
 		Require(original->m_instances.Num() == 1 && push(true) == original,
 			"the renderer must prepare the first enabled frame and reuse unchanged data");
@@ -493,10 +549,10 @@ namespace
 		push(false);
 		App::SetEditorRenderMode(ESceneViewRenderMode::Lit);
 		Require(push(true) == original, "returning from debug visualization must reuse an unchanged scene");
-		tracer->SetFloat("enabled", 0);
+		tracer->SetFloat("enabled"_h, 0);
 		object->GetTransformComponent().SetPosition(vec3(7, 0, 0));
 		push(false);
-		tracer->SetFloat("enabled", 1);
+		tracer->SetFloat("enabled"_h, 1);
 		const auto edited = push(true);
 		Require(edited != original && edited->m_instances[0].m_worldMatrix[3].x == 7 &&
 			original->m_instances[0].m_worldMatrix[3].x == 0,
@@ -512,8 +568,10 @@ namespace
 		std::cout << "Tracer renderer demand: absent, disabled, enabled, debug, deferred changes and multiple nodes passed\n";
 	}
 
+	enum class TracerOutput { Target, Surface, NamedTarget, NamedSurface };
+
 	RecordedComposite RecordComposite(ImageNode& node, RHI::RHIFrameGraphPtr graph, RHI::RHISceneViewSnapshot& scene,
-		ivec2 extent = ivec2(32))
+		ivec2 extent = ivec2(32), TracerOutput binding = TracerOutput::Target)
 	{
 		using namespace RHI;
 		auto& driver = Renderer::GetDriver();
@@ -525,10 +583,20 @@ namespace
 		commands->BeginCommandList(result.command, true);
 		auto target = driver->CreateRenderTarget(result.command, extent, 1, ETextureFormat::R16G16B16A16_SFLOAT);
 		commands->ImageMemoryBarrier(result.command, target, EImageLayout::ColorAttachmentOptimal);
-		commands->BeginRenderPass(result.command, TVector<RHITexturePtr>{ target }, nullptr, ivec4(0, 0, extent.x, extent.y),
+		const bool bSurface = binding == TracerOutput::Surface || binding == TracerOutput::NamedSurface;
+		const auto surface = bSurface ? driver->CreateSurface(target) : RHISurfacePtr{};
+		if (surface)
+		{
+			commands->ImageMemoryBarrier(result.command, surface->GetTarget(), EImageLayout::ColorAttachmentOptimal);
+			commands->BeginRenderPass(result.command, TVector<RHISurfacePtr>{ surface }, nullptr, ivec4(0, 0, extent.x, extent.y),
+				ivec2(0), true, vec4(0), 0, false);
+		}
+		else commands->BeginRenderPass(result.command, TVector<RHITexturePtr>{ target }, nullptr, ivec4(0, 0, extent.x, extent.y),
 			ivec2(0), true, vec4(0), 0, false);
 		commands->EndRenderPass(result.command);
-		node.SetRHIResource("color", target);
+		if (binding == TracerOutput::NamedTarget) graph->SetRenderTarget("TracerOutput"_h, target);
+		else if (binding == TracerOutput::NamedSurface) graph->SetSurface("TracerOutput"_h, surface);
+		else node.SetRHIResource("color"_h, surface ? RHIResourcePtr(surface) : RHIResourcePtr(target));
 		node.Process(graph, result.command, result.command, scene);
 		result.readback = driver->CreateBuffer(extent.x * extent.y * 8, EBufferUsageBit::BufferTransferDst_Bit,
 			EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
@@ -588,7 +656,7 @@ namespace
 
 		firstContext->BeginSubmission(5, 0);
 		scene.m_submissionContext = firstContext;
-		node.SetFloat("maxAccumulatedSamples", 1);
+		node.SetFloat("maxAccumulatedSamples"_h, 1);
 		const auto samples = node.Camera().m_accumulatedSamples;
 		auto reused = RecordComposite(node, graph, scene);
 		Require(node.Resources(scene)->m_uploadBuffer == firstUpload && node.Camera().m_accumulatedSamples == samples,
@@ -607,18 +675,42 @@ namespace
 		RequireComposite(retry, vec3(2, 0.5f, 0.125f));
 	}
 
+	void TestTracerOutputBindings(ImageNode& node, RHI::RHIFrameGraphPtr graph, RHI::RHISceneViewSnapshot& scene,
+		MaterialPtr firstMaterial, MaterialPtr secondMaterial)
+	{
+		for (const auto binding : { TracerOutput::Target, TracerOutput::Surface, TracerOutput::NamedTarget, TracerOutput::NamedSurface })
+		{
+			if (binding == TracerOutput::NamedTarget || binding == TracerOutput::NamedSurface)
+				node.SetRHIResource_Unresolved("color"_h, "TracerOutput"_h);
+			for (uint32_t frame = 0; frame < 4; ++frame)
+			{
+				++scene.m_frame;
+				scene.m_submissionContext->BeginSubmission(20 + frame + 4 * static_cast<uint32_t>(binding), 0);
+				SetTracerMaterial(scene, frame % 2 ? secondMaterial : firstMaterial);
+				auto recorded = RecordComposite(node, graph, scene, ivec2(frame < 2 ? 32 : 40), binding);
+				Require(RHI::Renderer::GetDriver()->SubmitCommandList_Immediate(recorded.command), "tracer output binding must complete");
+				RequireComposite(recorded, frame % 2 ? vec3(0.25f, 2, 0.5f) : vec3(2, 0.5f, 0.125f),
+					"direct and named tracer outputs must retain their current HDR image after replacement");
+			}
+			std::cout << "Tracer output binding=" << static_cast<uint32_t>(binding)
+				<< ": four GPU composites, replacement and resize passed\n";
+		}
+	}
+
 	void TestTracerEnvironmentReadback(ImageNode& node, RHI::RHIFrameGraphPtr graph, RHI::RHISceneViewSnapshot& scene)
 	{
 		using namespace RHI;
 		auto& driver = Renderer::GetDriver();
 		auto commands = Renderer::GetDriverCommands();
-		auto makeCube = [&](const vec3& color)
+		auto makeCube = [&](const vec3& color, uint32_t side = 8, uint32_t levels = 1)
 		{
-			auto cube = driver->CreateCubemap(ivec2(8), 1, ETextureFormat::R16G16B16A16_SFLOAT);
+			auto cube = driver->CreateCubemap(ivec2(side), levels, ETextureFormat::R16G16B16A16_SFLOAT);
 			auto command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 			commands->BeginCommandList(command, true);
 			commands->ImageMemoryBarrier(command, cube, EImageLayout::TransferDstOptimal);
-			commands->ClearImage(command, cube, vec4(color, 1));
+			for (uint32_t mip = 0; mip < levels; ++mip)
+				for (uint32_t face = 0; face < 6; ++face)
+					commands->ClearImage(command, cube->GetFace(face, mip), vec4(color * float(mip + 1), 1));
 			commands->ImageMemoryBarrier(command, cube, EImageLayout::ShaderReadOnlyOptimal);
 			commands->EndCommandList(command);
 			Require(driver->SubmitCommandList_Immediate(command), "the known HDR cubemap must initialize on the GPU");
@@ -640,8 +732,8 @@ namespace
 		{
 			scene.m_frame += 8;
 			scene.m_submissionContext->BeginSubmission(submission++, 0);
-			graph->SetSampler("g_rawEnvCubemap", raw);
-			graph->SetSampler("g_irradianceCubemap", irradiance);
+			graph->SetSampler("g_rawEnvCubemap"_h, raw);
+			graph->SetSampler("g_irradianceCubemap"_h, irradiance);
 			return RecordComposite(node, graph, scene);
 		};
 		auto complete = [&](const RecordedComposite& frame)
@@ -706,6 +798,25 @@ namespace
 		Require(node.Camera().m_imageRevision > beforeRemoval, "removing the environment must invalidate the image");
 		requireEnvironment(vec3(0));
 
+		for (const uvec3 chain : { uvec3(256, 2, 1), uvec3(256, 3, 2), uvec3(256, 9, 2), uvec3(128, 1, 0) })
+		{
+			const vec3 color(0.25f, 0.5f, 1);
+			auto raw = makeCube(color, chain.x, chain.y);
+			auto irradiance = makeCube(vec3(0.125f), 128, 1);
+			auto frame = record(raw, irradiance);
+			const auto pending = node.Camera().m_pendingReadback;
+			Require(pending && pending->m_environment.m_mipLevel == chain.z &&
+				pending->m_environment.m_extent == uvec2(chain.x >> chain.z),
+				"environment readback must stop at 64 pixels or at the last authored mip");
+			Require(pending->m_diffuseEnvironment.m_mipLevel == 0 && pending->m_diffuseEnvironment.m_extent == uvec2(128),
+				"a single-level diffuse map must retain its base independently of the raw map");
+			complete(frame);
+			Require(node.ApplyCompletedReadback(node.Camera(), raw, irradiance), "selected environment mips must publish after GPU completion");
+			requireEnvironment(color * float(chain.z + 1));
+			std::cout << "Environment mip readback: " << chain.x << " pixels, " << chain.y << " levels, selected " << chain.z
+				<< ", GPU content and traced radiance passed\n";
+		}
+
 		auto discarded = record(first, diffuse);
 		node.Clear();
 		complete(discarded);
@@ -722,8 +833,8 @@ namespace
 		auto mesh = object->AddComponent<MeshRendererComponent>();
 		mesh->GetData().SetModel(model);
 		auto material = MaterialPtr::Make(world.GetAllocator(), FileId::Invalid);
-		material->SetUniform("material.baseColorFactor", vec4(0, 0, 0, 1));
-		material->SetUniform("material.emissiveFactor", vec4(2, 0.5f, 0.125f, 0));
+		material->SetUniform("material.baseColorFactor"_h, vec4(0, 0, 0, 1));
+		material->SetUniform("material.emissiveFactor"_h, vec4(2, 0.5f, 0.125f, 0));
 		mesh->GetMaterials() = { material };
 		auto proxy = object->AddComponent<PathTracerProxyComponent>();
 		proxy->SetEnabled(true);
@@ -731,10 +842,10 @@ namespace
 		auto view = CreateTracerView(world);
 		auto node = TRefPtr<ImageNode>::Make();
 		node->m_pShader = shader;
-		node->SetFloat("enabled", 1);
-		node->SetFloat("maxBounces", 1);
-		node->SetFloat("samplesPerFrame", 2);
-		node->SetFloat("maxAccumulatedSamples", 2);
+		node->SetFloat("enabled"_h, 1);
+		node->SetFloat("maxBounces"_h, 1);
+		node->SetFloat("samplesPerFrame"_h, 2);
+		node->SetFloat("maxAccumulatedSamples"_h, 2);
 		uint64_t submission = 100;
 		ivec2 extent(32);
 		LightProxy sun;
@@ -759,33 +870,33 @@ namespace
 		const auto revision = node->Camera().m_imageRevision;
 		RequireComposite(draw(), vec3(2, 0.5f, 0.125f));
 		Require(node->Camera().m_imageRevision == revision, "unchanged input must preserve capped accumulation");
-		material->SetUniform("material.emissiveFactor", vec4(0.25f, 2, 0.5f, 0));
+		material->SetUniform("material.emissiveFactor"_h, vec4(0.25f, 2, 0.5f, 0));
 		RequireComposite(draw(), vec3(0.25f, 2, 0.5f), "the ECS material edit must replace a capped image");
 		Require(node->Camera().m_imageRevision > revision && node->Camera().m_accumulatedSamples == 2,
 			"editing a material must restart capped accumulation without moving the camera");
 
 		auto unchanged = node->Camera().m_imageRevision;
 		auto unrelated = MaterialPtr::Make(world.GetAllocator(), FileId::Invalid);
-		unrelated->SetUniform("material.emissiveFactor", vec4(5));
+		unrelated->SetUniform("material.emissiveFactor"_h, vec4(5));
 		RequireComposite(draw(), vec3(0.25f, 2, 0.5f));
 		Require(node->Camera().m_imageRevision == unchanged, "an unrelated material must not reset the traced scene");
 		auto replacement = MaterialPtr::Make(world.GetAllocator(), FileId::Invalid);
-		replacement->SetUniform("material.baseColorFactor", vec4(0, 0, 0, 1));
-		replacement->SetUniform("material.emissiveFactor", vec4(0));
-		replacement->SetUniform("material.emissiveFactor", vec4(4, 1, 0.5f, 0));
+		replacement->SetUniform("material.baseColorFactor"_h, vec4(0, 0, 0, 1));
+		replacement->SetUniform("material.emissiveFactor"_h, vec4(0));
+		replacement->SetUniform("material.emissiveFactor"_h, vec4(4, 1, 0.5f, 0));
 		Require(replacement->GetContentRevision() == material->GetContentRevision(),
 			"replacement fixture must distinguish material identity, not only its revision number");
 		mesh->GetMaterials()[0] = replacement;
 		RequireComposite(draw(), vec3(4, 1, 0.5f));
 		Require(node->Camera().m_accumulatedSamples == 2, "material replacement must not mix old radiance");
 
-		node->SetFloat("maxAccumulatedSamples", 6);
+		node->SetFloat("maxAccumulatedSamples"_h, 6);
 		RequireComposite(draw(), vec3(4, 1, 0.5f));
 		Require(node->Camera().m_accumulatedSamples == 4, "raising the stopping budget must resume valid accumulation");
-		replacement->SetUniform("material.emissiveFactor", vec4(1, 3, 0.25f, 0));
+		replacement->SetUniform("material.emissiveFactor"_h, vec4(1, 3, 0.25f, 0));
 		RequireComposite(draw(), vec3(1, 3, 0.25f));
 		Require(node->Camera().m_accumulatedSamples == 2, "a pre-limit edit must discard old samples, not average scene states");
-		node->SetFloat("maxAccumulatedSamples", 2);
+		node->SetFloat("maxAccumulatedSamples"_h, 2);
 		unchanged = node->Camera().m_imageRevision;
 		extent = ivec2(64);
 		const auto& resizeScene = view->m_snapshots[0];
@@ -843,9 +954,9 @@ namespace
 		proxy->SetEnabled(true);
 		RequireComposite(draw(), vec3(1, 3, 0.25f));
 
-		node->SetFloat("maxAccumulatedSamples", 1);
-		for (const auto& setting : std::array<std::pair<const char*, float>, 4>{ {
-			{ "samplesPerFrame", 1 }, { "maxBounces", 2 }, { "rayBiasBase", 0.01f }, { "rayBiasScale", 0.001f } } })
+		node->SetFloat("maxAccumulatedSamples"_h, 1);
+		for (const auto& setting : std::array<std::pair<StringHash, float>, 4>{ {
+			{ "samplesPerFrame"_h, 1 }, { "maxBounces"_h, 2 }, { "rayBiasBase"_h, 0.01f }, { "rayBiasScale"_h, 0.001f } } })
 		{
 			unchanged = node->Camera().m_imageRevision;
 			node->SetFloat(setting.first, setting.second);
@@ -863,8 +974,8 @@ namespace
 		RequireComposite(draw(), vec3(1, 3, 0.25f));
 		Require(node->Camera().m_imageRevision > unchanged,
 			"slow camera drift must be compared with the accumulated view, not the previous frame");
-		replacement->SetUniform("material.baseColorFactor", vec4(0.5f, 0.5f, 0.5f, 1));
-		replacement->SetUniform("material.emissiveFactor", vec4(0));
+		replacement->SetUniform("material.baseColorFactor"_h, vec4(0.5f, 0.5f, 0.5f, 1));
+		replacement->SetUniform("material.emissiveFactor"_h, vec4(0));
 		RequireComposite(draw(), vec3(0));
 		unchanged = node->Camera().m_imageRevision;
 		sun.m_intensity = vec3(3);
@@ -889,7 +1000,10 @@ namespace
 		const auto shaderInfo = registry->GetAssetInfoPtr("Shaders/PathTracerComposite.shader");
 		Require(shaderInfo && App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderInfo->GetFileId(), shader),
 			"the actual path tracer composite shader must load");
-		auto task = Tasks::CreateTaskWithResult<std::string>("Path tracer HDR composite validation", [model, shader]()
+		auto node = TRefPtr<ImageNode>::Make();
+		auto firstCapture = node->DoOneCapture(0);
+		auto secondCapture = node->DoOneCapture(1);
+		auto task = Tasks::CreateTaskWithResult<std::string>("Path tracer HDR composite validation"_h, [model, shader, node]() mutable
 			{
 				try
 				{
@@ -897,16 +1011,16 @@ namespace
 					auto& driver = Renderer::GetDriver();
 					auto commands = Renderer::GetDriverCommands();
 					auto graph = TRefPtr<ImageGraph>::Make();
-					auto node = TRefPtr<ImageNode>::Make();
 					node->m_pShader = shader;
-					node->SetFloat("enabled", 1);
-					node->SetFloat("maxBounces", 1);
-					node->SetFloat("maxAccumulatedSamples", 1);
+					node->SetFloat("enabled"_h, 1);
+					node->SetFloat("maxBounces"_h, 1);
+					node->SetFloat("maxAccumulatedSamples"_h, 1);
 					auto allocator = Memory::ObjectAllocatorPtr::Make();
 					auto material = MaterialPtr::Make(allocator, FileId::Invalid);
-					material->SetUniform("material.baseColorFactor", vec4(0, 0, 0, 1));
-					material->SetUniform("material.emissiveFactor", vec4(2, 0.5f, 0.125f, 0));
+					material->SetUniform("material.baseColorFactor"_h, vec4(0, 0, 0, 1));
+					material->SetUniform("material.emissiveFactor"_h, vec4(2, 0.5f, 0.125f, 0));
 					RHISceneViewSnapshot scene;
+					scene.m_frame = 1;
 					scene.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
 					scene.m_submissionContext->BeginSubmission(1, 0);
 					scene.m_camera = TUniquePtr<CameraData>::Make();
@@ -932,11 +1046,11 @@ namespace
 					for (uint32_t i = 0; i < 2; ++i)
 					{
 						auto binding = driver->AddBufferToShaderBindings(scene.m_frameBindings,
-							i ? "previousFrameData" : "frameData", sizeof(frame), i, EShaderBindingType::UniformBuffer);
+							i ? "previousFrameData"_h : "frameData"_h, sizeof(frame), i, EShaderBindingType::UniformBuffer);
 						commands->UpdateShaderBinding(command, binding, &frame, sizeof(frame));
 					}
 					auto target = driver->CreateRenderTarget(command, ivec2(side), 1, ETextureFormat::R16G16B16A16_SFLOAT);
-					node->SetRHIResource("color", target);
+					node->SetRHIResource("color"_h, target);
 					commands->ImageMemoryBarrier(command, target, EImageLayout::ColorAttachmentOptimal);
 					commands->BeginRenderPass(command, TVector<RHITexturePtr>{ target }, nullptr, ivec4(0, 0, side, side),
 						ivec2(0), true, vec4(0.125f, 1.5f, 4, 1), 0, false);
@@ -974,7 +1088,7 @@ namespace
 						const float blend = i % 2 ? 0.75f : 0.25f;
 						const vec3 expectedBlend = mix(vec3(0.125f, 1.5f, 4), vec3(expected), blend);
 						scene.m_submissionContext->BeginSubmission(i + 2, 0);
-						node->SetFloat("blend", blend);
+						node->SetFloat("blend"_h, blend);
 						command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 						commands->BeginCommandList(command, true);
 						commands->ImageMemoryBarrier(command, target, EImageLayout::ColorAttachmentOptimal);
@@ -997,8 +1111,8 @@ namespace
 							"the sample limit must reuse the float image while still drawing the composite");
 					}
 
-					node->SetFloat("blend", 1);
-					node->SetFloat("maxAccumulatedSamples", 0);
+					node->SetFloat("blend"_h, 1);
+					node->SetFloat("maxAccumulatedSamples"_h, 0);
 					scene.m_submissionContext->BeginSubmission(2, 0);
 					command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 					commands->BeginCommandList(command, true);
@@ -1009,12 +1123,13 @@ namespace
 					auto secondReadback = driver->CreateBuffer(side * side * 8u, EBufferUsageBit::BufferTransferDst_Bit,
 						EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
 					auto secondMaterial = MaterialPtr::Make(allocator, FileId::Invalid);
-					secondMaterial->SetUniform("material.baseColorFactor", vec4(0, 0, 0, 1));
-					secondMaterial->SetUniform("material.emissiveFactor", vec4(0.25f, 2, 0.5f, 0));
+					secondMaterial->SetUniform("material.baseColorFactor"_h, vec4(0, 0, 0, 1));
+					secondMaterial->SetUniform("material.emissiveFactor"_h, vec4(0.25f, 2, 0.5f, 0));
 					SetTracerMaterial(scene, secondMaterial);
 					scene.m_cameraIndex = 1;
+					scene.m_frame = 2;
 					scene.m_cameraTransform.m_position.x = 0.1f;
-					node->SetRHIResource("color", secondTarget);
+					node->SetRHIResource("color"_h, secondTarget);
 					commands->ImageMemoryBarrier(command, secondTarget, EImageLayout::ColorAttachmentOptimal);
 					commands->BeginRenderPass(command, TVector<RHITexturePtr>{ secondTarget }, nullptr, ivec4(0, 0, side, side),
 						ivec2(0), true, vec4(0), 0, false);
@@ -1033,6 +1148,7 @@ namespace
 					Require(length(vec3(secondColor) - vec3(0.25f, 2, 0.5f)) < 0.001f,
 						"the second camera must composite its own accumulated image");
 					TestOverlappingTracerFlights(*node, graph, scene, material, secondMaterial);
+					TestTracerOutputBindings(*node, graph, scene, material, secondMaterial);
 					TestCappedSceneChanges(model, shader, graph, scene.m_frameBindings);
 					TestTracerEnvironmentReadback(*node, graph, scene);
 					return std::string{};
@@ -1042,6 +1158,46 @@ namespace
 		task->Run();
 		task->Wait();
 		if (!task->GetResult().empty()) throw std::runtime_error(task->GetResult());
+		Require(!firstCapture->IsFinished() && !secondCapture->IsFinished(),
+			"CPU frame captures must wait for their Main queue handoff");
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		scheduler->ProcessTasksOnMainThread();
+		const auto firstImage = firstCapture->GetResult();
+		const auto secondImage = secondCapture->GetResult();
+		Require(firstCapture->IsFinished() && secondCapture->IsFinished() && firstImage && secondImage &&
+			firstImage->m_frame == 1 && firstImage->m_cameraIndex == 0 && secondImage->m_frame == 2 && secondImage->m_cameraIndex == 1,
+			"each capture must retain its requested camera and processed frame through later renders");
+		auto requireQuad = [](const Framegraph::CPUPathTracerNode::Image& image, vec3 emission)
+		{
+			Require(image.m_pixels.Num() == static_cast<size_t>(image.m_extent.x) * image.m_extent.y,
+				"captured linear image size must match its extent");
+			for (uint32_t y = image.m_extent.y / 3; y < image.m_extent.y * 2 / 3; ++y)
+				for (uint32_t x = image.m_extent.x / 3; x < image.m_extent.x * 2 / 3; ++x)
+					Require(length(image.m_pixels[y * image.m_extent.x + x] - vec4(emission, 1)) < 0.001f,
+						"the generated emissive quad's central ROI must retain HDR radiance and opaque coverage");
+			for (uint32_t y : { 0u, image.m_extent.y - 1 })
+				for (uint32_t x : { 0u, image.m_extent.x - 1 })
+					Require(image.m_pixels[y * image.m_extent.x + x] == vec4(0),
+						"the four corner rays must miss the quad and retain transparent black");
+		};
+		requireQuad(*firstImage, vec3(2, 0.5f, 0.125f));
+		requireQuad(*secondImage, vec3(0.25f, 2, 0.5f));
+		auto stale = node->DoOneCapture();
+		scheduler->WaitIdle({ EThreadType::Render });
+		scheduler->ProcessTasksOnMainThread();
+		Require(!stale->IsFinished(), "completed CPU history must not automatically satisfy a later capture");
+		auto disabled = Tasks::CreateTask("Disabled CPU capture"_h, [node]() mutable
+			{
+				node->SetFloat("enabled"_h, 0);
+				node->Process({}, {}, {}, RHISceneViewSnapshot{});
+			}, EThreadType::Render);
+		disabled->Run();
+		disabled->Wait();
+		scheduler->ProcessTasksOnMainThread();
+		Require(stale->IsFinished() && !stale->GetResult(), "a disabled node cannot substitute its previous camera image");
+		requireQuad(*firstImage, vec3(2, 0.5f, 0.125f));
+		std::cout << "CPU image captures: two-view request identity, retained HDR ROIs, transparent misses and stale rejection passed\n";
+		TestColdTracerSceneDemand();
 		TestTracerSceneDemand(model);
 		TestRendererTracerDemand(model);
 	}
@@ -1144,9 +1300,50 @@ namespace
 
 namespace Sailor::Tests
 {
-	int RunCloudNoiseGpu(int argc, const char** argv)
+	int RunRenderContractsGpu(int argc, const char** argv, bool bTestPathTracer)
 	{
-		TempDirectory workspace("cloud-noise");
+		TempDirectory workspace("render-contracts");
+		int result = 1;
+		try
+		{
+			std::string enginePath = std::filesystem::current_path().string();
+			uint32_t msaaSamples = 1;
+			for (int i = 1; i < argc; ++i)
+			{
+				if (std::string_view(argv[i]) == "--workspace" && i + 1 < argc) enginePath = argv[i + 1];
+				if (std::string_view(argv[i]) == "--gpu-render-contracts-msaa2" ||
+					std::string_view(argv[i]) == "--gpu-pathtracer-images-msaa2") msaaSamples = 2;
+			}
+			WriteScene(workspace, enginePath, msaaSamples);
+			const auto root = workspace.Get().string();
+			std::vector<const char*> arguments(argv, argv + argc);
+			arguments.insert(arguments.end(), { "--workspace", root.c_str(), "--editor", "--port", "0", "--world", "" });
+			Require(App::Initialize(arguments.data(), static_cast<int32_t>(arguments.size())) == EAppInitializationResult::Ready &&
+				App::IsRendererInitialized(), "render contracts must initialize a hidden native renderer");
+			if (bTestPathTracer) TestHdrCompositing();
+			else
+			{
+				RunShaderLifecycleCommandTests(workspace.Get());
+				RunModelLodCommandTests(workspace.Get());
+				const auto previews = workspace.Get() / "Cache" / "Fingerprints";
+				Require(!std::filesystem::exists(previews) || std::filesystem::is_empty(previews),
+					"model import and LOD contracts must not generate preview images");
+				std::cout << "Model import and LOD contracts completed without preview images\n";
+				RunGIProbesCommandTests(workspace.Get());
+				RunLandscapeCommandTests(workspace.Get());
+				RunFrameGraphNodeCommandTests(workspace.Get());
+			}
+			result = 0;
+		}
+		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
+		App::Stop();
+		if (!App::Shutdown()) result = 1;
+		return result;
+	}
+
+	int RunLandscapeGpu(int argc, const char** argv)
+	{
+		TempDirectory workspace("landscape-upload");
 		int result = 1;
 		try
 		{
@@ -1154,6 +1351,34 @@ namespace Sailor::Tests
 			for (int i = 1; i + 1 < argc; ++i)
 				if (std::string_view(argv[i]) == "--workspace") enginePath = argv[i + 1];
 			WriteScene(workspace, enginePath, 1);
+			const auto root = workspace.Get().string();
+			std::vector<const char*> arguments(argv, argv + argc);
+			arguments.insert(arguments.end(), { "--workspace", root.c_str(), "--editor", "--port", "0", "--world", "" });
+			Require(App::Initialize(arguments.data(), static_cast<int32_t>(arguments.size())) == EAppInitializationResult::Ready &&
+				App::IsRendererInitialized(), "the terrain fixture must initialize a hidden native renderer");
+			RunLandscapeCommandTests(workspace.Get());
+			result = 0;
+		}
+		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
+		App::Stop();
+		if (!App::Shutdown()) result = 1;
+		return result;
+	}
+
+	int RunSkyGpu(int argc, const char** argv, bool bTestStars)
+	{
+		TempDirectory workspace(bTestStars ? "sky-stars" : "cloud-noise");
+		int result = 1;
+		try
+		{
+			std::string enginePath = std::filesystem::current_path().string();
+			uint32_t msaaSamples = 1;
+			for (int i = 1; i < argc; ++i)
+			{
+				if (std::string_view(argv[i]) == "--workspace" && i + 1 < argc) enginePath = argv[i + 1];
+				if (std::string_view(argv[i]) == "--gpu-cloud-noise-msaa2") msaaSamples = 2;
+			}
+			WriteScene(workspace, enginePath, msaaSamples);
 			const auto settingsPath = workspace.Path("ProjectSettings.yaml");
 			auto settings = YAML::LoadFile(settingsPath.string());
 			for (const char* preset : { "Ultra", "High", "Medium", "Low", "VeryLow" })
@@ -1169,8 +1394,9 @@ namespace Sailor::Tests
 			std::vector<const char*> arguments(argv, argv + argc);
 			arguments.insert(arguments.end(), { "--workspace", root.c_str(), "--editor", "--port", "0", "--world", "" });
 			Require(App::Initialize(arguments.data(), static_cast<int32_t>(arguments.size())) == EAppInitializationResult::Ready &&
-				App::IsRendererInitialized(), "the cloud fixture must initialize a hidden native renderer");
-			RunCloudNoiseCommandTests(workspace.Get());
+				App::IsRendererInitialized(), "the sky fixture must initialize a hidden native renderer");
+			if (bTestStars) RunSkyStarsCommandTests(workspace.Get());
+			else RunCloudNoiseCommandTests(workspace.Get());
 			result = 0;
 		}
 		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
@@ -1231,7 +1457,8 @@ namespace Sailor::Tests
 			RunTextureImporterCommandTests(workspace.Get());
 			RunMaterialImporterCommandTests(workspace.Get());
 			RunAudioCommandTests(workspace.Get());
-			RunModelLodCommandTests(workspace.Get());
+			RunModelPreviewCommandTests(RunModelLodCommandTests(workspace.Get()));
+			RunLandscapeCommandTests(workspace.Get());
 			RunPrefabImporterCommandTests(workspace.Get());
 			RunFrameGraphNodeCommandTests(workspace.Get());
 			RunLoggingCommandTests();

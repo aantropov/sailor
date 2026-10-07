@@ -12,6 +12,7 @@
 namespace Sailor
 {
 	class Animation;
+	class Model;
 
 	class AnimatorComponentData final : public ECS::TComponent
 	{
@@ -45,12 +46,30 @@ namespace Sailor
 
 	protected:
 
+		struct PoseInputs
+		{
+			const Animation* m_animation = nullptr;
+			const Animation* m_blendAnimation = nullptr;
+			uint64_t m_animationRevision = 0;
+			uint64_t m_blendRevision = 0;
+			uint32_t m_bonesCount = 0;
+			float m_frame = -1.0f;
+			float m_blendFrame = -1.0f;
+			float m_blendAlpha = 0.0f;
+			bool operator==(const PoseInputs&) const = default;
+		};
+
+		PoseInputs m_poseInputs;
+		const Model* m_poseModel = nullptr;
+		uint64_t m_poseModelRevision = 0;
 		TObjectPtr<Animation> m_animation;
 		AnimationControllerPtr m_controller;
 		AnimationSetPtr m_animationSet;
 		AnimationControllerInstance m_controllerInstance;
 		TVector<TObjectPtr<Animation>> m_controllerAnimations;
 		TVector<uint64_t> m_controllerAnimationRevisions;
+		TVector<Tasks::TaskPtr<TObjectPtr<Animation>>> m_pendingControllerAnimations;
+		bool m_bIsControllerRefreshPending = false;
 		uint64_t m_animationRevision = 0;
 		uint64_t m_controllerRevision = 0;
 		uint64_t m_animationSetRevision = 0;
@@ -69,7 +88,7 @@ namespace Sailor
 
 		virtual void BeginPlay() override;
 		virtual void EndPlay() override;
-		virtual Tasks::ITaskPtr Tick(float deltaTime) override;
+		virtual void Tick(float deltaTime) override;
 
 		void SetAnimation(size_t componentIndex, const TObjectPtr<Animation>& animation);
 		void SetController(size_t componentIndex, const AnimationControllerPtr& controller);
@@ -88,11 +107,12 @@ namespace Sailor
 
 		virtual void OnComponentUnregistered(size_t index, AnimatorComponentData& component) override;
 		void RefreshController(size_t componentIndex, bool bResetInstance);
+		void FinishControllerRefresh(size_t componentIndex);
 
 		RHI::RHIShaderBindingSetPtr m_bonesBinding{};
 		RHI::RHIShaderBindingPtr m_bonesBuffer{};
 		TVector<glm::mat4> m_cpuBoneMatrices{};
-		TSharedPtr<TVector<glm::mat4>> m_publishedBoneMatrices{};
+		TSharedPtr<const TVector<glm::mat4>> m_publishedBoneMatrices{};
 		TVector<TSharedPtr<TVector<glm::mat4>>> m_boneSnapshotPool{};
 		uint64_t m_animationRevision = 0ull;
 		uint32_t m_nextBoneOffset = 0;

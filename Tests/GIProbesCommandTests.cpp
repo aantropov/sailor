@@ -3,11 +3,15 @@
 #include "AssetRegistry/GlobalIllumination/GIProbesImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Model/ModelImporter.h"
+#include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "Components/CameraComponent.h"
+#include "Components/LightComponent.h"
 #include "Components/MeshRendererComponent.h"
 #include "Components/SkyComponent.h"
+#include "Core/YamlUtils.h"
 #include "ECS/GlobalIlluminationECS.h"
 #include "ECS/LandscapeECS.h"
 #include "ECS/LightingECS.h"
@@ -28,6 +32,9 @@
 #include "RHI/Renderer.h"
 #include "Settings/GraphicsSettings.h"
 #include "Submodules/Editor.h"
+#if defined(__APPLE__)
+#include "Support/VulkanCapabilityOverrides.h"
+#endif
 
 #include <array>
 #include <barrier>
@@ -125,11 +132,11 @@ namespace Sailor
 
 namespace
 {
-	void Require(bool value, const std::string& message)
+	void Require(bool value, std::string_view message)
 	{
 		if (!value)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -181,6 +188,124 @@ namespace
 		observation.taskReleased = !observation.task.TryLock();
 	}
 
+	void TestSavedWorldBakePreflight(const std::filesystem::path& path,
+		const EditorGIProbesBakeRequest& request, GameObjectPtr receiver, GameObjectPtr linked)
+	{
+		auto* editor = App::GetSubmodule<Editor>();
+		std::string savedText;
+		Require(AssetRegistry::ReadTextFile(path.string(), savedText), "preflight fixture must read its saved world");
+		const auto saved = YAML::Load(savedText);
+		auto write = [](const std::filesystem::path& destination, std::string_view text)
+		{
+			std::ofstream file(destination);
+			file.write(text.data(), static_cast<std::streamsize>(text.size()));
+			Require(file.good(), "preflight fixture must write the selected world");
+		};
+		auto reject = [&](std::string_view reason)
+		{
+			std::string diagnostic;
+			Require(!editor->StartGIProbesBake(request, diagnostic), "invalid or unsaved input must fail before starting a bake");
+			const auto status = editor->GetGIProbesBakeStatus();
+			Require(diagnostic.find(reason) != std::string::npos && status.m_diagnostic == diagnostic &&
+				status.m_state == EEditorGIProbesBakeState::Failed,
+				"preflight must report the actual input failure: " + diagnostic);
+			Require(!GlobalIlluminationBakeControllerTestAccess::Task(*editor).TryLock() &&
+				!std::filesystem::exists(path.parent_path() / request.m_outputVirtualPath),
+				"a rejected preflight must neither schedule a bake task nor publish probes");
+		};
+
+		write(path, "prefabs: [");
+		reject("asset is invalid");
+		auto malformed = YAML::Clone(saved);
+		malformed["prefabs"] = YAML::Node(YAML::NodeType::Map);
+		write(path, YAML::Dump(malformed));
+		reject("no prefab sequence");
+		malformed = YAML::Clone(saved);
+		malformed["prefabs"][0]["components"][0]["typename"] = "MissingBakeComponent";
+		write(path, YAML::Dump(malformed));
+		reject("unknown type");
+		for (const char* field : { "instanceIds", "gameObjectOverrides", "componentOverrides" })
+		{
+			malformed = YAML::Clone(saved);
+			bool bRemoved = false;
+			for (YAML::Node prefab : malformed["prefabs"])
+			{
+				if (prefab["fileId"].as<FileId>() == linked->GetFileId()) bRemoved |= prefab.remove(field);
+			}
+			Require(bRemoved, "the preflight fixture must include a linked record with explicit mappings");
+			write(path, YAML::Dump(malformed));
+			reject(field);
+		}
+		write(path, savedText);
+
+		auto& transform = receiver->GetTransformComponent();
+		const auto position = transform.GetPosition();
+		transform.SetPosition(glm::vec3(position) + glm::vec3(1, 0, 0));
+		reject("unsaved changes");
+		transform.SetPosition(glm::vec3(position));
+		auto mesh = receiver->GetComponent<MeshRendererComponent>();
+		const auto model = mesh->GetModel();
+		mesh->SetModel({});
+		reject("unsaved changes");
+		mesh->SetModel(model);
+
+		auto* materials = App::GetSubmodule<MaterialImporter>();
+		MaterialAsset::Data surface;
+		surface.m_shader = mesh->GetMaterials()[0]->GetShader()->GetFileId();
+		surface.m_uniformsVec4["material.albedo"] = glm::vec4(0, 1, 0, 1);
+		const FileId materialId = materials->CreateMaterialAsset((path.parent_path() / "BakeOverride.mat").string(), surface);
+		MaterialPtr material;
+		Require(materialId && materials->LoadMaterial_Immediate(materialId, material), "preflight fixture must load its second material");
+		WaitMaterialReady(material);
+		const auto overrides = mesh->GetOverrideMaterials();
+		mesh->SetOverrideMaterials({ materialId });
+		Require(mesh->GetMaterials()[0] == material, "the material edit must affect the live renderer");
+		reject("unsaved changes");
+		mesh->SetOverrideMaterials(overrides);
+		auto light = receiver->GetComponent<LightComponent>();
+		const auto intensity = light->GetIntensity();
+		light->SetIntensity(intensity * 2.0f);
+		reject("unsaved changes");
+		light->SetIntensity(intensity);
+		auto linkedMesh = linked->GetComponent<MeshRendererComponent>();
+		Require(linkedMesh->GetMinLod() == 0u, "the linked instance must override its source with the class default");
+		linkedMesh->SetMinLod(1u);
+		reject("unsaved changes");
+		linkedMesh->SetMinLod(0u);
+		auto loaded = App::GetSubmodule<WorldPrefabImporter>()->Create();
+		loaded->Deserialize(saved);
+		Require(loaded->IsReady(), loaded->GetLoadDiagnostic());
+		bool bCheckedLinkedRecord = false;
+		for (const auto& prefab : loaded->GetGameObjects())
+		{
+			if (!prefab->IsLinkedInstanceRecord()) continue;
+			const auto& ids = prefab->GetLinkedInstanceIds();
+			const auto& componentOverrides = prefab->GetLinkedComponentOverrides();
+			Require(ids.ContainsKey(receiver->GetInstanceId()) && ids[receiver->GetInstanceId()] == linked->GetInstanceId() &&
+				componentOverrides.ContainsKey(mesh->GetInstanceId()) &&
+				componentOverrides[mesh->GetInstanceId()].GetProperties()["minLod"].as<uint32_t>() == 0u,
+				"loading must retain identity mappings and a class-default override of a nondefault source");
+			bCheckedLinkedRecord = true;
+		}
+		Require(bCheckedLinkedRecord, "the saved world must load its linked record");
+		const auto sourcePath = path.parent_path() / "BakeReceiver.prefab";
+		std::string sourceText;
+		Require(AssetRegistry::ReadTextFile(sourcePath.string(), sourceText), "the linked source must remain readable");
+		auto editedSource = YAML::Load(sourceText);
+		bool bChangedLight = false;
+		for (YAML::Node component : editedSource["components"])
+		{
+			if (component["typename"].Scalar() != "Sailor::LightComponent") continue;
+			component["overrideProperties"]["intensity"] = glm::vec3(3.0f);
+			bChangedLight = true;
+		}
+		Require(bChangedLight, "the source edit must change a real inherited light");
+		write(sourcePath, YAML::Dump(editedSource));
+		reject("unsaved changes");
+		write(sourcePath, sourceText);
+		std::cout << "Saved-world preflight rejected malformed YAML, missing linked maps, changed source and live transform/model/material/light/override edits without starting a task\n";
+	}
+
 	EditorGIProbesBakeRequest CreateShutdownBakeScene(const std::filesystem::path& workspace, const char* output)
 	{
 		auto world = App::GetSubmodule<EngineLoop>()->GetWorld();
@@ -200,12 +325,57 @@ namespace
 		auto renderer = object->AddComponent<MeshRendererComponent>();
 		renderer->GetData().SetModel(model);
 		renderer->GetMaterials() = { materials[0] };
+		object->AddComponent<LightComponent>()->SetIntensity(glm::vec3(2.0f));
+		renderer->SetMinLod(1u);
+		const auto sourcePath = workspace / "Content" / "BakeReceiver.prefab";
+		Require(Prefab::FromGameObject(object)->SaveToFile(sourcePath.string()), "the linked bake source must be saved");
+		renderer->SetMinLod(0u);
+		const FileId prefabId = registry->GetOrLoadFile(sourcePath.string());
+		PrefabPtr prefab;
+		Require(prefabId && App::GetSubmodule<PrefabImporter>()->LoadPrefab_Immediate(prefabId, prefab),
+			"the bake source prefab must load through its importer");
+		auto linked = world->Instantiate(prefab);
+		Require(linked && linked->GetFileId() == prefabId, "the bake fixture must contain a real linked prefab instance");
+		auto linkedMesh = linked->GetComponent<MeshRendererComponent>();
+		Require(linkedMesh && linkedMesh->GetMinLod() == 1u, "the linked source must have a nondefault minimum LOD");
+		linkedMesh->SetMinLod(0u);
+		linked->GetTransformComponent().SetPosition({ 2, 0, -2 });
 		world->GetECS<StaticMeshRendererECS>()->BeginPlay();
 		world->GetECS<TransformECS>()->Tick(0.0f);
-		if (auto task = world->GetECS<StaticMeshRendererECS>()->Tick(0.0f)) task->Wait();
+		world->GetECS<StaticMeshRendererECS>()->Tick(0.0f);
+		world->GetECS<LightingECS>()->Tick(0.0f);
 		const auto document = WorldPrefab::FromWorld(world.GetRawPtr());
 		const auto path = workspace / "Content" / "Shutdown.world";
 		Require(document && document->IsReady() && document->SaveToFile(path.string()), "shutdown fixture world must be saved");
+		const auto serialized = document->Serialize();
+		TVector<YAML::Node> fields;
+		for (const auto& field : serialized) fields.Add(field.first);
+		YAML::Node authored(YAML::NodeType::Map);
+		for (size_t i = fields.Num(); i-- > 0;)
+			authored[fields[i]] = YAML::Clone(serialized[fields[i]]);
+		const auto defaultRotation = Prefab::ReflectedGameObject{}.Serialize()["rotation"];
+		const auto& defaultMinLod = Reflection::GetCDO("Sailor::MeshRendererComponent").GetProperties()["minLod"];
+		bool bOmittedRotation = false, bOmittedMinLod = false;
+		for (YAML::Node prefab : authored["prefabs"])
+		{
+			for (YAML::Node object : prefab["gameObjects"])
+			{
+				if (Utils::AreYamlNodesEqual(object["rotation"], defaultRotation))
+					bOmittedRotation |= object.remove("rotation");
+			}
+			for (YAML::Node component : prefab["components"])
+			{
+				if (component["typename"].Scalar() == "Sailor::MeshRendererComponent" &&
+					Utils::AreYamlNodesEqual(component["overrideProperties"]["minLod"], defaultMinLod))
+					bOmittedMinLod |= component["overrideProperties"].remove("minLod");
+			}
+		}
+		Require(bOmittedRotation && bOmittedMinLod, "the native bake must exercise both world and component defaults");
+		{
+			std::ofstream output(path);
+			output << authored;
+			Require(output.good(), "the equivalent authored world must be written before preflight");
+		}
 		EditorGIProbesBakeRequest request;
 		request.m_worldAsset = registry->GetOrLoadFile(path.string());
 		request.m_stateName = "Shutdown lifecycle";
@@ -216,6 +386,7 @@ namespace
 		request.m_settings.m_maxSubdivisionLevel = 1u;
 		request.m_settings.m_raysPerProbe = 8u;
 		Require(static_cast<bool>(request.m_worldAsset), "shutdown fixture world must be registered");
+		TestSavedWorldBakePreflight(path, request, object, linked);
 		return request;
 	}
 #endif
@@ -268,10 +439,7 @@ namespace
 		{
 			++m_currentFrame;
 			GetECS<TransformECS>()->Tick(elapsed);
-			if (auto task = GetECS<StaticMeshRendererECS>()->Tick(elapsed))
-			{
-				task->Wait();
-			}
+			GetECS<StaticMeshRendererECS>()->Tick(elapsed);
 			GetECS<CameraECS>()->Tick(elapsed);
 			GI().Tick(elapsed);
 		}
@@ -369,15 +537,15 @@ namespace
 			}
 			++m_notifications;
 			m_bWaitedForPrevious = m_previousFinished.load();
-			auto worker = Tasks::CreateTask("Reload test: worker", []() {});
-			auto render = worker->Then([]() {}, "Reload test: render", EThreadType::Render);
-			auto rhi = render->Then([]() {}, "Reload test: RHI", EThreadType::RHI);
+			auto worker = Tasks::CreateTask("Reload test: worker"_h, []() {});
+			auto render = worker->Then([]() {}, "Reload test: render"_h, EThreadType::Render);
+			auto rhi = render->Then([]() {}, "Reload test: RHI"_h, EThreadType::RHI);
 			m_completion = rhi->Then([this]()
 				{
 					m_afterEntered = true;
 					m_releaseAfter.wait();
 					m_completed = true;
-				}, "Reload test: final worker", EThreadType::Worker);
+				}, "Reload test: final worker"_h, EThreadType::Worker);
 			worker->Run();
 		}
 
@@ -385,7 +553,7 @@ namespace
 		void Update(TUpdate&& update)
 		{
 			std::latch entered(1), release(1);
-			auto previous = Tasks::CreateTask("Reload test: previous render reader", [&]()
+			auto previous = Tasks::CreateTask("Reload test: previous render reader"_h, [&]()
 				{
 					entered.count_down();
 					release.wait();
@@ -511,7 +679,7 @@ namespace
 		{
 			for (const auto& sampler : snapshots[0]->m_samplers)
 			{
-				if (sampler.m_first == "baseColorSampler") return sampler.m_second.m_texture;
+				if (sampler.m_first == "baseColorSampler"_h) return sampler.m_second.m_texture;
 			}
 			return TSharedPtr<const Raytracing::PathTracer::TextureSnapshot>{};
 		};
@@ -604,7 +772,7 @@ namespace
 			bool found = false;
 			for (const auto& sampler : captured.m_samplers)
 			{
-				if (sampler.m_first != "emissiveSampler") continue;
+				if (sampler.m_first != "emissiveSampler"_h) continue;
 				const auto texture = sampler.m_second.m_texture;
 				found = texture && texture->m_fileId == textures[step % 2]->GetFileId() &&
 					texture->m_data && texture->m_data->Num() == 4 &&
@@ -615,7 +783,7 @@ namespace
 		auto prepare = [&](GIProbesSceneSnapshotPtr snapshot, uint32_t step,
 			Raytracing::PathTracer::ScenePreparationProgressCallback progress = {})
 		{
-			auto task = Tasks::CreateTask<std::string>("Stress immutable GI preparation",
+			auto task = Tasks::CreateTask<std::string>("Stress immutable GI preparation"_h,
 				[snapshot, step, settings = request.m_settings, progress]()
 				{
 					try
@@ -668,9 +836,9 @@ namespace
 			}
 			else
 			{
-				material->SetUniform("material.emissiveFactor", emission);
-				material->SetUniform("material.alphaCutoff", cutoff);
-				material->SetSampler("emissiveSampler", texture);
+				material->SetUniform("material.emissiveFactor"_h, emission);
+				material->SetUniform("material.alphaCutoff"_h, cutoff);
+				material->SetSampler("emissiveSampler"_h, texture);
 			}
 			auto snapshot = GIProbesSceneSnapshotPtr::Make();
 			std::string diagnostic;
@@ -730,7 +898,7 @@ namespace
 		TWeakPtr<GIProbesSceneSnapshot> pendingInput(pending);
 		std::atomic<bool> entered{ false }, cancel{ false };
 		std::latch resume(1);
-		auto task = Tasks::CreateTask<std::string>("Cancel captured GI preparation",
+		auto task = Tasks::CreateTask<std::string>("Cancel captured GI preparation"_h,
 			[pending, settings = request.m_settings, &entered, &cancel, &resume]()
 			{
 				try
@@ -775,7 +943,7 @@ namespace
 		App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(EThreadType::Background);
 		Require(!pendingInput.TryLock(), "the completed cancelled task must release its captured scene");
 
-		auto next = Tasks::CreateTask<std::string>("Bake after cancelled GI preparation",
+		auto next = Tasks::CreateTask<std::string>("Bake after cancelled GI preparation"_h,
 			[captured, settings = request.m_settings, original]()
 			{
 				try
@@ -828,7 +996,7 @@ namespace
 			world.Step();
 			const auto revision = meshes->GetGlobalIlluminationContributorRevision();
 			const auto scene = meshes->GetRHIScene()->GetCurrentVersion();
-			world.m_material->SetUniform("material.emissiveFactor", glm::vec4(emission++, 0, 0, 0));
+			world.m_material->SetUniform("material.emissiveFactor"_h, glm::vec4(emission++, 0, 0, 0));
 			world.Step();
 			Require((meshes->GetGlobalIlluminationContributorRevision() != revision) ==
 				(mobility != EMobilityType::Dynamic),
@@ -875,7 +1043,7 @@ namespace
 		{
 			const auto before = world.GetECS<StaticMeshRendererECS>()->GetGlobalIlluminationContributorRevision();
 			const auto scene = world.GetECS<StaticMeshRendererECS>()->GetRHIScene()->GetCurrentVersion();
-			world.m_material->SetUniform("material.emissiveFactor", glm::vec4(0.5f, 0.25f, 0.125f, 0));
+			world.m_material->SetUniform("material.emissiveFactor"_h, glm::vec4(0.5f, 0.25f, 0.125f, 0));
 			world.Step();
 			Require(world.GetECS<StaticMeshRendererECS>()->GetGlobalIlluminationContributorRevision() != before,
 				"the material edit must reach the real scene revision publisher");
@@ -901,7 +1069,7 @@ namespace
 		Require(GlobalIlluminationECSTestAccess::FailCurrentPreparation(gi),
 			"the initial preparation must complete before injecting its failed outcome");
 		const auto attempts = GlobalIlluminationECSTestAccess::PreparationCount(gi);
-		world.m_material->SetUniform("material.emissiveFactor", glm::vec4(0.75f, 0.5f, 0.25f, 0));
+		world.m_material->SetUniform("material.emissiveFactor"_h, glm::vec4(0.75f, 0.5f, 0.25f, 0));
 		world.Step();
 		Require(gi.GetRuntimeGIProbesStatus().m_lifecycle != ERuntimeGIProbesLifecycle::Failed,
 			"a failed result with changed inputs must request retry instead of a permanent failure");
@@ -999,7 +1167,7 @@ namespace
 		checkDistance(prepared, 2);
 		world.Step();
 		world.WaitReady();
-		world.m_material->SetUniform("material.baseColorFactor", glm::vec4(1, 1, 1, 0.5f));
+		world.m_material->SetUniform("material.baseColorFactor"_h, glm::vec4(1, 1, 1, 0.5f));
 		world.Step(0.6f);
 		world.Step();
 		const auto alpha = GlobalIlluminationECSTestAccess::WaitPreparation(world.GI());
@@ -1028,11 +1196,11 @@ namespace
 	void TestEmissionPreparation()
 	{
 		GIWorld world;
-		world.m_material->SetUniform("material.emissiveFactor", glm::vec4(0));
+		world.m_material->SetUniform("material.emissiveFactor"_h, glm::vec4(0));
 		world.WaitReady();
 		const auto original = GlobalIlluminationECSTestAccess::PreparedScene(world.GI());
 		const auto captured = GlobalIlluminationECSTestAccess::CapturedScene(world.GI());
-		world.m_material->SetUniform("material.emissiveFactor", glm::vec4(2, 4, 8, 0));
+		world.m_material->SetUniform("material.emissiveFactor"_h, glm::vec4(2, 4, 8, 0));
 		world.Step(0.6f);
 		world.Step();
 		const auto updated = GlobalIlluminationECSTestAccess::WaitPreparation(world.GI());
@@ -1055,11 +1223,11 @@ namespace
 	void TestEmissionDuringPreparation()
 	{
 		GIWorld world;
-		world.m_material->SetUniform("material.emissiveFactor", glm::vec4(0));
+		world.m_material->SetUniform("material.emissiveFactor"_h, glm::vec4(0));
 		world.Step();
 		const auto prepared = GlobalIlluminationECSTestAccess::WaitPreparation(world.GI());
 		Require(prepared && prepared->m_sampler, "prepare the real initial scene before changing emission");
-		world.m_material->SetUniform("material.emissiveFactor", glm::vec4(3, 2, 1, 0));
+		world.m_material->SetUniform("material.emissiveFactor"_h, glm::vec4(3, 2, 1, 0));
 		world.Step();
 		Require(GlobalIlluminationECSTestAccess::PreparedScene(world.GI()) == prepared,
 			"emission changes must not discard usable geometry before its first publication");
@@ -1070,6 +1238,42 @@ namespace
 		Require(latest && latest->m_lightingHash != prepared->m_lightingHash &&
 			latest->m_sampler->GetLastScenePreparationStats().m_builtBlasCount == 0,
 			"after first publication the next emission generation must catch up without rebuilding BLAS");
+	}
+
+	void TestSelectedSkyLightingSource()
+	{
+		GIWorld world;
+		auto other = world.Instantiate("Other sky", InstanceId("00000000000000000003"))->AddComponent<SkyComponent>();
+		auto owner = world.Instantiate("Selected sky", InstanceId("00000000000000000002"));
+		auto selected = owner->AddComponent<SkyComponent>();
+		selected->SetSunAngle(20);
+		selected->SetGiIndirectIntensity(2);
+		other->SetSunAngle(70);
+		world.Step();
+		GIProbesSceneCaptureRequest request;
+		GIProbesSceneSnapshot captured;
+		GIProbesSceneRevision before, after;
+		std::string diagnostic;
+		Require(CaptureGIProbesScene(&world, request, captured, diagnostic), diagnostic);
+		Require(world.GetECS<LightingECS>()->GetSky() == selected &&
+			captured.m_environment.m_type == EEnvironmentSource::Sky &&
+			captured.m_environment.m_sky == selected->GetSkyParameters() &&
+			captured.m_environment.m_skyIndirectIntensity == 2,
+			"GI capture and rendering must select the same sky independently of component insertion order");
+		Require(ObserveGIProbesSceneRevision(&world, request, before, diagnostic), diagnostic);
+		other->SetSunAngle(5);
+		other->SetGiIndirectIntensity(7);
+		Require(ObserveGIProbesSceneRevision(&world, request, after, diagnostic), diagnostic);
+		Require(before == after, "nonselected sky changes must not invalidate GI lighting");
+		Require(owner->RemoveComponent(selected), "the selected sky must be removable");
+		Require(CaptureGIProbesScene(&world, request, captured, diagnostic), diagnostic);
+		Require(captured.m_environment.m_sky == other->GetSkyParameters() &&
+			captured.m_environment.m_skyIndirectIntensity == 7,
+			"GI capture must follow the surviving render sky after selected-owner removal");
+		Require(ObserveGIProbesSceneRevision(&world, request, after, diagnostic), diagnostic);
+		Require(before.m_geometry == after.m_geometry && before.m_lighting != after.m_lighting,
+			"sky ownership changes must invalidate lighting without changing geometry");
+		std::cout << "GI sky ownership: matching render selection, nonselected edits and selected-owner removal passed\n";
 	}
 
 	void TestCloudsDoNotInvalidateGI()
@@ -1103,7 +1307,7 @@ namespace
 			std::this_thread::yield();
 		}
 		Require(texture->IsReady(), "the GPU environment upload must complete");
-		auto task = Tasks::CreateTaskWithResult<std::string>("Environment CPU/GPU parity", [&]() -> std::string
+		auto task = Tasks::CreateTaskWithResult<std::string>("Environment CPU/GPU parity"_h, [&]() -> std::string
 		{
 			try
 			{
@@ -1252,19 +1456,21 @@ namespace
 				", expected " + std::to_string(expected.r));
 		};
 		const glm::vec3 north(4.0f, 0.5f, 0.25f), south(0.25f, 2.0f, 0.5f);
-		const auto requireProbeDirection = [](const GIProbesData& data, bool reversed, const std::string& label)
+		const auto requireProbeDirection = [](const GIProbesData& data, bool reversed, std::string_view label)
 		{
 			glm::vec3 up(0.0f), down(0.0f);
-			Require(!data.m_probes.IsEmpty(), label + " must contain probes");
+			if (data.m_probes.IsEmpty()) throw std::runtime_error(std::string(label) + " must contain probes");
 			for (const auto& probe : data.m_probes)
 			{
 				up += EvaluateProbeIrradianceSH(probe.m_irradiance, { 0, 1, 0 });
 				down += EvaluateProbeIrradianceSH(probe.m_irradiance, { 0, -1, 0 });
 			}
 			const glm::vec3 difference = (up - down) * (reversed ? -1.0f : 1.0f) / static_cast<float>(data.m_probes.Num());
-			Require(difference.r > 0.1f && difference.g < -0.1f,
-				label + " must follow HDR direction and color; red difference " + std::to_string(difference.r) +
-				", green difference " + std::to_string(difference.g));
+			if (!(difference.r > 0.1f && difference.g < -0.1f))
+			{
+				throw std::runtime_error(std::string(label) + " must follow HDR direction and color; red difference " +
+					std::to_string(difference.r) + ", green difference " + std::to_string(difference.g));
+			}
 		};
 		const auto bake = [&](const GIProbesPreparedScene& prepared, bool reversed)
 		{
@@ -1315,7 +1521,7 @@ namespace
 		requireRadiance(second, { 0.0f, -1.0f, 0.0f }, north);
 		requireRadiance(first, { 0.0f, 1.0f, 0.0f }, north);
 		auto background = Tasks::CreateTaskWithResult<std::pair<GIProbesPreparedScene, std::string>>(
-			"Prepare retained HDR", [retainedCapture, settings = request.m_settings]()
+			"Prepare retained HDR"_h, [retainedCapture, settings = request.m_settings]()
 			{
 				std::pair<GIProbesPreparedScene, std::string> result;
 				if (PrepareGIProbesScene(retainedCapture, settings, nullptr, result.first, result.second)) result.second.clear();
@@ -1419,7 +1625,7 @@ namespace
 
 	void TestGpuLayoutUploads(const GIProbesDataPtr& data, uint64_t publishedBytes)
 	{
-		auto task = Tasks::CreateTaskWithResult<std::string>("GI layout upload validation", [data, publishedBytes]()
+		auto task = Tasks::CreateTaskWithResult<std::string>("GI layout upload validation"_h, [data, publishedBytes]()
 		{
 			try
 			{
@@ -1459,22 +1665,22 @@ namespace
 					const size_t numLights = snapshot.m_cpuLightsData ? snapshot.m_cpuLightsData->Num() : 0;
 					struct Buffer
 					{
-						const char* name;
+						StringHash name;
 						const void* data;
 						size_t size;
 					};
 					const std::array<Buffer, 11> expected{ {
-						{ "globalIlluminationBvh", layout.m_nodes.GetData(), layout.m_nodes.Num() * sizeof(RHIGlobalIlluminationGpuBvhNode) },
-						{ "globalIlluminationBricks", layout.m_bricks.GetData(), layout.m_bricks.Num() * sizeof(RHIGlobalIlluminationGpuBrick) },
-						{ "globalIlluminationProbes", layout.m_probes.GetData(), layout.m_probes.Num() * sizeof(RHIGlobalIlluminationGpuProbe) },
-						{ "globalIlluminationCoefficients", coefficients.GetData(), coefficients.Num() * sizeof(RHIGlobalIlluminationGpuCoefficients) },
-						{ "globalIlluminationStates", states.GetData(), states.Num() * sizeof(RHIGlobalIlluminationGpuState) },
-						{ "globalIlluminationHeader", &header, sizeof(header) },
-						{ "light", numLights ? snapshot.m_cpuLightsData->GetData() : nullptr, numLights * sizeof(RHILightShaderData) },
-						{ "bones", numBones ? snapshot.m_cpuBoneMatrices->GetData() : &identity, (std::max)(size_t{ 1 }, numBones) * sizeof(glm::mat4) },
-						{ "lightsMatrices", snapshot.m_shadowMatrices.GetData(), snapshot.m_shadowMatrices.Num() * sizeof(glm::mat4) },
-						{ "shadowIndices", snapshot.m_shadowIndices.GetData(), snapshot.m_shadowIndices.Num() * sizeof(uint32_t) },
-						{ "shadowAtlasTiles", snapshot.m_shadowAtlasTiles.GetData(), snapshot.m_shadowAtlasTiles.Num() * sizeof(uint32_t) }
+						{ "globalIlluminationBvh"_h, layout.m_nodes.GetData(), layout.m_nodes.Num() * sizeof(RHIGlobalIlluminationGpuBvhNode) },
+						{ "globalIlluminationBricks"_h, layout.m_bricks.GetData(), layout.m_bricks.Num() * sizeof(RHIGlobalIlluminationGpuBrick) },
+						{ "globalIlluminationProbes"_h, layout.m_probes.GetData(), layout.m_probes.Num() * sizeof(RHIGlobalIlluminationGpuProbe) },
+						{ "globalIlluminationCoefficients"_h, coefficients.GetData(), coefficients.Num() * sizeof(RHIGlobalIlluminationGpuCoefficients) },
+						{ "globalIlluminationStates"_h, states.GetData(), states.Num() * sizeof(RHIGlobalIlluminationGpuState) },
+						{ "globalIlluminationHeader"_h, &header, sizeof(header) },
+						{ "light"_h, numLights ? snapshot.m_cpuLightsData->GetData() : nullptr, numLights * sizeof(RHILightShaderData) },
+						{ "bones"_h, numBones ? snapshot.m_cpuBoneMatrices->GetData() : &identity, (std::max)(size_t{ 1 }, numBones) * sizeof(glm::mat4) },
+						{ "lightsMatrices"_h, snapshot.m_shadowMatrices.GetData(), snapshot.m_shadowMatrices.Num() * sizeof(glm::mat4) },
+						{ "shadowIndices"_h, snapshot.m_shadowIndices.GetData(), snapshot.m_shadowIndices.Num() * sizeof(uint32_t) },
+						{ "shadowAtlasTiles"_h, snapshot.m_shadowAtlasTiles.GetData(), snapshot.m_shadowAtlasTiles.Num() * sizeof(uint32_t) }
 					} };
 					std::array<RHIBufferPtr, 11> readbacks;
 					auto command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
@@ -1483,7 +1689,7 @@ namespace
 					for (size_t i = 0; i < expected.size(); ++i)
 					{
 						const auto& buffer = expected[i];
-						auto bindings = std::string_view(buffer.name) == "bones" ? snapshot.m_boneMatrices : snapshot.m_rhiLightsData;
+						auto bindings = buffer.name == "bones"_h ? snapshot.m_boneMatrices : snapshot.m_rhiLightsData;
 						auto binding = bindings->GetOrAddShaderBinding(buffer.name);
 						Require(binding && binding->m_vulkan.m_valueBinding, "framegraph must publish each shared and per-view buffer");
 						if (buffer.size == 0) continue;
@@ -1501,7 +1707,7 @@ namespace
 					for (size_t i = 0; i < expected.size(); ++i)
 					{
 						Require(expected[i].size == 0 || std::memcmp(readbacks[i]->GetPointer(), expected[i].data, expected[i].size) == 0,
-							std::string("GPU bytes must match the retained publication: ") + expected[i].name);
+							std::string("GPU bytes must match the retained publication: ") + expected[i].name.ToString());
 					}
 					fence->ClearDependencies();
 				};
@@ -1557,7 +1763,46 @@ namespace
 						flights[flight]->BeginSubmission(++submission, flight);
 						rejectNextUpload = false;
 					}
-					Require(graph->Process(view, transfers, graphics, input, chain), "the actual GI framegraph must process");
+					const auto process = [&]
+					{
+						Require(graph->Process(view, transfers, graphics, input, chain), "the actual GI framegraph must process");
+					};
+#if defined(__APPLE__)
+					const auto nativeWrites = Tests::CaptureVulkanBufferWrites(process);
+					const std::array bindingNames{ "globalIlluminationBvh"_h, "globalIlluminationBricks"_h,
+						"globalIlluminationProbes"_h, "globalIlluminationCoefficients"_h,
+						"globalIlluminationStates"_h, "globalIlluminationHeader"_h };
+					std::array<uint64_t, 6> writtenBytes{};
+					for (size_t i = 0; i < bindingNames.size(); ++i)
+					{
+						const auto binding = view->m_snapshots[0].m_rhiLightsData->GetOrAddShaderBinding(bindingNames[i]);
+						const auto memory = *binding->m_vulkan.m_valueBinding->Get();
+						for (const auto& write : nativeWrites)
+						{
+							if (write.m_buffer != *memory.m_buffer) continue;
+							const auto begin = std::max(write.m_offset, VkDeviceSize(memory.m_offset));
+							const auto end = std::min(write.m_offset + write.m_size, VkDeviceSize(memory.m_offset + memory.m_size));
+							if (end > begin) writtenBytes[i] += end - begin;
+						}
+					}
+					uint64_t nativeBytes = 0;
+					for (auto bytes : writtenBytes) nativeBytes += bytes;
+					const auto layoutBytes = writtenBytes[0] + writtenBytes[1] + writtenBytes[2];
+					std::cout << "GI native writes: submission=" << submission << " flight=" << flight << " cameras=" << cameraCount
+						<< " total=" << nativeBytes << " layout=" << layoutBytes << " coefficients=" << writtenBytes[3]
+						<< " states=" << writtenBytes[4] << " header=" << writtenBytes[5] << '\n';
+					Require(nativeBytes == expectedBytes,
+						"native GI transfer regions must match the expected payload bytes, independently of renderer statistics");
+					if (expectedBytes <= 8 * sizeof(RHIGlobalIlluminationGpuCoefficients) +
+						sizeof(RHIGlobalIlluminationGpuState) + sizeof(RHIGlobalIlluminationGpuHeader))
+						Require(layoutBytes == 0, "lighting-only publications must not rewrite immutable GPU layout");
+					if (expectedBytes == sizeof(RHIGlobalIlluminationGpuState))
+						Require(writtenBytes[4] == expectedBytes, "weight changes must write only state metadata");
+					if (expectedBytes == sizeof(RHIGlobalIlluminationGpuHeader))
+						Require(writtenBytes[5] == expectedBytes, "mode changes must write only the GI header");
+#else
+					process();
+#endif
 					Require((chain != input) == expectSharedUpload,
 						"only changed shared payloads may add a submission, independently of camera count");
 					Require(transfers.Num() == cameraCount && graphics.Num() == cameraCount,
@@ -1576,8 +1821,8 @@ namespace
 					for (auto& snapshot : view->m_snapshots)
 					{
 						Require(snapshot.m_boneMatrices == first.m_boneMatrices, "cameras must share one bones binding");
-						for (const char* name : { "light", "globalIlluminationHeader", "globalIlluminationBvh",
-							"globalIlluminationBricks", "globalIlluminationProbes", "globalIlluminationCoefficients", "globalIlluminationStates" })
+						for (const auto name : { "light"_h, "globalIlluminationHeader"_h, "globalIlluminationBvh"_h,
+							"globalIlluminationBricks"_h, "globalIlluminationProbes"_h, "globalIlluminationCoefficients"_h, "globalIlluminationStates"_h })
 						{
 							Require(snapshot.m_rhiLightsData->GetOrAddShaderBinding(name)->m_vulkan.m_valueBinding ==
 								first.m_rhiLightsData->GetOrAddShaderBinding(name)->m_vulkan.m_valueBinding,
@@ -1586,8 +1831,8 @@ namespace
 						if (snapshot.m_cameraIndex != 0)
 						{
 							Require(snapshot.m_frameBindings != first.m_frameBindings &&
-								snapshot.m_rhiLightsData->GetOrAddShaderBinding("lightsMatrices")->m_vulkan.m_valueBinding !=
-								first.m_rhiLightsData->GetOrAddShaderBinding("lightsMatrices")->m_vulkan.m_valueBinding,
+								snapshot.m_rhiLightsData->GetOrAddShaderBinding("lightsMatrices"_h)->m_vulkan.m_valueBinding !=
+								first.m_rhiLightsData->GetOrAddShaderBinding("lightsMatrices"_h)->m_vulkan.m_valueBinding,
 								"camera frame and shadow allocations must remain independent");
 						}
 						checkBuffers(snapshot, chain);
@@ -1631,7 +1876,10 @@ namespace
 				upload(0, changed, 3, layoutBytes + lightingBytes);
 				checkBuffers(otherFlight->m_snapshots[0]);
 				stateWeight = 0.5f;
-				upload(0, changed, 3, sizeof(RHIGlobalIlluminationGpuState));
+				auto reallocated = GIProbesDataPtr::Make(*changed);
+				Require(reallocated != changed, "weight-only publication must use a distinct CPU allocation");
+				upload(0, reallocated, 3, sizeof(RHIGlobalIlluminationGpuState));
+				upload(0, GIProbesDataPtr::Make(*changed), 3, 0, false);
 				renderMode = ESceneViewRenderMode::GlobalIlluminationOnly;
 				upload(0, changed, 3, sizeof(RHIGlobalIlluminationGpuHeader));
 				giEnabled = false;
@@ -1799,7 +2047,7 @@ namespace Sailor::Tests
 					Require(observation.entered.load(std::memory_order_acquire) && observation.background,
 						"the real Background bake must reach its controlled preparation/save boundary: " +
 						editor->GetGIProbesBakeStatus().m_diagnostic);
-					auto marker = Tasks::CreateTask("Observe App shutdown Main drain", [&]()
+					auto marker = Tasks::CreateTask("Observe App shutdown Main drain"_h, [&]()
 						{ observation.shutdownEntered.store(true, std::memory_order_release); }, EThreadType::Main);
 					marker->Run();
 					marker.Clear();
@@ -1897,6 +2145,7 @@ namespace Sailor::Tests
 		run("Emission preparation", [&]() { TestEmissionPreparation(); });
 		run("Emission during preparation", [&]() { TestEmissionDuringPreparation(); });
 		run("Cloud-only changes", [&]() { TestCloudsDoNotInvalidateGI(); });
+		run("Selected sky source", [&]() { TestSelectedSkyLightingSource(); });
 		if (data)
 		{
 			run("GI layout uploads", [&]() { TestGpuLayoutUploads(data, publishedBytes); });

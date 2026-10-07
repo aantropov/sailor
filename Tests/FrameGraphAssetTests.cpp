@@ -1,5 +1,6 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
+#include "FrameGraph/FrameGraphNode.h"
 #include "Support/TempDirectory.h"
 #include "Workspace/WorkspaceContext.h"
 
@@ -21,12 +22,12 @@ namespace Sailor
 			return graph;
 		}
 
-		static glm::vec4 GetValue(const RHI::RHIFrameGraph& graph, const std::string& name)
+		static glm::vec4 GetValue(const RHI::RHIFrameGraph& graph, StringHash name)
 		{
 			const glm::vec4* value = nullptr;
 			if (!graph.m_values.Find(name, value))
 			{
-				throw std::runtime_error("Missing built frame-graph value: " + name);
+				throw std::runtime_error("Missing built frame-graph value: " + name.ToString());
 			}
 			return *value;
 		}
@@ -48,6 +49,98 @@ namespace
 		{
 			throw std::runtime_error(message);
 		}
+	}
+
+	void TestRuntimeNamesAndValues()
+	{
+		RHI::RHIFrameGraph graph;
+		auto node = TRefPtr<Framegraph::RHINodeDefault>::Make();
+		graph.GetGraph().Add(node);
+		{
+			std::string names = "prefix:BorrowedNode:suffix";
+			node->SetTag(StringHash::Runtime(std::string_view(names).substr(7, 12)));
+			std::string value = "prefix:kept text:suffix";
+			node->SetString("label"_h, std::string_view(value).substr(7, 9));
+			node->SetFloat("gain"_h, 0.75f);
+		}
+		Require(graph.GetGraphNode("BorrowedNode"_h) == node && node->GetString("label"_h) == "kept text" &&
+			node->GetFloat("gain"_h) == 0.75f && node->GetTag().ToString() == "BorrowedNode",
+			"frame-graph names and values must outlive their source views and match literal lookups");
+
+		std::string_view borrowed;
+		std::string owned;
+		Require(node->TryGetString("label"_h, borrowed) && borrowed == "kept text" &&
+			borrowed.data() == node->GetString("label"_h).data(),
+			"borrowed lookup must return a view of the stored parameter without copying it");
+		Require(node->TryGetString("label"_h, owned) && owned == borrowed,
+			"owned and borrowed lookup must return the same parameter value");
+		Require(!node->TryGetString("missing"_h, borrowed) && borrowed == "kept text" &&
+			!node->TryGetString("missing"_h, owned) && owned == "kept text",
+			"a missing parameter must leave both output forms unchanged");
+		node->SetString("label"_h, "replacement");
+		Require(owned == "kept text" && node->TryGetString("label"_h, borrowed) && borrowed == "replacement",
+			"an owned snapshot must survive edits, while a fresh view must read the updated parameter");
+		node->SetString("label"_h, "");
+		Require(node->TryGetString("label"_h, borrowed) && borrowed.empty(),
+			"an empty parameter is a successful lookup, not a missing one");
+	}
+
+	void TestGpuTimingNames()
+	{
+		auto node = TRefPtr<Framegraph::RHINodeDefault>::Make();
+		StringHash original;
+		{
+			std::string source = "prefix:Lighting:suffix";
+			node->SetTag(StringHash::Runtime(std::string_view(source).substr(7, 8)));
+			node->SetString("Tag"_h, "Opaque");
+			source = "prefix:Shaders/Lighting.shader:suffix";
+			node->SetString("shader"_h, std::string_view(source).substr(7, 23));
+			original = node->GetGpuTimingName(3);
+			source.assign(1024, 'x');
+		}
+		Require(original == "03 Lighting/Opaque/Shaders/Lighting.shader"_h && node->GetGpuTimingName(3) == original,
+			"GPU labels must preserve their index, node tag, queue tag and shader after source destruction");
+		node->SetFloat("gain"_h, 2.0f);
+		node->SetString("label"_h, "unrelated");
+		Require(node->GetGpuTimingName(3) == original, "unrelated parameters must not change the timing identity");
+		node->SetString("Tag"_h, "Transparent");
+		Require(node->GetGpuTimingName(3) == "03 Lighting/Transparent/Shaders/Lighting.shader"_h,
+			"changing the render queue tag must update the timing label");
+		node->SetString("shader"_h, "Shaders/Unlit.shader");
+		Require(node->GetGpuTimingName(3) == "03 Lighting/Transparent/Shaders/Unlit.shader"_h,
+			"changing the shader must update the timing label");
+		node->SetTag("PostProcess"_h);
+		Require(node->GetGpuTimingName(3) == "03 PostProcess/Transparent/Shaders/Unlit.shader"_h,
+			"changing the node tag must update the timing label");
+		Require(node->GetGpuTimingName(103) == "103 PostProcess/Transparent/Shaders/Unlit.shader"_h &&
+			node->GetGpuTimingName(3) == "03 PostProcess/Transparent/Shaders/Unlit.shader"_h,
+			"moving or sharing a node must preserve the current graph position in its timing label");
+		node->SetString("Tag"_h, {});
+		node->SetString("shader"_h, {});
+		Require(node->GetGpuTimingName(3) == "03 PostProcess"_h, "empty optional labels must not leave separators");
+		node.Clear();
+		Require(original.ToString() == "03 Lighting/Opaque/Shaders/Lighting.shader",
+			"pending queries must retain readable labels after the node is changed or destroyed");
+	}
+
+	void TestBorrowedAssetText()
+	{
+		const char extent[] = { ' ', '+', '1', '7', ' ', 'X' };
+		Require(FrameGraphAsset::RenderTarget::ParseUintValue(std::string_view(extent, 5)) == 17,
+			"dimension parsing must accept bounded text without reading a suffix or requiring a terminator");
+		bool rejected = false;
+		try { FrameGraphAsset::RenderTarget::ParseUintValue({}); }
+		catch (const YAML::Exception&) { rejected = true; }
+		Require(rejected, "an empty dimension view must fail parsing");
+
+		FrameGraphAsset::Value value;
+		{
+			std::string source = "prefix:Transparent:suffix";
+			value = FrameGraphAsset::Value(std::string_view(source).substr(7, 11));
+			source.assign(1024, 'x');
+		}
+		Require(value.IsString() && value.GetString() == "Transparent",
+			"an authored value must own the text supplied through its view after the source changes or dies");
 	}
 
 	void TestResourceDeclarations()
@@ -168,6 +261,84 @@ renderTargets:
 		std::cout << "FrameGraph attachment dimensions and mip declarations passed\n";
 	}
 
+	void TestRasterAttachmentRelationships()
+	{
+		const auto valid = YAML::Load(R"(
+renderTargets:
+  - {name: Color, width: 8, height: 8, format: R16G16B16A16_SFLOAT}
+  - {name: DepthBuffer, width: 16, height: 8, format: D32_SFLOAT}
+  - {name: Motion, width: 8, height: 16, format: R16G16_SFLOAT}
+  - {name: SmallInput, width: 1, height: 1, format: R32_SFLOAT}
+samplers: [{name: SampledOnly, path: Texture.tga}]
+frame:
+  - name: RenderScene
+    tag: Geometry
+    renderTargets: [{color: Color}, {motionVectors: Motion}, {sceneDepth: SmallInput}]
+)");
+		for (const char* node : { "RenderScene", "ExperimentalParticles", "DebugDraw", "RenderImGui", "PostProcess", "Sky", "AtmosphericFog" })
+		{
+			for (bool surface : { false, true })
+			{
+				auto document = YAML::Clone(valid);
+				document["frame"][0]["name"] = node;
+				document["renderTargets"][0]["bIsSurface"] = surface;
+				FrameGraphAsset asset;
+				asset.Deserialize(document);
+				Require(asset.m_nodes.Num() == 1 && asset.m_renderTargets.Num() == 4,
+					"legal larger depth/motion attachments and differently sized sampled inputs must load");
+			}
+		}
+		for (const char* failure : { "color-depth", "depth-color", "motion-depth", "small-depth", "small-motion", "color-sampler" })
+		{
+			auto document = YAML::Clone(valid);
+			const std::string_view kind(failure);
+			const char* resource = "Color";
+			if (kind == "color-depth") document["renderTargets"][0]["format"] = "D32_SFLOAT";
+			else if (kind == "depth-color") { document["renderTargets"][1]["format"] = "R32_SFLOAT"; resource = "DepthBuffer"; }
+			else if (kind == "motion-depth") { document["renderTargets"][2]["format"] = "D32_SFLOAT"; resource = "Motion"; }
+			else if (kind == "small-depth") { document["renderTargets"][1]["height"] = 7; resource = "DepthBuffer"; }
+			else if (kind == "small-motion") { document["renderTargets"][2]["width"] = 7; resource = "Motion"; }
+			else { document["frame"][0]["renderTargets"][0]["color"] = "SampledOnly"; resource = "SampledOnly"; }
+			bool rejected = false;
+			try { FrameGraphAsset asset; asset.Deserialize(document); }
+			catch (const YAML::Exception& error)
+			{
+				const std::string_view diagnostic(error.what());
+				rejected = diagnostic.find("Geometry") != std::string_view::npos && diagnostic.find(resource) != std::string_view::npos;
+			}
+			if (!rejected) throw std::runtime_error(std::string("Invalid static attachment relationship accepted: ") + failure);
+		}
+		for (bool bDepthOnly : { false, true })
+		{
+			for (bool bExplicit : { false, true })
+			{
+				auto document = YAML::Clone(valid);
+				document["frame"][0]["name"] = bDepthOnly ? "DepthPrepass" : "PostProcess";
+				document["frame"][0]["renderTargets"] = YAML::Load(bExplicit ?
+					(bDepthOnly ? "[{depthStencil: DepthBuffer}]" : "[{color: BackBuffer}]") : "[]");
+				document["renderTargets"][0]["name"] = "BackBuffer";
+				FrameGraphAsset asset;
+				asset.Deserialize(document);
+				document["renderTargets"][bDepthOnly ? 1 : 0]["format"] = bDepthOnly ? "R32_SFLOAT" : "D32_SFLOAT";
+				bool bRejected = false;
+				try { asset.Deserialize(document); }
+				catch (const YAML::Exception& error)
+				{
+					const std::string_view diagnostic(error.what());
+					bRejected = diagnostic.find(bDepthOnly ? "DepthBuffer" : "BackBuffer") != std::string_view::npos;
+				}
+				Require(bRejected, "explicit and default raster attachments must enforce the same format role");
+			}
+		}
+		auto external = YAML::Clone(valid);
+		external["frame"][0]["renderTargets"] = YAML::Load("[{color: PublishedLater}, {depthStencil: ExternalDepth}]");
+		FrameGraphAsset asset;
+		asset.Deserialize(external);
+		Require(asset.m_nodes[0].m_renderTargets["color"] == "PublishedLater",
+			"external attachments must not require static declarations");
+		std::cout << "FrameGraph raster attachment roles and render-area coverage passed\n";
+	}
+
 	void TestGlobalValues(const FrameGraphImporter& importer)
 	{
 		auto asset = FrameGraphAssetPtr::Make();
@@ -183,24 +354,24 @@ vec4:
 		auto first = FrameGraphImporterTestAccess::Build(importer, asset);
 		Require(FrameGraphImporterTestAccess::GetValueCount(*first) == 5,
 			"building a graph must retain every global value");
-		Require(FrameGraphImporterTestAccess::GetValue(*first, "exposure") == glm::vec4(1.75f) &&
-			FrameGraphImporterTestAccess::GetValue(*first, "negative") == glm::vec4(-2.0f) &&
-			FrameGraphImporterTestAccess::GetValue(*first, "zero") == glm::vec4(0.0f),
+		Require(FrameGraphImporterTestAccess::GetValue(*first, "exposure"_h) == glm::vec4(1.75f) &&
+			FrameGraphImporterTestAccess::GetValue(*first, "negative"_h) == glm::vec4(-2.0f) &&
+			FrameGraphImporterTestAccess::GetValue(*first, "zero"_h) == glm::vec4(0.0f),
 			"scalar globals must still broadcast to all four shader components");
 		const glm::vec4 tint(0.125f, 0.5f, 2.0f, 0.75f);
-		Require(FrameGraphImporterTestAccess::GetValue(*first, "tint") == tint &&
-			FrameGraphImporterTestAccess::GetValue(*first, "offset") == glm::vec4(-3.0f, 0.25f, 0.0f, -1.0f),
+		Require(FrameGraphImporterTestAccess::GetValue(*first, "tint"_h) == tint &&
+			FrameGraphImporterTestAccess::GetValue(*first, "offset"_h) == glm::vec4(-3.0f, 0.25f, 0.0f, -1.0f),
 			"vector globals must retain their individual components, not read the unused scalar field");
 
 		auto second = FrameGraphImporterTestAccess::Build(importer, asset);
-		first->SetValue("tint", glm::vec4(4.0f));
-		Require(FrameGraphImporterTestAccess::GetValue(*second, "tint") == tint &&
+		first->SetValue("tint"_h, glm::vec4(4.0f));
+		Require(FrameGraphImporterTestAccess::GetValue(*second, "tint"_h) == tint &&
 			asset->m_values["tint"].GetVec4() == tint,
 			"each instantiated graph must own its values without changing the parsed asset");
 		asset->m_values["tint"] = FrameGraphAsset::Value(glm::vec4(8.0f));
 		auto third = FrameGraphImporterTestAccess::Build(importer, asset);
-		Require(FrameGraphImporterTestAccess::GetValue(*third, "tint") == glm::vec4(8.0f) &&
-			FrameGraphImporterTestAccess::GetValue(*second, "tint") == tint,
+		Require(FrameGraphImporterTestAccess::GetValue(*third, "tint"_h) == glm::vec4(8.0f) &&
+			FrameGraphImporterTestAccess::GetValue(*second, "tint"_h) == tint,
 			"a later build must consume current asset values and retain earlier graph values");
 
 		auto emptyAsset = FrameGraphAssetPtr::Make();
@@ -240,9 +411,13 @@ int main()
 		AssetRegistry registry(resolved.m_context, nullptr);
 		FrameGraphAssetInfoHandler handler(&registry);
 		FrameGraphImporter importer(&handler);
+		TestRuntimeNamesAndValues();
+		TestGpuTimingNames();
+		TestBorrowedAssetText();
 		TestResourceDeclarations();
 		TestSamplerReferences();
 		TestAttachmentDimensions();
+		TestRasterAttachmentRelationships();
 		TestGlobalValues(importer);
 		std::cout << "FrameGraphAssetTests passed\n";
 		return 0;

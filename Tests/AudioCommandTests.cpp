@@ -60,7 +60,7 @@ namespace
 	public:
 		HoldAudioQueue()
 		{
-			m_task = Tasks::CreateTask("Hold test audio queue", [this]()
+			m_task = Tasks::CreateTask("Hold test audio queue"_h, [this]()
 				{
 					m_entered.count_down();
 					m_release.wait();
@@ -102,14 +102,16 @@ namespace
 	AudioClipPtr LoadClip(const std::filesystem::path& path, bool stream = false)
 	{
 		auto* registry = App::GetSubmodule<AssetRegistry>();
-		const auto id = registry->GetOrLoadFile(path.string());
+		const auto id = registry->GetOrLoadFile(Workspace::PathToUtf8(path));
 		if (stream)
 		{
 			const auto metadata = registry->GetAssetInfoPtr(id)->GetMetaFilepath();
-			auto document = YAML::LoadFile(metadata);
+			std::ifstream input(Workspace::PathFromUtf8(metadata));
+			auto document = YAML::Load(input);
+			input.close();
 			document["stream"] = true;
 			{
-				std::ofstream output(metadata);
+				std::ofstream output(Workspace::PathFromUtf8(metadata));
 				output << document;
 			}
 			Require(App::UpdateAsset(id.ToString().c_str()), "streaming metadata must update through the registry");
@@ -172,7 +174,8 @@ namespace
 
 	void TestPendingCommands(const std::filesystem::path& workspace, AudioSystem& audio)
 	{
-		const auto path = workspace / "Content/AudioPending.wav";
+		const auto path = workspace / "Content" / Workspace::PathFromUtf8(
+			reinterpret_cast<const char*>(u8"AudioPending \u042f \u00e9 \u8239 \U0001f6a2.wav"));
 		WriteWave(path);
 		auto clip = LoadClip(path);
 		const size_t before = audio.GetNumVoices();
@@ -222,9 +225,7 @@ namespace
 			++m_currentFrame;
 			BeginPlayEcs();
 			TickGameObjects(0.5f);
-			GetECS<TransformECS>()->Tick(0.5f);
-			GetECS<TransformECS>()->PostTick();
-			GetECS<AudioECS>()->Tick(0.5f);
+			TickEcs(0.5f);
 		}
 		AudioVoiceId Voice() { return GetECS<AudioECS>()->GetComponentData(0).GetVoiceId(); }
 	private:
@@ -250,7 +251,9 @@ namespace
 
 	void TestEcsReload(const std::filesystem::path& workspace, AudioSystem& audio, bool stream)
 	{
-		const auto path = workspace / "Content" / (stream ? "AudioEcsStream.wav" : "AudioEcsDecoded.wav");
+		const auto path = workspace / "Content" / Workspace::PathFromUtf8(
+			std::string(stream ? "AudioEcsStream " : "AudioEcsDecoded ") +
+			reinterpret_cast<const char*>(u8"\u042f \u00e9 \u8239 \U0001f6a2.wav"));
 		WriteWave(path);
 		auto clip = LoadClip(path, stream);
 		const size_t before = audio.GetNumVoices();

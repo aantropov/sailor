@@ -73,7 +73,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			uint32_t range) override;
 		SAILOR_API virtual uint32_t BeginGpuTimestamp(
 			RHI::RHICommandListPtr commandList,
-			const std::string& name) override;
+			StringHash name) override;
 		SAILOR_API virtual void EndGpuTimestamp(
 			RHI::RHICommandListPtr commandList,
 			uint32_t query) override;
@@ -94,6 +94,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual RHI::FrameSubmissionResult SubmitFrameWithoutPresent(const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers, const TVector<RHI::RHISemaphorePtr>& waitSemaphores, RHI::RHIFencePtr completion = {}) override;
 
 		SAILOR_API virtual void SetDebugName(RHI::RHIResourcePtr resource, const std::string& name) override;
+		SAILOR_API virtual void SetDebugName(RHI::RHIResourcePtr resource, StringHash name) override;
 
 		SAILOR_API virtual void WaitIdle() override;
 		SAILOR_API virtual RHI::RHIRenderTargetPtr GetBackBuffer() const override;
@@ -169,20 +170,20 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual RHI::RHIShaderBindingSetPtr CloneMaterialShaderBindings(
 			const RHI::RHIShaderBindingSetPtr& source) override;
 
-		SAILOR_API virtual RHI::RHIShaderBindingPtr AddBufferToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, RHI::RHIBufferPtr buffer, const std::string& name, uint32_t shaderBinding) override;
-		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSsboToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t elementSize, size_t numElements, uint32_t shaderBinding, bool bBindSsboWithOffset) override;
-		SAILOR_API virtual RHI::RHIShaderBindingPtr AddBufferToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType) override;
-		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSamplerToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::RHITexturePtr texture, uint32_t shaderBinding, bool bVariableDescriptorCount = false, uint32_t variableDescriptorUpperBound = 0) override;
-		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSamplerToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, const TVector<RHI::RHITexturePtr>& array, uint32_t shaderBinding, bool bVariableDescriptorCount = false, uint32_t variableDescriptorUpperBound = 0) override;
+		SAILOR_API virtual RHI::RHIShaderBindingPtr AddBufferToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, RHI::RHIBufferPtr buffer, StringHash name, uint32_t shaderBinding) override;
+		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSsboToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, StringHash name, size_t elementSize, size_t numElements, uint32_t shaderBinding, bool bBindSsboWithOffset) override;
+		SAILOR_API virtual RHI::RHIShaderBindingPtr AddBufferToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, StringHash name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType) override;
+		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSamplerToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, StringHash name, RHI::RHITexturePtr texture, uint32_t shaderBinding, bool bVariableDescriptorCount = false, uint32_t variableDescriptorUpperBound = 0) override;
+		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSamplerToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, StringHash name, const TVector<RHI::RHITexturePtr>& array, uint32_t shaderBinding, bool bVariableDescriptorCount = false, uint32_t variableDescriptorUpperBound = 0) override;
 
-		SAILOR_API virtual RHI::RHIShaderBindingPtr AddStorageImageToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::RHITexturePtr texture, uint32_t shaderBinding) override;
-		SAILOR_API virtual RHI::RHIShaderBindingPtr AddStorageImageToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, const TVector<RHI::RHITexturePtr>& array, uint32_t shaderBinding) override;
-		SAILOR_API virtual RHI::RHIShaderBindingPtr AddShaderBinding(RHI::RHIShaderBindingSetPtr& pShaderBindings, const RHI::RHIShaderBindingPtr& binding, const std::string& name, uint32_t shaderBinding) override;
+		SAILOR_API virtual RHI::RHIShaderBindingPtr AddStorageImageToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, StringHash name, RHI::RHITexturePtr texture, uint32_t shaderBinding) override;
+		SAILOR_API virtual RHI::RHIShaderBindingPtr AddStorageImageToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, StringHash name, const TVector<RHI::RHITexturePtr>& array, uint32_t shaderBinding) override;
+		SAILOR_API virtual RHI::RHIShaderBindingPtr AddShaderBinding(RHI::RHIShaderBindingSetPtr& pShaderBindings, const RHI::RHIShaderBindingPtr& binding, StringHash name, uint32_t shaderBinding) override;
 		SAILOR_API virtual bool FillShadersLayout(RHI::RHIShaderBindingSetPtr& pShaderBindings, const TVector<RHI::RHIShaderPtr>& shaders, uint32_t setNum) override;
 
 		// Returns true when the requested texture binding is current.
-		SAILOR_API virtual bool UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, RHI::RHITexturePtr value, uint32_t dstArrayElement = 0) override;
-		SAILOR_API virtual bool UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) override;
+		SAILOR_API virtual bool UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, StringHash binding, RHI::RHITexturePtr value, uint32_t dstArrayElement = 0) override;
+		SAILOR_API virtual bool UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, StringHash binding, const void* value, size_t size) override;
 
 		// Begin Immediate context
 		SAILOR_API virtual RHI::RHIBufferPtr CreateBuffer_Immediate(const void* pData, size_t size, RHI::EBufferUsageFlags usage) override;
@@ -223,6 +224,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 //Begin IGraphicsDriverCommands
 
 		SAILOR_API virtual void BeginDebugRegion(RHI::RHICommandListPtr cmdList, const std::string& title, const glm::vec4& color) override;
+		SAILOR_API virtual void BeginDebugRegion(RHI::RHICommandListPtr cmdList, StringHash title, const glm::vec4& color) override;
 		SAILOR_API virtual void EndDebugRegion(RHI::RHICommandListPtr cmdList) override;
 
 		SAILOR_API virtual bool RenderSecondaryCommandBuffers(RHI::RHICommandListPtr cmd,
@@ -273,6 +275,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			const TVector<RHI::RHITexturePtr>& colorAttachments,
 			const TVector<RHI::RHITexturePtr>& colorAttachmentResolves,
 			RHI::RHITexturePtr depthStencilAttachment,
+			RHI::RHITexturePtr depthStencilResolve,
 			glm::ivec4 renderArea,
 			glm::ivec2 offset,
 			bool bClearRenderTargets,
@@ -298,10 +301,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual void ClearImage(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr dst, const glm::vec4& clearColor) override;
 		SAILOR_API virtual void ClearDepthStencil(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr dst, float depth, uint32_t stencil) override;
 		SAILOR_API virtual void ClearAttachments(RHI::RHICommandListPtr cmd, glm::ivec4 renderArea, const glm::vec4& clearColor, float clearDepth) override;
-		SAILOR_API virtual void UpdateShaderBindingVariable(RHI::RHICommandListPtr cmd, RHI::RHIShaderBindingPtr binding, const std::string& variable, const void* value, size_t size) override;
+		SAILOR_API virtual void UpdateShaderBindingVariable(RHI::RHICommandListPtr cmd, RHI::RHIShaderBindingPtr binding, StringHash variable, const void* value, size_t size) override;
 		SAILOR_API virtual void UpdateShaderBinding(RHI::RHICommandListPtr cmd, RHI::RHIShaderBindingPtr binding, const void* data, size_t size, size_t offset = 0) override;
 		SAILOR_API virtual void UpdateBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr buffer, const void* data, size_t size, size_t offset = 0) override;
-		SAILOR_API virtual void SetMaterialParameter(RHI::RHICommandListPtr cmd, RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const std::string& variable, const void* value, size_t size) override;
+		SAILOR_API virtual void SetMaterialParameter(RHI::RHICommandListPtr cmd, RHI::RHIShaderBindingSetPtr bindings, StringHash binding, StringHash variable, const void* value, size_t size) override;
 		SAILOR_API virtual void BindMaterial(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material) override;
 
 		SAILOR_API virtual void Dispatch(RHI::RHICommandListPtr cmd, RHI::RHIShaderPtr computeShader,
@@ -342,14 +345,14 @@ namespace Sailor::GraphicsDriver::Vulkan
 			const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindings);
 		SAILOR_API TVector<uint32_t> CollectOptionalVariableDescriptorCount(const TVector<VulkanShaderStagePtr>& shaders, const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindingSets) const;
 
-		SAILOR_API TSharedPtr<VulkanBufferAllocator> GetUniformBufferAllocator(const std::string& uniformTypeId);
+		SAILOR_API TSharedPtr<VulkanBufferAllocator> GetUniformBufferAllocator(StringHash uniformTypeId);
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMaterialSsboAllocator();
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetGeneralSsboAllocator();
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMeshSsboAllocator();
 		SAILOR_API const TSharedPtr<VulkanBufferAllocator>& GetMaterialSsboAllocatorIfInitialized() const { return m_materialSsboAllocator; }
 		SAILOR_API const TSharedPtr<VulkanBufferAllocator>& GetGeneralSsboAllocatorIfInitialized() const { return m_generalSsboAllocator; }
 		SAILOR_API const TSharedPtr<VulkanBufferAllocator>& GetMeshSsboAllocatorIfInitialized() const { return m_meshSsboAllocator; }
-		SAILOR_API const TConcurrentMap<std::string, TSharedPtr<VulkanBufferAllocator>>& GetUniformBufferAllocators() const { return m_uniformBuffers; }
+		SAILOR_API const TConcurrentMap<StringHash, TSharedPtr<VulkanBufferAllocator>>& GetUniformBufferAllocators() const { return m_uniformBuffers; }
 
 	protected:
 		void Update(RHI::RHICommandListPtr cmd, VulkanBufferMemoryPtr bufferPtr,
@@ -421,7 +424,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VulkanImageViewPtr m_vkDefaultCubemap;
 
 		// Uniform buffers to store uniforms
-		TConcurrentMap<std::string, TSharedPtr<VulkanBufferAllocator>> m_uniformBuffers;
+		TConcurrentMap<StringHash, TSharedPtr<VulkanBufferAllocator>> m_uniformBuffers;
 
 		// Storage buffers to store everything
 		TSharedPtr<VulkanBufferAllocator> m_materialSsboAllocator;
@@ -480,7 +483,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			m_gpuFrameTimeRangeOverflows{};
 		struct GpuTimingScopeRecord final
 		{
-			std::string m_name;
+			StringHash m_name;
 			RHI::ECommandListQueue m_queue =
 				RHI::ECommandListQueue::Graphics;
 			uint32_t m_timestampValidBits = 0u;

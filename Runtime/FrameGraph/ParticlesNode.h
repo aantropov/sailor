@@ -79,7 +79,7 @@ namespace Sailor::Framegraph
 				}
 			};
 
-			SAILOR_API static const char* GetName() { return m_name; }
+			SAILOR_API static StringHash GetName() { return "ExperimentalParticles"_h; }
 
 			SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override;
 			SAILOR_API virtual void Clear() override;
@@ -106,7 +106,6 @@ namespace Sailor::Framegraph
 			uint32_t m_numInstances = 0;
 			ShaderSetPtr m_pComputeShader{};
 
-			SAILOR_SHARED_API static const char* m_name;
 		};
 	}
 

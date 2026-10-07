@@ -516,8 +516,22 @@ void IntersectRayTriangle(Ray& ray, const Triangle& tri)
 
 float Math::IntersectRayAABB(const Ray& ray, const glm::vec3& bmin, const glm::vec3& bmax, float maxRayLength)
 {
-	const glm::vec3 t1 = (bmin - ray.GetOrigin()) * ray.GetReciprocalDirection();
-	const glm::vec3 t2 = (bmax - ray.GetOrigin()) * ray.GetReciprocalDirection();
+	glm::vec3 t1 = (bmin - ray.GetOrigin()) * ray.GetReciprocalDirection();
+	glm::vec3 t2 = (bmax - ray.GetOrigin()) * ray.GetReciprocalDirection();
+	const auto& direction = ray.GetDirection();
+	if (direction.x == 0.0f || direction.y == 0.0f || direction.z == 0.0f)
+	{
+		for (int axis = 0; axis < 3; ++axis)
+		{
+			if (direction[axis] != 0.0f) continue;
+			const float origin = ray.GetOrigin()[axis];
+			if (origin < bmin[axis] || origin > bmax[axis]) return std::numeric_limits<float>::max();
+			// A parallel ray inside the slab has no entry/exit restriction.
+			// Replace 0 * infinity on its faces before reducing the intervals.
+			t1[axis] = -std::numeric_limits<float>::infinity();
+			t2[axis] = std::numeric_limits<float>::infinity();
+		}
+	}
 
 	const glm::vec3 tmin3 = glm::min(t1, t2);
 	const glm::vec3 tmax3 = glm::max(t1, t2);

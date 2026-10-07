@@ -38,7 +38,7 @@ namespace
 
 	std::filesystem::path GetFingerprintPath(const FileId& fileId, const std::filesystem::path& cache)
 	{
-		const std::filesystem::path filename = fileId.ToString() + ".png";
+		const auto filename = Workspace::PathFromUtf8(fileId.ToString() + ".png");
 		if (!fileId || filename != filename.filename())
 		{
 			return {};
@@ -159,7 +159,7 @@ bool ModelImporter::RequestFingerprint(const FileId& fileId)
 		FileRevision outputRevision;
 		std::error_code error;
 		if (std::filesystem::is_regular_file(outputPath, error) &&
-			Utils::TryGetFileRevision(outputPath.string(), outputRevision) &&
+			Utils::TryGetFileRevision(Workspace::PathToUtf8(outputPath), outputRevision) &&
 			outputRevision.m_modificationTimeNanoseconds >= request.m_sourceRevision.m_modificationTimeNanoseconds &&
 			outputRevision.m_modificationTimeNanoseconds >= request.m_metadataRevision.m_modificationTimeNanoseconds)
 		{
@@ -170,13 +170,13 @@ bool ModelImporter::RequestFingerprint(const FileId& fileId)
 	}
 
 	request.m_generation = ++m_nextFingerprintGeneration;
-	auto render = Tasks::CreateTask<TVector<uint8_t>>("Render model fingerprint",
+	auto render = Tasks::CreateTask<TVector<uint8_t>>("Render model fingerprint"_h,
 		[fileId, request]()
 		{
 			return RenderFingerprint(fileId, request.m_sourcePath, request.m_unitScale,
 				request.m_bBatchByMaterial, request.m_bFlipTexcoordY);
 		}, EThreadType::Background);
-	auto publish = Tasks::CreateTask<bool>("Publish model fingerprint",
+	auto publish = Tasks::CreateTask<bool>("Publish model fingerprint"_h,
 		[this, fileId, request, outputPath, render]() mutable
 		{
 			// Completed status must not retain the rendered image.
@@ -210,7 +210,7 @@ bool ModelImporter::RequestFingerprint(const FileId& fileId)
 			}
 			if (!Platform::IsAtomicWriteComplete(written))
 			{
-				SAILOR_LOG_ERROR("Cannot publish model fingerprint '%s': %s", outputPath.string().c_str(), diagnostic.c_str());
+				SAILOR_LOG_ERROR("Cannot publish model fingerprint '%s': %s", Workspace::PathToUtf8(outputPath).c_str(), diagnostic.c_str());
 				return false;
 			}
 			return true;
@@ -422,44 +422,44 @@ TVector<uint8_t> ModelImporter::RenderFingerprint(const FileId& fileId,
 			sourceMaterial.doubleSided ? RHI::ECullMode::None : RHI::ECullMode::Back,
 			alphaModeSettings.m_blendMode,
 			RHI::EFillMode::Fill,
-			StringHash::Runtime(alphaModeSettings.m_renderQueue).GetHash()));
+			HashString(alphaModeSettings.m_renderQueue)));
 
 		const auto& pbr = sourceMaterial.pbrMetallicRoughness;
-		material->SetUniform("material.baseColorFactor",
+		material->SetUniform("material.baseColorFactor"_h,
 			vec4(pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2], pbr.baseColorFactor[3]));
 		material->SetUniform(
-			"material.emissiveFactor", vec4(GltfImporterUtils::ResolveMaterialEmissiveFactor(sourceMaterial), 0.0f));
-		material->SetUniform("material.roughnessFactor", static_cast<float>(pbr.roughnessFactor));
-		material->SetUniform("material.metallicFactor", static_cast<float>(pbr.metallicFactor));
-		material->SetUniform("material.alphaCutoff", static_cast<float>(sourceMaterial.alphaCutoff));
+			"material.emissiveFactor"_h, vec4(GltfImporterUtils::ResolveMaterialEmissiveFactor(sourceMaterial), 0.0f));
+		material->SetUniform("material.roughnessFactor"_h, static_cast<float>(pbr.roughnessFactor));
+		material->SetUniform("material.metallicFactor"_h, static_cast<float>(pbr.metallicFactor));
+		material->SetUniform("material.alphaCutoff"_h, static_cast<float>(sourceMaterial.alphaCutoff));
 		if (transmissionSettings.IsEnabled())
 		{
-			material->SetUniform("material.transmissionFactor", transmissionSettings.m_factor);
-			material->SetUniform("material.thicknessFactor", transmissionSettings.m_thicknessFactor);
-			material->SetUniform("material.attenuationDistance", transmissionSettings.m_attenuationDistance);
-			material->SetUniform("material.attenuationColor", glm::vec4(transmissionSettings.m_attenuationColor, 1.0f));
+			material->SetUniform("material.transmissionFactor"_h, transmissionSettings.m_factor);
+			material->SetUniform("material.thicknessFactor"_h, transmissionSettings.m_thicknessFactor);
+			material->SetUniform("material.attenuationDistance"_h, transmissionSettings.m_attenuationDistance);
+			material->SetUniform("material.attenuationColor"_h, glm::vec4(transmissionSettings.m_attenuationColor, 1.0f));
 		}
 		if (transmissionSettings.IsEnabled() || transmissionSettings.m_bHasIndexOfRefraction)
 		{
-			material->SetUniform("material.indexOfRefraction", transmissionSettings.m_indexOfRefraction);
+			material->SetUniform("material.indexOfRefraction"_h, transmissionSettings.m_indexOfRefraction);
 		}
 
-		auto bindTexture = [&](const char* samplerName, int32_t textureIndex)
+		auto bindTexture = [&](StringHash samplerName, int32_t textureIndex)
 		{
 			if (TexturePtr texture = loadPreviewTexture(textureIndex))
 			{
 				material->SetSampler(samplerName, texture);
 			}
 		};
-		bindTexture("baseColorSampler", pbr.baseColorTexture.index);
-		bindTexture("normalSampler", sourceMaterial.normalTexture.index);
-		bindTexture("ormSampler", pbr.metallicRoughnessTexture.index);
-		bindTexture("emissiveSampler", sourceMaterial.emissiveTexture.index);
-		bindTexture("occlusionSampler", sourceMaterial.occlusionTexture.index);
+		bindTexture("baseColorSampler"_h, pbr.baseColorTexture.index);
+		bindTexture("normalSampler"_h, sourceMaterial.normalTexture.index);
+		bindTexture("ormSampler"_h, pbr.metallicRoughnessTexture.index);
+		bindTexture("emissiveSampler"_h, sourceMaterial.emissiveTexture.index);
+		bindTexture("occlusionSampler"_h, sourceMaterial.occlusionTexture.index);
 		if (transmissionSettings.IsEnabled())
 		{
-			bindTexture("transmissionSampler", transmissionSettings.m_textureIndex);
-			bindTexture("thicknessSampler", transmissionSettings.m_thicknessTextureIndex);
+			bindTexture("transmissionSampler"_h, transmissionSettings.m_textureIndex);
+			bindTexture("thicknessSampler"_h, transmissionSettings.m_thicknessTextureIndex);
 		}
 		previewMaterials[i] = std::move(material);
 	}

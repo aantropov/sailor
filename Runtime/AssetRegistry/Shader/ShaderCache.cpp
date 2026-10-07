@@ -64,7 +64,7 @@ bool ShaderCache::CaptureSourceState(const FileId& uid, ShaderSourceState& outSt
 		return false;
 	}
 
-	TSharedPtr<ShaderAsset> shader = shaderCompiler->LoadShaderAsset(uid).Lock();
+	TSharedPtr<ShaderAsset> shader = shaderCompiler->LoadShaderAsset(uid);
 	if (!shader)
 	{
 		outDiagnostic = "Cannot parse shader source '" + assetInfo->GetAssetFilepath() + "'.";
@@ -76,7 +76,7 @@ bool ShaderCache::CaptureSourceState(const FileId& uid, ShaderSourceState& outSt
 	dependencies.Reserve(shader->GetIncludes().Num() + 1);
 	ShaderDependencyFile shaderSource;
 	shaderSource.m_virtualPath = NormalizeDependencyVirtualPath(assetInfo->GetRelativeAssetFilepath());
-	shaderSource.m_winnerIdentity = NormalizeDependencyPath(assetInfo->GetAssetFilepath());
+	shaderSource.m_winnerIdentity = NormalizeDependencyPath(Workspace::PathFromUtf8(assetInfo->GetAssetFilepath()));
 	shaderSource.m_mountKind = static_cast<uint32_t>(assetInfo->GetMountKind());
 	if (!Utils::TryGetFileRevision(assetInfo->GetAssetFilepath(), shaderSource.m_revision))
 	{
@@ -99,10 +99,10 @@ bool ShaderCache::CaptureSourceState(const FileId& uid, ShaderSourceState& outSt
 		dependency.m_virtualPath = NormalizeDependencyVirtualPath(include);
 		dependency.m_winnerIdentity = NormalizeDependencyPath(location.m_physicalPath);
 		dependency.m_mountKind = static_cast<uint32_t>(location.m_mountKind);
-		if (!Utils::TryGetFileRevision(location.m_physicalPath.generic_string(), dependency.m_revision))
+		if (!Utils::TryGetFileRevision(Workspace::PathToUtf8(location.m_physicalPath), dependency.m_revision))
 		{
 			outDiagnostic = "Cannot capture YAML shader include revision '" + include + "' from '" +
-							location.m_physicalPath.generic_string() + "'.";
+							Workspace::PathToUtf8(location.m_physicalPath) + "'.";
 			return false;
 		}
 		dependencies.Add(std::move(dependency));

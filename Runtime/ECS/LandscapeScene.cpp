@@ -16,7 +16,7 @@ using namespace Sailor::Tasks;
 
 void LandscapeECS::PublishSceneVersion()
 {
-	auto version = RHI::RHISpatialSceneVersionPtr::Make();
+	auto version = TSharedPtr<RHI::RHISpatialSceneVersion>::Make();
 	version->m_revision = ++m_sceneVersionRevision;
 	version->m_shadowCastersRevision = m_shadowCastersRevision;
 	version->m_scene = m_rhiScene;
@@ -68,8 +68,11 @@ void LandscapeECS::PublishSceneVersion()
 			extents.z);
 	};
 
-	auto publishProxy = [this, &activeProducerKeys](const RHI::RHISceneProxyResourcePtr& resource,
+	auto publishProxy = [this, &activeProducerKeys](size_t producerKey,
+							const RHI::RHISceneProxyResourcePtr& resource,
 							uint64_t buildRevision,
+							const glm::mat4& worldMatrix,
+							const Math::AABB& worldBounds,
 							EMobilityType mobility) -> RHI::RenderInstanceHandle
 	{
 		if (!m_rhiScene || !resource)
@@ -77,17 +80,29 @@ void LandscapeECS::PublishSceneVersion()
 			return {};
 		}
 
-		const auto& proxy = resource->m_proxy;
-		const size_t producerKey = proxy.m_staticMeshEcs;
 		activeProducerKeys.Insert(producerKey);
 		RHI::RenderInstanceHandle* handle = nullptr;
-		uint64_t* publishedRevision = nullptr;
-		if (m_renderInstanceHandles.Find(producerKey, handle) && handle &&
-			m_publishedBuildRevisions.Find(producerKey, publishedRevision) && publishedRevision &&
-			*publishedRevision == buildRevision)
+		RHI::RHISceneInstanceRecord currentRecord;
+		const bool bHasCurrentRecord = m_renderInstanceHandles.Find(producerKey, handle) && handle &&
+			m_rhiScene->ResolveCurrent(*handle, currentRecord);
+		RHI::SceneChangeMask changes = 0u;
+		if (bHasCurrentRecord)
 		{
-			RHI::RHISceneInstanceRecord currentRecord;
-			if (m_rhiScene->ResolveCurrent(*handle, currentRecord) && currentRecord.m_mobility == mobility)
+			if (currentRecord.m_topology != resource)
+			{
+				changes |= RHI::ToMask(RHI::ESceneChangeBit::ReplaceChunkRange) |
+					RHI::ToMask(RHI::ESceneChangeBit::MeshOrLodTopology) | RHI::ToMask(RHI::ESceneChangeBit::Material) |
+					RHI::ToMask(RHI::ESceneChangeBit::ShadowState) | RHI::ToMask(RHI::ESceneChangeBit::Bounds);
+			}
+			if (currentRecord.m_worldMatrix != worldMatrix)
+			{
+				changes |= RHI::ToMask(RHI::ESceneChangeBit::Transform) | RHI::ToMask(RHI::ESceneChangeBit::Bounds);
+			}
+			if (currentRecord.m_mobility != mobility)
+			{
+				changes |= RHI::ToMask(RHI::ESceneChangeBit::Mobility);
+			}
+			if (changes == 0u)
 			{
 				return *handle;
 			}
@@ -96,29 +111,24 @@ void LandscapeECS::PublishSceneVersion()
 		RHI::RHISceneInstanceRecord record;
 		record.m_producerKey = producerKey;
 		record.m_mobility = mobility;
-		record.m_worldMatrix = proxy.m_worldMatrix;
-		record.m_worldBounds = proxy.m_worldAabb;
+		record.m_worldMatrix = worldMatrix;
+		record.m_worldBounds = worldBounds;
 		record.m_topology = resource;
 		record.m_topologyRevision = buildRevision;
-		record.m_materialRevision = Material::GetGlobalContentRevision();
+		record.m_materialRevision = currentRecord.m_topology == resource ?
+			currentRecord.m_materialRevision : Material::GetGlobalContentRevision();
 		record.m_shadowRevision = resource->m_shadowRevision;
-		record.m_skeletonOffset = proxy.m_skeletonOffset;
-		record.m_renderFlags = proxy.m_bCastShadows ? 1u : 0u;
+		record.m_renderFlags = resource->m_proxy.m_shadowCaster ? 1u : 0u;
 
-		if (m_renderInstanceHandles.Find(producerKey, handle) && handle)
+		if (bHasCurrentRecord)
 		{
-			m_rhiScene->UpdateInstance(*handle,
-				record,
-				RHI::ToMask(RHI::ESceneChangeBit::ReplaceChunkRange) |
-					RHI::ToMask(RHI::ESceneChangeBit::MeshOrLodTopology) | RHI::ToMask(RHI::ESceneChangeBit::Material) |
-					RHI::ToMask(RHI::ESceneChangeBit::ShadowState) | RHI::ToMask(RHI::ESceneChangeBit::Mobility));
+			m_rhiScene->UpdateInstance(*handle, record, changes);
 		}
 		else
 		{
 			m_renderInstanceHandles[producerKey] = m_rhiScene->AddInstance(record);
 			handle = &m_renderInstanceHandles[producerKey];
 		}
-		m_publishedBuildRevisions[producerKey] = buildRevision;
 		return handle ? *handle : RHI::RenderInstanceHandle{};
 	};
 
@@ -129,20 +139,31 @@ void LandscapeECS::PublishSceneVersion()
 			continue;
 		}
 
-		const auto& data = m_components[componentIndex];
-		for (const auto& chunk : data.m_chunks)
+		auto& data = m_components[componentIndex];
+		auto owner = const_cast<ObjectPtr&>(data.GetOwner()).StaticCast<GameObject>();
+		const auto& worldMatrix = owner->GetTransformComponent().GetCachedWorldMatrix();
+		const auto ownerMobility = owner->GetMobilityType();
+		for (size_t chunkIndex = 0; chunkIndex < data.m_chunks.Num(); ++chunkIndex)
 		{
-			const EMobilityType chunkMobility =
-				chunk.m_resource ? chunk.m_resource->m_proxy.m_mobility : EMobilityType::Dynamic;
-			const auto chunkHandle = publishProxy(chunk.m_resource, chunk.m_buildRevision, chunkMobility);
+			auto& chunk = data.m_chunks[chunkIndex];
+			Math::AABB worldBounds = chunk.m_localBounds;
+			worldBounds.Apply(worldMatrix);
+			GetOctreeBounds(worldBounds, chunk.m_octreeCenter, chunk.m_octreeExtents);
+			const auto chunkHandle = publishProxy(LandscapeProxyId(componentIndex, chunkIndex),
+				chunk.m_resource, chunk.m_buildRevision, worldMatrix, worldBounds, ownerMobility);
 			if (chunkHandle.IsValid())
 			{
-				hashSpatialEntry(chunkHandle, chunk.m_octreeCenter, chunk.m_octreeExtents, chunkMobility);
+				hashSpatialEntry(chunkHandle, chunk.m_octreeCenter, chunk.m_octreeExtents, ownerMobility);
 			}
-			for (const auto& vegetation : chunk.m_vegetationProxies)
+			for (auto& vegetation : chunk.m_vegetationProxies)
 			{
+				worldBounds = vegetation.m_localBounds;
+				worldBounds.Apply(worldMatrix);
+				GetOctreeBounds(worldBounds, vegetation.m_octreeCenter, vegetation.m_octreeExtents);
+				vegetation.m_mobility = ResolveLandscapeProxyMobility(ownerMobility, vegetation.m_residency);
 				const auto vegetationHandle =
-					publishProxy(vegetation.m_resource, vegetation.m_revision, vegetation.m_mobility);
+					publishProxy(LandscapeVegetationProxyId(componentIndex, chunkIndex, vegetation.m_profileIndex),
+						vegetation.m_resource, vegetation.m_revision, worldMatrix, worldBounds, vegetation.m_mobility);
 				if (vegetationHandle.IsValid())
 				{
 					hashSpatialEntry(
@@ -154,7 +175,7 @@ void LandscapeECS::PublishSceneVersion()
 		for (const auto& profile : data.m_vegetationProfiles)
 		{
 			version->m_bHasCustomDepthShadowCasters |=
-				profile.m_material && profile.m_shadowMode != ELandscapeVegetationShadowMode::None &&
+				profile.m_material && profile.m_settings.m_shadowMode != ELandscapeVegetationShadowMode::None &&
 				profile.m_material->GetRenderState().IsRequiredCustomDepthShader();
 		}
 	}
@@ -172,7 +193,6 @@ void LandscapeECS::PublishSceneVersion()
 				m_rhiScene->RemoveInstance(*handle);
 			}
 			m_renderInstanceHandles.Remove(producerKey);
-			m_publishedBuildRevisions.Remove(producerKey);
 		}
 
 		const bool bStaticSpatialChanged = !m_publishedSceneVersion || m_staticSpatialHash != staticSpatialHash;
@@ -185,26 +205,22 @@ void LandscapeECS::PublishSceneVersion()
 		}
 
 		auto rebuildSpatialTree =
-			[this](EMobilityType mobility, bool bHasEntries, TSharedPtr<RHI::RHISceneSpatialIndex>& tree)
+			[this](EMobilityType mobility, bool bHasEntries, TSharedPtr<const RHI::RHISceneSpatialIndex>& tree)
 		{
 			if (!bHasEntries)
 			{
 				tree.Clear();
 				return;
 			}
-			tree = TSharedPtr<RHI::RHISceneSpatialIndex>::Make(glm::ivec3(0, 0, 0), 16536 * 16, 4);
-			auto appendSpatialEntry = [this, &tree](const RHI::RHISceneProxyResourcePtr& resource,
+			auto index = TSharedPtr<RHI::RHISceneSpatialIndex>::Make(glm::ivec3(0, 0, 0), 16536 * 16, 4);
+			auto appendSpatialEntry = [this, &index](size_t producerKey,
 										  const glm::ivec3& center,
 										  const glm::ivec3& extents)
 			{
-				if (!resource)
-				{
-					return;
-				}
 				RHI::RenderInstanceHandle* handle = nullptr;
-				if (m_renderInstanceHandles.Find(resource->m_proxy.m_staticMeshEcs, handle) && handle)
+				if (m_renderInstanceHandles.Find(producerKey, handle) && handle)
 				{
-					tree->Update(center, extents, *handle);
+					index->Update(center, extents, *handle);
 				}
 			};
 			for (size_t componentIndex = 0u; componentIndex < m_components.Num(); ++componentIndex)
@@ -213,22 +229,26 @@ void LandscapeECS::PublishSceneVersion()
 				{
 					continue;
 				}
-				for (const auto& chunk : m_components[componentIndex].m_chunks)
+				const auto& data = m_components[componentIndex];
+				auto owner = const_cast<ObjectPtr&>(data.GetOwner()).StaticCast<GameObject>();
+				for (size_t chunkIndex = 0; chunkIndex < data.m_chunks.Num(); ++chunkIndex)
 				{
-					if (chunk.m_resource && chunk.m_resource->m_proxy.m_mobility == mobility)
+					const auto& chunk = data.m_chunks[chunkIndex];
+					if (chunk.m_resource && owner->GetMobilityType() == mobility)
 					{
-						appendSpatialEntry(chunk.m_resource, chunk.m_octreeCenter, chunk.m_octreeExtents);
+						appendSpatialEntry(LandscapeProxyId(componentIndex, chunkIndex), chunk.m_octreeCenter, chunk.m_octreeExtents);
 					}
 					for (const auto& vegetation : chunk.m_vegetationProxies)
 					{
 						if (vegetation.m_mobility == mobility)
 						{
-							appendSpatialEntry(
-								vegetation.m_resource, vegetation.m_octreeCenter, vegetation.m_octreeExtents);
+							appendSpatialEntry(LandscapeVegetationProxyId(componentIndex, chunkIndex, vegetation.m_profileIndex),
+								vegetation.m_octreeCenter, vegetation.m_octreeExtents);
 						}
 					}
 				}
 			}
+			tree = std::move(index);
 		};
 
 		if (bStaticSpatialChanged)
@@ -263,13 +283,19 @@ void LandscapeECS::PublishSceneVersion()
 	}
 
 	m_publishedSceneVersion = std::move(version);
+	m_bHasPendingSceneChanges = false;
 }
 
-void LandscapeECS::AppendSceneView(RHI::RHISceneViewPtr& sceneView) const
+void LandscapeECS::AppendSceneView(RHI::RHISceneViewPtr& sceneView)
 {
 	if (!sceneView)
 	{
 		return;
+	}
+	// Capture occurs on the world owner, including removals after ECS Tick.
+	if (m_bHasPendingSceneChanges && (!GetWorld() || !GetWorld()->IsClearing()))
+	{
+		PublishSceneVersion();
 	}
 	sceneView->AddSceneVersion(m_publishedSceneVersion);
 }
@@ -346,13 +372,13 @@ bool LandscapeECS::CollectBakeGeometrySnapshots(TVector<LandscapeBakeGeometrySna
 									" on landscape '" + owner->GetName() + "' is not ready for baking";
 					return false;
 				}
-				if (profile.m_materialFileId && (!profile.m_material || !profile.m_material->IsReady()))
+				if (profile.m_settings.m_materialFileId && (!profile.m_material || !profile.m_material->IsReady()))
 				{
 					outDiagnostic = "vegetation material for profile " + std::to_string(placement.m_profileIndex) +
 									" on landscape '" + owner->GetName() + "' is not ready for baking";
 					return false;
 				}
-				if (!profile.m_materialFileId && !profile.m_bModelMaterialsRequested)
+				if (!profile.m_settings.m_materialFileId && !profile.m_bAreModelMaterialsPublished)
 				{
 					outDiagnostic = "vegetation model materials for profile " +
 									std::to_string(placement.m_profileIndex) + " on landscape '" + owner->GetName() +
@@ -375,11 +401,11 @@ bool LandscapeECS::CollectBakeGeometrySnapshots(TVector<LandscapeBakeGeometrySna
 										":profile:" + std::to_string(placement.m_profileIndex) +
 										":instance:" + std::to_string(instanceIndex);
 				vegetation.m_model = profile.m_model;
-				vegetation.m_meshIndex = profile.m_meshIndex;
-				vegetation.m_worldMatrix = ownerMatrix * placement.m_localMatrix;
-				vegetation.m_worldBounds = profile.m_model->GetBoundsAABB(profile.m_meshIndex);
+				vegetation.m_meshIndex = profile.m_settings.m_meshIndex;
+				vegetation.m_worldMatrix = ownerMatrix * placement.m_transform;
+				vegetation.m_worldBounds = profile.m_model->GetBoundsAABB(profile.m_settings.m_meshIndex);
 				vegetation.m_worldBounds.Apply(vegetation.m_worldMatrix);
-				if (profile.m_materialFileId)
+				if (profile.m_settings.m_materialFileId)
 				{
 					vegetation.m_materials.Add(profile.m_material);
 				}
@@ -387,7 +413,7 @@ bool LandscapeECS::CollectBakeGeometrySnapshots(TVector<LandscapeBakeGeometrySna
 				{
 					vegetation.m_materials = profile.m_modelMaterials;
 				}
-				vegetation.m_sourceRevision = chunk.m_buildRevision;
+				vegetation.m_sourceRevision = chunk.m_vegetationRevision;
 				outSnapshots.Add(std::move(vegetation));
 			}
 		}
@@ -434,5 +460,5 @@ void LandscapeECS::EndPlay()
 	m_publishedSceneVersion.Clear();
 	m_rhiScene.Clear();
 	m_renderInstanceHandles.Clear();
-	m_publishedBuildRevisions.Clear();
+	m_bHasPendingSceneChanges = false;
 }

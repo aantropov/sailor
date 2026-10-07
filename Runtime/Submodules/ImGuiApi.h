@@ -1,11 +1,13 @@
 #pragma once
 #include "Core/Submodule.h"
+#include "Platform/InputEvent.h"
 #include "RHI/Types.h"
 #include <imgui.h>
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "ImGuiDrawDataSnapshot.h"
 #include "Memory/SharedPtr.hpp"
 #include <cstdint>
+#include <optional>
 #include <vector>
 #include <unordered_map>
 
@@ -37,58 +39,16 @@ namespace Sailor
 		SAILOR_SHARED_API static void GetAllocatorFunctions(ImGuiMemAllocFunc* alloc,
 			ImGuiMemFreeFunc* free, void** userData);
 
-		void NewFrame();
-		PreparedFramePtr PrepareFrame(RHI::RHICommandListPtr transferCmdList);
+		SAILOR_SHARED_API void NewFrame();
+		SAILOR_SHARED_API PreparedFramePtr PrepareFrame(RHI::RHICommandListPtr transferCmdList);
 		static void RenderFrame(const PreparedFramePtr& frame, RHI::RHICommandListPtr drawCmdList);
-#if defined(_WIN32)
-		void HandleWin32(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-		struct WindowsEditorInputEvent
-		{
-			enum class Type : uint8_t
-			{
-				MousePos,
-				MouseButton,
-				MouseWheel,
-				Key,
-				Focus
-			};
-
-			Type EventType = Type::MousePos;
-			float X = 0.0f;
-			float Y = 0.0f;
-			uint32_t Key = 0;
-			int32_t Button = -1;
-			bool bPressed = false;
-		};
-
-		void HandleWindowsEditorInput(const WindowsEditorInputEvent& event);
-#elif defined(__APPLE__)
-		struct MacEvent
-		{
-			enum class Type : uint8_t
-			{
-				MousePos,
-				MouseButton,
-				MouseWheel,
-				Key,
-				Text,
-				Focus
-			};
-
-			Type EventType = Type::MousePos;
-			float X = 0.0f;
-			float Y = 0.0f;
-			uint32_t Key = 0;
-			int32_t Button = -1;
-			bool bPressed = false;
-			const char* TextUtf8 = nullptr;
-		};
-
-		void HandleMac(const MacEvent& event);
-#endif
+		SAILOR_API static void HandleInput(const Platform::InputEvent& event);
+		// A native UI thread reads only the last prepared cursor, never the ImGui context.
+		SAILOR_SHARED_API static std::optional<ImGuiMouseCursor> GetRequestedMouseCursor();
 
 	protected:
+
+		ImGuiContext* m_pContext = nullptr;
 
 		// Keep the final owner on the CPU thread: ImGui allocation accounting is
 		// context-owned too. RHI tasks only release their shared references.

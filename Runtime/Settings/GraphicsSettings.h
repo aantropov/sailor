@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <string_view>
 
 namespace Sailor::Workspace
 {
@@ -205,10 +206,10 @@ namespace Sailor::Settings
 
 	SAILOR_SHARED_API ProjectGraphicsSettingsLoadResult ParseProjectGraphicsSettings(
 		const std::string& payload,
-		const std::string& sourceName = "ProjectSettings.yaml") noexcept;
+		std::string_view sourceName = "ProjectSettings.yaml") noexcept;
 	SAILOR_SHARED_API EditorGraphicsSettingsLoadResult ParseEditorGraphicsSettings(
 		const std::string& payload,
-		const std::string& sourceName = "EditorSettings.yaml") noexcept;
+		std::string_view sourceName = "EditorSettings.yaml") noexcept;
 	SAILOR_SHARED_API ProjectGraphicsSettingsLoadResult LoadProjectGraphicsSettings(
 		const std::filesystem::path& path) noexcept;
 	SAILOR_SHARED_API EditorGraphicsSettingsLoadResult LoadEditorGraphicsSettings(

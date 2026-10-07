@@ -1,6 +1,7 @@
 #include "Support/TaskTestApp.h"
 #include "AssetRegistry/AssetCache.h"
 #include "Core/FileRevision.h"
+#include "Platform/AtomicFile.h"
 #include "AssetRegistry/AssetScanSourceRevisionCache.h"
 #include "AssetRegistry/Animation/AnimationAssetInfo.h"
 #include "AssetRegistry/Animation/AnimationControllerAssetInfo.h"
@@ -27,6 +28,7 @@
 #include <iterator>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 #include <yaml-cpp/yaml.h>
@@ -54,7 +56,7 @@ namespace
 		bool Update(
 			const FileId& id,
 			std::time_t assetImportTime,
-			const std::string& sourcePath,
+			std::string_view sourcePath,
 			const FileRevision& sourceRevision)
 		{
 			return AssetCache::Update(
@@ -361,7 +363,7 @@ namespace
 	{
 	public:
 		explicit TestMainThreadTask(std::function<void()> callback) :
-			ITask("Asset cache pre-commit metadata mutation", EThreadType::Main),
+			ITask("Asset cache pre-commit metadata mutation"_h, EThreadType::Main),
 			m_callback(std::move(callback))
 		{
 		}
@@ -393,11 +395,11 @@ namespace
 		std::function<Tasks::TaskPtr<bool>()> m_onFinished;
 	};
 
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -426,6 +428,27 @@ namespace
 		}
 		Require(!std::filesystem::exists(secondPath) && std::filesystem::is_regular_file(marker),
 			"fixture cleanup must remove only the directory it created");
+
+		struct FixtureFailure {};
+		std::filesystem::path failedPath;
+		try
+		{
+			TempDirectory failed("directory-ownership");
+			failedPath = failed.Get();
+			std::ofstream stream(failed.Path("keep.txt"));
+			stream << "failed fixture";
+			Require(static_cast<bool>(stream), "the failing fixture must create its own same-named file");
+			throw FixtureFailure{};
+		}
+		catch (const FixtureFailure&)
+		{
+		}
+		std::ifstream survivingFile(marker);
+		std::string text;
+		std::getline(survivingFile, text);
+		Require(!failedPath.empty() && !std::filesystem::exists(failedPath) && text == "first fixture",
+			"exception cleanup must remove the failed fixture without changing another owner's file");
+		std::cout << "Temporary directory ownership: first=" << first.Get() << " unwound=" << failedPath << '\n';
 	}
 
 	void TestNewFileIdsUseCrossPlatformGuidFormatting()
@@ -548,7 +571,7 @@ namespace
 		return result;
 	}
 
-	void WriteFile(const std::filesystem::path& path, const std::string& content)
+	void WriteFile(const std::filesystem::path& path, std::string_view content)
 	{
 		std::filesystem::create_directories(path.parent_path());
 		std::ofstream stream(path, std::ios::binary);
@@ -566,7 +589,7 @@ namespace
 
 	void RewriteFileWithNewRevision(
 		const std::filesystem::path& path,
-		const std::string& content)
+		std::string_view content)
 	{
 		const std::filesystem::file_time_type previousWriteTime =
 			std::filesystem::last_write_time(path);
@@ -690,10 +713,11 @@ namespace
 	}
 
 	Workspace::WorkspaceContext CreateWorkspaceContext(
-		const TempDirectory& directory)
+		const TempDirectory& directory,
+		const std::filesystem::path& folder = "Workspace")
 	{
 		const std::filesystem::path workspaceRoot =
-			directory.Path("Workspace");
+			directory.Path(folder);
 		std::filesystem::create_directories(
 			directory.Path("Engine/Content"));
 		std::filesystem::create_directories(
@@ -721,6 +745,127 @@ namespace
 			"asset cache contract workspace should resolve: " +
 				result.m_message);
 		return result.m_context;
+	}
+
+	void TestUtf8FileAccess()
+	{
+		using namespace Workspace;
+		TempDirectory directory("utf8-file-access");
+		const auto path = directory.Get() / PathFromUtf8("file \xD0\xAF \xC3\xA9 \xE8\x88\xB9 \xF0\x9F\x9A\xA2.bin");
+		const std::string filename = PathToUtf8(path);
+		const std::string boundedStorage = filename + ".not-the-file";
+		const auto boundedPath = std::string_view(boundedStorage).substr(0, filename.size());
+		const std::string payload("first\0second", 12);
+		AssetRegistry::WriteTextFile(boundedPath, std::string_view(payload));
+		Require(ReadFile(path) == payload && !std::filesystem::exists(PathFromUtf8(boundedStorage)),
+			"UTF-8 path views must stop at their bound and preserve embedded zeros in file contents");
+		std::string text;
+		Require(AssetRegistry::ReadAllTextFile(filename, text) && text == payload &&
+			AssetRegistry::ReadTextFile(boundedPath, text) && text == payload &&
+			AssetRegistry::ReadTextFile(filename.c_str(), text) && text == payload &&
+			AssetRegistry::ReadTextFile(path, text) && text == payload &&
+			AssetRegistry::ReadTextFile(path.native(), text) && text == payload,
+			"owned text, bounded views, C strings and native paths must address the same Unicode file");
+
+		TVector<uint8_t> bytes, restored;
+		bytes.Add(0); bytes.Add(0x7f); bytes.Add(0xff);
+		AssetRegistry::WriteBinaryFile(filename, bytes);
+		Require(AssetRegistry::ReadBinaryFile(boundedPath, restored) && restored == bytes &&
+			AssetRegistry::ReadBinaryFile(path, restored) && restored == bytes,
+			"binary helpers must use the same UTF-8 boundary as text helpers");
+		AssetRegistry::WriteBinaryFile(path, bytes);
+		Require(ReadFile(path) == std::string("\0\x7f\xff", 3), "native binary writes must preserve all bytes");
+		std::string diagnostic;
+		Require(!Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(path, "replacement", diagnostic,
+			Platform::EAtomicWriteMode::FailIfExists)) && diagnostic.find(filename) != std::string::npos &&
+			ReadFile(path) == std::string("\0\x7f\xff", 3),
+			"failed atomic writes must report the Unicode path without replacing the file");
+
+		FileRevision first, changed;
+		Require(Utils::TryGetFileRevision(filename, first) && first.m_bIsValid,
+			"a Unicode file must have an observable source revision");
+		const auto timestamp = Utils::GetFileModificationTime(filename);
+		Require(timestamp > 0, "the timestamp API must open the Unicode file");
+		std::filesystem::last_write_time(path, std::filesystem::last_write_time(path) + std::chrono::seconds(2));
+		Require(Utils::TryGetFileRevision(filename, changed) && changed != first &&
+			Utils::GetFileModificationTime(filename) == timestamp + 2,
+			"UTF-8 conversion must not change revision or time_t semantics");
+		Require(!Utils::TryGetFileRevision(filename + ".missing", changed) && !changed.m_bIsValid &&
+			Utils::GetFileModificationTime(filename + ".missing") == 0,
+			"missing Unicode files must preserve the existing failure contract");
+	}
+
+	void TestUtf8RegistryPaths(bool bLazy)
+	{
+		using namespace Workspace;
+		LazyAssetInfoLoadingScope lazyLoading(bLazy);
+		TempDirectory directory("utf8-registry");
+		const std::string unicode = "\xD0\xAF \xC3\xA9 \xE8\x88\xB9 \xF0\x9F\x9A\xA2";
+		const auto context = CreateWorkspaceContext(directory, PathFromUtf8("workspace " + unicode));
+		const std::string virtualPath = "ships " + unicode + "/sail " + unicode + ".raw";
+		const auto sourcePath = context.GetContent() / PathFromUtf8(virtualPath);
+		const auto metadataPath = PathFromUtf8(PathToUtf8(sourcePath) + ".asset");
+		const FileId primaryId = MakeFileId("{UTF8-PRIMARY}");
+		const FileId secondaryId = MakeFileId("{UTF8-SECONDARY}");
+		WriteFile(sourcePath, "workspace source");
+		WriteFile(metadataPath, YAML::Dump(CreateAssetInfoMetadata<AssetInfo>(primaryId, PathToUtf8(sourcePath.filename()))));
+		const auto engineSource = context.GetEngineContent() / PathFromUtf8(virtualPath);
+		WriteFile(engineSource, "engine source");
+		WriteFile(PathFromUtf8(PathToUtf8(engineSource) + ".asset"),
+			YAML::Dump(CreateAssetInfoMetadata<AssetInfo>(MakeFileId("{UTF8-ENGINE}"), PathToUtf8(engineSource.filename()))));
+
+		FileId importedId;
+		for (int cycle = 0; cycle < 2; ++cycle)
+		{
+			AssetRegistry registry(context);
+			DefaultAssetInfoHandler handler(&registry);
+			TVector<std::string> extensions;
+			extensions.Add("raw"); extensions.Add("raw2");
+			Require(registry.RegisterAssetInfoHandler(extensions, &handler), "register the actual default metadata handler");
+			Require(registry.ScanContentFolder() && registry.CompleteScanProcessing(),
+				"both fresh and cached Unicode registries must scan successfully");
+			const std::string storage = virtualPath + ":not-part-of-path";
+			const auto view = std::string_view(storage).substr(0, virtualPath.size());
+			Require(registry.GetOrLoadFile(view) == primaryId && registry.GetOrLoadFile(PathToUtf8(sourcePath)) == primaryId,
+				"absolute and virtual Unicode paths must select the workspace override");
+			auto* info = registry.GetAssetInfoPtr(primaryId);
+			Require(info && std::filesystem::equivalent(PathFromUtf8(info->GetAssetFilepath()), sourcePath) &&
+				info->GetAssetFilename() == PathToUtf8(sourcePath.filename()),
+				"metadata must retain a UTF-8 source filename and resolve its native file");
+			AssetRegistry::AssetReadLocation location;
+			std::string contents;
+			std::filesystem::path writable;
+			Require(registry.ResolveContentFile(view, location) && location.m_virtualPath == virtualPath &&
+				registry.ReadContentText(view, contents) && contents == "workspace source" &&
+				registry.ResolveWorkspaceContentPathForWrite(view, writable) &&
+				std::filesystem::equivalent(writable, sourcePath),
+				"Unicode discovery, content reads and write resolution must agree");
+			Require(info->SaveMetaFile() && YAML::Load(ReadFile(metadataPath))["filename"].as<std::string>() ==
+				PathToUtf8(sourcePath.filename()), "metadata save must preserve the UTF-8 filename");
+			const auto token = registry.BeginAssetProcessing(info);
+			Require(static_cast<bool>(token), "processing must capture native source and metadata revisions");
+			registry.CompleteAssetProcessing(token, true);
+			Require(!registry.IsAssetExpired(info), "successful processing must acknowledge the same Unicode files");
+
+			const auto directPath = sourcePath.parent_path() / PathFromUtf8("new " + unicode + ".raw");
+			if (cycle == 0)
+			{
+				WriteFile(directPath, "new source");
+				importedId = registry.GetOrLoadFile(PathToUtf8(directPath));
+				Require(static_cast<bool>(importedId), "direct Unicode import must create its metadata");
+				const auto secondaryPath = sourcePath.parent_path() / PathFromUtf8("detail " + unicode + ".raw2.asset");
+				WriteFile(secondaryPath, YAML::Dump(CreateAssetInfoMetadata<AssetInfo>(secondaryId, PathToUtf8(sourcePath.filename()))));
+				Require(registry.ScanContentFolder() && registry.CompleteScanProcessing(),
+					"a warm registry must discover new Unicode secondary metadata");
+			}
+			Require(registry.GetOrLoadFile(PathToUtf8(directPath)) == importedId,
+				"direct import identity must survive cache reload");
+			const auto* secondary = registry.GetAssetInfoPtr(secondaryId);
+			Require(secondary && std::filesystem::equivalent(PathFromUtf8(secondary->GetAssetFilepath()), sourcePath),
+				"secondary metadata must retain its Unicode source in eager and lazy loading");
+		}
+		Require(std::filesystem::is_regular_file(context.GetCache() / "AssetCache.yaml"),
+			"the asset cache must remain in the Unicode workspace's own Cache folder");
 	}
 
 	void TestFileRevisionUsesOnlyTheFilesystemTimestamp()
@@ -814,7 +959,7 @@ namespace
 
 	void WriteScanAssetFixture(
 		const Workspace::WorkspaceContext& workspaceContext,
-		const std::string& source = "source-v1")
+		std::string_view source = "source-v1")
 	{
 		WriteFile(
 			workspaceContext.GetContent() / "Retry.raw",
@@ -868,6 +1013,51 @@ namespace
 			"the targeted update handler should register for raw assets");
 	}
 
+	void TestBorrowedContentPaths(bool bLazy)
+	{
+		LazyAssetInfoLoadingScope lazyLoading(bLazy);
+		TempDirectory directory("borrowed-content-paths");
+		const auto context = CreateWorkspaceContext(directory);
+		WriteScanAssetFixture(context);
+		AssetRegistry registry(context);
+		TestAssetInfoHandler handler;
+		RegisterRawHandler(registry, handler);
+		Require(registry.ScanContentFolder() && registry.CompleteScanProcessing(), "scan the borrowed-path fixture");
+
+		std::string source = "prefix:Retry.raw:not-part-of-the-path";
+		const auto path = std::string_view(source).substr(7, 9);
+		const FileId id = registry.GetOrLoadFile(path);
+		Require(id && id == registry.GetOrLoadFile("Retry.raw"),
+			"bounded and literal paths must resolve the same asset identity");
+		Require(registry.GetAssetInfoPtr(path) == registry.GetAssetInfoPtr(id),
+			"asset lookup must stop at the view boundary in eager and lazy registries");
+		AssetRegistry::AssetReadLocation location;
+		Require(registry.ResolveContentFile(path, location) && location.m_virtualPath == "Retry.raw",
+			"content resolution must copy the bounded path into the result");
+		std::string contents;
+		Require(registry.ReadContentText(path, contents) && contents == "source-v1",
+			"content text reads must accept paths without a trailing zero");
+		TVector<char> bytes;
+		Require(registry.ReadContentBinary(path, bytes) &&
+			std::string_view(bytes.GetData(), bytes.Num()) == "source-v1",
+			"binary content reads must use the same borrowed path contract");
+		std::time_t timestamp = 0;
+		Require(registry.GetContentFileModificationTime(path, timestamp) &&
+			timestamp == Utils::GetFileModificationTime(location.m_physicalPath.string()),
+			"content revision queries must resolve exactly the borrowed path");
+		std::filesystem::path writable;
+		Require(registry.ResolveWorkspaceContentPathForWrite(path, writable) &&
+			writable == location.m_physicalPath,
+			"write-path resolution must not include bytes following the view");
+		Require(AssetRegistry::GetMetaFilePath(path) == "Retry.raw.asset",
+			"metadata paths must append the suffix to the bounded input");
+		source.assign(1024, 'x');
+		Require(location.m_virtualPath == "Retry.raw" && registry.GetAssetInfoPtr(id),
+			"resolved paths and registry records must own text after the input buffer changes");
+		Require(!registry.ResolveContentFile({}, location) && !registry.GetAssetInfoPtr(std::string_view{}),
+			"default-constructed empty views must not resolve an asset");
+	}
+
 	void TestScanListenerBatchBoundary(bool bLazy)
 	{
 		LazyAssetInfoLoadingScope lazyLoading(bLazy);
@@ -897,7 +1087,7 @@ namespace
 		content.m_onFinished = [&]()
 		{
 			events.emplace_back("end");
-			auto task = Tasks::CreateTask<bool>("Finish scan listener batch", [&, captured = token, bSucceed]()
+			auto task = Tasks::CreateTask<bool>("Finish scan listener batch"_h, [&, captured = token, bSucceed]()
 			{
 				registry.CompleteAssetProcessing(captured, bSucceed);
 				return bSucceed;
@@ -934,7 +1124,7 @@ namespace
 		{
 			if (bCompletionQueued) return Tasks::TaskPtr<bool>::Make(true);
 			bCompletionQueued = true;
-			auto task = Tasks::CreateTask<bool>("Acknowledge previous scan", [&, captured = token]()
+			auto task = Tasks::CreateTask<bool>("Acknowledge previous scan"_h, [&, captured = token]()
 			{
 				registry.CompleteAssetProcessing(captured, true);
 				bCompleted = true;
@@ -1028,7 +1218,7 @@ namespace
 			}
 			if (bAsync)
 			{
-				auto acknowledge = Tasks::CreateTask<bool>("Acknowledge scan fixture", [&, token]()
+				auto acknowledge = Tasks::CreateTask<bool>("Acknowledge scan fixture"_h, [&, token]()
 				{
 					registry.CompleteAssetProcessing(token, true);
 					return true;
@@ -1987,6 +2177,38 @@ namespace
 			"the acknowledged source timestamp should not change the cache again");
 		Require(cache.Update(fileId, 91, sourcePath + ".moved", MakeRevision(123456790)),
 			"a source path change should change the cache");
+	}
+
+	void TestUpdateCopiesBorrowedText()
+	{
+		TestAssetCache cache;
+		const FileId fileId = MakeFileId("{ASSET-CACHE-BORROWED-TEXT}");
+		const FileRevision revision = MakeRevision();
+		constexpr std::string_view sourcePath = "/workspace/Content/Borrowed.mat";
+		constexpr std::string_view metadataFilename = "Borrowed.mat.asset";
+		constexpr std::string_view assetInfoType = "Sailor::MaterialAssetInfo";
+		{
+			std::string source = "prefix:" + std::string(sourcePath) + ":suffix";
+			std::string metadata = "prefix:" + std::string(metadataFilename) + ":suffix";
+			std::string type = "prefix:" + std::string(assetInfoType) + ":suffix";
+			Require(cache.Update(fileId, 90,
+				std::string_view(source).substr(7, sourcePath.size()), revision,
+				std::string_view(metadata).substr(7, metadataFilename.size()), revision,
+				std::string_view(type).substr(7, assetInfoType.size())),
+				"cache updates must accept bounded text without a terminating zero");
+			source.assign(source.size(), 'x');
+			metadata.assign(metadata.size(), 'x');
+			type.assign(type.size(), 'x');
+		}
+		Require(!cache.Update(fileId, 90, sourcePath, revision, metadataFilename, revision, assetInfoType),
+			"cache entries must own their text after the input buffers change and expire");
+		Require(cache.Update(fileId, 91, std::string(sourcePath), revision,
+			std::string(metadataFilename), revision, std::string(assetInfoType)),
+			"temporary text must be copied into the updated cache entry");
+		Require(!cache.Update(fileId, 91, sourcePath, revision, metadataFilename, revision, assetInfoType),
+			"temporary owners must not affect a subsequent identical update");
+		Require(!cache.Update(fileId, 91, {}, revision, metadataFilename, revision, assetInfoType) &&
+			!cache.Contains(fileId), "an empty source view must retain invalid-update removal behavior");
 	}
 
 	void TestPruneRemovesOnlyEntriesOutsideTheCommittedGeneration()
@@ -2976,6 +3198,7 @@ int main()
 		TestTemporaryDirectoriesHaveIndependentOwnership();
 		TestNewFileIdsUseCrossPlatformGuidFormatting();
 		TestFileRevisionUsesOnlyTheFilesystemTimestamp();
+		TestUtf8FileAccess();
 		TestExpandedRevisionCacheIsRegeneratedAtVersionOne();
 		TestPayloadRoundTrip();
 		TestEmptyPayloadRoundTrip();
@@ -2983,6 +3206,8 @@ int main()
 		TestV2EnvelopeIsResetInsteadOfMigrated();
 		for (bool bLazy : { false, true })
 		{
+			TestBorrowedContentPaths(bLazy);
+			TestUtf8RegistryPaths(bLazy);
 			TestScanListenerBatchBoundary(bLazy);
 			TestScanBatchesProcessingCheckpoints(bLazy, false);
 			TestScanBatchesProcessingCheckpoints(bLazy, true);
@@ -3018,6 +3243,7 @@ int main()
 		TestMetadataEditDispatchesExpiredUpdateWithoutImport();
 		TestConcurrentMetadataEditDoesNotAdvanceTheWatermark();
 		TestUpdateTracksAssetImportStateAndPreservesDirtyState();
+		TestUpdateCopiesBorrowedText();
 		TestPruneRemovesOnlyEntriesOutsideTheCommittedGeneration();
 		TestRestoreChangesOnlyAssetImportTime();
 		TestRemovingFailedProcessingWatermarkForcesRetry();

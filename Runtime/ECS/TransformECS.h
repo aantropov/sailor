@@ -6,6 +6,7 @@
 #include "Components/Component.h"
 #include "Memory/Memory.h"
 #include "Math/Transform.h"
+#include "Containers/Map.h"
 
 namespace Sailor
 {
@@ -22,6 +23,7 @@ namespace Sailor
 		SAILOR_API __forceinline const Math::Transform& GetTransform() const { return m_transform; }
 		SAILOR_API __forceinline size_t GetParent() const { return m_parent; }
 		SAILOR_API __forceinline void SetNewParent(const TransformComponent* parent);
+		// Transform traversal order is not the authored GameObject sibling order.
 		SAILOR_API __forceinline const TVector<size_t, Memory::TInlineAllocator<4 * sizeof(size_t)>>& GetChildren() const { return m_children; }
 
 		__forceinline ObjectPtr& GetOwner() { return m_owner; }
@@ -35,7 +37,7 @@ namespace Sailor
 		SAILOR_API __forceinline void SetScale(const glm::vec4& scale);
 
 		SAILOR_API __forceinline const glm::vec4& GetPosition() const { return m_transform.m_position; }
-		SAILOR_API __forceinline const glm::quat& GetRotation() const { return m_transform.m_rotation; }
+		SAILOR_API __forceinline const glm::quat& GetRotation() const { return m_transform.GetRotation(); }
 		SAILOR_API __forceinline const glm::vec4& GetScale() const { return m_transform.m_scale; }
 
 		SAILOR_API virtual void MarkDirty() override;
@@ -48,6 +50,9 @@ namespace Sailor
 		Math::Transform m_transform;
 		size_t m_parent = ECS::InvalidIndex;
 		size_t m_newParent = ECS::InvalidIndex;
+		size_t m_parentChildIndex = ECS::InvalidIndex;
+		size_t m_pendingChildIndex = ECS::InvalidIndex;
+		size_t m_dirtyIndex = ECS::InvalidIndex;
 		TVector<size_t, Memory::TInlineAllocator<4 * sizeof(size_t)>> m_children;
 
 		friend class TransformECS;
@@ -57,8 +62,7 @@ namespace Sailor
 	{
 	public:
 
-		virtual Tasks::ITaskPtr PostTick() override;
-		virtual Tasks::ITaskPtr Tick(float deltaTime) override;
+		virtual void Tick(float deltaTime) override;
 		virtual void EndPlay() override;
 
 		void MarkDirty(TransformComponent* ptr);
@@ -69,8 +73,18 @@ namespace Sailor
 	protected:
 
 		virtual void OnComponentUnregistered(size_t index, TransformComponent& component) override;
+		void RequestParent(size_t index, size_t parent);
+		void ApplyParent(size_t index);
+		void RemovePublishedParent(TransformComponent& component);
+		void RemovePendingParent(TransformComponent& component);
+		void RemoveDirty(TransformComponent& component);
 
 		TVector<size_t> m_dirtyComponents;
+		TMap<size_t, TVector<size_t>> m_pendingChildren;
+#if defined(SAILOR_ECS_TEST_HOOKS)
+		size_t m_numRemovalVisits = 0;
+#endif
+		friend class TransformComponent;
 	};
 
 	template class ECS::TSystem<TransformECS, TransformComponent>;

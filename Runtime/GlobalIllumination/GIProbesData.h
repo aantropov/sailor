@@ -42,11 +42,10 @@ namespace Sailor
 	inline constexpr uint32_t GIProbesMaxSubdivisionLevel = 16u;
 
 	inline bool IsGIProbesBakerVersionSupported(
-		const std::string& version) noexcept
+		std::string_view version) noexcept
 	{
-		const std::string_view view(version);
-		return !view.starts_with(GIProbesBakerVersionPrefix) ||
-			view == GIProbesCurrentBakerVersion;
+		return !version.starts_with(GIProbesBakerVersionPrefix) ||
+			version == GIProbesCurrentBakerVersion;
 	}
 
 	enum class EGIProbesCompression : uint32_t
@@ -171,6 +170,10 @@ namespace Sailor
 	SAILOR_SHARED_API bool ComputeGIProbesLayoutHash(const GIProbesData& data,
 		uint64_t& outHash, const std::function<bool()>& shouldContinue);
 	SAILOR_SHARED_API bool ComputeGIProbesTransportHash(
+		const GIProbesData& data,
+		uint64_t& outHash,
+		const std::atomic<bool>* cancel = nullptr) noexcept;
+	SAILOR_SHARED_API bool ComputeGIProbesLightingHash(
 		const GIProbesData& data,
 		uint64_t& outHash,
 		const std::atomic<bool>* cancel = nullptr) noexcept;

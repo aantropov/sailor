@@ -180,107 +180,17 @@ public partial class ComponentTemplate : DataTemplate
                     if (property.Key == "fileId" || property.Key == "instanceId")
                         continue;
 
-                    View propertyEditor = null;
-                    var propertyDescriptor = component.Typename.Properties[property.Key];
+                    var propertyEditor = CreateReflectedValueEditor(
+                        component, engineTypes, component.Typename.Properties[property.Key],
+                        property.Value, component.Typename.Name, property.Key);
 
-                    if (propertyDescriptor is EnumProperty enumProp)
-                    {
-                        var observableString = property.Value as Observable<string>;
-                        if (engineTypes.Enums.TryGetValue(enumProp.Typename, out var enumValues))
-                        {
-                            propertyEditor = Templates.EnumPicker(enumValues,
-                                (Component vm) => observableString.Value,
-                                (vm, value) => observableString.Value = value,
-                                value => InspectorPropertyPresentation.FormatEnumValue(
-                                    component.Typename.Name,
-                                    property.Key,
-                                    value));
-                        }
-                        else
-                        {
-                            propertyEditor = new Label
-                            {
-                                Text = $"Missing enum metadata: {enumProp.Typename}",
-                                VerticalTextAlignment = TextAlignment.Center
-                            };
-                        }
-                    }
-                    else
-                    {
-                        if (propertyDescriptor is ObjectPtrProperty objectPtr)
-                        {
-                            if (property.Value is ObjectPtr ptr)
-                            {
-                                if (!ptr.FileId.IsEmpty())
-                                {
-                                    propertyEditor = Templates.FileIdEditor(ptr,
-                                        nameof(ObjectPtr.FileId), (ObjectPtr p) => p.FileId, (p, value) => p.FileId = value, objectPtr.GenericType);
-                                }
-                                else if (!ptr.InstanceId.IsEmpty() || objectPtr.CouldBeInstantiated)
-                                {
-                                    propertyEditor = Templates.InstanceIdEditor(ptr,
-                                        nameof(ObjectPtr.InstanceId), (ObjectPtr vm) => ptr.InstanceId, (p, value) => p.InstanceId = value, objectPtr.GenericTypename);
-                                }
-                                else
-                                {
-                                    propertyEditor = Templates.FileIdEditor(ptr,
-                                       nameof(ObjectPtr.FileId), (ObjectPtr p) => p.FileId, (p, value) => p.FileId = value, objectPtr.GenericType);
-                                }
-                            }
-                        }
-                        else
-                            propertyEditor = property.Value switch
-                            {
-                                Observable<float> observableFloat when propertyDescriptor.Range is { } range => Templates.RangedFloatEditor(
-                                    (Component vm) => observableFloat.Value,
-                                    (vm, value) => observableFloat.Value = value,
-                                    range),
-                                Observable<int> observableInt when propertyDescriptor.Range is { } range => Templates.RangedIntEditor(
-                                    (Component vm) => observableInt.Value,
-                                    (vm, value) => observableInt.Value = value,
-                                    range),
-                                Observable<uint> observableUInt when propertyDescriptor.Range is { } range => Templates.RangedUIntEditor(
-                                    (Component vm) => observableUInt.Value,
-                                    (vm, value) => observableUInt.Value = value,
-                                    range),
-                                Observable<float> observableFloat => Templates.FloatEditor((Component vm) => observableFloat.Value, (vm, value) => observableFloat.Value = value),
-                                Observable<int> observableInt => Templates.IntEditor((Component vm) => observableInt.Value, (vm, value) => observableInt.Value = value),
-                                Observable<uint> observableUInt => Templates.UIntEditor((Component vm) => observableUInt.Value, (vm, value) => observableUInt.Value = value),
-                                Observable<bool> observableBool => Templates.BoolEditor((Component vm) => observableBool.Value, (vm, value) => observableBool.Value = value),
-                                Observable<string> observableString => Templates.StringEditor((Component vm) => observableString.Value, (vm, value) => observableString.Value = value),
-                                Rotation quat => Templates.RotationEditor((Component vm) => quat),
-                                Vec4 vec4 => Templates.Vec4Editor((Component vm) => vec4),
-                                Vec3 vec3 => Templates.Vec3Editor((Component vm) => vec3),
-                                Vec2 vec2 => Templates.Vec2Editor((Component vm) => vec2),
-                                Observable<FileId> observableFileId => Templates.FileIdEditor(
-                                    component.OverrideProperties[property.Key],
-                                    nameof(Observable<FileId>.Value),
-                                    (Observable<FileId> vm) => vm.Value,
-                                    (vm, value) => vm.Value = value,
-                                    ResolveFileIdSupportedType(component, property.Key)),
-                                ObservableFileIdList fileIds => Templates.FileIdListEditor(
-                                    fileIds,
-                                    ResolveFileIdListSupportedType(
-                                        component,
-                                        property.Key)),
-                                ObservableFloatList floatValues => Templates.FloatListEditor(floatValues),
-                                Observable<InstanceId> observableInstanceId => Templates.InstanceIdEditor(component.OverrideProperties[property.Key], nameof(Observable<InstanceId>.Value), (Observable<InstanceId> vm) => vm.Value, (vm, value) => vm.Value = value),
-                                _ => new Label { Text = "Unsupported property type" }
-                            };
-                    }
-
-                    Templates.AddGridRowWithLabel(
+                    AddReflectedEditorRow(
                         props,
                         InspectorPropertyPresentation.FormatPropertyName(
                             component.Typename.Name,
                             property.Key),
                         propertyEditor,
-                        GridLength.Auto);
-                }
-
-                if (component.Typename.Name == "Sailor::LandscapeComponent")
-                {
-                    AddLandscapeVegetationEditor(props, component);
+                        component.Typename.Properties[property.Key]);
                 }
 
                 if (component.Typename.Name == "Sailor::AnimatorComponent")
@@ -383,18 +293,7 @@ public partial class ComponentTemplate : DataTemplate
         {
             foreach (var property in component.OverrideProperties)
             {
-                if (property.Key is "sculptStamps" or "paintStamps" or
-                    "layerTextures" or "heightmapTexture" or "materialMasks" or
-                    "vegetationModels" or "vegetationMaterials" or
-                    "vegetationMeshIndex" or
-                    "vegetationInstancesPerChunk" or "vegetationResidency" or
-                    "vegetationPriority" or "vegetationMinScale" or
-                    "vegetationMaxScale" or "vegetationGroundOffset" or
-                    "vegetationShadowMode" or "vegetationShadowDistance" or
-                    "vegetationMinLod" or "vegetationMaxLod" or
-                    "vegetationLod1ScreenCoverage" or "vegetationLod2ScreenCoverage" or
-                    "vegetationCullDistance" or "vegetationColliderRadius" or
-                    "vegetationColliderHeight" or "vegetationColliderOffsetY" or
+                if (property.Key is "layerTextures" or "heightmapTexture" or "materialMasks" or
                     "regenerate" or "flatten" or "saveVegetation")
                 {
                     continue;

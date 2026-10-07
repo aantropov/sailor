@@ -173,7 +173,8 @@ namespace Sailor
 		data.m_diagnostics.m_relocatedProbeCount = relocatedCount;
 		data.m_diagnostics.m_averageValidity = probeCount > 0u ? validity / static_cast<float>(probeCount) : 0.0f;
 		data.m_layoutHash = ComputeGIProbesLayoutHash(data);
-		if (!ComputeGIProbesTransportHash(data, data.m_transportHash, &publication.m_generation->m_cancel))
+		if (!ComputeGIProbesTransportHash(data, data.m_transportHash, &publication.m_generation->m_cancel) ||
+			!ComputeGIProbesLightingHash(data, data.m_lightingHash, &publication.m_generation->m_cancel))
 		{
 			return "runtime GI publication was cancelled";
 		}
@@ -200,7 +201,6 @@ namespace Sailor
 			return;
 		}
 
-		publication.m_snapshot->m_lightingHash = (m_generation->m_request.m_lightingGeneration << 32u) ^ m_nextPublishedRevision;
 		m_status.m_diagnostic = publication.m_snapshot->m_diagnostics.m_message;
 		// The caller releases the previous snapshot after leaving the service lock.
 		std::swap(m_publishedData, publication.m_snapshot);

@@ -7,7 +7,7 @@ namespace SailorEditor.Editor.Tests;
 public sealed class EngineTypeMetadataContractTests
 {
     [Fact]
-    public void Deserialize_LegacyEngineMetadataKeepsOptionalIdentityEmpty()
+    public void Deserialize_EngineMetadataKeepsWorkspaceIdentityEmpty()
     {
         var document = Deserialize("""
 timeStamp: 42
@@ -25,6 +25,30 @@ assetTypes: []
         Assert.Equal(42, document.TimeStamp);
         var type = Assert.Single(document.EngineTypes);
         Assert.Equal("Sailor::Component", type.Typename);
+        Assert.Empty(type.PropertyRanges);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Deserialize_VersionOneOptionalRangesUseEmptyDefault(bool explicitEmptyMap)
+    {
+        var ranges = explicitEmptyMap ? "    propertyRanges: {}\n" : string.Empty;
+        var document = Deserialize("""
+metadataVersion: 1
+moduleName: SandboxLogic
+engineTypes:
+  - typename: SandboxLogic::SampleComponent
+    base: Sailor::Component
+    properties:
+      moveSpeed: float
+
+""" + ranges);
+
+        Assert.Equal(1u, document.MetadataVersion);
+        Assert.Equal("SandboxLogic", document.ModuleName);
+        var type = Assert.Single(document.EngineTypes);
+        Assert.Equal("float", type.Properties["moveSpeed"]);
         Assert.Empty(type.PropertyRanges);
     }
 

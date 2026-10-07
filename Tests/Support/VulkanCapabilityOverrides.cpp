@@ -1,9 +1,44 @@
 #include "VulkanCapabilityOverrides.h"
 #include <vulkan/vulkan.h>
 #include <cstring>
+#include <utility>
+
+namespace
+{
+	thread_local std::vector<Sailor::Tests::VulkanBufferWrite>* g_bufferWrites = nullptr;
+	thread_local std::vector<Sailor::Tests::VulkanComputeInputEvent>* g_computeInputs = nullptr;
+}
 
 namespace Sailor::Tests
 {
+	std::vector<VulkanComputeInputEvent> CaptureVulkanComputeInputs(const std::function<void()>& record)
+	{
+		std::vector<VulkanComputeInputEvent> events;
+		auto previous = std::exchange(g_computeInputs, &events);
+		try { record(); }
+		catch (...)
+		{
+			g_computeInputs = previous;
+			throw;
+		}
+		g_computeInputs = previous;
+		return events;
+	}
+
+	std::vector<VulkanBufferWrite> CaptureVulkanBufferWrites(const std::function<void()>& record)
+	{
+		std::vector<VulkanBufferWrite> writes;
+		auto previous = std::exchange(g_bufferWrites, &writes);
+		try { record(); }
+		catch (...)
+		{
+			g_bufferWrites = previous;
+			throw;
+		}
+		g_bufferWrites = previous;
+		return writes;
+	}
+
 	VulkanCapabilityOverrides& GetVulkanCapabilityOverrides()
 	{
 		static VulkanCapabilityOverrides overrides;
@@ -241,6 +276,51 @@ namespace
 		vkCmdCopyBufferToImage(command, buffer, image, layout, count, regions);
 	}
 
+	VKAPI_ATTR void VKAPI_CALL CopyBuffer(VkCommandBuffer command, VkBuffer source, VkBuffer destination,
+		uint32_t count, const VkBufferCopy* regions)
+	{
+		if (g_computeInputs)
+			for (uint32_t i = 0; i < count; ++i)
+				g_computeInputs->push_back({ Sailor::Tests::VulkanComputeInputEvent::Kind::Copy,
+					command, destination, regions[i].dstOffset, regions[i].size });
+		if (g_bufferWrites)
+			for (uint32_t i = 0; i < count; ++i)
+				g_bufferWrites->push_back({ destination, regions[i].dstOffset, regions[i].size });
+		vkCmdCopyBuffer(command, source, destination, count, regions);
+	}
+
+	VKAPI_ATTR void VKAPI_CALL UpdateBuffer(VkCommandBuffer command, VkBuffer destination,
+		VkDeviceSize offset, VkDeviceSize size, const void* data)
+	{
+		if (g_computeInputs) g_computeInputs->push_back({ Sailor::Tests::VulkanComputeInputEvent::Kind::Copy, command, destination, offset, size });
+		if (g_bufferWrites) g_bufferWrites->push_back({ destination, offset, size });
+		vkCmdUpdateBuffer(command, destination, offset, size, data);
+	}
+
+	VKAPI_ATTR void VKAPI_CALL PipelineBarrier(VkCommandBuffer command, VkPipelineStageFlags sourceStage,
+		VkPipelineStageFlags destinationStage, VkDependencyFlags flags, uint32_t memoryCount,
+		const VkMemoryBarrier* memory, uint32_t bufferCount, const VkBufferMemoryBarrier* buffers,
+		uint32_t imageCount, const VkImageMemoryBarrier* images)
+	{
+		if (g_computeInputs)
+		{
+			for (uint32_t i = 0; i < memoryCount; ++i)
+				g_computeInputs->push_back({ Sailor::Tests::VulkanComputeInputEvent::Kind::Barrier, command,
+					VK_NULL_HANDLE, 0, 0, sourceStage, destinationStage, memory[i].srcAccessMask, memory[i].dstAccessMask });
+			for (uint32_t i = 0; i < bufferCount; ++i)
+				g_computeInputs->push_back({ Sailor::Tests::VulkanComputeInputEvent::Kind::Barrier, command,
+					buffers[i].buffer, buffers[i].offset, buffers[i].size, sourceStage, destinationStage,
+					buffers[i].srcAccessMask, buffers[i].dstAccessMask });
+		}
+		vkCmdPipelineBarrier(command, sourceStage, destinationStage, flags, memoryCount, memory, bufferCount, buffers, imageCount, images);
+	}
+
+	VKAPI_ATTR void VKAPI_CALL Dispatch(VkCommandBuffer command, uint32_t x, uint32_t y, uint32_t z)
+	{
+		if (g_computeInputs) g_computeInputs->push_back({ Sailor::Tests::VulkanComputeInputEvent::Kind::Dispatch, command });
+		vkCmdDispatch(command, x, y, z);
+	}
+
 	// dyld interposes other images, leaving this library's calls to Vulkan intact.
 	__attribute__((used, section("__DATA,__interpose,interposing")))
 	const struct { const void* replacement; const void* original; } interpose[] = {
@@ -262,6 +342,10 @@ namespace
 		{ reinterpret_cast<const void*>(&DestroyImage), reinterpret_cast<const void*>(&vkDestroyImage) },
 		{ reinterpret_cast<const void*>(&CreateFence), reinterpret_cast<const void*>(&vkCreateFence) },
 		{ reinterpret_cast<const void*>(&DestroyFence), reinterpret_cast<const void*>(&vkDestroyFence) },
-		{ reinterpret_cast<const void*>(&CopyBufferToImage), reinterpret_cast<const void*>(&vkCmdCopyBufferToImage) }
+		{ reinterpret_cast<const void*>(&CopyBufferToImage), reinterpret_cast<const void*>(&vkCmdCopyBufferToImage) },
+		{ reinterpret_cast<const void*>(&CopyBuffer), reinterpret_cast<const void*>(&vkCmdCopyBuffer) },
+		{ reinterpret_cast<const void*>(&PipelineBarrier), reinterpret_cast<const void*>(&vkCmdPipelineBarrier) },
+		{ reinterpret_cast<const void*>(&Dispatch), reinterpret_cast<const void*>(&vkCmdDispatch) },
+		{ reinterpret_cast<const void*>(&UpdateBuffer), reinterpret_cast<const void*>(&vkCmdUpdateBuffer) }
 	};
 }

@@ -21,6 +21,8 @@ namespace Sailor::EditorRemote
 
 		Failure Create(uint64_t nowMs = GetMonotonicTimeMs())
 		{
+			if (m_created && (m_runtimeSession.GetState() == SessionState::Lost ||
+				m_runtimeSession.GetState() == SessionState::Recovering)) return RecreateTransport(nowMs);
 			auto result = m_runtimeSession.BeginNegotiation(nowMs);
 			if (!result.IsOk()) return result;
 			m_visible = true;
@@ -81,12 +83,7 @@ namespace Sailor::EditorRemote
 			if (!result.IsOk()) return result;
 			if (m_runtimeSession.GetState() == SessionState::Recovering)
 			{
-				m_presenter.ResetViewport(m_runtimeSession.GetViewportId());
-				result = m_transportBackend.ReleaseSurfaces(m_runtimeSession.GetViewportId());
-				if (!result.IsOk()) return result;
-				result = m_runtimeSession.Recreate(m_runtimeSession.GetConnectionEpoch() + 1, nowMs);
-				if (!result.IsOk()) return result;
-				result = EnsureTransportImported();
+				result = RecreateTransport(nowMs);
 				if (!result.IsOk()) return result;
 			}
 			if (m_transportBackend.GetSurfaceCount() > 1)
@@ -97,13 +94,22 @@ namespace Sailor::EditorRemote
 			}
 			if (m_runtimeSession.GetState() != SessionState::Active) return m_runtimeSession.GetFailure();
 
-			bool ready = false;
-			result = m_transportBackend.PrepareFrame(m_runtimeSession.GetDescriptor(),
-				m_runtimeSession.GetConnectionEpoch(), m_runtimeSession.GetGeneration(), ready);
-			if (!result.IsOk() || !ready) return result;
-			result = m_runtimeSession.PublishFrameFromBackend(m_transportBackend);
-			if (!result.IsOk()) return result;
-			return m_presenter.PresentFrame(m_runtimeSession.GetViewportId(), m_runtimeSession.GetLastFrame());
+			if (!m_bHasPendingPresentation)
+			{
+				bool ready = false;
+				result = m_transportBackend.PrepareFrame(m_runtimeSession.GetDescriptor(),
+					m_runtimeSession.GetConnectionEpoch(), m_runtimeSession.GetGeneration(), ready);
+				if (!result.IsOk()) return HandleFrameFailure(result, nowMs);
+				if (!ready) return result;
+				result = m_runtimeSession.PublishFrameFromBackend(m_transportBackend);
+				if (!result.IsOk()) return HandleFrameFailure(result, nowMs);
+				m_bHasPendingPresentation = true;
+			}
+			// The producer cannot reuse the shared surface until this frame is released.
+			result = m_presenter.PresentFrame(m_runtimeSession.GetViewportId(), m_runtimeSession.GetLastFrame());
+			if (!result.IsOk()) return HandleFrameFailure(result, nowMs);
+			m_bHasPendingPresentation = false;
+			return result;
 		}
 
 		Failure Destroy()
@@ -112,11 +118,28 @@ namespace Sailor::EditorRemote
 			auto release = m_transportBackend.ReleaseSurfaces(m_runtimeSession.GetViewportId());
 			m_presenter.ResetViewport(m_runtimeSession.GetViewportId());
 			auto destroy = m_runtimeSession.Destroy();
+			m_bHasPendingPresentation = false;
 			m_created = !release.IsOk();
 			return !release.IsOk() ? release : destroy;
 		}
 
 	private:
+		Failure HandleFrameFailure(const Failure& failure, uint64_t nowMs)
+		{
+			if (failure.m_code != ResultCode::Retryable) m_runtimeSession.MarkFailure(failure, nowMs);
+			return failure;
+		}
+
+		Failure RecreateTransport(uint64_t nowMs)
+		{
+			m_presenter.ResetViewport(m_runtimeSession.GetViewportId());
+			auto result = m_transportBackend.ReleaseSurfaces(m_runtimeSession.GetViewportId());
+			if (!result.IsOk()) return result;
+			result = m_runtimeSession.Recreate(m_runtimeSession.GetConnectionEpoch() + 1, nowMs);
+			if (!result.IsOk()) return result;
+			return EnsureTransportImported();
+		}
+
 		Failure EnsureTransportImported()
 		{
 			TransportDescriptor transport;
@@ -138,6 +161,7 @@ namespace Sailor::EditorRemote
 		{
 			auto result = m_runtimeSession.MarkTransportReady(transport);
 			if (!result.IsOk()) return result;
+			m_bHasPendingPresentation = false;
 			if (!m_visible)
 			{
 				result = m_runtimeSession.SetVisible(false);
@@ -152,5 +176,6 @@ namespace Sailor::EditorRemote
 		bool m_created = false;
 		bool m_visible = true;
 		bool m_focused = false;
+		bool m_bHasPendingPresentation = false;
 	};
 }

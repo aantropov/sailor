@@ -4,6 +4,7 @@
 #if defined(__APPLE__)
 #import <AppKit/AppKit.h>
 #import <QuartzCore/CAMetalLayer.h>
+#import <QuartzCore/CATransaction.h>
 #import <CoreGraphics/CoreGraphics.h>
 #import <Metal/Metal.h>
 #import <IOSurface/IOSurface.h>
@@ -121,6 +122,33 @@ namespace Sailor::EditorRemote
 		}
 	}
 
+
+	MacNativeHostHandle::MacNativeHostHandle(MacNativeHostHandleKind kind, uintptr_t value) :
+		m_kind(kind), m_value(RetainObjectiveCObject((__bridge id)reinterpret_cast<void*>(value)))
+	{
+	}
+
+	MacNativeHostHandle::MacNativeHostHandle(const MacNativeHostHandle& rhs) :
+		MacNativeHostHandle(rhs.m_kind, rhs.m_value)
+	{
+	}
+
+	MacNativeHostHandle::MacNativeHostHandle(MacNativeHostHandle&& rhs) noexcept :
+		m_kind(std::exchange(rhs.m_kind, MacNativeHostHandleKind::None)), m_value(std::exchange(rhs.m_value, 0))
+	{
+	}
+
+	MacNativeHostHandle& MacNativeHostHandle::operator=(MacNativeHostHandle rhs) noexcept
+	{
+		std::swap(m_kind, rhs.m_kind);
+		std::swap(m_value, rhs.m_value);
+		return *this;
+	}
+
+	MacNativeHostHandle::~MacNativeHostHandle()
+	{
+		ReleaseObjectiveCObject(m_value);
+	}
 
 	uint32_t GetMacIOSurfaceBytesPerRowAlignment(PixelFormat pixelFormat)
 	{
@@ -522,6 +550,8 @@ namespace Sailor::EditorRemote
 
 				binding->m_commandQueueObject = reinterpret_cast<uintptr_t>((__bridge void*)commandQueue);
 
+				// Editor is a persistent worker without a Cocoa run loop to commit layer changes.
+				[CATransaction begin];
 				metalLayer.device = device;
 				metalLayer.pixelFormat = metalPixelFormat;
 				CGColorSpaceRef srgbColorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
@@ -538,6 +568,7 @@ namespace Sailor::EditorRemote
 						view.layer = metalLayer;
 					}
 				}
+				[CATransaction commit];
 
 				binding->m_hostObject = hostHandle.m_kind == MacNativeHostHandleKind::NSView ? hostHandle.m_value : 0;
 				binding->m_width = width;
@@ -705,19 +736,19 @@ namespace Sailor::EditorRemote
 			id<CAMetalDrawable> drawable = [metalLayer nextDrawable];
 			if (drawable == nil)
 			{
-				return MakeFailure(2113, "macOS native layer present could not acquire a drawable");
+				return Failure::FromDomain(ErrorDomain::Session, 2113, "macOS native layer present could not acquire a drawable");
 			}
 
 			id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
 			if (commandBuffer == nil)
 			{
-				return MakeFailure(2117, "macOS native layer present could not create a Metal command buffer");
+				return Failure::FromDomain(ErrorDomain::Session, 2117, "macOS native layer present could not create a Metal command buffer");
 			}
 
 			id<MTLBlitCommandEncoder> blitEncoder = [commandBuffer blitCommandEncoder];
 			if (blitEncoder == nil)
 			{
-				return MakeFailure(2118, "macOS native layer present could not create a Metal blit encoder");
+				return Failure::FromDomain(ErrorDomain::Session, 2118, "macOS native layer present could not create a Metal blit encoder");
 			}
 
 			const MTLSize copySize = MTLSizeMake((NSUInteger)inOutBinding.m_width, (NSUInteger)inOutBinding.m_height, 1);

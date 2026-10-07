@@ -63,8 +63,8 @@ namespace
 		auto buffer = driver->CreateBuffer(sizeof(Values), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
 		auto first = driver->CreateShaderBindings();
 		auto second = driver->CreateShaderBindings();
-		auto a = driver->AddBufferToShaderBindings(first, buffer, "source", 0u);
-		auto b = driver->AddBufferToShaderBindings(second, buffer, "source", 0u);
+		auto a = driver->AddBufferToShaderBindings(first, buffer, "source"_h, 0u);
+		auto b = driver->AddBufferToShaderBindings(second, buffer, "source"_h, 0u);
 		if (!a || !b) return "shared buffer binding setup failed";
 		if (a->m_vulkan.m_valueBinding != b->m_vulkan.m_valueBinding)
 			return "bindings did not share the original buffer allocation";
@@ -173,10 +173,10 @@ namespace
 		auto neighbor = driver->CreateBuffer(sizeof(Values), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
 		std::memcpy(neighbor->GetPointer(), Neighbor.data(), sizeof(Neighbor));
 		auto inputs = driver->CreateShaderBindings();
-		if (!driver->AddBufferToShaderBindings(inputs, neighbor, "neighbor", 0u) ||
-			(projected && !driver->AddBufferToShaderBindings(inputs, neighbor, "unused", 31u)))
+		if (!driver->AddBufferToShaderBindings(inputs, neighbor, "neighbor"_h, 0u) ||
+			(projected && !driver->AddBufferToShaderBindings(inputs, neighbor, "unused"_h, 31u)))
 			return "pooled descriptor input setup failed";
-		auto binding = driver->AddBufferToShaderBindings(inputs, a, "source", 1u);
+		auto binding = driver->AddBufferToShaderBindings(inputs, a, "source"_h, 1u);
 		if (!binding || binding->m_vulkan.m_valueBinding != a->m_vulkan.m_buffer)
 			return "binding did not retain the original pooled allocation";
 		{
@@ -187,7 +187,7 @@ namespace
 			unavailable->m_vulkan.m_buffer = TSharedPtr<Allocation>::Make(
 				TMemoryPtr<VulkanBufferMemoryPtr>(0u, 0u, sizeof(Values), VulkanBufferMemoryPtr(uncompiled, 0u, sizeof(Values)), UINT32_MAX),
 				TWeakPtr<VulkanBufferAllocator>{});
-			if (driver->AddBufferToShaderBindings(inputs, unavailable, "source", 1u) ||
+			if (driver->AddBufferToShaderBindings(inputs, unavailable, "source"_h, 1u) ||
 				inputs->m_vulkan.m_descriptorSet != original || inputs->GetDescriptorRevision() != revision ||
 				binding->m_vulkan.m_valueBinding != a->m_vulkan.m_buffer)
 				return "rejected replacement changed the published pooled owner";
@@ -199,14 +199,14 @@ namespace
 		std::array<RHIBufferPtr, 2> outputs;
 		for (uint32_t i = 0u; i < outputs.size(); ++i)
 		{
-			if (i == 1u && driver->AddBufferToShaderBindings(inputs, b, "source", 1u) != binding)
+			if (i == 1u && driver->AddBufferToShaderBindings(inputs, b, "source"_h, 1u) != binding)
 				return "replacing the pooled source changed binding identity";
 			if (nativeDriver->IsCompatible(pipeline->m_layout, { inputs })[0] == projected)
 				return "pooled source did not use the requested direct/projected path";
 			outputs[i] = driver->CreateBuffer(2u * sizeof(Values), EBufferUsageBit::StorageBuffer_Bit, HostMemory);
 			std::memset(outputs[i]->GetPointer(), 0xa7, outputs[i]->GetSize());
 			auto output = driver->CreateShaderBindings();
-			if (!driver->AddBufferToShaderBindings(output, outputs[i], "outputValue", 0u)) return "compute output binding failed";
+			if (!driver->AddBufferToShaderBindings(output, outputs[i], "outputValue"_h, 0u)) return "compute output binding failed";
 			commands->Dispatch(cmd, shader->GetComputeShaderRHI(), 1u, 1u, 1u, { inputs, output });
 		}
 		cmd->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
@@ -375,19 +375,19 @@ void BufferLifetimeTestComponent::Tick(float)
 			ready &= m_shaders[i] && m_shaders[i]->IsReady();
 		}
 		if (!ready) return;
-		m_validation = Tasks::CreateTaskWithResult<std::string>("Prepare buffer lifetime test", [this]() { return Prepare(); }, EThreadType::Render);
+		m_validation = Tasks::CreateTaskWithResult<std::string>("Prepare buffer lifetime test"_h, [this]() { return Prepare(); }, EThreadType::Render);
 		m_phase = Phase::InitialUpload;
 	}
 	else if (m_phase == Phase::InitialUpload)
 	{
 		if (!m_mesh->IsReady()) return;
-		m_validation = Tasks::CreateTaskWithResult<std::string>("Record and replace mesh", [this]() { return RecordAndReplace(); }, EThreadType::Render);
+		m_validation = Tasks::CreateTaskWithResult<std::string>("Record and replace mesh"_h, [this]() { return RecordAndReplace(); }, EThreadType::Render);
 		m_phase = Phase::ReplacementUpload;
 	}
 	else if (m_phase == Phase::ReplacementUpload)
 	{
 		if (!m_mesh->IsReady()) return;
-		m_validation = Tasks::CreateTaskWithResult<std::string>("Submit retained mesh draws", [this]() { return CheckDraws(); }, EThreadType::Render);
+		m_validation = Tasks::CreateTaskWithResult<std::string>("Submit retained mesh draws"_h, [this]() { return CheckDraws(); }, EThreadType::Render);
 		m_phase = Phase::Finished;
 	}
 	else

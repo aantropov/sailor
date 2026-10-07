@@ -27,9 +27,9 @@ namespace
 		const glm::vec3 ownerScale(ownerTransform.m_scale);
 		WorldShape result{};
 		result.m_center = glm::vec3(ownerTransform.m_position) +
-			ownerTransform.m_rotation * (shape.m_center * ownerScale);
+			ownerTransform.GetRotation() * (shape.m_center * ownerScale);
 		result.m_rotation = glm::normalize(
-			ownerTransform.m_rotation * shape.m_rotation);
+			ownerTransform.GetRotation() * shape.m_rotation);
 		result.m_scale = glm::max(
 			glm::abs(ownerScale),
 			glm::vec3(0.001f));

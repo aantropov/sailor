@@ -1,6 +1,7 @@
 #include "Core/FileRevision.h"
 
 #include "Core/YamlSerializable.h"
+#include "Workspace/WorkspacePathEncoding.h"
 
 #include <chrono>
 #include <filesystem>
@@ -25,8 +26,14 @@ void FileRevision::Deserialize(const YAML::Node& inData)
 std::time_t Utils::GetFileModificationTime(const std::string& filepath)
 {
 	SAILOR_PROFILE_FUNCTION();
+	const auto path = Workspace::PathFromUtf8(filepath);
+#if defined(_WIN32)
+	struct _stat64 result;
+	if (_wstat64(path.c_str(), &result) == 0)
+#else
 	struct stat result;
-	if (stat(filepath.c_str(), &result) == 0)
+	if (stat(path.c_str(), &result) == 0)
+#endif
 	{
 		return (std::time_t)result.st_mtime;
 	}
@@ -38,7 +45,7 @@ bool Utils::TryGetFileRevision(
 	FileRevision& outRevision) noexcept
 {
 	outRevision = {};
-	const std::filesystem::path path(filepath);
+	const auto path = Workspace::PathFromUtf8(filepath);
 	std::error_code error;
 	if (!std::filesystem::is_regular_file(path, error) || error)
 	{

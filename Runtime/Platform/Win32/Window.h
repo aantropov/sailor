@@ -102,6 +102,7 @@ namespace Sailor::Win32
 
 #if defined(_WIN32)
 		ATOM m_windowClassAtom = 0;
+		uint32_t m_nativeMouseButtons = 0;
 		IUnknown* m_editorViewportDropTarget = nullptr;
 		bool m_bEditorViewportDropOleInitialized = false;
 

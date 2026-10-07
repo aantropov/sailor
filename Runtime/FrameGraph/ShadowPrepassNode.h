@@ -5,7 +5,7 @@
 #include "Engine/Object.h"
 #include "RHI/Types.h"
 #include "RHI/RenderSubmission.h"
-#include "RHI/Batch.hpp"
+#include "RHI/PackedDraw.hpp"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
 #include "FrameGraph/RenderSceneTextureCache.h"
@@ -52,7 +52,7 @@ namespace Sailor
 
 		};
 
-		SAILOR_API static const char* GetName() { return m_name; }
+		SAILOR_API static StringHash GetName() { return "ShadowPrepass"_h; }
 		static constexpr float GetRasterShadowBias(
 			RHI::EShadowType shadowType,
 			float configuredBias) noexcept
@@ -61,7 +61,7 @@ namespace Sailor
 			return shadowType == RHI::EShadowType::PCF ? -configuredBias : 0.0f;
 		}
 
-		SAILOR_API virtual Tasks::TaskPtr<void, void> Prepare(RHI::RHIFrameGraphPtr frameGraph, const RHI::RHISceneViewSnapshot& sceneView) override;
+		SAILOR_API virtual Tasks::TaskPtr<void, void> Prepare(RHI::RHIFrameGraphPtr frameGraph, RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandLists, const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override;
 
@@ -201,10 +201,10 @@ namespace Sailor
 
 		Framegraph::TextureBindingCache m_textureBindingCache{};
 		RHI::TPackedDrawPagedArenaCache<PerInstanceData> m_pagedArenaCache{};
+		RHI::RHIPackedDrawSceneChanges m_arenaChanges;
 		// Shared by concurrent RHI preparation tasks; finalizers own separate view packets.
 		SpinLock m_syncSharedResources{};
 
-		SAILOR_SHARED_API static const char* m_name;
 	};
 
 	namespace Framegraph

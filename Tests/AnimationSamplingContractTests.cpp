@@ -17,6 +17,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 
 using namespace Sailor;
@@ -35,11 +36,11 @@ namespace Sailor
 
 namespace
 {
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -435,7 +436,7 @@ namespace
 						(time < 2.0f ? 0.0f : 120.0f) : 60.0f * time;
 					expected = glm::angleAxis(glm::radians(angle), glm::vec3(0.0f, 0.0f, 1.0f));
 				}
-				const auto& actual = fixture.m_animation->m_frames[frame].m_rotation;
+				const auto& actual = fixture.m_animation->m_frames[frame].GetRotation();
 				Require(NearlyEqual(glm::length(actual), 1.0f) &&
 					std::abs(glm::dot(actual, sampled)) > 0.9999f,
 					"baked quaternion signs may differ but normalized rotations must match public sampling");
@@ -468,12 +469,12 @@ namespace
 				animation->m_parentBoneIndices == TVector<int32_t>{ -1 } && animation->m_restPose.Num() == 1,
 				"rejected prepared channels must not publish new clip metadata or revision");
 			Require(animation->m_restPose[0].m_position == rest.m_position &&
-				animation->m_restPose[0].m_rotation == rest.m_rotation && animation->m_restPose[0].m_scale == rest.m_scale,
+				animation->m_restPose[0].GetRotation() == rest.GetRotation() && animation->m_restPose[0].m_scale == rest.m_scale,
 				"a rejected reload must retain the rest pose");
 			for (size_t frame = 0; frame < frames.Num(); ++frame)
 			{
 				Require(animation->m_frames[frame].m_position == frames[frame].m_position &&
-					animation->m_frames[frame].m_rotation == frames[frame].m_rotation &&
+					animation->m_frames[frame].GetRotation() == frames[frame].GetRotation() &&
 					animation->m_frames[frame].m_scale == frames[frame].m_scale,
 					"a rejected reload must retain every last-good baked transform");
 			}
@@ -525,7 +526,7 @@ namespace
 			const auto& pose = fixture.m_animation->m_frames[frame];
 			const glm::quat expected = glm::angleAxis(glm::radians(3.0f * frame), glm::vec3(0.0f, 0.0f, 1.0f));
 			Require(glm::vec3(pose.m_position) == glm::vec3(3.0f, -2.0f, 1.0f) &&
-				std::abs(glm::dot(pose.m_rotation, expected)) > 0.9999f,
+				std::abs(glm::dot(pose.GetRotation(), expected)) > 0.9999f,
 				"skipped translation keys must leave the rest position while valid rotations continue baking");
 		}
 
@@ -533,7 +534,7 @@ namespace
 		Require(fixture.Import(), "zero-length rotations must retain the existing per-sample fallback contract");
 		for (const auto& pose : fixture.m_animation->m_frames)
 		{
-			Require(NearlyEqual(std::abs(pose.m_rotation.w), 1.0f) && NearlyEqual(glm::length(pose.m_rotation), 1.0f),
+			Require(NearlyEqual(std::abs(pose.GetRotation().w), 1.0f) && NearlyEqual(glm::length(pose.GetRotation()), 1.0f),
 				"failed quaternion normalization must leave the rest rotation intact");
 		}
 	}
@@ -854,6 +855,10 @@ namespace
 			"unknown animation condition operations must fail graph validation");
 		Require(controller->Initialize(roundTrip, &errors) && errors.IsEmpty(),
 			"a valid controller graph must compile without diagnostics");
+		Require(controller->FindParameterIndex("Speed"_h) == controller->FindParameterIndex(1) &&
+			controller->FindParameterIndex(StringHash::Runtime(std::string("Speed"))) >= 0 &&
+			controller->FindParameterIndex("Missing"_h) == -1,
+			"dynamic and literal parameter names must resolve the same compiled parameter");
 
 		roundTrip.GetStates()[1].m_id = 100;
 		Require(!controller->Initialize(roundTrip, &errors) && !errors.IsEmpty(),
@@ -871,9 +876,16 @@ namespace
 		auto animationSet = AnimationSetPtr::Make(allocator, FileId{});
 		Require(animationSet->Initialize(setRoundTrip, &errors),
 			"a valid animation set must compile without diagnostics");
+		Require(animationSet->FindAnimation("Idle"_h) &&
+			*animationSet->FindAnimation("Idle"_h) == setSource.GetEntries()[0].m_animation &&
+			!animationSet->FindAnimation("Missing"_h),
+			"compiled animation slot lookup must agree with the authored text and clip identity");
 		setRoundTrip.GetEntries().Add(setRoundTrip.GetEntries()[0]);
 		Require(!animationSet->Initialize(setRoundTrip, &errors) && !errors.IsEmpty(),
 			"duplicate animation set slots must produce validation diagnostics");
+		Require(animationSet->FindAnimation("Idle"_h) &&
+			*animationSet->FindAnimation("Idle"_h) == setSource.GetEntries()[0].m_animation,
+			"rejected reloads must retain the previous slot lookup");
 		animationSet.DestroyObject(allocator);
 		controller.DestroyObject(allocator);
 	}
@@ -891,13 +903,13 @@ namespace
 		AnimationControllerInstance second;
 		Require(first.SetController(controller) && second.SetController(controller),
 			"each Animator must create an independent controller instance");
-		Require(first.SetFloat("Speed", 1.0f) &&
-			first.SetBool("Grounded", true) &&
-			first.SetInt("Mode", 2) &&
-			first.SetTrigger("Jump"),
+		Require(first.SetFloat("Speed"_h, 1.0f) &&
+			first.SetBool("Grounded"_h, true) &&
+			first.SetInt("Mode"_h, 2) &&
+			first.SetTrigger("Jump"_h),
 			"typed controller parameters must accept matching values");
-		Require(!first.SetFloat("Mode", 1.0f) &&
-			!first.SetTrigger("Missing"),
+		Require(!first.SetFloat("Mode"_h, 1.0f) &&
+			!first.SetTrigger("Missing"_h),
 			"typed controller parameters must reject mismatched or missing fields");
 
 		first.Tick(0.0f, 1.0f);
@@ -921,7 +933,7 @@ namespace
 		Require(first.GetActiveStateIndex() == 0 && !first.IsTransitioning(),
 			"zero-duration transitions must complete at the normalized exit time");
 
-		first.SetFloat("Speed", 0.0f);
+		first.SetFloat("Speed"_h, 0.0f);
 		first.Tick(0.0f, 1.0f);
 		Require(first.GetActiveStateIndex() == 0 && !first.IsTransitioning(),
 			"a trigger must be consumed only by the transition that selected it");
@@ -947,7 +959,7 @@ namespace
 			"equal-priority transition fixture must compile");
 		AnimationControllerInstance authoredOrder;
 		Require(authoredOrder.SetController(controller) &&
-			authoredOrder.SetTrigger("Jump"),
+			authoredOrder.SetTrigger("Jump"_h),
 			"equal-priority transition fixture must accept its trigger");
 		authoredOrder.Tick(0.0f, 1.0f);
 		Require(authoredOrder.IsTransitioning() &&
@@ -972,9 +984,9 @@ namespace
 
 		AnimationControllerInstance instance;
 		Require(instance.SetController(controller) &&
-			instance.SetFloat("Speed", 1.0f) &&
-			instance.SetBool("Grounded", true) &&
-			instance.SetInt("Mode", 2),
+			instance.SetFloat("Speed"_h, 1.0f) &&
+			instance.SetBool("Grounded"_h, true) &&
+			instance.SetInt("Mode"_h, 2),
 			"controller instance must accept initial typed values");
 		instance.Tick(0.0f, 1.0f);
 		Require(controller->GetStates()[instance.GetActiveStateIndex()].m_id == 200,
@@ -989,7 +1001,7 @@ namespace
 		instance.Tick(0.0f, 1.0f);
 		Require(controller->GetStates()[instance.GetActiveStateIndex()].m_id == 200,
 			"hot reload must preserve the active state by stable id rather than array index");
-		Require(instance.SetFloat("Speed", 0.25f) && instance.SetTrigger("Jump"),
+		Require(instance.SetFloat("Speed"_h, 0.25f) && instance.SetTrigger("Jump"_h),
 			"hot reload must rebind typed parameters after source order changes");
 
 		for (auto& parameter : asset.GetParameters())
@@ -1021,7 +1033,7 @@ namespace
 			"a compatible graph with a changed parameter type must hot reload");
 		instance.Tick(0.0f, 1.0f);
 		Require(controller->GetStates()[instance.GetActiveStateIndex()].m_id == 100 &&
-			!instance.SetFloat("Speed", 0.5f) && instance.SetBool("Speed", false),
+			!instance.SetFloat("Speed"_h, 0.5f) && instance.SetBool("Speed"_h, false),
 			"hot reload must reset a stable parameter id to its new typed default");
 
 		const uint64_t lastValidRevision = controller->GetRevision();
@@ -1032,7 +1044,7 @@ namespace
 			controller->GetStates()[instance.GetActiveStateIndex()].m_id == 100,
 			"an invalid hot reload must retain the last valid immutable runtime graph");
 
-		Require(instance.SetController(controller) && instance.SetBool("Speed", false),
+		Require(instance.SetController(controller) && instance.SetBool("Speed"_h, false),
 			"active-state reset fixture must restart the last valid controller");
 		instance.Tick(0.75f, 1.0f);
 		Require(NearlyEqual(instance.GetActiveStateTime(), 0.75f),

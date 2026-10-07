@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Defines.h"
+#include "Memory/UniquePtr.hpp"
 #include "Platform/DynamicLibrary.h"
 #include "Workspace/WorkspaceContext.h"
 
@@ -10,6 +11,11 @@
 namespace YAML
 {
 	class Node;
+}
+
+namespace Sailor
+{
+	struct ReflectedTypeCatalog;
 }
 
 namespace Sailor::Workspace
@@ -66,7 +72,7 @@ namespace Sailor::Workspace
 	class SAILOR_SHARED_API WorkspaceModuleManager final
 	{
 	public:
-		WorkspaceModuleManager() noexcept = default;
+		WorkspaceModuleManager() noexcept;
 		~WorkspaceModuleManager() noexcept;
 
 		WorkspaceModuleManager(const WorkspaceModuleManager&) = delete;
@@ -83,15 +89,10 @@ namespace Sailor::Workspace
 			YAML::Node& outMetadata,
 			std::string& outError) const noexcept;
 
-		static bool MergeEditorTypeMetadata(
-			const YAML::Node& engineMetadata,
-			const YAML::Node& workspaceMetadata,
-			YAML::Node& outMetadata,
-			std::string& outError) noexcept;
-
 		EWorkspaceModuleState GetState() const noexcept { return m_state; }
 		const WorkspaceModuleLoadResult& GetResult() const noexcept { return m_result; }
 		const std::string& GetMetadata() const noexcept { return m_metadata; }
+		uint64_t GetTypeCatalogHash() const noexcept { return m_typeCatalogHash; }
 		bool IsRegistered() const noexcept { return m_state == EWorkspaceModuleState::Registered; }
 
 	private:
@@ -102,6 +103,8 @@ namespace Sailor::Workspace
 		WorkspaceModuleLoadResult m_result;
 		std::string m_owner;
 		std::string m_metadata;
+		uint64_t m_typeCatalogHash = 0;
+		TUniquePtr<ReflectedTypeCatalog> m_editorMetadata;
 	};
 
 #if defined(_MSC_VER)

@@ -26,11 +26,13 @@
 #include "RHI/Mesh.h"
 #include "RHI/Texture.h"
 #include "RHI/VertexDescription.h"
+#include "Support/FrameGraphContract.h"
 
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <barrier>
+#include <chrono>
 #include <thread>
 #include <vector>
 #include <cmath>
@@ -42,6 +44,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <yaml-cpp/yaml.h>
@@ -63,11 +66,11 @@ namespace
 		using MaterialKey = CustomShadowMaterialKey;
 	};
 
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -80,38 +83,39 @@ namespace
 			std::istreambuf_iterator<char>());
 	}
 
-	std::string GetFrameGraphSetting(const YAML::Node& pass, const char* setting)
+	std::string GetFrameGraphSetting(const YAML::Node& pass, std::string_view setting)
 	{
-		const YAML::Node settings = pass["string"];
-		if (!settings || !settings.IsSequence())
-		{
-			return {};
-		}
-
-		for (const YAML::Node& entry : settings)
-		{
-			const YAML::Node value = entry[setting];
-			if (value && value.IsScalar())
-			{
-				return value.as<std::string>();
-			}
-		}
-
-		return {};
+		return Tests::GetSequenceMapping(pass["string"], setting);
 	}
 
-	std::string GetFrameGraphAttachment(const YAML::Node& pass, const char* name)
+	std::string GetFrameGraphAttachment(const YAML::Node& pass, std::string_view name)
 	{
-		const auto targets = pass["renderTargets"];
-		if (targets && targets.IsSequence())
-		{
-			for (const auto& target : targets)
-			{
-				const auto value = target[name];
-				if (value && value.IsScalar()) return value.as<std::string>();
-			}
-		}
-		return {};
+		return Tests::GetSequenceMapping(pass["renderTargets"], name);
+	}
+
+	void TestFrameGraphSequenceMappings()
+	{
+		const auto document = YAML::Load(R"(
+string:
+  - Tag: Opaque
+  - ignored
+  - Shader: shaders/Lit.shader
+  - Malformed: [one, two]
+renderTargets:
+  - src: DepthBuffer
+  - dst: DepthPyramid
+)");
+		Require(GetFrameGraphSetting(document, "Tag") == "Opaque" &&
+			GetFrameGraphSetting(document, "Shader") == "shaders/Lit.shader",
+			"parsed pass settings must retain their scalar text");
+		Require(GetFrameGraphAttachment(document, "src") == "DepthBuffer" &&
+			GetFrameGraphAttachment(document, "dst") == "DepthPyramid",
+			"parsed attachment mappings must retain resource identity");
+		Require(GetFrameGraphSetting(document, "Absent").empty() &&
+			GetFrameGraphSetting(document, "Malformed").empty() &&
+			Tests::GetSequenceMapping(YAML::Node{}, "Tag").empty() &&
+			Tests::GetSequenceMapping(document, "Tag").empty(),
+			"missing or non-scalar sequence mappings must not become valid contract values");
 	}
 
 	void TestCurrentDepthPyramidReadiness()
@@ -261,6 +265,7 @@ namespace
 
 			uint32_t depthPasses = 0u;
 			uint32_t mainPasses = 0u;
+			uint32_t pyramidPasses = 0u;
 			std::string currentDepthPyramid;
 			for (const YAML::Node& pass : frame)
 			{
@@ -274,8 +279,9 @@ namespace
 				const std::string tag = GetFrameGraphSetting(pass, "Tag");
 				if (name == "DepthHighZ")
 				{
-					Require(depthPasses == 2u && mainPasses == 0u,
-						"current-frame Hi-Z must follow both depth contributors and precede main drawing");
+					++pyramidPasses;
+					Require(depthPasses == pyramidPasses && pyramidPasses <= 2u && mainPasses == 0u,
+						"Hi-Z must follow opaque depth, then refresh after masked depth before main drawing");
 					Require(GetFrameGraphAttachment(pass, "src") == "DepthBuffer",
 						"Hi-Z must reduce full-resolution depth, not a nearest-filtered depth blit");
 					currentDepthPyramid = GetFrameGraphAttachment(pass, "dst");
@@ -283,18 +289,33 @@ namespace
 				}
 				if (GetFrameGraphSetting(pass, "OcclusionCulling") == "true")
 				{
-					Require(name == "RenderScene" && (tag == "Opaque" || tag == "Masked"),
-						"depth contributors, transparent geometry and viewmodels must not opt into occlusion");
+					Require((name == "RenderScene" && (tag == "Opaque" || tag == "Masked")) ||
+						(name == "DepthPrepass" && tag == "Masked"),
+						"only masked depth and opaque/masked main drawing may consume current-frame occlusion");
 				}
 				if (name == "DepthPrepass" && (tag == "Opaque" || tag == "Masked"))
 				{
 					++depthPasses;
-					Require(GetFrameGraphSetting(pass, "GPUCulling") == "false",
-						std::string(rendererPath) + " must keep GPU culling disabled in " + tag +
-						" depth prepass");
+					if (tag == "Opaque")
+					{
+						Require(depthPasses == 1u && pyramidPasses == 0u &&
+							GetFrameGraphSetting(pass, "GPUCulling") == "false" &&
+							GetFrameGraphSetting(pass, "OcclusionCulling") != "true",
+							"opaque depth must seed current-frame occlusion without sampling stale depth");
+					}
+					else
+					{
+						Require(depthPasses == 2u && pyramidPasses == 1u &&
+							GetFrameGraphSetting(pass, "GPUCulling") == "true" &&
+							GetFrameGraphSetting(pass, "OcclusionCulling") == "true" &&
+							!currentDepthPyramid.empty() &&
+							GetFrameGraphAttachment(pass, "depthHighZ") == currentDepthPyramid,
+							"masked depth must cull against the preceding opaque depth pyramid");
+					}
 					Require(GetFrameGraphSetting(pass, "VirtualizeInstancePayloads") == "true",
 						std::string(rendererPath) + " must keep instance virtualization enabled in " + tag +
 						" depth prepass");
+					currentDepthPyramid.clear();
 				}
 				else if (name == "RenderScene" && (tag == "Opaque" || tag == "Masked"))
 				{
@@ -312,7 +333,7 @@ namespace
 				}
 			}
 
-			Require(depthPasses == 2u && mainPasses == 2u,
+			Require(depthPasses == 2u && pyramidPasses == 2u && mainPasses == 2u,
 				std::string(rendererPath) +
 				" should expose opaque and masked depth/main pass pairs");
 		}
@@ -365,7 +386,8 @@ namespace
 				}
 				if (GetFrameGraphSetting(pass, "shader") == "Shaders/MotionBlur.shader")
 				{
-					Require(producers == 3u && resource(pass, "motionSampler") == "MotionVectors", "blur must consume all three MRT scene queues");
+					Require(name == "MotionBlur" && !consumed && producers == 3u && resource(pass, "motionSampler") == "MotionVectors",
+						"the motion blur node must own temporal preparation and consume all three MRT scene queues");
 					consumed = true;
 				}
 			}
@@ -874,9 +896,8 @@ namespace
 			&rangeMaterialVersionRuns),
 			"paged arena ranges must retain the material generation used to encode each record");
 		auto materialPayload = pagedCache.EndUpdate();
-		const RHI::PackedDrawArenaRange* materialRange = nullptr;
-		Require(materialPayload->m_arenaRanges.Find(rangeKeyA, materialRange) &&
-			materialRange && materialRange->m_itemOffsets &&
+		const auto* materialRange = materialPayload->FindRange(rangeKeyA);
+		Require(materialRange && materialRange->m_itemOffsets &&
 			materialRange->m_itemOffsets->Num() == rangeA.Num() &&
 			materialRange->m_materialVersionRuns &&
 			materialRange->m_materialVersionRuns->Num() == 1u &&
@@ -902,6 +923,302 @@ namespace
 			materialView.GetGroups()[0].m_batch.m_materialVersion == materialV1 &&
 			materialView.GetGroups()[0].m_batch.GetMaterialBindings() == bindingsV1,
 			"a reused static record must bind the exact material version that produced its material index");
+	}
+
+	void TestPagedArenaMetadataPublication()
+	{
+		RHI::TPackedDrawPagedArenaCache<uint32_t> arena;
+		const TVector<uint64_t> keys{ 0u, 1u, 2u, 3u };
+		arena.BeginUpdate(1u, 1u, 1u);
+		for (uint32_t range = 0; range < 130u; ++range)
+			Require(arena.ReplaceRange(range, 1u, { range, range, range, range }, keys), "initial range must publish");
+		const auto first = arena.EndUpdate();
+		arena.BeginUpdate(1u, 2u, 2u);
+		Require(arena.ReplaceRange(64u, 2u, { 999u, 999u, 999u, 999u }, keys),
+			"one changed range must preserve unvisited producers");
+		const auto second = arena.EndUpdate();
+		Require(first->m_arenaRangeIndices == second->m_arenaRangeIndices &&
+			first->m_arenaRangePages[0] == second->m_arenaRangePages[0] &&
+			first->m_arenaRangePages[1] != second->m_arenaRangePages[1] &&
+			first->m_arenaRangePages[2] == second->m_arenaRangePages[2],
+			"content changes must share the key index and unchanged metadata pages");
+		Require(first->FindRange(64u)->m_contentRevision == 1u && second->FindRange(64u)->m_contentRevision == 2u &&
+			first->m_arenaPages[4]->m_instances[0] == 64u && second->m_arenaPages[4]->m_instances[0] == 999u,
+			"retained publications must keep both their metadata and instance values");
+		arena.BeginUpdate(1u, 3u, 3u);
+		for (uint64_t range : { 1u, 2u, 3u, 1u }) arena.RemoveRange(range);
+		const auto removed = arena.EndUpdate();
+		Require(!removed->FindRange(1u) && !removed->FindRange(2u) && !removed->FindRange(3u) &&
+			second->FindRange(1u) && removed->m_arenaRangeIndices != second->m_arenaRangeIndices &&
+			removed->m_arenaRangePages[1] == second->m_arenaRangePages[1],
+			"removal must detach only the index and affected metadata page");
+		arena.BeginUpdate(1u, 4u, 4u);
+		Require(arena.ReplaceRange(1000u, 4u, { 10u, 11u, 12u, 13u, 14u, 15u, 16u, 17u },
+			{ 0u, 1u, 2u, 3u, 4u, 5u, 6u, 7u }) && arena.ReplaceRange(2u, 4u, { 8u, 8u, 8u, 8u }, keys),
+			"adjacent retired ranges must be reusable by differently sized producers");
+		const auto reused = arena.EndUpdate();
+		Require(reused->m_arenaCapacity == first->m_arenaCapacity &&
+			reused->m_numArenaRangeSlots == first->m_numArenaRangeSlots &&
+			reused->FindRange(1000u)->m_offset == 4u && reused->FindRange(2u)->m_offset == 12u &&
+			second->m_arenaPages[0]->m_instances[4] == 1u,
+			"coalesced holes and metadata slots must be reused while older frames retain their data");
+
+		arena.BeginUpdate(1u, 5u, 5u);
+		arena.RemoveRange(0u);
+		Require(arena.ReplaceRange(2000u, 5u, TVector<uint32_t>(129u, 42u), [&]()
+		{
+			TVector<uint64_t> result;
+			for (uint32_t i = 0; i < 129u; ++i) result.Add(i);
+			return result;
+		}()), "a speculative update must allocate its own pages");
+		const auto unpublished = arena.EndUpdate(false);
+		Require(arena.Find(1u, 4u, 5u) == reused && !arena.Find(1u, 5u, 5u) && unpublished->FindRange(2000u),
+			"a failed producer pass must not commit index or allocator state");
+		arena.BeginUpdate(2u, 1u, 6u);
+		Require(arena.ReplaceRange(50u, 1u, { 50u }, { 0u }), "another slot must build independently");
+		const auto otherSlot = arena.EndUpdate();
+		arena.BeginUpdate(1u, 6u, 6u);
+		for (const auto& entry : *reused->m_arenaRangeIndices)
+		{
+			const auto* range = reused->FindRange(entry.First());
+			Require(arena.TryReuseRange(entry.First(), range->m_contentRevision), "published ranges must survive an abandoned pass");
+		}
+		const auto restored = arena.EndUpdate();
+		Require(restored->m_arenaRangeIndices == reused->m_arenaRangeIndices &&
+			restored->m_arenaRangePages == reused->m_arenaRangePages &&
+			restored->m_arenaPages == reused->m_arenaPages &&
+			restored->m_arenaCapacity == reused->m_arenaCapacity && otherSlot->m_arenaCapacity == 1u,
+			"an unchanged publication must share all storage independently of other cache slots");
+
+		arena.BeginUpdate(1u, 7u, 7u);
+		for (const auto& entry : *restored->m_arenaRangeIndices) arena.RemoveRange(entry.First());
+		const auto empty = arena.EndUpdate();
+		Require(empty->m_arenaRangeIndices->IsEmpty() && empty->m_arenaCapacity == first->m_arenaCapacity,
+			"an empty scene may retain its reusable high-water capacity, but no live ranges");
+		arena.BeginUpdate(1u, 8u, 8u);
+		TVector<uint32_t> values(65u, 123u);
+		TVector<uint64_t> crossingKeys;
+		for (uint32_t i = 0; i < 65u; ++i) crossingKeys.Add(i);
+		Require(arena.ReplaceRange(3000u, 8u, values, crossingKeys), "a range crossing page boundaries must reuse the cleared arena");
+		const auto afterSpike = arena.EndUpdate();
+		uint32_t offset = 0u;
+		Require(afterSpike->m_arenaCapacity == first->m_arenaCapacity &&
+			afterSpike->m_numArenaRangeSlots == first->m_numArenaRangeSlots &&
+			afterSpike->FindInstance(3000u, 64u, offset) && offset == 64u &&
+			afterSpike->m_arenaPages[1]->m_instances[0] == 123u && first->m_arenaPages[1]->m_instances[0] == 16u,
+			"spike capacity must remain reachable and reusable without changing retained generations");
+		arena.Clear();
+		Require(first->FindRange(0u) && afterSpike->FindRange(3000u), "cache release must not invalidate retained range tables");
+	}
+
+	void TestPackedDrawSceneChanges()
+	{
+		auto scene = RHI::RHIScenePtr::Make();
+		RHI::RHISceneViewProxy topology;
+		topology.m_shadowCaster = TSharedPtr<RHI::RHIShadowCasterProxy>::Make();
+		const auto resource = RHI::RHISceneProxyResourcePtr::Make(std::move(topology));
+		RHI::RHISceneInstanceRecord record;
+		record.m_topology = resource;
+		record.m_mobility = EMobilityType::Stationary;
+		record.m_renderFlags = 1u;
+		TVector<RHI::RenderInstanceHandle> handles;
+		for (uint32_t i = 0; i < 130u; ++i)
+		{
+			record.m_producerKey = i;
+			handles.Add(scene->AddInstance(record));
+		}
+		auto capture = [](RHI::RHIScenePtr& owner)
+		{
+			auto versions = TSharedPtr<TVector<RHI::RHISceneVersionPtr>>::Make();
+			versions->Add(owner->PublishVersion());
+			return RHI::RHIPackedDrawSceneState{ std::move(versions), {}, 10u };
+		};
+		const auto first = capture(scene);
+		RHI::RHIPackedDrawSceneChanges changes;
+		changes.Gather(first, nullptr, EMobilityType::Stationary);
+		Require(changes.m_updated.Num() == 130u && changes.m_removed.IsEmpty(), "the initial draw publication must include all producers");
+		changes.Gather(first, &first, EMobilityType::Stationary);
+		Require(changes.m_updated.IsEmpty() && changes.m_removed.IsEmpty() && changes.m_numComparedRecords == 0u,
+			"unchanged scene pages must not visit producers");
+		Require(scene->ResolveCurrent(handles[65], record), "the moved producer must exist");
+		record.m_worldMatrix[3].x = 12.0f;
+		record.m_skeletonOffset = 42u;
+		Require(scene->UpdateInstance(handles[65], record, RHI::ESceneChangeBit::Transform | RHI::ESceneChangeBit::SkeletonOffset),
+			"transform and skeleton changes must publish");
+		const auto moved = capture(scene);
+		changes.Gather(moved, &first, EMobilityType::Stationary);
+		Require(changes.m_updated.Num() == 1u && changes.m_updated[0].m_handle == handles[65] &&
+			changes.m_removed.IsEmpty() && changes.m_numComparedRecords == RHI::RHISceneRecordPage::NumRecords,
+			"a single changed producer must not rebuild its unchanged neighbours");
+		auto movingMotion = moved;
+		movingMotion.m_motionSceneVersions = first.m_sceneVersions;
+		auto stoppedMotion = moved;
+		stoppedMotion.m_motionSceneVersions = moved.m_sceneVersions;
+		changes.Gather(stoppedMotion, &movingMotion, EMobilityType::Stationary);
+		Require(changes.m_updated.Num() == 1u && changes.m_updated[0].m_handle == handles[65],
+			"an object stopping must clear its previous motion even if its current record is unchanged");
+		changes.Gather(moved, &stoppedMotion, EMobilityType::Stationary);
+		Require(changes.m_updated.Num() == 130u, "a camera cut must invalidate per-object motion history");
+		auto materialChange = moved;
+		++materialChange.m_configurationRevision;
+		changes.Gather(materialChange, &moved, EMobilityType::Stationary);
+		Require(changes.m_updated.Num() == 130u, "material or queue configuration changes must revisit unchanged records");
+
+		RHI::TPackedDrawPagedArenaCache<uint32_t> arena;
+		auto updateArena = [&](const RHI::RHIPackedDrawSceneState& state, size_t revision, bool bPublish)
+		{
+			changes.Gather(state, arena.GetSceneState(1u), EMobilityType::Stationary);
+			arena.BeginUpdate(1u, revision, revision, state);
+			for (const auto& proxy : changes.m_removed)
+				arena.RemoveRange(RHI::BuildPackedDrawRangeKey(proxy.m_handle, proxy.m_record->m_producerKey, proxy.m_resource));
+			for (const auto& proxy : changes.m_updated)
+				Require(arena.ReplaceRange(RHI::BuildPackedDrawRangeKey(proxy.m_handle, proxy.m_record->m_producerKey, proxy.m_resource),
+					revision, { static_cast<uint32_t>(proxy.GetWorldMatrix()[3].x) }, { 0u }), "changed producer must update its range");
+			changes.Clear();
+			return arena.EndUpdate(bPublish);
+		};
+		const auto firstPayload = updateArena(first, 1u, true);
+		const auto unpublished = updateArena(moved, 2u, false);
+		const uint64_t movedKey = RHI::BuildPackedDrawRangeKey(handles[65], 65u, resource.GetRawPtr());
+		Require(arena.GetSceneState(1u)->m_sceneVersions == first.m_sceneVersions &&
+			arena.Find(1u, 1u, 2u) == firstPayload && unpublished->FindRange(movedKey)->m_contentRevision == 2u,
+			"failed preparation must not advance the cache's consumed scene publication");
+		const auto movedPayload = updateArena(moved, 2u, true);
+		Require(firstPayload->m_arenaRangeIndices == movedPayload->m_arenaRangeIndices &&
+			firstPayload->m_arenaPages[0] == movedPayload->m_arenaPages[0] &&
+			firstPayload->m_arenaPages[1] != movedPayload->m_arenaPages[1] &&
+			firstPayload->m_arenaPages[1]->m_instances[1] == 0u && movedPayload->m_arenaPages[1]->m_instances[1] == 12u,
+			"the scene delta must update one data page and retain the older frame");
+		const auto unchangedPayload = updateArena(moved, 3u, true);
+		Require(unchangedPayload->m_arenaPages == movedPayload->m_arenaPages &&
+			unchangedPayload->m_arenaRangePages == movedPayload->m_arenaRangePages,
+			"an empty producer delta must preserve all ranges without visit marking");
+
+		Require(scene->ResolveCurrent(handles[0], record), "mobility fixture must resolve");
+		record.m_mobility = EMobilityType::Static;
+		Require(scene->UpdateInstance(handles[0], record, RHI::ToMask(RHI::ESceneChangeBit::Mobility)), "mobility change must succeed");
+		Require(scene->RemoveInstance(handles[1]), "producer removal must succeed");
+		Require(scene->ResolveCurrent(handles[2], record), "topology fixture must resolve");
+		record.m_topology = RHI::RHISceneProxyResourcePtr::Make(resource->m_proxy);
+		Require(scene->UpdateInstance(handles[2], record, RHI::ToMask(RHI::ESceneChangeBit::MeshOrLodTopology)), "topology change must succeed");
+		Require(scene->ResolveCurrent(handles[3], record), "shadow fixture must resolve");
+		record.m_renderFlags = 0u;
+		Require(scene->UpdateInstance(handles[3], record, RHI::ToMask(RHI::ESceneChangeBit::ShadowState)), "shadow change must succeed");
+		Require(scene->ResolveCurrent(handles[4], record), "producer-key fixture must resolve");
+		record.m_producerKey = 400u;
+		Require(scene->UpdateInstance(handles[4], record, RHI::ToMask(RHI::ESceneChangeBit::MeshOrLodTopology)), "producer key change must succeed");
+		const auto replaced = capture(scene);
+		changes.Gather(replaced, &moved, EMobilityType::Stationary);
+		Require(changes.m_updated.Num() == 3u && changes.m_removed.Num() == 4u,
+			"mobility, topology and producer identity changes must retire the old arena keys");
+		changes.Gather(replaced, &moved, EMobilityType::Stationary, true);
+		Require(changes.m_updated.Num() == 2u && changes.m_removed.Num() == 5u,
+			"a disabled shadow caster must leave the shadow arena without removing its main-pass producer");
+		changes.Gather(replaced, &moved, EMobilityType::Static);
+		Require(changes.m_updated.Num() == 1u && changes.m_updated[0].m_handle == handles[0] && changes.m_removed.IsEmpty(),
+			"the receiving mobility segment must add the migrated producer");
+		const auto replacedPayload = updateArena(replaced, 4u, true);
+		Require(!replacedPayload->FindRange(RHI::BuildPackedDrawRangeKey(handles[0], 0u, resource.GetRawPtr())) &&
+			!replacedPayload->FindRange(RHI::BuildPackedDrawRangeKey(handles[1], 1u, resource.GetRawPtr())) &&
+			replacedPayload->FindRange(movedKey) && movedPayload->FindRange(RHI::BuildPackedDrawRangeKey(handles[1], 1u, resource.GetRawPtr())),
+			"explicit removals must affect only the new arena publication");
+
+		auto other = RHI::RHIScenePtr::Make();
+		record.m_topology = resource;
+		record.m_producerKey = 1000u;
+		other->AddInstance(record);
+		const auto otherState = capture(other);
+		auto versions = TSharedPtr<TVector<RHI::RHISceneVersionPtr>>::Make();
+		versions->Add((*replaced.m_sceneVersions)[0]);
+		versions->Add((*otherState.m_sceneVersions)[0]);
+		RHI::RHIPackedDrawSceneState pair{ versions, {}, replaced.m_configurationRevision };
+		auto reorderedVersions = TSharedPtr<TVector<RHI::RHISceneVersionPtr>>::Make();
+		reorderedVersions->Add((*versions)[1]);
+		reorderedVersions->Add((*versions)[0]);
+		RHI::RHIPackedDrawSceneState reordered{ reorderedVersions, {}, pair.m_configurationRevision };
+		changes.Gather(reordered, &pair, EMobilityType::Stationary);
+		Require(changes.m_updated.IsEmpty() && changes.m_removed.IsEmpty() && changes.m_numComparedRecords == 0u,
+			"scene identity, not vector position, must match independently retained producers");
+		changes.Gather(replaced, &pair, EMobilityType::Stationary);
+		Require(changes.m_updated.IsEmpty() && changes.m_removed.Num() == 1u && changes.m_removed[0].m_record->m_producerKey == 1000u,
+			"removing an entire producer scene must not erase another scene with the same handle slot");
+
+		auto recycledScene = RHI::RHIScenePtr::Make();
+		const auto retiredHandle = recycledScene->AddInstance(record);
+		Require(recycledScene->RemoveInstance(retiredHandle), "the generation fixture must retire its producer");
+		const auto retiredState = capture(recycledScene);
+		recycledScene->CollectGarbage();
+		const auto recycledHandle = recycledScene->AddInstance(record);
+		Require(recycledHandle.m_slot == retiredHandle.m_slot && recycledHandle.m_generation != retiredHandle.m_generation,
+			"the fixture must reuse a retired slot with a new generation");
+		const auto recycledState = capture(recycledScene);
+		changes.Gather(recycledState, &retiredState, EMobilityType::Stationary);
+		Require(changes.m_updated.Num() == 1u && changes.m_updated[0].m_handle == recycledHandle && changes.m_removed.IsEmpty(),
+			"an already removed range must be reintroduced with its new generation, not the stale key");
+	}
+
+	void TestConcurrentArenaPublications()
+	{
+		using Payload = RHI::TPackedDrawPacketPayload<uint32_t>;
+		using PayloadPtr = RHI::TPackedDrawPacketPayloadPtr<uint32_t>;
+		using Page = RHI::TPackedDrawArenaPage<uint32_t>;
+		static_assert(std::is_same_v<decltype(std::declval<PayloadPtr>().GetRawPtr()), const Payload*>);
+		static_assert(std::is_same_v<decltype(std::declval<PayloadPtr>()->m_arenaPages[0].GetRawPtr()), const Page*>);
+		static_assert(std::is_same_v<decltype(std::declval<PayloadPtr>()->m_arenaRangePages[0].GetRawPtr()),
+			const RHI::PackedDrawArenaRangePage*>);
+		static_assert(std::is_same_v<decltype(std::declval<PayloadPtr>()->m_arenaRangeIndices.GetRawPtr()),
+			const RHI::PackedDrawArenaRangeIndices*>);
+		static_assert(std::is_same_v<decltype(std::declval<RHI::PackedDrawArenaRange>().m_itemOffsets.GetRawPtr()),
+			const TVector<RHI::PackedDrawArenaItemOffset>*>);
+		static_assert(std::is_same_v<decltype(std::declval<RHI::PackedDrawArenaRange>().m_materialVersionRuns.GetRawPtr()),
+			const TVector<RHI::PackedDrawArenaMaterialRun>*>);
+
+		RHI::TPackedDrawPagedArenaCache<uint32_t> arena;
+		TVector<uint32_t> values;
+		TVector<uint64_t> keys;
+		for (uint32_t i = 0; i < Page::NumInstances; ++i)
+		{
+			values.Add(i);
+			keys.Add(i + 100u);
+		}
+		arena.BeginUpdate(1u, 0u, 0u);
+		Require(arena.ReplaceRange(1u, 0u, values, keys) && arena.ReplaceRange(2u, 0u, values, keys),
+			"the fixture must publish two independent arena pages");
+		const auto first = arena.EndUpdate();
+		std::barrier step(2);
+		std::atomic<bool> bValid = true;
+		constexpr uint32_t publications = 128u;
+		std::thread reader([&]()
+		{
+			for (uint32_t iteration = 0; iteration < publications; ++iteration)
+			{
+				step.arrive_and_wait();
+				for (uint32_t i = 0; i < Page::NumInstances; ++i)
+				{
+					uint32_t offset = 0;
+					if (!first->FindInstance(1u, keys[i], offset) || offset != i ||
+						first->m_arenaPages[0]->m_instances[i] != i ||
+						first->m_arenaPages[1]->m_instances[i] != i) bValid = false;
+				}
+				step.arrive_and_wait();
+			}
+		});
+		for (uint32_t revision = 1; revision <= publications; ++revision)
+		{
+			step.arrive_and_wait();
+			arena.BeginUpdate(1u, revision, revision);
+			values[0] = revision;
+			if (!arena.ReplaceRange(1u, revision, values, keys) || !arena.TryReuseRange(2u, 0u)) bValid = false;
+			const auto current = arena.EndUpdate();
+			if (current->m_arenaPages[0] == first->m_arenaPages[0] ||
+				current->m_arenaPages[1] != first->m_arenaPages[1] ||
+				current->m_arenaPages[0]->m_instances[0] != revision) bValid = false;
+			step.arrive_and_wait();
+		}
+		reader.join();
+		arena.Clear();
+		Require(bValid && first->m_arenaPages[0]->m_instances[0] == 0u,
+			"concurrent arena updates and cache release must preserve a retained payload's pages and lookup");
 	}
 
 	void TestMaterialVersionPublicationContract()
@@ -992,7 +1309,7 @@ namespace
 		for (size_t frame = 0u; frame < versions.size(); ++frame)
 		{
 			bindings[frame] = RHI::RHIShaderBindingSetPtr::Make();
-			bindings[frame]->GetOrAddShaderBinding("material")->m_vulkan.m_storageInstanceIndex =
+			bindings[frame]->GetOrAddShaderBinding("material"_h)->m_vulkan.m_storageInstanceIndex =
 				static_cast<uint32_t>(100u + frame);
 			material->SetBindings(bindings[frame]);
 			versions[frame] = material->GetVersion();
@@ -1119,33 +1436,26 @@ namespace
 	void TestDynamicSpatialRootIsolation()
 	{
 		RHI::RHISceneViewProxy proxy;
-		proxy.m_staticMeshEcs = 41u;
-		proxy.m_mobility = EMobilityType::Dynamic;
-		proxy.m_worldMatrix = glm::mat4(1.0f);
-		proxy.m_worldAabb = Math::AABB(
-			glm::vec3(0.0f, 0.0f, -5.0f),
-			glm::vec3(1.0f));
 		auto resource = RHI::RHISceneProxyResourcePtr::Make(std::move(proxy));
 		auto scene = RHI::RHIScenePtr::Make(3u);
 		RHI::RHISceneInstanceRecord record;
 		record.m_producerKey = 41u;
 		record.m_mobility = EMobilityType::Dynamic;
 		record.m_worldMatrix = glm::mat4(1.0f);
-		record.m_worldBounds = resource->m_proxy.m_worldAabb;
+		record.m_worldBounds = Math::AABB(glm::vec3(0.0f, 0.0f, -5.0f), glm::vec3(1.0f));
 		record.m_topology = resource;
 		const auto handle = scene->AddInstance(record);
 
-		auto spatial = RHI::RHISpatialSceneVersionPtr::Make();
+		auto spatial = TSharedPtr<RHI::RHISpatialSceneVersion>::Make();
 		spatial->m_scene = scene;
 		spatial->m_sceneVersion = scene->PublishVersion();
-		spatial->m_dynamicOctree =
-			TSharedPtr<RHI::RHISceneSpatialIndex>::Make(
-				glm::ivec3(0), 128, 4);
-		Require(spatial->m_dynamicOctree->Update(
+		auto index = TSharedPtr<RHI::RHISceneSpatialIndex>::Make(glm::ivec3(0), 128, 4);
+		Require(index->Update(
 			glm::ivec3(0, 0, -5),
 			glm::ivec3(1),
 			handle),
 			"the dynamic spatial fixture must publish its handle");
+		spatial->m_dynamicOctree = std::move(index);
 
 		RHI::RHISceneView view;
 		view.AddSceneVersion(spatial);
@@ -1156,7 +1466,7 @@ namespace
 			60.0f,
 			0.1f,
 			10.0f);
-		const auto visible = view.TraceScene(frustum, false);
+		const auto visible = view.TraceScene(frustum);
 		Require(visible.Num() == 1u && visible[0].m_handle == handle &&
 			visible[0].GetMobility() == EMobilityType::Dynamic &&
 			!spatial->m_staticOctree && !spatial->m_stationaryOctree,
@@ -1201,9 +1511,6 @@ namespace
 			"the LOD fixture must distinguish near and far instance coverage");
 
 		RHI::RHISceneViewProxy proxy;
-		proxy.m_worldMatrix = glm::mat4(1.0f);
-		proxy.m_worldAabb = Math::AABB(glm::vec3(0.0f, 0.0f, -11.0f),
-			glm::vec3(1.0f, 1.0f, 10.0f));
 		proxy.m_lodPolicy.m_bEnabled = true;
 		proxy.m_lodPolicy.m_minLod = 0u;
 		proxy.m_lodPolicy.m_maxLod = 1u;
@@ -1212,13 +1519,14 @@ namespace
 		proxy.m_instancedGroups.Add(group);
 		auto resource = RHI::RHISceneProxyResourcePtr::Make(std::move(proxy));
 
-		RHI::RHIVisibleSceneProxy cameraView;
-		cameraView.m_resource = resource.GetRawPtr();
+		RHI::RHISceneInstanceRecord record;
+		record.m_topology = resource;
+		record.m_worldBounds = Math::AABB(glm::vec3(0.0f, 0.0f, -11.0f), glm::vec3(1.0f, 1.0f, 10.0f));
+		RHI::RHIVisibleSceneProxy cameraView({}, record, *resource);
 		RHI::RHISceneViewSnapshot snapshot;
 		snapshot.m_proxies.Add(cameraView);
 		snapshot.m_shadowMapsToUpdate.Resize(2u);
-		RHI::RHIVisibleShadowCaster shadowView;
-		shadowView.m_resource = resource.GetRawPtr();
+		RHI::RHIVisibleShadowCaster shadowView({}, record, *resource);
 		for (auto& pass : snapshot.m_shadowMapsToUpdate)
 		{
 			pass.m_meshList.Add(shadowView);
@@ -1247,7 +1555,9 @@ namespace
 		biasedProxy.m_instancedGroups[0].m_instanceLodBiases = { 1, -1 };
 		auto biasedResource = RHI::RHISceneProxyResourcePtr::Make(std::move(biasedProxy));
 		RHI::RHISceneViewSnapshot biasedSnapshot;
-		cameraView.m_resource = biasedResource.GetRawPtr();
+		auto biasedRecord = record;
+		biasedRecord.m_topology = biasedResource;
+		cameraView = RHI::RHIVisibleSceneProxy({}, biasedRecord, *biasedResource);
 		biasedSnapshot.m_proxies.Add(cameraView);
 		biasedSnapshot.PrepareLods(view, projection);
 		Require(biasedSnapshot.ResolveInstancedMesh(biasedSnapshot.m_proxies[0], 0u, 0u, 0u) == lodMesh &&
@@ -1257,7 +1567,9 @@ namespace
 		distanceProxy.m_lodPolicy.m_cameraDistanceThresholds = { 10.0f };
 		distanceProxy.m_lodPolicy.m_screenCoverageThresholds = { 0.0f };
 		auto distanceResource = RHI::RHISceneProxyResourcePtr::Make(std::move(distanceProxy));
-		biasedSnapshot.m_proxies[0].m_resource = distanceResource.GetRawPtr();
+		auto distanceRecord = record;
+		distanceRecord.m_topology = distanceResource;
+		biasedSnapshot.m_proxies[0] = RHI::RHIVisibleSceneProxy({}, distanceRecord, *distanceResource);
 		biasedSnapshot.PrepareLods(view, projection);
 		Require(biasedSnapshot.ResolveInstancedMesh(biasedSnapshot.m_proxies[0], 0u, 0u, 0u) == baseMesh &&
 			biasedSnapshot.ResolveInstancedMesh(biasedSnapshot.m_proxies[0], 0u, 1u, 0u) == lodMesh,
@@ -1275,30 +1587,28 @@ namespace
 		auto missingLodMesh = RHI::RHIMeshPtr::Make();
 		missingLodMesh->m_lods = { lod1, {} };
 		RHI::RHISceneViewProxy source;
-		source.m_worldMatrix = glm::mat4(1.0f);
 		source.m_lodPolicy.m_bEnabled = true;
 		source.m_lodPolicy.m_cameraDistanceThresholds = { 5.0f, 15.0f };
 		source.m_meshes = { baseMesh, shorterMesh, missingLodMesh, {} };
-		source.m_shadowCaster = RHI::RHIShadowCasterProxyPtr::Make();
+		auto shadowCaster = TSharedPtr<RHI::RHIShadowCasterProxy>::Make();
 		for (const auto& mesh : { shorterMesh, baseMesh, missingLodMesh })
 		{
 			RHI::RHIShadowMeshProxy shadowMesh;
 			shadowMesh.m_mesh = mesh;
-			source.m_shadowCaster->m_meshes.Add(shadowMesh);
+			shadowCaster->m_meshes.Add(shadowMesh);
 		}
+		source.m_shadowCaster = std::move(shadowCaster);
 		auto resource = RHI::RHISceneProxyResourcePtr::Make(std::move(source));
 		RHI::RHISceneInstanceRecord farRecord;
+		farRecord.m_topology = resource;
 		farRecord.m_worldBounds = Math::AABB(glm::vec3(0.0f, 0.0f, -20.0f), glm::vec3(0.5f));
 		RHI::RHISceneInstanceRecord nearRecord;
+		nearRecord.m_topology = resource;
 		nearRecord.m_worldBounds = Math::AABB(glm::vec3(0.0f, 0.0f, -2.0f), glm::vec3(0.5f));
-		RHI::RHIVisibleSceneProxy visible;
-		visible.m_resource = resource.GetRawPtr();
-		visible.m_record = &farRecord;
+		RHI::RHIVisibleSceneProxy visible({}, farRecord, *resource);
 		RHI::RHISceneViewSnapshot snapshot;
 		snapshot.m_proxies.Add(visible);
-		RHI::RHIVisibleShadowCaster caster;
-		caster.m_resource = resource.GetRawPtr();
-		caster.m_record = &farRecord;
+		RHI::RHIVisibleShadowCaster caster({}, farRecord, *resource);
 		snapshot.m_shadowMapsToUpdate.Resize(2u);
 		for (auto& pass : snapshot.m_shadowMapsToUpdate)
 		{
@@ -1470,14 +1780,15 @@ namespace
 			RHI::RHIInstancedMeshGroup group;
 			group.m_materialTextureSamplers = proxy.m_materialTextureSamplers;
 			proxy.m_instancedGroups.Add(std::move(group));
-			proxy.m_shadowCaster = RHI::RHIShadowCasterProxyPtr::Make();
+			auto shadowCaster = TSharedPtr<RHI::RHIShadowCasterProxy>::Make();
 			for (const auto& textures : proxy.m_materialTextureSamplers)
 			{
 				RHI::RHIShadowMeshProxy mesh;
-				mesh.m_worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(2, 3, 4));
+				mesh.m_localMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(2, 3, 4));
 				mesh.m_materialTextureSamplers = textures;
-				proxy.m_shadowCaster->m_meshes.Add(std::move(mesh));
+				shadowCaster->m_meshes.Add(std::move(mesh));
 			}
+			proxy.m_shadowCaster = std::move(shadowCaster);
 			return proxy;
 		};
 		auto requireIndices = [](const TVector<uint32_t>& textures, const TVector<uint32_t>& indices)
@@ -1485,14 +1796,13 @@ namespace
 			Require(textures == indices,
 				"published material indices must be sorted, unique, bounded and include the default slot");
 		};
-		for (const auto& world : { glm::mat4(1.0f), glm::mat4(0.0f) })
+		for (const auto& world : { glm::mat4(1.0f), glm::mat4(0.0f), glm::scale(glm::mat4(1.0f), glm::vec3(-2, 3, 4)) })
 		{
 			auto source = makeProxy(false);
-			source.m_worldMatrix = world;
 			const auto originalTextures = source.m_materialTextureSamplers;
 			const auto originalShadow = source.m_shadowCaster;
 			const auto originalShadowTextures = originalShadow->m_meshes[0].m_materialTextureSamplers;
-			const auto originalShadowMatrix = originalShadow->m_meshes[0].m_worldMatrix;
+			const auto originalShadowMatrix = originalShadow->m_meshes[0].m_localMatrix;
 			auto copied = RHI::RHISceneProxyResourcePtr::Make(source);
 			Require(source.m_materialTextureSamplers == originalTextures,
 				"publication must not rewrite the producer's texture metadata");
@@ -1509,11 +1819,16 @@ namespace
 				}
 				Require(proxy.m_shadowCaster != originalShadow &&
 					originalShadow->m_meshes[0].m_materialTextureSamplers == originalShadowTextures &&
-					originalShadow->m_meshes[0].m_worldMatrix == originalShadowMatrix,
-					"copy and move publication must isolate shared shadow metadata even with a singular world transform");
+					originalShadow->m_meshes[0].m_localMatrix == originalShadowMatrix,
+					"copy and move publication must isolate shared shadow metadata");
+				RHI::RHISceneInstanceRecord record;
+				record.m_worldMatrix = world;
+				record.m_topology = resource;
+				RHI::RHIVisibleShadowCaster visible({}, record, *resource);
+				Require(visible.ResolveMeshWorldMatrix(proxy.m_shadowCaster->m_meshes[0]) == world * originalShadowMatrix,
+					"local shadow topology must compose directly with singular and mirrored instance transforms");
 			}
 			auto alternate = makeProxy(true);
-			alternate.m_worldMatrix = world;
 			auto equivalent = RHI::RHISceneProxyResourcePtr::Make(alternate);
 			Require(copied->m_mainRevision == equivalent->m_mainRevision &&
 				copied->m_shadowRevision == equivalent->m_shadowRevision &&
@@ -1521,7 +1836,9 @@ namespace
 				copied->m_shadowRevision == moved->m_shadowRevision,
 				"permutations, duplicates, invalid indices and implicit slot zero must share publication revisions");
 			alternate.m_materialTextureSamplers[0] = { 0u, 4u, 9u, Limit - 1u };
-			alternate.m_shadowCaster->m_meshes[0].m_materialTextureSamplers = alternate.m_materialTextureSamplers[0];
+			auto replacementShadow = TSharedPtr<RHI::RHIShadowCasterProxy>::Make(*alternate.m_shadowCaster);
+			replacementShadow->m_meshes[0].m_materialTextureSamplers = alternate.m_materialTextureSamplers[0];
+			alternate.m_shadowCaster = std::move(replacementShadow);
 			auto changed = RHI::RHISceneProxyResourcePtr::Make(std::move(alternate));
 			Require(changed->m_mainRevision != copied->m_mainRevision &&
 				changed->m_shadowRevision != copied->m_shadowRevision,
@@ -1695,33 +2012,23 @@ namespace
 
 	}
 
-	void TestDepthPrepassSkinningContract()
+	void TestUnskinnedInstanceDefaults()
 	{
-		const RHI::RHISceneViewProxy unskinnedProxy{};
-		Require(unskinnedProxy.m_skeletonOffset ==
+		const RHI::RHISceneInstanceRecord unskinnedInstance{};
+		Require(unskinnedInstance.m_skeletonOffset ==
 			(std::numeric_limits<uint32_t>::max)(),
-			"scene proxies without an animator must use the invalid skeleton offset so meshes with unused bone attributes stay rigid in the depth pass");
+			"instances without an animator must use the invalid skeleton offset so meshes with unused bone attributes stay rigid in the depth pass");
 
 	}
 
-	void TestPathTracerThicknessSamplerContract()
+	void TestPathTracerThicknessSlotContract()
 	{
 		Raytracing::Material material{};
 		Require(!material.HasThicknessTexture(),
 			"a path-tracing material must default to no thickness texture");
 		material.m_thicknessIndex = 0;
-		material.m_thicknessFactor = 2.0f;
 		Require(material.HasThicknessTexture(),
 			"a valid thickness texture slot must be detected");
-
-		Raytracing::CombinedSampler2D sampler;
-		sampler.Initialize<vec3>(1u, 1u, 3u);
-		sampler.SetPixel(0u, 0u, vec3(0.25f, 0.4f, 0.75f));
-		const float sampledThickness = material.m_thicknessFactor *
-			sampler.Sample<vec3>(vec2(0.5f)).g;
-		Require(std::abs(sampledThickness - 0.8f) < 0.0001f,
-			"glTF thickness must use the texture's green channel");
-
 	}
 
 	void TestPathTracerMaterialContentRevisionContract()
@@ -1734,7 +2041,7 @@ namespace
 		uint64_t revision = material->GetContentRevision();
 		const uint64_t globalRevision = Material::GetGlobalContentRevision();
 		uint64_t renderMetadataRevision = material->GetRenderMetadataRevision();
-		material->SetUniform("material.transmissionFactor", 1.0f);
+		material->SetUniform("material.transmissionFactor"_h, 1.0f);
 		Require(material->GetContentRevision() > revision,
 			"changing a scalar uniform must advance the material content revision");
 		Require(Material::GetGlobalContentRevision() > globalRevision,
@@ -1743,14 +2050,14 @@ namespace
 			"main-pass-only uniforms must not invalidate cached depth, shadow, or scene topology");
 
 		revision = material->GetContentRevision();
-		material->SetUniform("material.attenuationColor", glm::vec4(0.9f, 0.6f, 0.1f, 1.0f));
+		material->SetUniform("material.attenuationColor"_h, glm::vec4(0.9f, 0.6f, 0.1f, 1.0f));
 		Require(material->GetContentRevision() > revision,
 			"changing a vector uniform must advance the material content revision");
 		Require(material->GetRenderMetadataRevision() == renderMetadataRevision,
 			"ordinary vector uniforms must remain material-version-only changes");
 
 		revision = material->GetContentRevision();
-		material->SetUniform("material.baseColorFactor", glm::vec4(0.5f));
+		material->SetUniform("material.baseColorFactor"_h, glm::vec4(0.5f));
 		Require(material->GetContentRevision() > revision &&
 			material->GetRenderMetadataRevision() > renderMetadataRevision,
 			"masked depth alpha metadata must invalidate cached proxy metadata");
@@ -1758,7 +2065,7 @@ namespace
 
 		revision = material->GetContentRevision();
 		material->SetUniform(
-			"material.baseColorFactor",
+			"material.baseColorFactor"_h,
 			glm::vec4(0.8f, 0.7f, 0.6f, 0.5f));
 		Require(material->GetContentRevision() > revision,
 			"changing base color RGB must advance the material binding version");
@@ -1767,25 +2074,25 @@ namespace
 
 		revision = material->GetContentRevision();
 		material->SetUniform(
-			"material.baseColorFactor",
+			"material.baseColorFactor"_h,
 			glm::vec4(0.8f, 0.7f, 0.6f, 0.5f));
 		Require(material->GetContentRevision() == revision,
 			"assigning the same material uniform must not publish a redundant revision");
 
 		revision = material->GetContentRevision();
-		material->SetUniform("material.alphaCutoff", 0.5f);
+		material->SetUniform("material.alphaCutoff"_h, 0.5f);
 		Require(material->GetContentRevision() > revision,
 			"adding an explicit alpha cutoff must advance the material binding version");
 		Require(material->GetRenderMetadataRevision() == renderMetadataRevision,
 			"the default alpha cutoff must not invalidate equivalent proxy metadata");
 
-		material->SetUniform("material.alphaCutoff", 0.35f);
+		material->SetUniform("material.alphaCutoff"_h, 0.35f);
 		Require(material->GetRenderMetadataRevision() > renderMetadataRevision,
 			"changing the effective alpha cutoff must invalidate depth and shadow metadata");
 		renderMetadataRevision = material->GetRenderMetadataRevision();
 
 		revision = material->GetContentRevision();
-		material->SetSampler("thicknessSampler", texture);
+		material->SetSampler("thicknessSampler"_h, texture);
 		Require(material->GetContentRevision() > revision,
 			"changing a sampler must advance the material content revision");
 		Require(material->GetRenderMetadataRevision() > renderMetadataRevision,
@@ -1814,7 +2121,7 @@ namespace
 {
 	void TestWorkspaceFrameGraphNodeExports()
 	{
-		const std::pair<const char*, const char*> names[] = {
+		const std::pair<StringHash, std::string_view> names[] = {
 			{ Framegraph::BlitNode::GetName(), "Blit" },
 			{ Framegraph::BloomNode::GetName(), "Bloom" },
 			{ Framegraph::CopyTextureToRamNode::GetName(), "CopyTextureToRam" },
@@ -1824,7 +2131,7 @@ namespace
 		};
 		for (const auto& [actual, expected] : names)
 		{
-			Require(actual && std::string(actual) == expected,
+			Require(!actual.IsEmpty() && actual.ToString() == expected,
 				"workspace consumers must resolve frame-graph node identities across the runtime library boundary");
 		}
 	}
@@ -1859,13 +2166,13 @@ namespace
 			blend.alphaBlendOp == VK_BLEND_OP_ADD, "Fog must composite RGB without changing HDR alpha metadata");
 
 		Framegraph::AtmosphericFogNode node;
-		Require(std::string(Framegraph::AtmosphericFogNode::GetName()) == "AtmosphericFog" &&
+		Require(Framegraph::AtmosphericFogNode::GetName() == "AtmosphericFog"_h &&
 			node.GetDebugName() == "AtmosphericFog", "Fog node identity must be accessible across the runtime library boundary");
 		RHI::RHISceneViewSnapshot scene{};
 		// A disabled or invalid optional node must need no renderer/resources and issue no draw.
 		for (float density : { 0.0f, -1.0f, std::numeric_limits<float>::quiet_NaN() })
 		{
-			node.SetVec4("fog", glm::vec4(density, 0, 0, 0));
+			node.SetVec4("fog"_h, glm::vec4(density, 0, 0, 0));
 			node.Process(nullptr, nullptr, nullptr, scene);
 			Require(node.GetDrawCallStats().m_numBatches == 0, "Disabled fog must not submit a pass");
 		}
@@ -1889,14 +2196,234 @@ namespace
 	}
 }
 
-int main()
+namespace
 {
+	template<typename Instance>
+	void BenchmarkDensePackets(std::string_view name)
+	{
+		using Clock = std::chrono::steady_clock;
+		constexpr uint32_t numRanges = 10000u;
+		constexpr uint32_t instancesPerRange = 4u;
+		constexpr uint32_t repetitions = 9u;
+		TVector<Instance> values(instancesPerRange);
+		for (auto& value : values)
+		{
+			value.model = glm::mat4(1.0f);
+			value.sphereBounds = glm::vec4(1.0f);
+		}
+		TVector<uint64_t> keys(instancesPerRange);
+		for (uint32_t numViews : { 1u, 4u })
+		{
+			RHI::TPackedDrawPagedArenaCache<Instance> cache;
+			std::array<std::array<double, repetitions>, 2> times{};
+			for (uint32_t iteration = 0; iteration <= repetitions; ++iteration)
+			{
+				values[0].model[3].x = static_cast<float>(iteration);
+				std::array<RHI::TPackedDrawPacket<Instance>, 4> arenaPackets;
+				std::array<RHI::TPackedDrawPacket<Instance>, 4> packedPackets;
+				const auto arenaStart = Clock::now();
+				cache.BeginUpdate(1u, iteration, iteration);
+				for (uint32_t range = 0; range < numRanges; ++range)
+				{
+					for (uint32_t i = 0; i < instancesPerRange; ++i) keys[i] = uint64_t(range) * instancesPerRange + i;
+					Require(cache.ReplaceRange(range, iteration, values, keys), "dense update must succeed");
+				}
+				const auto payload = cache.EndUpdate();
+				for (uint32_t view = 0; view < numViews; ++view)
+				{
+					auto& packet = arenaPackets[view];
+					packet.UseSharedArenaPayload(EMobilityType::Static, payload);
+					for (uint32_t range = 0; range < numRanges; ++range)
+						for (uint32_t i = 0; i < instancesPerRange; ++i)
+							Require(packet.AddArenaView({}, {}, range, uint64_t(range) * instancesPerRange + i),
+								"dense view must resolve every instance");
+					packet.Finalize(false);
+				}
+				const auto arenaEnd = Clock::now();
+				const auto packedStart = Clock::now();
+				for (uint32_t view = 0; view < numViews; ++view)
+				{
+					auto& packet = packedPackets[view];
+					for (uint32_t range = 0; range < numRanges; ++range)
+						for (uint32_t i = 0; i < instancesPerRange; ++i)
+							packet.Add({}, {}, values[i], uint64_t(range) * instancesPerRange + i, EMobilityType::Static);
+					packet.Finalize(false);
+				}
+				const auto packedEnd = Clock::now();
+				for (uint32_t view = 0; view < numViews; ++view)
+				{
+					Require(arenaPackets[view].GetNumDrawInstances() == numRanges * instancesPerRange &&
+						packedPackets[view].GetNumDrawInstances() == arenaPackets[view].GetNumDrawInstances() &&
+						packedPackets[view].GetInstanceIndices() == arenaPackets[view].GetInstanceIndices(),
+						"dense paths must emit the same instances in the same order for every view");
+					const auto& packed = packedPackets[view].GetPayload(EMobilityType::Static).m_instances;
+					for (uint32_t i = 0; i < numRanges * instancesPerRange; ++i)
+						Require(payload->m_arenaPages[i / RHI::TPackedDrawArenaPage<Instance>::NumInstances]->
+							m_instances[i % RHI::TPackedDrawArenaPage<Instance>::NumInstances] == packed[i] &&
+							packed[i] == values[i % instancesPerRange], "dense payload fields must match outside the timed section");
+				}
+				if (iteration > 0u)
+				{
+					times[0][iteration - 1u] = std::chrono::duration<double, std::micro>(arenaEnd - arenaStart).count();
+					times[1][iteration - 1u] = std::chrono::duration<double, std::micro>(packedEnd - packedStart).count();
+				}
+			}
+			std::cout << name << ',' << sizeof(Instance) << ',' << numViews;
+			for (auto& samples : times)
+			{
+				std::sort(samples.begin(), samples.end());
+				std::cout << ',' << samples[repetitions / 2u];
+			}
+			std::cout << '\n';
+		}
+	}
+
+	void BenchmarkPagedArena()
+	{
+		using Clock = std::chrono::steady_clock;
+		using Instance = std::array<uint32_t, 32>;
+		using Cache = RHI::TPackedDrawPagedArenaCache<Instance>;
+		constexpr uint32_t numRanges = 10000u;
+		constexpr uint32_t instancesPerRange = 4u;
+		constexpr uint32_t repetitions = 9u;
+		TVector<Instance> values(instancesPerRange);
+		TVector<uint64_t> keys{ 0u, 1u, 2u, 3u };
+		std::cout << "ranges,changed,begin_us,producers_us,end_us,total_us,copied_ranges,changed_pages,dirty_page_bytes\n";
+		for (uint32_t changed : { 1u, 100u, numRanges })
+		{
+			Cache cache;
+			cache.BeginUpdate(1u, 0u, 0u);
+			for (uint32_t range = 0; range < numRanges; ++range)
+				Require(cache.ReplaceRange(range, 0u, values, keys), "benchmark range must initialize");
+			auto previous = cache.EndUpdate();
+			std::array<std::array<double, repetitions>, 4> times{};
+			uint32_t copiedRanges = 0u;
+			uint32_t changedPages = 0u;
+			for (uint32_t iteration = 0; iteration < repetitions; ++iteration)
+			{
+				const uint64_t revision = iteration + 1u;
+				values[0][0] = static_cast<uint32_t>(revision);
+				const auto start = Clock::now();
+				cache.BeginUpdate(1u, revision, revision);
+				const auto begun = Clock::now();
+				for (uint32_t range = 0; range < numRanges; ++range)
+				{
+					// Spread changes across the arena, as independent scene producers do.
+					const bool bChanged = range % (numRanges / changed) == 0u;
+					if (bChanged)
+						Require(cache.ReplaceRange(range, revision, values, keys), "benchmark update must succeed");
+					else
+						Require(cache.TryReuseRange(range, 0u), "benchmark unchanged range must remain reusable");
+				}
+				const auto replaced = Clock::now();
+				auto current = cache.EndUpdate();
+				const auto ended = Clock::now();
+				auto micros = [](auto duration) { return std::chrono::duration<double, std::micro>(duration).count(); };
+				times[0][iteration] = micros(begun - start);
+				times[1][iteration] = micros(replaced - begun);
+				times[2][iteration] = micros(ended - replaced);
+				times[3][iteration] = micros(ended - start);
+				copiedRanges = changedPages = 0u;
+				for (uint32_t range = 0; range < numRanges; ++range)
+				{
+					const auto* oldRange = previous->FindRange(range);
+					const auto* newRange = current->FindRange(range);
+					Require(oldRange && newRange,
+						"benchmark publications must retain all ranges");
+					copiedRanges += oldRange != newRange;
+				}
+				for (uint32_t page = 0; page < current->m_arenaPages.Num(); ++page)
+					changedPages += previous->m_arenaPages[page] != current->m_arenaPages[page];
+				previous = std::move(current);
+			}
+			std::cout << numRanges << ',' << changed;
+			for (auto& samples : times)
+			{
+				std::sort(samples.begin(), samples.end());
+				std::cout << ',' << samples[repetitions / 2u];
+			}
+			std::cout << ',' << copiedRanges << ',' << changedPages << ','
+				<< uint64_t(changedPages) * Cache::PageSize * sizeof(Instance) << '\n';
+		}
+		std::cout << "delta_ranges,changed,compared_slots,producer_visits,total_us\n";
+		for (uint32_t changed : { 1u, 100u, numRanges })
+		{
+			auto scene = RHI::RHIScenePtr::Make();
+			const auto topology = RHI::RHISceneProxyResourcePtr::Make(RHI::RHISceneViewProxy{});
+			RHI::RHISceneInstanceRecord record;
+			record.m_mobility = EMobilityType::Stationary;
+			record.m_topology = topology;
+			TVector<RHI::RenderInstanceHandle> handles;
+			for (uint32_t i = 0; i < numRanges; ++i)
+			{
+				record.m_producerKey = i;
+				handles.Add(scene->AddInstance(record));
+			}
+			Cache cache;
+			RHI::RHIPackedDrawSceneChanges changes;
+			std::array<double, repetitions> times{};
+			uint32_t comparedRecords = 0u;
+			uint32_t producerVisits = 0u;
+			for (uint32_t iteration = 0; iteration <= repetitions; ++iteration)
+			{
+				if (iteration > 0u)
+				{
+					for (uint32_t i = 0; i < numRanges; i += numRanges / changed)
+					{
+						record.m_producerKey = i;
+						record.m_worldMatrix[3].x = static_cast<float>(iteration);
+						Require(scene->UpdateInstance(handles[i], record, RHI::ToMask(RHI::ESceneChangeBit::Transform)),
+							"benchmark scene mutation must succeed");
+					}
+				}
+				auto versions = TSharedPtr<TVector<RHI::RHISceneVersionPtr>>::Make();
+				versions->Add(scene->PublishVersion());
+				const RHI::RHIPackedDrawSceneState state{ std::move(versions) };
+				values[0][0] = iteration;
+				const auto started = Clock::now();
+				changes.Gather(state, cache.GetSceneState(1u), EMobilityType::Stationary);
+				cache.BeginUpdate(1u, iteration, iteration, state);
+				for (const auto& proxy : changes.m_updated)
+				{
+					const auto rangeKey = RHI::BuildPackedDrawRangeKey(proxy.m_handle, proxy.m_record->m_producerKey, proxy.m_resource);
+					Require(!cache.TryReuseRange(rangeKey, iteration) && cache.ReplaceRange(rangeKey, iteration, values, keys),
+						"benchmark must rebuild each changed producer exactly once");
+				}
+				const auto payload = cache.EndUpdate();
+				const auto ended = Clock::now();
+				producerVisits = static_cast<uint32_t>(changes.m_updated.Num());
+				comparedRecords = changes.m_numComparedRecords;
+				Require(payload->m_arenaRangeIndices->Num() == numRanges &&
+					producerVisits == (iteration == 0u ? numRanges : changed) && changes.m_removed.IsEmpty(),
+					"delta benchmark must retain all ranges and visit exactly the changed producers");
+				if (iteration > 0u) times[iteration - 1u] = std::chrono::duration<double, std::micro>(ended - started).count();
+				changes.Clear();
+			}
+			std::sort(times.begin(), times.end());
+			std::cout << numRanges << ',' << changed << ',' << comparedRecords << ',' << producerVisits << ','
+				<< times[repetitions / 2u] << '\n';
+		}
+		std::cout << "dense_pass,instance_bytes,views,paged_us,packed_us\n";
+		BenchmarkDensePackets<Framegraph::RenderSceneNode::PerInstanceData>("main");
+		BenchmarkDensePackets<DepthPrepassNode::PerInstanceData>("depth");
+		BenchmarkDensePackets<ShadowPrepassNode::PerInstanceData>("shadow");
+	}
+}
+
+int main(int argc, char** argv)
+{
+	if (argc == 2 && std::string_view(argv[1]) == "--benchmark-arena")
+	{
+		BenchmarkPagedArena();
+		return 0;
+	}
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "WorkspaceFrameGraphNodeExports", TestWorkspaceFrameGraphNodeExports },
 		{ "AtmosphericFogBlendAndDisabledPass", TestAtmosphericFogBlendAndDisabledPass },
 		{ "ShadowDistanceSettings", TestShadowDistanceSettings },
 		{ "RendererGpuCullingPassContract", TestRendererGpuCullingPassContract },
 		{ "CurrentDepthPyramidReadiness", TestCurrentDepthPyramidReadiness },
+		{ "FrameGraphSequenceMappings", TestFrameGraphSequenceMappings },
 		{ "GpuCullingDispatchOrdering", TestGpuCullingDispatchOrdering },
 		{ "QueueShaderStagesUseCapabilities", TestQueueShaderStagesUseCapabilities },
 		{ "MotionMrtFrameGraphContract", TestMotionMrtFrameGraphContract },
@@ -1906,6 +2433,9 @@ int main()
 		{ "PackedDrawBatchInstanceLimit", TestPackedDrawBatchInstanceLimit },
 		{ "PackedDrawMixedMaterialSort", TestPackedDrawMixedMaterialSort },
 		{ "MaterialVersionPublicationContract", TestMaterialVersionPublicationContract },
+		{ "ConcurrentArenaPublications", TestConcurrentArenaPublications },
+		{ "PagedArenaMetadataPublication", TestPagedArenaMetadataPublication },
+		{ "PackedDrawSceneChanges", TestPackedDrawSceneChanges },
 		{ "MaterialVersionsSurviveConcurrentWorldUpdates", TestMaterialVersionsSurviveConcurrentWorldUpdates },
 		{ "PackedDrawEqualKeysPreserveBindingOrder", TestPackedDrawEqualKeysPreserveBindingOrder },
 		{ "DynamicSpatialRootIsolation", TestDynamicSpatialRootIsolation },
@@ -1919,8 +2449,8 @@ int main()
 		{ "DepthSamplingBarrierScopes", TestDepthSamplingBarrierScopes },
 		{ "ComputeWriteBarrierOverloadDirections", TestComputeWriteBarrierOverloadDirections },
 		{ "BakedVolumeScalePerInstanceLayoutContract", TestBakedVolumeScalePerInstanceLayoutContract },
-		{ "DepthPrepassSkinningContract", TestDepthPrepassSkinningContract },
-		{ "PathTracerThicknessSamplerContract", TestPathTracerThicknessSamplerContract },
+		{ "UnskinnedInstanceDefaults", TestUnskinnedInstanceDefaults },
+		{ "PathTracerThicknessSlotContract", TestPathTracerThicknessSlotContract },
 		{ "PathTracerMaterialContentRevisionContract", TestPathTracerMaterialContentRevisionContract },
 	};
 

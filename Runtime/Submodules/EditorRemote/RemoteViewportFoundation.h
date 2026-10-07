@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <compare>
@@ -584,7 +585,7 @@ namespace Sailor::EditorRemote
 	class SessionStateMachine
 	{
 	public:
-		SessionState GetState() const { return m_state; }
+		SessionState GetState() const { return m_state.load(std::memory_order_relaxed); }
 
 		Failure TransitionTo(SessionState nextState)
 		{
@@ -648,7 +649,8 @@ namespace Sailor::EditorRemote
 		}
 
 	private:
-		SessionState m_state = SessionState::Created;
+		// Transitions have one owner; status readers do not need the transport lock.
+		std::atomic<SessionState> m_state{ SessionState::Created };
 	};
 
 	enum class GuardDecision : uint8_t

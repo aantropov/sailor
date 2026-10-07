@@ -39,7 +39,7 @@ namespace Sailor
 		PhysicsECS(TUniquePtr<Physics::PhysicsWorld> physicsWorld, Tasks::Scheduler& scheduler);
 		~PhysicsECS() override;
 
-		Tasks::ITaskPtr Tick(float deltaTime) override;
+		void Tick(float deltaTime) override;
 		void EndPlay() override;
 		uint32_t GetOrder() const override { return 50; }
 
@@ -77,6 +77,7 @@ namespace Sailor
 			const glm::quat& rotation,
 			const glm::vec3& scale,
 			uint32_t& outBodyId);
+		bool SetExternalBodyTransform(uint32_t bodyId, const glm::vec3& position, const glm::quat& rotation);
 		void DestroyExternalBody(uint32_t bodyId);
 
 		void SetFixedDeltaTime(float value);

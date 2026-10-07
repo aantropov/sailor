@@ -4,12 +4,14 @@
 #include "Sailor.h"
 #include "Tasks/Scheduler.h"
 #include "Tasks/Tasks.h"
+#include "Workspace/WorkspacePathEncoding.h"
 
 #include <filesystem>
 #include <utility>
 
 using namespace Sailor;
 using namespace Sailor::ShaderCacheInternal;
+using namespace Sailor::Workspace;
 
 bool ShaderCache::SweepUnreferencedArtifactsLocked(const ShaderCacheData& committedSnapshot, std::string& outDiagnostic)
 {
@@ -48,16 +50,15 @@ bool ShaderCache::SweepUnreferencedArtifactsLocked(const ShaderCacheData& commit
 			{
 				if (metadata->IsPresent())
 				{
-					whitelist.Insert(GetArtifactPathLocked(entry, kind, false).lexically_normal().generic_string());
+					whitelist.Insert(PathToUtf8(GetArtifactPathLocked(entry, kind, false).lexically_normal()));
 					if (m_bSavePrecompiledGlsl)
 					{
-						whitelist.Insert(GetShaderFilepath(GetPrecompiledFolderLocked(),
+						whitelist.Insert(PathToUtf8(GetShaderFilepath(GetPrecompiledFolderLocked(),
 							entry.m_fileId,
 							entry.m_permutation,
 							kind,
 							PrecompiledShaderFileExtension)
-								.lexically_normal()
-								.generic_string());
+								.lexically_normal()));
 					}
 				}
 			}
@@ -65,7 +66,7 @@ bool ShaderCache::SweepUnreferencedArtifactsLocked(const ShaderCacheData& commit
 			{
 				if (metadata->IsPresent())
 				{
-					whitelist.Insert(GetArtifactPathLocked(entry, kind, true).lexically_normal().generic_string());
+					whitelist.Insert(PathToUtf8(GetArtifactPathLocked(entry, kind, true).lexically_normal()));
 				}
 			}
 		}
@@ -81,7 +82,7 @@ bool ShaderCache::SweepUnreferencedArtifactsLocked(const ShaderCacheData& commit
 			iterator.increment(error))
 		{
 			const auto& path = iterator->path();
-			if (iterator->is_regular_file(error) && !whitelist.Contains(path.lexically_normal().generic_string()))
+			if (iterator->is_regular_file(error) && !whitelist.Contains(PathToUtf8(path.lexically_normal())))
 			{
 				std::string diagnostic;
 				if (!RemoveOwnedArtifact(m_cacheRoot, folder, path, diagnostic))
@@ -94,7 +95,7 @@ bool ShaderCache::SweepUnreferencedArtifactsLocked(const ShaderCacheData& commit
 		if (error)
 		{
 			AppendDiagnostic(outDiagnostic,
-				"Cannot sweep shader cache directory '" + folder.generic_string() + "': " + error.message());
+				"Cannot sweep shader cache directory '" + PathToUtf8(folder) + "': " + error.message());
 			bSuccess = false;
 		}
 	}

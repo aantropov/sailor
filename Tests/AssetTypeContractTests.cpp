@@ -8,6 +8,7 @@
 #include "AssetRegistry/Landscape/LandscapeVegetationAsset.h"
 #include "AssetRegistry/Material/MaterialAssetInfo.h"
 #include "AssetRegistry/Model/ModelAssetInfo.h"
+#include "AssetRegistry/Model/GeneratedModelAssetMetadata.h"
 #include "AssetRegistry/Prefab/PrefabAssetInfo.h"
 #include "AssetRegistry/Shader/ShaderAssetInfo.h"
 #include "AssetRegistry/Texture/TextureAssetInfo.h"
@@ -20,6 +21,7 @@
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 using namespace Sailor;
 
@@ -42,11 +44,11 @@ REFL_AUTO(
 
 namespace
 {
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -66,11 +68,11 @@ namespace
 		throw std::runtime_error("the cold asset catalog omits LandscapeVegetationAssetInfo");
 	}
 
-	YAML::Node FindAsset(const YAML::Node& catalog, const std::string& name)
+	YAML::Node FindAsset(const YAML::Node& catalog, std::string_view name)
 	{
 		for (const auto& type : catalog["assetTypes"])
 		{
-			if (type["typename"].as<std::string>() == name)
+			if (type["typename"].as<std::string_view>() == name)
 			{
 				return type;
 			}
@@ -216,13 +218,44 @@ namespace
 		Require(TypeInfo::GetReflectedEnumTypeName<AssetTypeFixture::EImportMode>() ==
 			"enum AssetTypeFixture::EImportMode", "enum names must retain the declaring namespace");
 	}
+
+	void TestBorrowedMetadataNames()
+	{
+		static_assert(NormalizeAssetInfoFieldName("m_assetFilename") == "filename");
+		static_assert(NormalizeAssetInfoFieldName("m_gain") == "gain");
+		static_assert(NormalizeAssetInfoFieldName("gain") == "gain");
+		const char field[] = { 'm', '_', 'g', 'a', 'i', 'n', 'X' };
+		const auto name = NormalizeAssetInfoFieldName(std::string_view(field, 6));
+		Require(name == "gain" && name.data() == field + 2,
+			"field-name normalization must borrow only the requested characters");
+
+		YAML::Node metadata, texture, animation;
+		const FileId id = FileId::CreateNewFileId();
+		{
+			std::string text = "prefix:Ship.gltf:suffix";
+			const std::string_view filename = std::string_view(text).substr(7, 9);
+			metadata = CreateAssetInfoMetadata<ModelAssetInfo>(id, filename);
+			texture = GeneratedModelAssetMetadata::CreateTexture(id, filename, 2);
+			animation = GeneratedModelAssetMetadata::CreateAnimation(id, filename, 3, 1);
+			text.assign(1024, 'x');
+		}
+		for (const auto& node : { metadata, texture, animation })
+		{
+			Require(node["filename"].Scalar() == "Ship.gltf" && node["fileId"].Scalar() == id.ToString(),
+				"metadata must own readable names after the borrowed input is replaced and destroyed");
+		}
+		Require(texture["glbTextureIndex"].as<uint32_t>() == 2 &&
+			animation["animationIndex"].as<uint32_t>() == 3 && animation["skinIndex"].as<uint32_t>() == 1,
+			"borrowed filename input must preserve generated-asset metadata");
+	}
 }
 
 int main()
 {
 	int failures = 0;
 	for (const auto test : { &TestColdVegetationCatalog, &TestQualifiedEnumName, &TestHandlerCatalogParity,
-		&TestAnimationDoesNotClaimModelFiles, &TestAssetSchemaOrderAndIsolation, &TestNewRegisteredAsset })
+		&TestAnimationDoesNotClaimModelFiles, &TestAssetSchemaOrderAndIsolation, &TestNewRegisteredAsset,
+		&TestBorrowedMetadataNames })
 	{
 		try
 		{

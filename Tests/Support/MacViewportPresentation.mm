@@ -1,5 +1,7 @@
 #import <QuartzCore/CAMetalLayer.h>
 #import <Metal/Metal.h>
+#import <QuartzCore/CATransaction.h>
+#import <Foundation/Foundation.h>
 
 #include "MacViewportPresentation.h"
 #include "Sailor.h"
@@ -7,17 +9,70 @@
 #include "EditorEngineProtocolInternal.h"
 #include "EditorEngineProtocolLifecycle.h"
 #include "Protocol/Generated/editor_engine.pb.h"
+#include "Platform/Win32/Input.h"
 #include "Submodules/EditorRemote/RemoteViewportMacTransport.h"
+#include "Tasks/Scheduler.h"
+#include "Tasks/Tasks.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <condition_variable>
 #include <future>
 #include <iostream>
 #include <stdexcept>
 #include <thread>
 
 extern "C" SAILOR_SHARED_API void SailorProtocolFreeBuffer(uint8_t* buffer) noexcept;
+extern "C" SAILOR_SHARED_API int32_t SailorProtocolSetMacViewportHost(uint64_t viewportId, uintptr_t layer) noexcept;
+
+struct HostBindGate
+{
+	std::mutex m_mutex;
+	std::condition_variable m_changed;
+	bool m_bIsEntered = false;
+	bool m_bIsReleased = false;
+};
+
+@interface HostLifetimeLayer : CAMetalLayer
+{
+@public
+	Sailor::TSharedPtr<std::atomic<uint32_t>> m_releases;
+	Sailor::TSharedPtr<HostBindGate> m_gate;
+	bool m_bBlockRetain;
+}
+@end
+
+@implementation HostLifetimeLayer
+- (id)retain
+{
+	id value = [super retain];
+	if (m_bBlockRetain && m_gate)
+	{
+		std::unique_lock lock(m_gate->m_mutex);
+		m_gate->m_bIsEntered = true;
+		m_gate->m_changed.notify_all();
+		m_gate->m_changed.wait(lock, [&]() { return m_gate->m_bIsReleased; });
+	}
+	return value;
+}
+- (id<MTLDevice>)device
+{
+	if (m_gate)
+	{
+		std::unique_lock lock(m_gate->m_mutex);
+		m_gate->m_bIsEntered = true;
+		m_gate->m_changed.notify_all();
+		m_gate->m_changed.wait(lock, [&]() { return m_gate->m_bIsReleased; });
+	}
+	return [super device];
+}
+- (void)dealloc
+{
+	if (m_releases) ++*m_releases;
+	[super dealloc];
+}
+@end
 
 // Observe the queue created by the real App binding without replacing its work.
 @interface ViewportQueueDevice : NSProxy
@@ -26,6 +81,8 @@ extern "C" SAILOR_SHARED_API void SailorProtocolFreeBuffer(uint8_t* buffer) noex
 	id<MTLDevice> m_device;
 	id<MTLCommandQueue> m_queue;
 	BOOL m_failNextQueue;
+	std::atomic<bool> m_bUsedWrongThread;
+	Sailor::TSharedPtr<HostBindGate> m_gate;
 }
 - (id)initWithDevice:(id<MTLDevice>)device;
 @end
@@ -34,10 +91,20 @@ extern "C" SAILOR_SHARED_API void SailorProtocolFreeBuffer(uint8_t* buffer) noex
 - (id)initWithDevice:(id<MTLDevice>)device
 {
 	m_device = [device retain];
+	m_bUsedWrongThread = false;
 	return self;
 }
 - (id<MTLCommandQueue>)newCommandQueue
 {
+	if (auto* scheduler = Sailor::App::GetSubmodule<Sailor::Tasks::Scheduler>();
+		!scheduler || !scheduler->IsEditorThread()) m_bUsedWrongThread = true;
+	if (m_gate)
+	{
+		std::unique_lock lock(m_gate->m_mutex);
+		m_gate->m_bIsEntered = true;
+		m_gate->m_changed.notify_all();
+		m_gate->m_changed.wait(lock, [&]() { return m_gate->m_bIsReleased; });
+	}
 	if (std::exchange(m_failNextQueue, NO)) return nil;
 	id<MTLCommandQueue> queue = [m_device newCommandQueue];
 	[m_queue release];
@@ -94,6 +161,292 @@ extern "C" SAILOR_SHARED_API void SailorProtocolFreeBuffer(uint8_t* buffer) noex
 namespace Sailor::Tests
 {
 	using namespace EditorRemote;
+
+	static void PumpAppViewport()
+	{
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		scheduler->WaitIdle({ EThreadType::Editor });
+		EditorRuntime::PumpEditorRemoteViewportsOnEngineThread();
+		scheduler->WaitIdle({ EThreadType::Editor });
+	}
+
+	static void RequireHostRelease(const TSharedPtr<std::atomic<uint32_t>>& releases, std::string_view host = "native host")
+	{
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+		while (releases->load() == 0 && std::chrono::steady_clock::now() < deadline)
+		{
+			@autoreleasepool
+			{
+				[CATransaction flush];
+				[[NSRunLoop mainRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.001]];
+			}
+		}
+		if (releases->load() != 1) throw std::runtime_error(std::string(host) + " must be released exactly once");
+	}
+
+	void CheckMacAppHostLifetime()
+	{
+		constexpr uint64_t viewportId = 257;
+		auto firstReleases = TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+		auto secondReleases = TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+		auto gate = TSharedPtr<HostBindGate>::Make();
+		auto require = [](bool value, std::string_view message)
+		{
+			if (!value) throw std::runtime_error(std::string(message));
+		};
+		App::SetEditorRenderTargetSize(64, 48);
+		require(EditorRuntime::ApplyPendingEditorViewportOnEngineThread(), "host lifetime fixture must apply its render area");
+		@autoreleasepool
+		{
+			HostLifetimeLayer* first = [[HostLifetimeLayer alloc] init];
+			first->m_releases = firstReleases;
+			first->m_gate = gate;
+			const auto accepted = SailorProtocolSetMacViewportHost(viewportId, reinterpret_cast<uintptr_t>(first));
+			[first release];
+			require(accepted != 0 && !gate->m_bIsEntered,
+				"UI handoff must retain its layer without binding GPU resources on the UI thread");
+		}
+		auto create = std::async(std::launch::async, [=]()
+		{
+			return App::UpsertEditorRemoteViewport(viewportId, 0, 0, 64, 48, false, false);
+		});
+		bool bBindEntered;
+		{
+			std::unique_lock lock(gate->m_mutex);
+			bBindEntered = gate->m_changed.wait_for(lock, std::chrono::seconds(5), [&]() { return gate->m_bIsEntered; });
+		}
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		const auto queuedBeforePump = scheduler->GetNumTasks(EThreadType::Editor);
+		EditorRuntime::PumpEditorRemoteViewportsOnEngineThread();
+		EditorRuntime::PumpEditorRemoteViewportsOnEngineThread();
+		const bool bPumpCoalesced = scheduler->GetNumTasks(EThreadType::Editor) == queuedBeforePump + 1;
+		const bool bDetached = SailorProtocolSetMacViewportHost(viewportId, 0) != 0;
+		bool bReconnected;
+		@autoreleasepool
+		{
+			HostLifetimeLayer* second = [[HostLifetimeLayer alloc] init];
+			second->m_releases = secondReleases;
+			bReconnected = SailorProtocolSetMacViewportHost(viewportId, reinterpret_cast<uintptr_t>(second)) != 0;
+			[second release];
+		}
+		const bool bFirstStillAlive = firstReleases->load() == 0;
+		{
+			std::lock_guard lock(gate->m_mutex);
+			gate->m_bIsReleased = true;
+		}
+		gate->m_changed.notify_all();
+		const bool bCreated = create.get();
+		require(bPumpCoalesced, "Main must enqueue one viewport pump without waiting for the busy Editor owner");
+		require(bBindEntered && bCreated && bDetached && bReconnected && bFirstStillAlive,
+			"disconnect and reconnect must not wait for or destroy an in-flight native binding");
+		PumpAppViewport();
+		RequireHostRelease(firstReleases, "replaced host");
+		require(secondReleases->load() == 0, "the frame owner must retain the replacement host");
+		require(SailorProtocolSetMacViewportHost(viewportId, 0) != 0, "final disconnect must be accepted");
+		PumpAppViewport();
+		RequireHostRelease(secondReleases, "detached host");
+		require(App::DestroyEditorRemoteViewport(viewportId), "host fixture must destroy its viewport");
+		std::cout << "Mac UI host handoff, in-flight replacement and detach passed\n";
+	}
+
+	void CheckMacAppViewportUpdates()
+	{
+		constexpr uint64_t viewportId = 259;
+		uint32_t failures = 0;
+		auto verify = [&](bool value, std::string_view message)
+		{
+			std::cout << (value ? "PASS: " : "FAIL: ") << message << '\n';
+			if (!value) ++failures;
+		};
+		auto state = [&]() { return static_cast<SessionState>(App::GetEditorRemoteViewportState(viewportId)); };
+		auto update = [&](uint32_t width, uint32_t height, bool visible, bool focused)
+		{
+			return App::UpsertEditorRemoteViewport(viewportId, 0, 0, width, height, visible, focused);
+		};
+		auto diagnostics = [&]()
+		{
+			char* text = nullptr;
+			const auto length = App::GetEditorRemoteViewportDiagnostics(viewportId, &text);
+			std::string result(text ? text : "", length);
+			delete[] text;
+			return result;
+		};
+		App::SetEditorRenderTargetSize(64, 48);
+		EditorRuntime::ApplyPendingEditorViewportOnEngineThread();
+		@autoreleasepool
+		{
+			ReadbackPresentationLayer* layer = [ReadbackPresentationLayer layer];
+			layer->m_queueDevice = [[ViewportQueueDevice alloc] initWithDevice:[MTLCreateSystemDefaultDevice() autorelease]];
+			verify(SailorProtocolSetMacViewportHost(viewportId, reinterpret_cast<uintptr_t>(layer)) != 0,
+				"viewport update fixture accepts its native host");
+			layer->m_queueDevice->m_failNextQueue = YES;
+			verify(!update(64, 48, true, true), "failed native create must not be acknowledged as applied");
+			verify(!layer->m_queueDevice->m_bUsedWrongThread,
+				"App viewport creation must execute on its Editor owner queue");
+			verify(state() == SessionState::Lost, "native capability failure exposes Lost, not Active");
+			layer->m_queueDevice->m_failNextQueue = YES;
+			verify(!App::RetryEditorRemoteViewport(viewportId), "failed native retry must return false");
+			verify(state() == SessionState::Lost, "failed retry preserves Lost until creation succeeds");
+			verify(App::RetryEditorRemoteViewport(viewportId) && state() == SessionState::Active,
+				"successful retry creates the previously failed viewport");
+
+			App::SetEditorRenderTargetSize(96, 64);
+			EditorRuntime::ApplyPendingEditorViewportOnEngineThread();
+			layer->m_queueDevice->m_failNextQueue = YES;
+			verify(!update(96, 64, true, true), "failed resize must not be acknowledged as applied");
+			verify(state() == SessionState::Active && diagnostics().find("64x48") != std::string::npos,
+				"failed resize keeps the previous active extent");
+			verify(update(96, 64, true, true), "a later resize can apply after native import recovers");
+			verify(!layer->m_queueDevice->m_bUsedWrongThread,
+				"App viewport retry and resize must stay on the Editor owner queue");
+
+			ReadbackPresentationLayer* replacement = [ReadbackPresentationLayer layer];
+			replacement->m_queueDevice = [[ViewportQueueDevice alloc] initWithDevice:[MTLCreateSystemDefaultDevice() autorelease]];
+			replacement->m_queueDevice->m_failNextQueue = YES;
+			verify(SailorProtocolSetMacViewportHost(viewportId, reinterpret_cast<uintptr_t>(replacement)) != 0,
+				"native replacement is accepted before import");
+			verify(!update(96, 64, true, true), "failed host binding must not be acknowledged as applied");
+			verify(update(96, 64, true, true), "the same host can be bound after import recovers");
+
+			verify(!update(128, 96, false, false), "unapplied renderer extent must return false");
+			EditorRuntime::ApplyPendingEditorViewportOnEngineThread();
+			PumpAppViewport();
+			verify(state() == SessionState::Paused && diagnostics().find("128x96") != std::string::npos,
+				"deferred extent and visibility apply without another UI update");
+			verify(App::DestroyEditorRemoteViewport(viewportId), "failed-import fixture releases its session");
+		}
+
+		for (const bool existing : { false, true })
+		{
+			App::SetEditorRenderTargetSize(64, 48);
+			EditorRuntime::ApplyPendingEditorViewportOnEngineThread();
+			@autoreleasepool
+			{
+				if (existing)
+				{
+					verify(update(64, 48, true, true), "contention fixture creates a focused session");
+					verify(App::SendEditorRemoteViewportInput(viewportId, static_cast<uint32_t>(InputKind::Key),
+						0, 0, 0, 0, 'W', 0, 0, true, true, false), "focused session accepts a held key");
+					EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread();
+					verify(Win32::GlobalInput::GetInputState().IsKeyDown('W'), "held key reaches gameplay before contention");
+				}
+				auto gate = TSharedPtr<HostBindGate>::Make();
+				ReadbackPresentationLayer* layer = [ReadbackPresentationLayer layer];
+				layer->m_queueDevice = [[ViewportQueueDevice alloc] initWithDevice:[MTLCreateSystemDefaultDevice() autorelease]];
+				layer->m_queueDevice->m_gate = gate;
+				verify(SailorProtocolSetMacViewportHost(viewportId, reinterpret_cast<uintptr_t>(layer)) != 0,
+					"contention fixture accepts the gated layer");
+				auto applying = std::async(std::launch::async, [&]() { return update(64, 48, true, true); });
+				bool entered;
+				{
+					std::unique_lock lock(gate->m_mutex);
+					entered = gate->m_changed.wait_for(lock, std::chrono::seconds(5), [&]() { return gate->m_bIsEntered; });
+				}
+				verify(entered, "native queue creation holds the actual viewport operation open");
+				auto query = Tasks::CreateTask<SessionState>("Query gated viewport"_h, state, EThreadType::Editor);
+				query->Run();
+				auto updates = Tasks::CreateTask<bool>("Update gated viewport"_h, [&]()
+				{
+					const bool hidden = update(64, 48, false, false);
+					const bool shown = update(64, 48, true, true);
+					return update(64, 48, false, false) && shown && hidden;
+				}, EThreadType::Editor);
+				updates->Run();
+				verify(!query->IsFinished() && !updates->IsFinished(),
+					"commands queued behind native import must not report unapplied results");
+				{
+					std::lock_guard lock(gate->m_mutex);
+					gate->m_bIsReleased = true;
+				}
+				gate->m_changed.notify_all();
+				verify(applying.get(), "in-flight native operation completes after releasing the gate");
+				query->Wait();
+				updates->Wait();
+				verify(query->GetResult() == SessionState::Active && updates->GetResult(),
+					"queued state and visibility commands must complete in owner order after import");
+				PumpAppViewport();
+				EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread();
+				verify(state() == SessionState::Paused, "busy hide eventually applies without UI polling");
+				verify(!Win32::GlobalInput::GetInputState().IsKeyDown('W'), "busy focus loss releases gameplay input");
+				verify(App::DestroyEditorRemoteViewport(viewportId), "contention fixture releases its session");
+			}
+		}
+		verify(!update(128, 96, false, false), "new deferred viewport waits for its render extent");
+		verify(App::DestroyEditorRemoteViewport(viewportId), "destroy cancels an unapplied viewport update");
+		EditorRuntime::ApplyPendingEditorViewportOnEngineThread();
+		PumpAppViewport();
+		verify(state() == SessionState::Created && !App::RetryEditorRemoteViewport(viewportId),
+			"a cancelled update must not recreate its viewport on the next pump");
+		if (failures) throw std::runtime_error("native viewport acknowledgment checks failed: " + std::to_string(failures));
+		std::cout << "Native viewport acknowledgment and deferred updates passed\n";
+	}
+
+	void CheckMacHostShutdown(const std::function<bool()>& shutdown)
+	{
+		auto releases = TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+		@autoreleasepool
+		{
+			HostLifetimeLayer* layer = [[HostLifetimeLayer alloc] init];
+			layer->m_releases = releases;
+			const auto accepted = SailorProtocolSetMacViewportHost(258, reinterpret_cast<uintptr_t>(layer));
+			[layer release];
+			if (accepted == 0) throw std::runtime_error("shutdown fixture must retain an unconsumed UI host");
+		}
+		auto concurrentReleases = TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+		auto gate = TSharedPtr<HostBindGate>::Make();
+		HostLifetimeLayer* concurrent = [[HostLifetimeLayer alloc] init];
+		concurrent->m_releases = concurrentReleases;
+		concurrent->m_gate = gate;
+		concurrent->m_bBlockRetain = true;
+		auto handoff = std::async(std::launch::async, [concurrent]()
+		{
+			@autoreleasepool
+			{
+				return SailorProtocolSetMacViewportHost(259, reinterpret_cast<uintptr_t>(concurrent));
+			}
+		});
+		bool bHandoffEntered;
+		{
+			std::unique_lock lock(gate->m_mutex);
+			bHandoffEntered = gate->m_changed.wait_for(lock, std::chrono::seconds(5), [&]() { return gate->m_bIsEntered; });
+		}
+		auto stopping = std::async(std::launch::async, shutdown);
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+		bool bAdmissionClosed = false;
+		while (!bAdmissionClosed && std::chrono::steady_clock::now() < deadline)
+		{
+			bAdmissionClosed = SailorProtocolSetMacViewportHost(260, 0) == 0;
+			if (!bAdmissionClosed) std::this_thread::yield();
+		}
+		const bool bWaitedForHandoff = stopping.wait_for(std::chrono::milliseconds(20)) == std::future_status::timeout;
+		{
+			std::lock_guard lock(gate->m_mutex);
+			gate->m_bIsReleased = true;
+		}
+		gate->m_changed.notify_all();
+		const auto accepted = handoff.get();
+		[concurrent release];
+		while (stopping.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready)
+		{
+			@autoreleasepool
+			{
+				[[NSRunLoop mainRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.001]];
+			}
+		}
+		const bool bStopped = stopping.get();
+		if (!bHandoffEntered || !bAdmissionClosed || !bWaitedForHandoff || accepted == 0 || !bStopped)
+		{
+			App::SetEditorRemoteViewportMacHostHandle(259, 0, 0);
+			std::cerr << "Host shutdown: entered=" << bHandoffEntered << " closed=" << bAdmissionClosed
+				<< " waited=" << bWaitedForHandoff << " accepted=" << accepted << " stopped=" << bStopped << '\n';
+			throw std::runtime_error("shutdown must close native-host admission and drain the accepted UI handoff before teardown");
+		}
+		RequireHostRelease(releases);
+		RequireHostRelease(concurrentReleases);
+		if (SailorProtocolSetMacViewportHost(258, 0) != 0)
+			throw std::runtime_error("UI host handoff must reject operations after shutdown");
+		std::cout << "Mac pending host shutdown and lifecycle admission passed\n";
+	}
 
 	void CheckMacVulkanTexturePresentation(uintptr_t texture, uint32_t width, uint32_t height, uint32_t expectedPixel)
 	{
@@ -425,11 +778,13 @@ namespace Sailor::Tests
 		}
 	}
 
-	void CheckMacAppViewportPump(const MacRendererFrameSource& initial,
+	void CheckMacAppViewportPump(MacRendererFrameSource& source,
 		const std::function<MacRendererFrameSource()>& captureNextFrame)
 	{
 		using sailor::editor::v1::ProtocolRequest;
 		using sailor::editor::v1::ProtocolResponse;
+		const uint32_t width = source.m_width;
+		const uint32_t height = source.m_height;
 		auto require = [](bool value, const char* message)
 			{
 				if (!value) throw std::runtime_error(message);
@@ -477,8 +832,8 @@ namespace Sailor::Tests
 				ProtocolRequest updateRequest;
 				auto* update = updateRequest.mutable_upsert_remote_viewport();
 				update->set_viewport_id(viewportId);
-				update->set_width(initial.m_width);
-				update->set_height(initial.m_height);
+				update->set_width(width);
+				update->set_height(height);
 				update->set_visible(true);
 				require(invoke(updateRequest).bool_result().value(), "protobuf create must import the actual App viewport");
 				require(layer->m_queueDevice->m_queue != nil, "actual App binding must create a native presentation queue");
@@ -491,13 +846,12 @@ namespace Sailor::Tests
 				require(invoke(updateRequest).bool_result().value() &&
 					invoke(stateRequest).uint32_result().value() == static_cast<uint32_t>(SessionState::Paused),
 					"protobuf visibility must pause that same live binding");
-				EditorRuntime::PumpEditorRemoteViewportsOnEngineThread();
+				PumpAppViewport();
 				require(layer->m_lastDrawable == nil, "hidden App viewport must not acquire or present a native drawable");
 				update->set_visible(true);
 				require(invoke(updateRequest).bool_result().value() &&
 					invoke(stateRequest).uint32_result().value() == static_cast<uint32_t>(SessionState::Active),
 					"protobuf visibility must resume the live binding before its frame pump");
-				auto source = initial;
 				double captureUs = 0, pumpUs = 0, drawableUs = 0, completeUs = 0, maxPumpUs = 0, repeatPumpUs = 0;
 				constexpr uint32_t frames = 24;
 				constexpr uint32_t repeats = 4;
@@ -505,8 +859,10 @@ namespace Sailor::Tests
 				{
 					const auto begin = std::chrono::steady_clock::now();
 					if (i != 0 && i < frames) source = captureNextFrame();
+					require(source.m_width == width && source.m_height == height,
+						"each App capture must preserve the requested presentation extent");
 					const auto captured = std::chrono::steady_clock::now();
-					EditorRuntime::PumpEditorRemoteViewportsOnEngineThread();
+					PumpAppViewport();
 					const auto submitted = std::chrono::steady_clock::now();
 					id<MTLCommandQueue> queue = layer->m_queueDevice->m_queue;
 					id<MTLCommandBuffer> completion = [queue commandBuffer];
@@ -539,12 +895,12 @@ namespace Sailor::Tests
 					require(read.status == MTLCommandBufferStatusCompleted && std::memcmp(pixel.contents, expected, 4) == 0,
 						"actual App drawable must follow each new Vulkan capture, not the prior native image");
 				}
-				std::cout << "App viewport " << initial.m_width << 'x' << initial.m_height << ": " << frames - 1 <<
+				std::cout << "App viewport " << width << 'x' << height << ": " << frames - 1 <<
 					" new frames, capture/publication mean " << captureUs / (frames - 1) <<
-					" us, Main pump mean " << pumpUs / (frames - 1) << " us, max " << maxPumpUs <<
+					" us, pump + Editor completion mean " << pumpUs / (frames - 1) << " us, max " << maxPumpUs <<
 					" us, nextDrawable mean " << drawableUs / (frames - 1) <<
 					" us, capture-to-queue-completion mean " << completeUs / (frames - 1) <<
-					" us, repeated-frame Main pump mean " << repeatPumpUs / repeats << " us\n";
+					" us, repeated-frame pump + Editor completion mean " << repeatPumpUs / repeats << " us\n";
 				char* text = nullptr;
 				const auto length = App::GetEditorRemoteViewportDiagnostics(viewportId, &text);
 				require(text != nullptr && length != 0, "actual App viewport must expose its upload accounting");
@@ -554,9 +910,9 @@ namespace Sailor::Tests
 				const auto offset = diagnostics.find(key);
 				require(offset != std::string::npos, "native upload bytes must be present in viewport diagnostics");
 				const auto uploaded = std::stoull(diagnostics.substr(offset + key.size()));
-				require(uploaded == static_cast<uint64_t>(frames) * initial.m_width * initial.m_height * 4u,
+				require(uploaded == static_cast<uint64_t>(frames) * width * height * 4u,
 					"each new App frame must upload once; repeated presentation must not upload the same pixels again");
-				std::cout << "App native upload bytes " << initial.m_width << 'x' << initial.m_height << ": " << uploaded << '\n';
+				std::cout << "App native upload bytes " << width << 'x' << height << ": " << uploaded << '\n';
 				ProtocolRequest destroyRequest;
 				destroyRequest.mutable_destroy_remote_viewport()->set_viewport_id(viewportId);
 				require(invoke(destroyRequest).bool_result().value(), "protobuf destroy must release the actual App viewport after GPU completion");

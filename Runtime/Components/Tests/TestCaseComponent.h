@@ -1,6 +1,8 @@
 #pragma once
 #include "Sailor.h"
 #include "Components/Component.h"
+#include "RHI/Readback.h"
+#include <string_view>
 
 namespace Sailor
 {
@@ -41,8 +43,8 @@ namespace Sailor
 		SAILOR_API int64_t GetStartTimeMs() const { return m_startTimeMs; }
 
 		SAILOR_API static std::string GetTestsCacheFolder();
-		SAILOR_API static bool CaptureScreenshot(const std::string& outputFilename, std::string& outError);
-		SAILOR_API static bool SaveImageToPng(const TVector<glm::u8vec4>& data, glm::uvec2 extent, const std::string& outputFilename, std::string& outError);
+		SAILOR_API static bool CaptureScreenshot(const RHI::ReadbackFrame& frame, std::string_view outputFilename, std::string& outError);
+		SAILOR_API static bool SaveImageToPng(const TVector<glm::u8vec4>& data, glm::uvec2 extent, std::string_view outputFilename, std::string& outError);
 
 	private:
 

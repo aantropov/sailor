@@ -13,6 +13,7 @@
 #include <tiny_gltf.h>
 
 using namespace Sailor;
+using namespace Sailor::Workspace;
 
 bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, bool& outChanged)
 {
@@ -59,7 +60,7 @@ bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, bool& o
 			std::error_code error;
 			return animation != nullptr && animation->GetAnimationIndex() == static_cast<int32_t>(i) &&
 				animation->GetSkinIndex() == 0 &&
-				std::filesystem::equivalent(animation->GetAssetFilepath(), assetInfo->GetAssetFilepath(), error);
+				std::filesystem::equivalent(PathFromUtf8(animation->GetAssetFilepath()), PathFromUtf8(assetInfo->GetAssetFilepath()), error);
 		};
 		AnimationAssetInfoPtr existingAnimation = nullptr;
 		for (const FileId& fileId : knownAnimations)
@@ -86,7 +87,7 @@ bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, bool& o
 		{
 			auto* animation = assetRegistry.GetAssetInfoPtr<AnimationAssetInfoPtr>(fileId);
 			if ((animation != nullptr && !matchesClip(animation)) ||
-				!assetRegistry.CanReuseSecondaryAssetId(fileId, "Sailor::AnimationAssetInfo", assetInfo->GetAssetFilepath(), outputPath))
+				!assetRegistry.CanReuseSecondaryAssetId(fileId, "Sailor::AnimationAssetInfo", PathFromUtf8(assetInfo->GetAssetFilepath()), outputPath))
 			{
 				fileId = FileId::Invalid;
 			}
@@ -95,7 +96,7 @@ bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, bool& o
 		const bool bMetadataExists = std::filesystem::exists(outputPath, error);
 		if (error)
 		{
-			SAILOR_LOG_ERROR("Cannot inspect animation metadata '%s': %s", outputPath.string().c_str(), error.message().c_str());
+			SAILOR_LOG_ERROR("Cannot inspect animation metadata '%s': %s", PathToUtf8(outputPath).c_str(), error.message().c_str());
 			return false;
 		}
 
@@ -105,19 +106,19 @@ bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, bool& o
 			{
 				fileId = FileId::CreateNewFileId();
 			}
-			const auto sourceFilename = std::filesystem::relative(assetInfo->GetAssetFilepath(), outputPath.parent_path(), error);
+			const auto sourceFilename = std::filesystem::relative(PathFromUtf8(assetInfo->GetAssetFilepath()), outputPath.parent_path(), error);
 			if (error)
 			{
-				SAILOR_LOG_ERROR("Cannot resolve the model source for animation metadata: %s", outputPath.string().c_str());
+				SAILOR_LOG_ERROR("Cannot resolve the model source for animation metadata: %s", PathToUtf8(outputPath).c_str());
 				return false;
 			}
 			const YAML::Node metadata = GeneratedModelAssetMetadata::CreateAnimation(
-				fileId, sourceFilename.generic_string(), static_cast<uint32_t>(i), 0);
+				fileId, PathToUtf8(sourceFilename), static_cast<uint32_t>(i), 0);
 			std::ostringstream serialized;
 			serialized << metadata;
 			if (!serialized)
 			{
-				SAILOR_LOG_ERROR("Cannot serialize generated animation metadata: %s", outputPath.string().c_str());
+				SAILOR_LOG_ERROR("Cannot serialize generated animation metadata: %s", PathToUtf8(outputPath).c_str());
 				return false;
 			}
 
@@ -126,7 +127,7 @@ bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, bool& o
 			if (!Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(outputPath, text.data(), text.size(), diagnostic,
 				Platform::EAtomicWriteMode::FailIfExists)))
 			{
-				SAILOR_LOG_ERROR("Cannot create animation metadata '%s': %s", outputPath.string().c_str(), diagnostic.c_str());
+				SAILOR_LOG_ERROR("Cannot create animation metadata '%s': %s", PathToUtf8(outputPath).c_str(), diagnostic.c_str());
 				return false;
 			}
 		}
@@ -135,7 +136,7 @@ bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, bool& o
 		if (!registeredId || (!bMetadataExists && fileId != registeredId) ||
 			!matchesClip(assetRegistry.GetAssetInfoPtr<AnimationAssetInfoPtr>(registeredId)))
 		{
-			SAILOR_LOG_ERROR("Animation metadata does not match its model, clip and skin: %s", outputPath.string().c_str());
+			SAILOR_LOG_ERROR("Animation metadata does not match its model, clip and skin: %s", PathToUtf8(outputPath).c_str());
 			return false;
 		}
 		generatedAnimations.Add(registeredId);

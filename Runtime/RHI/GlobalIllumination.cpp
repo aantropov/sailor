@@ -255,13 +255,10 @@ uint64_t Sailor::RHI::ComputeGlobalIlluminationCoefficientSignature(
 	const RHIGlobalIlluminationSnapshot& snapshot) noexcept
 {
 	uint64_t hash = Fnv1aOffsetBasis;
+	HashValue(hash, ComputeGlobalIlluminationLayoutSignature(snapshot));
 	HashValue(hash, static_cast<uint64_t>(snapshot.m_states.Num()));
 	for (const RHIGlobalIlluminationState& state : snapshot.m_states)
 	{
-		HashValue(
-			hash,
-			static_cast<uint64_t>(reinterpret_cast<uintptr_t>(
-				state.m_data.GetRawPtr())));
 		HashValue(hash, state.m_data ? state.m_data->m_lightingHash : 0u);
 	}
 	return hash;

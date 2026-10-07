@@ -6,6 +6,7 @@
 #include "Sailor.h"
 #include "Tasks/Scheduler.h"
 #include "Tasks/Tasks.h"
+#include "Submodules/EditorRemote/RemoteViewportMacNativeBridge.h"
 
 #include <exception>
 #include <limits>
@@ -35,7 +36,7 @@ bool Sailor::Protocol::DispatchEditorEngineProtocolOperationOnEditorThread(void*
 	}
 
 	auto task = Sailor::Tasks::CreateTask(
-		"Editor protocol operation",
+		"Editor protocol operation"_h,
 		[operation, operationContext]() { operation(operationContext); },
 		Sailor::EThreadType::Editor);
 	scheduler->Run(task);
@@ -311,6 +312,16 @@ namespace
 	}
 }
 
+bool Sailor::Protocol::SetMacViewportHost(uint64_t viewportId, uintptr_t layer)
+{
+	auto& gate = GetEditorEngineProtocolLifecycleGate();
+	std::string error;
+	if (!gate.TryAcquireOperation(error, false)) return false;
+	const TProtocolLifecycleCompletion completion(gate, EProtocolLifecycleCompletion::Operation);
+	return App::SetEditorRemoteViewportMacHostHandle(viewportId,
+		static_cast<uint32_t>(EditorRemote::MacNativeHostHandleKind::CAMetalLayer), layer);
+}
+
 int32_t Sailor::Protocol::InvokeEditorEngineProtocol(const uint8_t* requestData,
 	uint32_t requestSize,
 	uint8_t** responseData,
@@ -397,9 +408,20 @@ void Sailor::Protocol::WaitForEditorEngineProtocolStartDrain()
 	GetEditorEngineProtocolLifecycleGate().WaitForStartDrainAndJoin();
 }
 
+void Sailor::Protocol::DrainEditorEngineProtocolForShutdown()
+{
+	auto& gate = GetEditorEngineProtocolLifecycleGate();
+	std::string error;
+	gate.TryBeginShutdown(error);
+	gate.WaitForShutdownDrain();
+	gate.WaitForStartDrainAndJoin();
+}
+
 void Sailor::Protocol::ResetEditorEngineProtocolLifecycle()
 {
-	GetEditorEngineProtocolLifecycleGate().Reset();
+	auto& gate = GetEditorEngineProtocolLifecycleGate();
+	gate.CompleteShutdown();
+	gate.Reset();
 }
 
 void Sailor::Protocol::FailEditorEngineProtocolShutdown()

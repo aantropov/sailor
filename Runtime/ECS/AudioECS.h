@@ -65,7 +65,7 @@ namespace Sailor
 		public ECS::TSystem<AudioECS, AudioSourceData>
 	{
 	public:
-		Tasks::ITaskPtr Tick(float deltaTime) override;
+		void Tick(float deltaTime) override;
 		void EndPlay() override;
 		uint32_t GetOrder() const override { return 250; }
 

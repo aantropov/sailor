@@ -136,7 +136,7 @@ namespace Sailor::Raytracing
 			uint64_t m_contentRevision = 0u;
 			uint64_t m_surfaceRevision = 0u;
 			Material m_parameters;
-			TVector<TPair<std::string, SamplerSnapshot>> m_samplers;
+			TVector<TPair<StringHash, SamplerSnapshot>> m_samplers;
 		};
 
 		using MaterialSnapshots = TVector<TSharedPtr<const MaterialSnapshot>>;

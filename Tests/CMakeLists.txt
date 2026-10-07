@@ -18,6 +18,20 @@ target_include_directories(ImGuiDrawDataSnapshotTests PRIVATE ${SAILOR_RUNTIME_D
 target_link_libraries(ImGuiDrawDataSnapshotTests PRIVATE Sailor::Runtime imgui::imgui)
 add_test(NAME ImGuiDrawDataSnapshotTests COMMAND ImGuiDrawDataSnapshotTests)
 
+add_executable(InputContractTests InputContractTests.cpp)
+target_compile_features(InputContractTests PRIVATE cxx_std_20)
+target_include_directories(InputContractTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(InputContractTests PRIVATE Sailor::Runtime)
+add_test(NAME InputContractTests COMMAND InputContractTests)
+set_tests_properties(InputContractTests PROPERTIES TIMEOUT 20)
+
+add_executable(ConsoleInputTests ConsoleInputTests.cpp)
+target_compile_features(ConsoleInputTests PRIVATE cxx_std_20)
+target_include_directories(ConsoleInputTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(ConsoleInputTests PRIVATE Sailor::Runtime Threads::Threads)
+add_test(NAME ConsoleInputTests COMMAND ConsoleInputTests)
+set_tests_properties(ConsoleInputTests PROPERTIES TIMEOUT 20)
+
 if(NOT TARGET ixwebsocket::ixwebsocket)
     add_library(ixwebsocket::ixwebsocket INTERFACE IMPORTED)
 endif()
@@ -82,9 +96,27 @@ add_executable(YamlUtilsContractTests
     YamlUtilsContractTests.cpp
 )
 
-add_executable(EcsLifecycleContractTests
-    EcsLifecycleContractTests.cpp
-)
+foreach(suite IN ITEMS EcsLifecycleContractTests ScenePublicationContractTests PrefabDocumentContractTests)
+    add_executable(${suite} ${suite}.cpp)
+    target_compile_features(${suite} PRIVATE cxx_std_20)
+    target_include_directories(${suite} PRIVATE ${SAILOR_RUNTIME_DIR})
+    target_link_libraries(${suite} PRIVATE Sailor::Runtime)
+    add_test(NAME ${suite} COMMAND ${suite})
+    set_tests_properties(${suite} PROPERTIES TIMEOUT 30)
+    if(WIN32)
+        sailor_stage_workspace_test_runtime(${suite})
+    endif()
+endforeach()
+
+add_executable(AnimationEcsContractTests AnimationEcsContractTests.cpp)
+target_compile_features(AnimationEcsContractTests PRIVATE cxx_std_20)
+target_include_directories(AnimationEcsContractTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(AnimationEcsContractTests PRIVATE Sailor::Runtime)
+add_test(NAME AnimationEcsContractTests COMMAND AnimationEcsContractTests)
+set_tests_properties(AnimationEcsContractTests PROPERTIES TIMEOUT 30)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(AnimationEcsContractTests)
+endif()
 
 add_executable(BoundsContractTests
     BoundsContractTests.cpp
@@ -117,6 +149,23 @@ set_tests_properties(StringUtilsTests PROPERTIES TIMEOUT 10)
 if(WIN32)
     sailor_stage_workspace_test_runtime(StringUtilsTests)
 endif()
+
+add_executable(ReflectionRecordTests ReflectionRecordTests.cpp)
+target_compile_features(ReflectionRecordTests PRIVATE cxx_std_20)
+target_include_directories(ReflectionRecordTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(ReflectionRecordTests PRIVATE Sailor::Runtime)
+add_test(NAME ReflectionRecordTests COMMAND ReflectionRecordTests)
+set_tests_properties(ReflectionRecordTests PROPERTIES TIMEOUT 10)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(ReflectionRecordTests)
+endif()
+
+add_executable(ProfilingTextTests ProfilingTextTests.cpp)
+target_compile_features(ProfilingTextTests PRIVATE cxx_std_20)
+target_compile_definitions(ProfilingTextTests PRIVATE SAILOR_PROFILING_ENABLE BUILD_WITH_TRACY_PROFILER)
+target_include_directories(ProfilingTextTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Fixtures/Profiling" ${SAILOR_RUNTIME_DIR})
+target_link_libraries(ProfilingTextTests PRIVATE Threads::Threads magic_enum::magic_enum)
+add_test(NAME ProfilingTextTests COMMAND ProfilingTextTests)
 
 add_executable(AssetTypeContractTests AssetTypeContractTests.cpp)
 target_compile_features(AssetTypeContractTests PRIVATE cxx_std_20)
@@ -306,6 +355,8 @@ endif()
 
 add_executable(VulkanSubmissionTests
     VulkanSubmissionTests.cpp
+    AnimationShadowCommandTests.cpp
+    WorldLifecycleCommandTests.cpp
     PathTracerCommandTests.cpp
     GIProbesCommandTests.cpp
     RuntimeGIProbesTaskTests.cpp
@@ -313,14 +364,31 @@ add_executable(VulkanSubmissionTests
     MaterialImporterCommandTests.cpp
     AudioCommandTests.cpp
     LogCommandTests.cpp
+    EditorViewportCommandTests.cpp
+    EditorSimulationTests.cpp
     ModelLodCommandTests.cpp
+    LandscapeCommandTests.cpp
     PrefabImporterCommandTests.cpp
     FrameGraphNodeCommandTests.cpp
+    PostProcessingCommandTests.cpp
+    GIResolveCommandTests.cpp
+    EditorReadbackCommandTests.cpp
+    ShaderInterfaceCommandTests.cpp
     ${SAILOR_RUNTIME_DIR}/AssetRegistry/Model/ModelLodCache.cpp
 )
 target_compile_features(VulkanSubmissionTests PRIVATE cxx_std_20)
 target_include_directories(VulkanSubmissionTests PRIVATE ${SAILOR_RUNTIME_DIR} ${PROJECT_SOURCE_DIR}/Lib)
 target_link_libraries(VulkanSubmissionTests PRIVATE Sailor::Runtime ixwebsocket::ixwebsocket)
+add_library(ImGuiWorkspaceFixture SHARED ImGuiWorkspaceFixture.cpp)
+target_compile_features(ImGuiWorkspaceFixture PRIVATE cxx_std_20)
+target_include_directories(ImGuiWorkspaceFixture PRIVATE ${SAILOR_RUNTIME_DIR})
+target_compile_definitions(ImGuiWorkspaceFixture PRIVATE SAILOR_WORKSPACE_MODULE SAILOR_WORKSPACE_MODULE_EXPORTS)
+# Link the module's ImGui before the runtime, matching a separately linked workspace.
+target_link_libraries(ImGuiWorkspaceFixture PRIVATE imgui::imgui Sailor::Runtime)
+add_dependencies(VulkanSubmissionTests ImGuiWorkspaceFixture)
+target_compile_definitions(VulkanSubmissionTests PRIVATE
+    SAILOR_IMGUI_FIXTURE_PATH="$<TARGET_FILE:ImGuiWorkspaceFixture>"
+)
 if(APPLE)
     find_package(Protobuf CONFIG REQUIRED)
     target_sources(VulkanSubmissionTests PRIVATE Support/MacViewportPresentation.mm)
@@ -330,6 +398,7 @@ if(APPLE)
     if("SAILOR_VULKAN_DIRECT_MOLTENVK_FALLBACK" IN_LIST sailor_runtime_definitions)
         find_library(SAILOR_TEST_MOLTENVK_LIBRARY NAMES MoltenVK PATHS /opt/homebrew/lib /usr/local/lib REQUIRED)
         target_link_libraries(VulkanCapabilityOverrides PRIVATE ${SAILOR_TEST_MOLTENVK_LIBRARY})
+        target_link_libraries(VulkanSubmissionTests PRIVATE ${SAILOR_TEST_MOLTENVK_LIBRARY})
     endif()
     target_link_libraries(VulkanSubmissionTests PRIVATE VulkanCapabilityOverrides protobuf::libprotobuf "-framework IOSurface" "-framework CoreFoundation"
         "-framework QuartzCore" "-framework Metal")
@@ -407,54 +476,44 @@ add_library(WorkspaceModuleIncompatibleFixture SHARED
 add_library(WorkspaceModuleMissingEntryFixture SHARED
     WorkspaceModuleMissingEntryFixture.cpp
 )
+target_include_directories(WorkspaceModuleMissingEntryFixture PRIVATE ${SAILOR_GENERATED_INCLUDE_DIR})
+add_dependencies(WorkspaceModuleMissingEntryFixture SailorLibWorkspaceInterface)
 
-function(add_workspace_malformed_metadata_fixture target output_name mode)
-    add_library(${target} SHARED
-        WorkspaceModuleMalformedMetadataFixture.cpp
-    )
-    target_compile_features(${target} PRIVATE cxx_std_20)
+set(SAILOR_WORKSPACE_INTERFACE_ID "stale-test-interface")
+configure_file("${PROJECT_SOURCE_DIR}/CMake/WorkspaceInterface.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/StaleSdk/Workspace/WorkspaceInterface.h" @ONLY)
+add_library(WorkspaceModuleInterfaceMismatchFixture SHARED WorkspaceModuleInterfaceMismatchFixture.cpp)
+target_link_libraries(WorkspaceModuleInterfaceMismatchFixture PRIVATE Sailor::Runtime)
+target_include_directories(WorkspaceModuleInterfaceMismatchFixture BEFORE PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/StaleSdk")
+target_compile_definitions(WorkspaceModuleInterfaceMismatchFixture PRIVATE SAILOR_WORKSPACE_MODULE_EXPORTS)
+set_target_properties(WorkspaceModuleInterfaceMismatchFixture PROPERTIES OUTPUT_NAME InterfaceMismatchFixture)
+
+add_library(WorkspaceModuleReloadFixture SHARED WorkspaceModuleFixture.cpp)
+target_link_libraries(WorkspaceModuleReloadFixture PRIVATE Sailor::Runtime)
+target_compile_definitions(WorkspaceModuleReloadFixture PRIVATE
+    SAILOR_WORKSPACE_MODULE SAILOR_WORKSPACE_MODULE_EXPORTS SAILOR_TEST_RELOADED_WORKSPACE)
+set_target_properties(WorkspaceModuleReloadFixture PROPERTIES OUTPUT_NAME ReloadedWorkspaceFixture)
+
+function(add_workspace_invalid_fixture target mode)
+    add_library(${target} SHARED WorkspaceModuleInvalidFixture.cpp)
     target_compile_definitions(${target} PRIVATE
-        SAILOR_WORKSPACE_MODULE
-        SAILOR_WORKSPACE_MODULE_EXPORTS
-        SAILOR_TEST_METADATA_MODE=${mode}
-    )
+        SAILOR_WORKSPACE_MODULE SAILOR_WORKSPACE_MODULE_EXPORTS
+        SAILOR_TEST_WORKSPACE_INVALID_CASE=${mode})
     target_link_libraries(${target} PRIVATE Sailor::Runtime)
-    target_include_directories(${target} PRIVATE
-        ${SAILOR_RUNTIME_DIR}
-    )
-    set_target_properties(${target} PROPERTIES OUTPUT_NAME ${output_name})
 endfunction()
 
-add_workspace_malformed_metadata_fixture(
-    WorkspaceModulePropertyMismatchFixture PropertyMismatchFixture 1)
-add_workspace_malformed_metadata_fixture(
-    WorkspaceModuleDuplicateCdoFixture DuplicateCdoFixture 2)
-add_workspace_malformed_metadata_fixture(
-    WorkspaceModuleUnknownDefaultFixture UnknownDefaultFixture 3)
-add_workspace_malformed_metadata_fixture(
-    WorkspaceModuleInvalidDefaultTypeFixture InvalidDefaultTypeFixture 4)
-add_workspace_malformed_metadata_fixture(
-    WorkspaceModuleMissingDefaultFixture MissingDefaultFixture 5)
-add_workspace_malformed_metadata_fixture(
-    WorkspaceModuleInvalidEnumDefaultFixture InvalidEnumDefaultFixture 6)
-add_workspace_malformed_metadata_fixture(
-    WorkspaceModuleInvalidStructuredDefaultFixture InvalidStructuredDefaultFixture 7)
-add_workspace_malformed_metadata_fixture(
-    WorkspaceModuleMissingCdoFixture MissingCdoFixture 8)
-add_workspace_malformed_metadata_fixture(
-    WorkspaceModuleOversizedStructuredDefaultFixture OversizedStructuredDefaultFixture 9)
-add_workspace_malformed_metadata_fixture(
-    WorkspaceModuleShadowedPropertyFixture ShadowedPropertyFixture 10)
-add_workspace_malformed_metadata_fixture(
-    WorkspaceModuleMissingEmptyPropertySchemaFixture MissingEmptyPropertySchemaFixture 11)
-add_workspace_malformed_metadata_fixture(
-    WorkspaceModuleAliasExpansionFixture AliasExpansionFixture 12)
-add_workspace_malformed_metadata_fixture(
-    WorkspaceModuleInvalidReadOnlyPropertiesFixture InvalidReadOnlyPropertiesFixture 13)
-add_workspace_malformed_metadata_fixture(
-    WorkspaceModuleMissingEnumDefinitionFixture MissingEnumDefinitionFixture 14)
-add_workspace_malformed_metadata_fixture(
-    WorkspaceModuleRangeMismatchFixture RangeMismatchFixture 15)
+add_workspace_invalid_fixture(WorkspaceModuleInvalidEnumDefaultFixture 1)
+add_workspace_invalid_fixture(WorkspaceModuleInvalidNestedEnumDefaultFixture 2)
+add_workspace_invalid_fixture(WorkspaceModuleInvalidListEnumDefaultFixture 3)
+add_workspace_invalid_fixture(WorkspaceModuleInvalidShadowedPropertyFixture 4)
+add_workspace_invalid_fixture(WorkspaceModuleInvalidTypeSizeFixture 5)
+add_workspace_invalid_fixture(WorkspaceModuleInvalidTypeAlignmentFixture 6)
+add_workspace_invalid_fixture(WorkspaceModuleInvalidMissingTypeInfoFixture 7)
+add_workspace_invalid_fixture(WorkspaceModuleInvalidMissingFactoryFixture 8)
+add_workspace_invalid_fixture(WorkspaceModuleInvalidDescriptorSizeFixture 9)
+add_workspace_invalid_fixture(WorkspaceModuleInvalidHierarchyFixture 10)
+add_workspace_invalid_fixture(WorkspaceModuleInvalidDuplicateTypeFixture 11)
+add_workspace_invalid_fixture(WorkspaceModuleInvalidApiVersionFixture 12)
 
 add_executable(WorkspaceModuleContractTests
     WorkspaceModuleContractTests.cpp
@@ -464,6 +523,14 @@ add_executable(WorkspaceModuleContractTests
 add_executable(WorkspaceModuleRuntimeTests
     WorkspaceModuleRuntimeTests.cpp
 )
+
+add_executable(WorkspaceModuleCatalogHost WorkspaceModuleCatalogHost.cpp)
+target_link_libraries(WorkspaceModuleCatalogHost PRIVATE Sailor::Runtime)
+# Source-workspace builds reuse Binaries; keep this host beside its matching runtime.
+set_target_properties(WorkspaceModuleCatalogHost PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+if(WIN32)
+    sailor_stage_workspace_test_runtime(WorkspaceModuleCatalogHost)
+endif()
 
 add_executable(WorkspaceContextTests
     WorkspaceContextTests.cpp
@@ -516,7 +583,6 @@ target_compile_features(EditorEngineWebSocketServerTests PRIVATE cxx_std_20)
 target_compile_features(SmartPointerTests PRIVATE cxx_std_20)
 target_compile_features(InstanceIdContractTests PRIVATE cxx_std_20)
 target_compile_features(YamlUtilsContractTests PRIVATE cxx_std_20)
-target_compile_features(EcsLifecycleContractTests PRIVATE cxx_std_20)
 target_compile_features(BoundsContractTests PRIVATE cxx_std_20)
 target_compile_features(LandscapeStreamingTests PRIVATE cxx_std_20)
 target_compile_features(GpuCullingContractTests PRIVATE cxx_std_20)
@@ -580,7 +646,6 @@ target_link_libraries(EditorEngineWebSocketServerTests PRIVATE
 target_link_libraries(SmartPointerTests PRIVATE Sailor::Runtime)
 target_link_libraries(InstanceIdContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(YamlUtilsContractTests PRIVATE Sailor::Runtime)
-target_link_libraries(EcsLifecycleContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(BoundsContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(LandscapeStreamingTests PRIVATE Sailor::Runtime)
 target_link_libraries(GpuCullingContractTests PRIVATE Sailor::Runtime)
@@ -609,34 +674,34 @@ add_dependencies(WorkspaceModuleRuntimeTests
     WorkspaceModuleFixture
     WorkspaceModuleIncompatibleFixture
     WorkspaceModuleMissingEntryFixture
-    WorkspaceModulePropertyMismatchFixture
-    WorkspaceModuleDuplicateCdoFixture
-    WorkspaceModuleUnknownDefaultFixture
-    WorkspaceModuleInvalidDefaultTypeFixture
-    WorkspaceModuleMissingDefaultFixture
+    WorkspaceModuleInterfaceMismatchFixture
+    WorkspaceModuleReloadFixture
     WorkspaceModuleInvalidEnumDefaultFixture
-    WorkspaceModuleInvalidStructuredDefaultFixture
-    WorkspaceModuleMissingCdoFixture
-    WorkspaceModuleOversizedStructuredDefaultFixture
-    WorkspaceModuleShadowedPropertyFixture
-    WorkspaceModuleMissingEmptyPropertySchemaFixture
-    WorkspaceModuleAliasExpansionFixture
-    WorkspaceModuleInvalidReadOnlyPropertiesFixture
-    WorkspaceModuleMissingEnumDefinitionFixture
-    WorkspaceModuleRangeMismatchFixture
+    WorkspaceModuleInvalidNestedEnumDefaultFixture
+    WorkspaceModuleInvalidListEnumDefaultFixture
+    WorkspaceModuleInvalidShadowedPropertyFixture
+    WorkspaceModuleInvalidTypeSizeFixture
+    WorkspaceModuleInvalidTypeAlignmentFixture
+    WorkspaceModuleInvalidMissingTypeInfoFixture
+    WorkspaceModuleInvalidMissingFactoryFixture
+    WorkspaceModuleInvalidDescriptorSizeFixture
+    WorkspaceModuleInvalidHierarchyFixture
+    WorkspaceModuleInvalidDuplicateTypeFixture
+    WorkspaceModuleInvalidApiVersionFixture
 )
 set_target_properties(WorkspaceModuleFixture PROPERTIES OUTPUT_NAME WorkspaceFixture)
 set_target_properties(WorkspaceModuleIncompatibleFixture PROPERTIES OUTPUT_NAME IncompatibleFixture)
 set_target_properties(WorkspaceModuleMissingEntryFixture PROPERTIES OUTPUT_NAME MissingEntryFixture)
 if(WIN32)
     sailor_stage_workspace_test_runtime(ImGuiDrawDataSnapshotTests)
+    sailor_stage_workspace_test_runtime(InputContractTests)
+    sailor_stage_workspace_test_runtime(ConsoleInputTests)
     sailor_stage_workspace_test_runtime(WorkspaceModuleContractTests)
     sailor_stage_workspace_test_runtime(WorkspaceModuleRuntimeTests)
     sailor_stage_workspace_test_runtime(WorkspaceContextTests)
     sailor_stage_workspace_test_runtime(WorkspaceCacheContractTests)
     sailor_stage_workspace_test_runtime(AssetCacheContractTests)
     sailor_stage_workspace_test_runtime(ShaderCacheArtifactTests)
-    sailor_stage_workspace_test_runtime(EcsLifecycleContractTests)
     sailor_stage_workspace_test_runtime(BoundsContractTests)
     sailor_stage_workspace_test_runtime(LandscapeStreamingTests)
     sailor_stage_workspace_test_runtime(GpuCullingContractTests)
@@ -687,9 +752,6 @@ target_include_directories(InstanceIdContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(YamlUtilsContractTests PRIVATE
-    ${SAILOR_RUNTIME_DIR}
-)
-target_include_directories(EcsLifecycleContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(BoundsContractTests PRIVATE
@@ -845,11 +907,6 @@ add_test(
 )
 
 add_test(
-    NAME EcsLifecycleContractTests
-    COMMAND EcsLifecycleContractTests
-)
-
-add_test(
     NAME BoundsContractTests
     COMMAND BoundsContractTests
 )
@@ -960,23 +1017,29 @@ add_test(
         $<TARGET_FILE:WorkspaceModuleFixture>
         $<TARGET_FILE:WorkspaceModuleIncompatibleFixture>
         $<TARGET_FILE:WorkspaceModuleMissingEntryFixture>
-        $<TARGET_FILE:WorkspaceModulePropertyMismatchFixture>
-        $<TARGET_FILE:WorkspaceModuleDuplicateCdoFixture>
-        $<TARGET_FILE:WorkspaceModuleUnknownDefaultFixture>
-        $<TARGET_FILE:WorkspaceModuleInvalidDefaultTypeFixture>
-        $<TARGET_FILE:WorkspaceModuleMissingDefaultFixture>
+        $<TARGET_FILE:WorkspaceModuleInterfaceMismatchFixture>
+        $<TARGET_FILE:WorkspaceModuleReloadFixture>
         $<TARGET_FILE:WorkspaceModuleInvalidEnumDefaultFixture>
-        $<TARGET_FILE:WorkspaceModuleInvalidStructuredDefaultFixture>
-        $<TARGET_FILE:WorkspaceModuleMissingCdoFixture>
-        $<TARGET_FILE:WorkspaceModuleOversizedStructuredDefaultFixture>
-        $<TARGET_FILE:WorkspaceModuleShadowedPropertyFixture>
-        $<TARGET_FILE:WorkspaceModuleMissingEmptyPropertySchemaFixture>
-        $<TARGET_FILE:WorkspaceModuleAliasExpansionFixture>
-        $<TARGET_FILE:WorkspaceModuleInvalidReadOnlyPropertiesFixture>
-        $<TARGET_FILE:WorkspaceModuleMissingEnumDefinitionFixture>
-        $<TARGET_FILE:WorkspaceModuleRangeMismatchFixture>
+        $<TARGET_FILE:WorkspaceModuleInvalidNestedEnumDefaultFixture>
+        $<TARGET_FILE:WorkspaceModuleInvalidListEnumDefaultFixture>
+        $<TARGET_FILE:WorkspaceModuleInvalidShadowedPropertyFixture>
+        $<TARGET_FILE:WorkspaceModuleInvalidTypeSizeFixture>
+        $<TARGET_FILE:WorkspaceModuleInvalidTypeAlignmentFixture>
+        $<TARGET_FILE:WorkspaceModuleInvalidMissingTypeInfoFixture>
+        $<TARGET_FILE:WorkspaceModuleInvalidMissingFactoryFixture>
+        $<TARGET_FILE:WorkspaceModuleInvalidDescriptorSizeFixture>
+        $<TARGET_FILE:WorkspaceModuleInvalidHierarchyFixture>
+        $<TARGET_FILE:WorkspaceModuleInvalidDuplicateTypeFixture>
+        $<TARGET_FILE:WorkspaceModuleInvalidApiVersionFixture>
         $<CONFIG>
 )
+add_test(NAME WorkspaceInterfaceTests
+    COMMAND ${CMAKE_COMMAND}
+        -DSAILOR_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+        -DTEST_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/WorkspaceInterfaceTests
+        -DTEST_GENERATOR=${CMAKE_GENERATOR}
+        -DTEST_PLATFORM=${CMAKE_GENERATOR_PLATFORM}
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/WorkspaceInterfaceTests.cmake")
 set_tests_properties(
     WorkspaceContextTests
     WorkspaceCacheContractTests
@@ -987,7 +1050,6 @@ set_tests_properties(
     WorkspaceModuleRuntimeTests
     SmartPointerTests
     InstanceIdContractTests
-    EcsLifecycleContractTests
     BoundsContractTests
     LandscapeStreamingTests
     GpuCullingContractTests
@@ -1008,6 +1070,7 @@ set_tests_properties(
     EditorEngineWebSocketLateStopTests
     PROPERTIES TIMEOUT 30
 )
+set_tests_properties(WorkspaceModuleRuntimeTests PROPERTIES TIMEOUT 90)
 
 if(WIN32 AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.22" AND VCPKG_INSTALLED_DIR AND VCPKG_TARGET_TRIPLET)
     set_tests_properties(
@@ -1027,6 +1090,13 @@ add_test(
     NAME RemoteViewportWindowsTransportTests
     COMMAND RemoteViewportWindowsTransportTests
 )
+set_tests_properties(
+    RemoteViewportFoundationTests
+    RemoteViewportContractTests
+    RemoteViewportRuntimeTests
+    RemoteViewportWindowsTransportTests
+    PROPERTIES TIMEOUT 30
+)
 
 if(APPLE)
     add_test(
@@ -1043,5 +1113,10 @@ if(APPLE)
     add_test(
         NAME RemoteViewportMacNativeBridgeTests
         COMMAND RemoteViewportMacNativeBridgeTests
+    )
+    set_tests_properties(
+        RemoteViewportMacTransportTests
+        RemoteViewportMacNativeBridgeTests
+        PROPERTIES TIMEOUT 45
     )
 endif()

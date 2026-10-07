@@ -14,9 +14,9 @@ namespace Sailor::Framegraph
 	{
 	public:
 
-		static void RegisterFrameGraphNode(const std::string& nodeName, std::function<FrameGraphNodePtr(void)> factoryMethod);
+		static void RegisterFrameGraphNode(StringHash nodeName, std::function<FrameGraphNodePtr(void)> factoryMethod);
 
-		FrameGraphNodePtr CreateNode(const std::string& nodeName) const;
+		FrameGraphNodePtr CreateNode(StringHash nodeName) const;
 	};
 
 	template<typename TRenderNode>
@@ -29,8 +29,8 @@ namespace Sailor::Framegraph
 			auto res = TFrameGraphNode::s_registrationFactoryMethod; 
 			res.DoWork();
 		}
-		SAILOR_API static const char* GetName() { return TRenderNode::GetName(); }
-		SAILOR_API virtual std::string GetDebugName() const { return TRenderNode::GetName(); }
+		SAILOR_API static StringHash GetName() { return TRenderNode::GetName(); }
+		SAILOR_API virtual std::string_view GetDebugName() const { return TRenderNode::GetName().ToString(); }
 
 	protected:
 
@@ -42,7 +42,7 @@ namespace Sailor::Framegraph
 			{
 				if (!s_bRegistered)
 				{
-					FrameGraphBuilder::RegisterFrameGraphNode(std::string(TRenderNode::GetName()), []() { return TRefPtr<TRenderNode>::Make(); });
+					FrameGraphBuilder::RegisterFrameGraphNode(TRenderNode::GetName(), []() { return TRefPtr<TRenderNode>::Make(); });
 					s_bRegistered = true;
 				}
 			}
@@ -58,7 +58,6 @@ namespace Sailor::Framegraph
 		SAILOR_SHARED_API static RegistrationFactoryMethod s_registrationFactoryMethod;
 	};
 
-
 #ifndef _SAILOR_IMPORT_
 	template<typename T>
 	typename TFrameGraphNode<T>::RegistrationFactoryMethod TFrameGraphNode<T>::s_registrationFactoryMethod;
@@ -70,14 +69,10 @@ namespace Sailor::Framegraph
 	class RHINodeDefault : public TFrameGraphNode<RHINodeDefault>
 	{
 	public:
-		SAILOR_API static const char* GetName() { return m_name; }
+		SAILOR_API static StringHash GetName() { return "untitled"_h; }
 
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override {}
 		SAILOR_API virtual void Clear() override {}
-	
-	protected:
-
-		SAILOR_SHARED_API static const char* m_name;
 	};
 
 #ifndef _SAILOR_IMPORT_

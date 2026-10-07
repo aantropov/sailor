@@ -4,7 +4,11 @@
 #include "Components/BuoyancyComponent.h"
 #include "Components/RigidBodyComponent.h"
 #include "Components/LandscapeComponent.h"
+#include "Components/AudioListenerComponent.h"
+#include "Components/MeshRendererComponent.h"
+#include "Audio/AudioSystem.h"
 #include "Core/Reflection.h"
+#include "ECS/CameraECS.h"
 #include "ECS/PhysicsECS.h"
 #include "ECS/TransformECS.h"
 #include "Engine/GameObject.h"
@@ -24,6 +28,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 
@@ -32,6 +37,63 @@ using namespace Sailor;
 namespace
 {
 	constexpr float c_fixedDeltaTime = 1.0f / 60.0f;
+
+	class WorldUpdateTestModel final : public Model
+	{
+	public:
+		WorldUpdateTestModel() : Model(FileId::Invalid)
+		{
+			auto mesh = RHI::RHIMeshPtr::Make();
+			mesh->m_vertexDescription = RHI::RHIVertexDescriptionPtr::Make();
+			mesh->m_bounds = Math::AABB(glm::vec3(-1.0f), glm::vec3(1.0f));
+			m_boundsAabb = mesh->m_bounds;
+			m_meshes.Add(mesh);
+			m_renderInstances.Add(RenderInstance{});
+		}
+		bool IsReady() const override { return true; }
+	};
+
+	class WorldUpdateTestMaterial final : public Material
+	{
+	public:
+		WorldUpdateTestMaterial() : Material(FileId::Invalid)
+		{
+			m_rhiMaterials.At_Lock(0u) = RHI::RHIMaterialPtr::Make(
+				RHI::RenderState{}, RHI::RHIShaderPtr{}, RHI::RHIShaderPtr{});
+			m_rhiMaterials.Unlock(0u);
+		}
+		bool IsReady() const override { return true; }
+	};
+
+	class WorldUpdateTestWorld final : public World
+	{
+	public:
+		WorldUpdateTestWorld(TUniquePtr<Physics::PhysicsWorld> physics, Tasks::Scheduler& scheduler, bool bPreview = false) :
+			World("World update phases", bPreview ? uint8_t(EWorldBehaviourBit::EditorTick) :
+				uint8_t(EWorldBehaviourBit::Tickable) | uint8_t(EWorldBehaviourBit::CallBeginPlay),
+				Systems(std::move(physics), scheduler))
+		{}
+		~WorldUpdateTestWorld() override { Clear(); }
+		void Step(float deltaTime)
+		{
+			++m_currentFrame;
+			m_time += deltaTime;
+			BeginPlayEcs();
+			TickGameObjects(deltaTime);
+			TickEcs(deltaTime);
+		}
+	private:
+		static TVector<ECS::TBaseSystemPtr> Systems(TUniquePtr<Physics::PhysicsWorld> physics, Tasks::Scheduler& scheduler)
+		{
+			TVector<ECS::TBaseSystemPtr> systems;
+			systems.Add(TUniquePtr<StaticMeshRendererECS>::Make());
+			systems.Add(TUniquePtr<AudioECS>::Make());
+			systems.Add(TUniquePtr<CameraECS>::Make());
+			systems.Add(TUniquePtr<PhysicsECS>::Make(std::move(physics), scheduler));
+			systems.Add(TUniquePtr<TransformECS>::Make());
+			return systems;
+		}
+	};
 
 	class PhysicsComponentTestWorld final : public World
 	{
@@ -48,15 +110,11 @@ namespace
 
 		~PhysicsComponentTestWorld() override { Clear(); }
 
-		Tasks::ITaskPtr TickPhysics(float deltaTime)
+		void TickPhysics(float deltaTime)
 		{
 			++m_currentFrame;
-			auto* transforms = GetECS<TransformECS>();
-			transforms->Tick(0.0f);
-			transforms->PostTick();
-			auto task = GetECS<PhysicsECS>()->Tick(deltaTime);
-			transforms->PostTick();
-			return task;
+			m_time += deltaTime;
+			TickEcs(deltaTime);
 		}
 
 	private:
@@ -78,11 +136,11 @@ namespace
 		}
 	};
 
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -912,7 +970,7 @@ namespace
 		const glm::vec3 worldPosition = glm::vec3(
 			parent.Matrix() * glm::vec4(expectedLocalPosition, 1.0f));
 		const glm::quat worldRotation = glm::normalize(
-			parent.m_rotation * expectedLocalRotation);
+			parent.GetRotation() * expectedLocalRotation);
 
 		glm::vec3 localPosition{};
 		glm::quat localRotation{};
@@ -1117,12 +1175,12 @@ namespace
 			};
 		for (uint32_t repetition = 0; repetition < 2; ++repetition)
 		{
-			const auto step = world.TickPhysics(c_fixedDeltaTime);
-			Require(step && step->IsFinished() && step->GetThreadType() == EThreadType::Physics &&
-				readPose().m_linearVelocity.y < -0.1f,
+			world.TickPhysics(c_fixedDeltaTime);
+			Require(readPose().m_linearVelocity.y < -0.1f,
 				"a real fixed step must accelerate the initially stationary body under gravity");
 			body->SetLinearVelocity(glm::vec3(0.0f));
-			Require(!world.TickPhysics(0.0f) && IsNear(readPose().m_linearVelocity, glm::vec3(0.0f)),
+			world.TickPhysics(0.0f);
+			Require(IsNear(readPose().m_linearVelocity, glm::vec3(0.0f)),
 				"SetLinearVelocity(0) must stop a freshly accelerated body on every call, without a simulation substep");
 		}
 
@@ -1185,13 +1243,12 @@ namespace
 		const glm::quat targetRotation = glm::angleAxis(0.25f, glm::vec3(0.0f, 1.0f, 0.0f));
 		owner->GetTransformComponent().SetPosition(targetPosition);
 		owner->GetTransformComponent().SetRotation(targetRotation);
-		Require(!world.TickPhysics(0.0f), "an authored kinematic target must not require a fixed step to publish its velocity");
+		world.TickPhysics(0.0f);
 		auto pose = readPose();
 		Require(glm::length(pose.m_linearVelocity) > 0.1f && glm::length(pose.m_angularVelocity) > 0.1f &&
 			IsNear(pose.m_position, glm::vec3(0.0f)),
 			"MoveKinematic must derive both velocities before the body advances toward its target");
-		const auto step = world.TickPhysics(c_fixedDeltaTime);
-		Require(step && step->IsFinished(), "the kinematic fixed step must complete");
+		world.TickPhysics(c_fixedDeltaTime);
 		pose = readPose();
 		Require(IsNear(pose.m_position, targetPosition, 0.001f) &&
 			std::abs(glm::dot(pose.m_rotation, targetRotation)) > 0.99999f,
@@ -1207,6 +1264,181 @@ namespace
 		Require(IsNear(pose.m_linearVelocity, glm::vec3(0.0f), 0.001f) &&
 			IsNear(pose.m_angularVelocity, glm::vec3(0.0f), 0.001f) && body->GetReflectedData() == authored,
 			"a settled kinematic body must retain live query parity without rewriting initial authoring");
+	}
+
+	void TestWorldUpdatePublishesFinalPoses()
+	{
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
+		scheduler.Initialize();
+		auto& audio = app.AddAudioSystem();
+		Require(audio.IsInitialized() && audio.IsUsingNullDevice(), "the world test must use real null-device audio");
+
+		for (auto motion : { Physics::ERigidBodyMotionType::Kinematic, Physics::ERigidBodyMotionType::Dynamic })
+		{
+			auto backend = TUniquePtr<Physics::PhysicsWorld>::Make(scheduler);
+			auto* physicsWorld = backend.GetRawPtr();
+			WorldUpdateTestWorld world(std::move(backend), scheduler);
+			auto parent = world.Instantiate("Authored parent");
+			parent->GetTransformComponent().SetPosition(glm::vec3(10.0f, 20.0f, 0.0f));
+			parent->GetTransformComponent().SetRotation(glm::angleAxis(0.2f, glm::vec3(0, 0, 1)));
+			parent->GetTransformComponent().SetScale(glm::vec4(2, 2, 2, 1));
+			auto owner = world.Instantiate("Simulated child");
+			owner->SetParent(parent);
+			owner->SetMobilityType(EMobilityType::Dynamic);
+			owner->GetTransformComponent().SetPosition(glm::vec3(2.0f, 1.0f, 0.0f));
+			auto body = owner->AddComponent<RigidBodyComponent>();
+			body->SetMotionType(motion);
+			body->SetLinearDamping(0.0f);
+			body->SetAngularDamping(0.0f);
+			owner->AddComponent<CollisionShapeComponent>();
+			owner->AddComponent<AudioListenerComponent>();
+			auto renderer = owner->AddComponent<MeshRendererComponent>();
+			auto* cameras = world.GetECS<CameraECS>();
+			cameras->GetComponentData(cameras->RegisterComponent()).SetOwner(owner);
+			world.Step(0.0f);
+			renderer->GetData().SetModel(TObjectPtr<WorldUpdateTestModel>::Make(world.GetAllocator()));
+			renderer->GetMaterials() = { TObjectPtr<WorldUpdateTestMaterial>::Make(world.GetAllocator()) };
+			world.Step(0.0f);
+			auto* meshes = world.GetECS<StaticMeshRendererECS>();
+			const auto previousScene = meshes->GetRHIScene()->GetCurrentVersion();
+			Require(previousScene && previousScene->m_dynamicHandles && previousScene->m_dynamicHandles->Num() == 1,
+				"the fixture must publish one real mesh instance");
+			const auto handle = (*previousScene->m_dynamicHandles)[0];
+			const RHI::RHISceneInstanceRecord* previousRecord = nullptr;
+			Require(previousScene->Resolve(handle, previousRecord), "the original mesh record must resolve");
+			const glm::mat4 previousMatrix = previousRecord->m_worldMatrix;
+
+			parent->GetTransformComponent().SetPosition(glm::vec3(13.0f, 22.0f, -1.0f));
+			parent->GetTransformComponent().SetRotation(glm::angleAxis(0.7f, glm::vec3(0, 0, 1)));
+			if (motion == Physics::ERigidBodyMotionType::Dynamic) body->SetLinearVelocity(glm::vec3(6, 2, -1));
+			world.Step(c_fixedDeltaTime * 1.5f);
+			audio.Flush();
+			const auto& data = world.GetECS<PhysicsECS>()->GetComponentData(body->GetComponentIndex());
+			Physics::PhysicsBodyPose livePose;
+			Require(physicsWorld->GetBodyPose(data.m_bodyId, livePose) && IsNear(livePose.m_position, data.m_currentPose.m_position),
+				"world publication must follow completion of the real Jolt step");
+			const glm::vec3 expected = motion == Physics::ERigidBodyMotionType::Dynamic ?
+				glm::mix(data.m_previousPose.m_position, livePose.m_position, 0.5f) : livePose.m_position;
+			const auto& matrix = owner->GetTransformComponent().GetCachedWorldMatrix();
+			Require(IsNear(glm::vec3(matrix[3]), expected, 0.001f), "post-physics transforms must resolve the parented pose this frame");
+			Require(cameras->GetActiveCameras().Num() == 1 &&
+				IsNear(glm::vec3(cameras->GetActiveCameras()[0].GetInvViewMatrix()[3]), expected, 0.001f),
+				"camera publication must observe the final pose, not the authored or previous-frame pose");
+			AudioListenerState listener;
+			Require(audio.GetActiveListenerState(listener) && IsNear(listener.m_transform.m_position, expected, 0.001f),
+				"the real audio backend must observe the same final pose");
+			const auto currentScene = meshes->GetRHIScene()->GetCurrentVersion();
+			const RHI::RHISceneInstanceRecord* currentRecord = nullptr;
+			Require(currentScene->Resolve(handle, currentRecord) && currentRecord->m_worldMatrix == matrix &&
+				currentScene->m_sceneRevision == previousScene->m_sceneRevision + 1,
+				"mesh publication must issue one final same-frame scene version");
+			Require(previousRecord->m_worldMatrix == previousMatrix, "the retained previous frame must stay immutable");
+			world.Step(0.0f);
+			Require(meshes->GetRHIScene()->GetCurrentVersion() == currentScene,
+				"a completed transform phase must not repeat publication with unchanged input");
+		}
+		audio.Flush();
+		Require(audio.GetActiveListener() == InvalidAudioListenerId, "world teardown must release its audio listener");
+	}
+
+	void TestNestedSimulatedParents()
+	{
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
+		scheduler.Initialize();
+		for (bool bChildFirst : { false, true })
+		{
+			for (bool bIntermediateParent : { false, true })
+			{
+				WorldUpdateTestWorld world(TUniquePtr<Physics::PhysicsWorld>::Make(scheduler), scheduler);
+				auto parent = world.Instantiate("Simulated parent");
+				parent->GetTransformComponent().SetPosition(glm::vec3(0, 10, 0));
+				parent->GetTransformComponent().SetRotation(glm::angleAxis(0.3f, glm::vec3(0, 1, 0)));
+				parent->GetTransformComponent().SetScale(glm::vec4(2, 2, 2, 1));
+				GameObjectPtr attachment = parent;
+				if (bIntermediateParent)
+				{
+					attachment = world.Instantiate("Authored attachment");
+					attachment->SetParent(parent);
+					attachment->GetTransformComponent().SetPosition(glm::vec3(0, 2, 0));
+					attachment->GetTransformComponent().SetRotation(glm::angleAxis(0.2f, glm::vec3(1, 0, 0)));
+				}
+				auto child = world.Instantiate("Simulated child");
+				child->SetParent(attachment);
+				child->GetTransformComponent().SetPosition(glm::vec3(0, 4, 0));
+				auto addBody = [](GameObjectPtr owner, const glm::vec3& velocity)
+				{
+					auto body = owner->AddComponent<RigidBodyComponent>();
+					body->SetLinearDamping(0.0f);
+					body->SetAngularDamping(0.0f);
+					body->SetLinearVelocity(velocity);
+					body->SetAngularVelocity(glm::vec3(0, 0, 0.5f));
+					owner->AddComponent<CollisionShapeComponent>();
+					return body;
+				};
+				TObjectPtr<RigidBodyComponent> parentBody, childBody;
+				if (bChildFirst) childBody = addBody(child, glm::vec3(-2, 1, 0));
+				parentBody = addBody(parent, glm::vec3(6, 2, 0));
+				if (!bChildFirst) childBody = addBody(child, glm::vec3(-2, 1, 0));
+				world.Step(0.0f);
+				world.Step(c_fixedDeltaTime * 1.5f);
+				for (const auto& body : { parentBody, childBody })
+				{
+					const auto& data = world.GetECS<PhysicsECS>()->GetComponentData(body->GetComponentIndex());
+					const auto expectedPosition = glm::mix(data.m_previousPose.m_position, data.m_currentPose.m_position, 0.5f);
+					const auto expectedRotation = glm::slerp(data.m_previousPose.m_rotation, data.m_currentPose.m_rotation, 0.5f);
+					const auto actual = Math::Transform::FromMatrix(body->GetOwner()->GetTransformComponent().GetCachedWorldMatrix());
+					Require(IsNear(glm::vec3(actual.m_position), expectedPosition, 0.001f) &&
+						std::abs(glm::dot(actual.GetRotation(), expectedRotation)) > 0.99999f,
+						"simulated descendants must use this frame's parent pose regardless of body registration order");
+				}
+			}
+		}
+	}
+
+	void TestPreviewPublishesWithoutSimulation()
+	{
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
+		scheduler.Initialize();
+		auto backend = TUniquePtr<Physics::PhysicsWorld>::Make(scheduler);
+		WorldUpdateTestWorld world(std::move(backend), scheduler, true);
+		auto owner = world.Instantiate("Preview body");
+		owner->SetMobilityType(EMobilityType::Dynamic);
+		auto body = owner->AddComponent<RigidBodyComponent>();
+		owner->AddComponent<CollisionShapeComponent>();
+		auto renderer = owner->AddComponent<MeshRendererComponent>();
+		renderer->GetData().SetModel(TObjectPtr<WorldUpdateTestModel>::Make(world.GetAllocator()));
+		renderer->GetMaterials() = { TObjectPtr<WorldUpdateTestMaterial>::Make(world.GetAllocator()) };
+		auto* cameras = world.GetECS<CameraECS>();
+		cameras->GetComponentData(cameras->RegisterComponent()).SetOwner(owner);
+		owner->GetTransformComponent().SetPosition(glm::vec3(3, 10, 7));
+		world.Step(10.0f);
+		const auto& data = world.GetECS<PhysicsECS>()->GetComponentData(body->GetComponentIndex());
+		Require(!body->IsValid() && !world.IsPhysicsSimulationEnabled() && data.m_bodyId == RigidBodyData::InvalidBodyId,
+			"preview must not start gameplay or create simulation bodies");
+		Require(IsNear(glm::vec3(cameras->GetActiveCameras()[0].GetInvViewMatrix()[3]), glm::vec3(3, 10, 7)),
+			"preview must still publish authored camera transforms");
+		const auto scene = world.GetECS<StaticMeshRendererECS>()->GetRHIScene()->GetCurrentVersion();
+		const RHI::RHISceneInstanceRecord* record = nullptr;
+		Require(scene && scene->m_dynamicHandles && scene->m_dynamicHandles->Num() == 1 &&
+			scene->Resolve((*scene->m_dynamicHandles)[0], record) && glm::vec3(record->m_worldMatrix[3]) == glm::vec3(3, 10, 7),
+			"preview must still publish authored mesh transforms");
+		world.SetPhysicsSimulationEnabled(true);
+		world.Step(c_fixedDeltaTime);
+		const auto velocity = body->GetLinearVelocity();
+		Require(data.m_bodyId != RigidBodyData::InvalidBodyId && velocity.y < -0.1f && velocity.y > -0.3f,
+			"enabling physics must advance one step without accumulating preview time");
+		const auto pose = data.m_currentPose.m_position;
+		world.SetPhysicsSimulationEnabled(false);
+		world.Step(10.0f);
+		Require(data.m_currentPose.m_position == pose && body->GetLinearVelocity() == velocity,
+			"disabling simulation must retain the live body's state without stepping");
+		world.SetPhysicsSimulationEnabled(true);
+		world.Step(c_fixedDeltaTime);
+		Require(body->GetLinearVelocity().y > -0.5f && body->GetLinearVelocity().y < velocity.y,
+			"resuming physics must not catch up disabled time");
 	}
 
 	void TestPhysicsWorldQueuesAndDrainsJoltJobs()
@@ -1234,7 +1466,7 @@ namespace
 		TVector<Tasks::ITaskPtr> blockers;
 		for (uint32_t index = 0; index < workerCount; ++index)
 		{
-			auto blocker = Tasks::CreateTask("Hold worker before Jolt step", [&]()
+			auto blocker = Tasks::CreateTask("Hold worker before Jolt step"_h, [&]()
 				{
 					workersStarted.fetch_add(1, std::memory_order_release);
 					releaseWorkers.wait(false, std::memory_order_acquire);
@@ -1249,7 +1481,7 @@ namespace
 		bool stepWaitingForJobs = false;
 		if (allWorkersBlocked)
 		{
-			step = Tasks::CreateTask<bool>("Step real Jolt world", [&]()
+			step = Tasks::CreateTask<bool>("Step real Jolt world"_h, [&]()
 				{
 					return world.Step(c_fixedDeltaTime);
 				}, EThreadType::Physics);
@@ -1472,6 +1704,9 @@ int main()
 		{ "PendingVelocityCommandsAndLiveBodyReconstruction", TestPendingVelocityCommandsAndLiveBodyReconstruction },
 		{ "VelocityQueriesAndRepeatedStopAfterAcceleration", TestVelocityQueriesAndRepeatedStopAfterAcceleration },
 		{ "KinematicVelocityQueriesFollowAuthoredTargets", TestKinematicVelocityQueriesFollowAuthoredTargets },
+		{ "WorldUpdatePublishesFinalPoses", TestWorldUpdatePublishesFinalPoses },
+		{ "NestedSimulatedParents", TestNestedSimulatedParents },
+		{ "PreviewPublishesWithoutSimulation", TestPreviewPublishesWithoutSimulation },
 		{ "PhysicsWorldQueuesAndDrainsJoltJobs", TestPhysicsWorldQueuesAndDrainsJoltJobs },
 		{ "ComponentTeardownOrdering", TestComponentTeardownOrdering },
 		{ "BulkPhysicsWorldClearAndReuse", TestBulkPhysicsWorldClearAndReuse },

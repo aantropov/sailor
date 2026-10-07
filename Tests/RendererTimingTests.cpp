@@ -4,6 +4,7 @@
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
+#include <type_traits>
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -11,6 +12,8 @@ using namespace std::chrono_literals;
 
 namespace
 {
+	static_assert(std::is_trivially_copyable_v<GpuTiming>);
+
 	void Require(bool condition, const char* message)
 	{
 		if (!condition)
@@ -70,7 +73,7 @@ namespace
 		return result;
 	}
 
-	const GpuTiming& FindTiming(const GpuTimingSnapshot& snapshot, const char* name, ECommandListQueue queue)
+	const GpuTiming& FindTiming(const GpuTimingSnapshot& snapshot, StringHash name, ECommandListQueue queue)
 	{
 		const size_t index = snapshot.m_timings.FindIf([=](const GpuTiming& timing)
 			{
@@ -93,7 +96,7 @@ namespace
 			const auto now = start + frame * 100ms;
 			// CPU preparation, acquire waits and idle time fill the rest of each 100 ms interval.
 			queriesOn.PublishGpuTimings(Result(1, frame, now - 5ms, 5.0f,
-				{ { "Render", ECommandListQueue::Graphics, 5.0f } }));
+				{ { "Render"_h, ECommandListQueue::Graphics, 5.0f } }));
 			const bool updated = queriesOn.RecordFrame(now, { true, true });
 			Require(updated == queriesOff.RecordFrame(now, { true, true }) && updated == (frame == 10),
 				"query readiness must not change the wall-clock reporting interval");
@@ -157,30 +160,54 @@ namespace
 		const RendererTimings::Clock::time_point start{};
 		Require(timings.PublishGpuTimings(Result(7, 1, start, 12.0f,
 			{
-				{ "Lighting", ECommandListQueue::Graphics, 1.0f },
-				{ "Lighting", ECommandListQueue::Graphics, 2.0f },
-				{ "Lighting", ECommandListQueue::Compute, 4.0f },
-				{ "Copy", ECommandListQueue::Transfer, 2.0f }
+				{ "Lighting"_h, ECommandListQueue::Graphics, 1.0f },
+				{ "Lighting"_h, ECommandListQueue::Graphics, 2.0f },
+				{ "Lighting"_h, ECommandListQueue::Compute, 4.0f },
+				{ "Copy"_h, ECommandListQueue::Transfer, 2.0f }
 			})), "a ready result must publish a snapshot");
 		const auto first = timings.GetGpuTimings();
 		Require(first.m_bValid && first.m_timings.Num() == 3 && first.m_gpuWorkMilliseconds == 12.0f,
 			"GPU work and per-name/queue timings must remain distinct values");
-		Require(IsNear(FindTiming(first, "Lighting", ECommandListQueue::Graphics).m_durationMilliseconds, 3.0f) &&
-			IsNear(FindTiming(first, "Lighting", ECommandListQueue::Compute).m_durationMilliseconds, 4.0f),
+		Require(IsNear(FindTiming(first, "Lighting"_h, ECommandListQueue::Graphics).m_durationMilliseconds, 3.0f) &&
+			IsNear(FindTiming(first, "Lighting"_h, ECommandListQueue::Compute).m_durationMilliseconds, 4.0f),
 			"sum repeated scopes within one queue, never across queues");
 		Require(first.m_timings[0].m_queue == ECommandListQueue::Compute,
 			"sorting slowest timings must preserve queue metadata");
 
 		timings.PublishGpuTimings(Result(7, 2, start + 10ms, 20.0f,
 			{
-				{ "Lighting", ECommandListQueue::Graphics, 10.0f },
-				{ "Lighting", ECommandListQueue::Compute, 8.0f }
+				{ "Lighting"_h, ECommandListQueue::Graphics, 10.0f },
+				{ "Lighting"_h, ECommandListQueue::Compute, 8.0f }
 			}));
 		const auto& second = timings.GetGpuTimings();
 		Require(second.m_timings.Num() == 2 &&
-			IsNear(FindTiming(second, "Lighting", ECommandListQueue::Graphics).m_durationMilliseconds, 6.5f) &&
-			IsNear(FindTiming(second, "Lighting", ECommandListQueue::Compute).m_durationMilliseconds, 6.0f),
+			IsNear(FindTiming(second, "Lighting"_h, ECommandListQueue::Graphics).m_durationMilliseconds, 6.5f) &&
+			IsNear(FindTiming(second, "Lighting"_h, ECommandListQueue::Compute).m_durationMilliseconds, 6.0f),
 			"rolling averages must be independent for each queue and drop absent scopes");
+	}
+
+	void TestTimingNameLifetime()
+	{
+		RendererTimings timings;
+		timings.ResetGpuTimings(1);
+		const RendererTimings::Clock::time_point start{};
+		{
+			std::string source = "prefix:Borrowed GPU scope:suffix";
+			const auto name = StringHash::Runtime(std::string_view(source).substr(7, 18));
+			auto result = Result(1, 1, start, 6.0f, { { name, ECommandListQueue::Graphics, 6.0f } });
+			source.assign(1024, 'x');
+			Require(timings.PublishGpuTimings(result), "timings must accept a name whose source has changed");
+		}
+		const auto snapshot = timings.GetGpuTimings();
+		timings.PublishGpuTimings(Result(1, 2, start + 10ms, 2.0f,
+			{ { "Borrowed GPU scope"_h, ECommandListQueue::Graphics, 2.0f } }));
+		Require(IsNear(FindTiming(timings.GetGpuTimings(), "Borrowed GPU scope"_h,
+			ECommandListQueue::Graphics).m_durationMilliseconds, 4.0f),
+			"dynamic and literal scope identifiers must share the same timing history");
+		timings.ResetGpuTimings(2);
+		const auto& retained = FindTiming(snapshot, "Borrowed GPU scope"_h, ECommandListQueue::Graphics);
+		Require(retained.m_name.ToString() == "Borrowed GPU scope" && IsNear(retained.m_durationMilliseconds, 6.0f),
+			"a copied snapshot must retain its readable name and value after source destruction and history reset");
 	}
 
 	void TestPendingInvalidAndNewGeneration()
@@ -191,7 +218,7 @@ namespace
 		Require(!timings.PublishGpuTimings(std::nullopt) && !timings.GetGpuTimings().m_bValid &&
 			timings.GetGpuTimings().m_queryId == 0, "pending before the first sample is not a valid zero-duration result");
 		timings.PublishGpuTimings(Result(10, 1, start, 4.0f,
-			{ { "Compute only", ECommandListQueue::Compute, 4.0f } }));
+			{ { "Compute only"_h, ECommandListQueue::Compute, 4.0f } }));
 		Require(!timings.PublishGpuTimings(std::nullopt), "an asynchronous pending poll must not replace the last result");
 		const auto& pending = timings.GetGpuTimings();
 		Require(pending.m_bValid && pending.m_queryId == 1 && pending.m_timings[0].m_queue == ECommandListQueue::Compute &&
@@ -204,7 +231,7 @@ namespace
 		Require(!timings.GetGpuTimings().m_bValid && timings.GetGpuTimings().m_queryId == 2 &&
 			timings.GetGpuTimings().m_timings.IsEmpty(), "invalid results must clear the previous timings");
 		timings.PublishGpuTimings(Result(10, 3, start + 400ms, 8.0f,
-			{ { "Compute only", ECommandListQueue::Compute, 8.0f } }));
+			{ { "Compute only"_h, ECommandListQueue::Compute, 8.0f } }));
 		Require(IsNear(timings.GetGpuTimings().m_timings[0].m_durationMilliseconds, 8.0f),
 			"query failure must not leave old samples in the next rolling average");
 
@@ -213,7 +240,7 @@ namespace
 		Require(!timings.GetGpuTimings().m_bValid && timings.GetGpuTimings().m_queryId == 0 &&
 			timings.GetGpuTimings().m_timings.IsEmpty(), "a new profiling generation must invalidate the old snapshot");
 		Require(!timings.PublishGpuTimings(Result(10, 4, start + 450ms, 99.0f,
-			{ { "Old graph", ECommandListQueue::Graphics, 99.0f } })),
+			{ { "Old graph"_h, ECommandListQueue::Graphics, 99.0f } })),
 			"a delayed query from the old graph must not repopulate the new generation");
 		Require(timings.PublishGpuTimings(Result(11, 5, start + 500ms, 1.0f, {})) &&
 			timings.GetGpuTimings().m_bValid && timings.GetGpuTimings().m_timings.IsEmpty(),
@@ -227,7 +254,7 @@ namespace
 		timings.ResetGpuTimings(3);
 		const RendererTimings::Clock::time_point start{};
 		timings.PublishGpuTimings(Result(3, 1, start, 4.0f,
-			{ { "Render", ECommandListQueue::Graphics, 4.0f } }));
+			{ { "Render"_h, ECommandListQueue::Graphics, 4.0f } }));
 
 		const uint32_t emptySlot = driver.SeedRecording(3, 2, start + 100ms);
 		driver.EndGpuFrameTimeQuery();
@@ -246,7 +273,7 @@ namespace
 			"taking an already consumed invalid result must not resurrect previous measurements");
 
 		timings.PublishGpuTimings(Result(3, 3, start + 200ms, 8.0f,
-			{ { "Render", ECommandListQueue::Graphics, 8.0f } }));
+			{ { "Render"_h, ECommandListQueue::Graphics, 8.0f } }));
 		Require(timings.GetGpuTimings().m_bValid && timings.GetGpuTimings().m_queryId == 3 &&
 			IsNear(timings.GetGpuTimings().m_timings[0].m_durationMilliseconds, 8.0f),
 			"measurement after an empty query must start a fresh rolling average");
@@ -308,7 +335,7 @@ namespace
 			"the driver must not overwrite a newer cancellation with an older slot result");
 		timings.PublishGpuTimings(newest);
 		Require(!timings.PublishGpuTimings(Result(5, 19, start + 19ms, 9.0f,
-			{ { "Render", ECommandListQueue::Graphics, 9.0f } })) &&
+			{ { "Render"_h, ECommandListQueue::Graphics, 9.0f } })) &&
 			!timings.GetGpuTimings().m_bValid && timings.GetGpuTimings().m_queryId == 20,
 			"a delayed older measurement must not revive the snapshot after a newer cancellation");
 
@@ -323,7 +350,7 @@ namespace
 		timings.ResetGpuTimings(1);
 		const RendererTimings::Clock::time_point start{};
 		auto latest = Result(1, 20, start + 20ms, 2.0f,
-			{ { "Node", ECommandListQueue::Compute, 2.0f } });
+			{ { "Node"_h, ECommandListQueue::Compute, 2.0f } });
 		timings.PublishGpuTimings(latest);
 		Require(!timings.PublishGpuTimings(latest), "polling the same completed query twice must not add a second sample");
 		auto older = Result(1, 19, start + 19ms, 100.0f, {});
@@ -335,7 +362,7 @@ namespace
 		for (uint64_t query = 1; query <= 61; ++query)
 		{
 			timings.PublishGpuTimings(Result(2, query, start + query * 1ms, static_cast<float>(query),
-				{ { "Node", ECommandListQueue::Compute, static_cast<float>(query) } }));
+				{ { "Node"_h, ECommandListQueue::Compute, static_cast<float>(query) } }));
 		}
 		Require(IsNear(timings.GetGpuTimings().m_timings[0].m_durationMilliseconds, 31.5f),
 			"the production timing history must retain its most recent 60 samples");
@@ -350,6 +377,7 @@ int main()
 		TestOffscreenFramesAreNotPresents();
 		TestAcceptedSubmitSurvivesFailedPresent();
 		TestGpuAggregationPreservesQueues();
+		TestTimingNameLifetime();
 		TestPendingInvalidAndNewGeneration();
 		TestEmptyQueryClearsSnapshotInSameFrame();
 		TestIncompleteAndCancelledQueriesAreInvalid();

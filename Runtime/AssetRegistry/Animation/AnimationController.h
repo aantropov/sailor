@@ -2,6 +2,8 @@
 
 #include "AssetRegistry/FileId.h"
 #include "Containers/Vector.h"
+#include "Containers/Map.h"
+#include "Core/StringHash.h"
 #include "Core/YamlSerializable.h"
 #include "Engine/Object.h"
 #include "Memory/LockFreeHeapAllocator.h"
@@ -139,7 +141,7 @@ namespace Sailor
 
 		SAILOR_API int32_t FindStateIndex(AnimationControllerNodeId stateId) const;
 		SAILOR_API int32_t FindParameterIndex(AnimationControllerNodeId parameterId) const;
-		SAILOR_API int32_t FindParameterIndex(const std::string& name) const;
+		SAILOR_API int32_t FindParameterIndex(StringHash name) const;
 
 		const TVector<AnimationParameterDefinition>& GetParameters() const { return m_parameters; }
 		const TVector<AnimationStateDefinition>& GetStates() const { return m_states; }
@@ -149,6 +151,7 @@ namespace Sailor
 
 	private:
 		TVector<AnimationParameterDefinition> m_parameters;
+		TMap<StringHash, int32_t> m_parameterIndices;
 		TVector<AnimationStateDefinition> m_states;
 		TVector<AnimationTransitionDefinition> m_transitions;
 		uint32_t m_defaultStateIndex = 0;
@@ -165,12 +168,13 @@ namespace Sailor
 		SAILOR_API bool Initialize(
 			const AnimationSetAsset& asset,
 			TVector<std::string>* outErrors = nullptr);
-		SAILOR_API const FileId* FindAnimation(const std::string& slot) const;
+		SAILOR_API const FileId* FindAnimation(StringHash slot) const;
 		const TVector<AnimationSetEntry>& GetEntries() const { return m_entries; }
 		uint64_t GetRevision() const { return m_revision; }
 
 	private:
 		TVector<AnimationSetEntry> m_entries;
+		TMap<StringHash, size_t> m_slotIndices;
 		uint64_t m_revision = 0;
 	};
 
@@ -188,13 +192,15 @@ namespace Sailor
 	public:
 		SAILOR_API bool SetController(const AnimationControllerPtr& controller);
 		SAILOR_API void Reset();
+		// Remap hot-reloaded state IDs before looking up the active clip's duration.
+		SAILOR_API bool SynchronizeController();
 		SAILOR_API void Tick(float deltaTime, float activeClipDuration);
 
-		SAILOR_API bool SetFloat(const std::string& name, float value);
-		SAILOR_API bool SetInt(const std::string& name, int32_t value);
-		SAILOR_API bool SetBool(const std::string& name, bool value);
-		SAILOR_API bool SetTrigger(const std::string& name);
-		SAILOR_API bool ResetTrigger(const std::string& name);
+		SAILOR_API bool SetFloat(StringHash name, float value);
+		SAILOR_API bool SetInt(StringHash name, int32_t value);
+		SAILOR_API bool SetBool(StringHash name, bool value);
+		SAILOR_API bool SetTrigger(StringHash name);
+		SAILOR_API bool ResetTrigger(StringHash name);
 
 		bool IsValid() const { return m_controller && !m_controller->GetStates().IsEmpty(); }
 		bool IsTransitioning() const { return m_destinationStateIndex != InvalidIndex; }
@@ -208,12 +214,11 @@ namespace Sailor
 		static constexpr uint32_t InvalidIndex = (std::numeric_limits<uint32_t>::max)();
 
 	private:
-		bool SetParameter(const std::string& name, EAnimationParameterType type, const AnimationParameterValue& value);
+		bool SetParameter(StringHash name, EAnimationParameterType type, const AnimationParameterValue& value);
 		bool AreConditionsMet(const AnimationTransitionDefinition& transition) const;
 		void ConsumeTriggers(const AnimationTransitionDefinition& transition);
 		void TryBeginTransition(float activeClipDuration);
 		void CompleteTransition();
-		bool SynchronizeController();
 
 		AnimationControllerPtr m_controller;
 		TVector<AnimationParameterValue> m_parameterValues;

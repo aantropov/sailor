@@ -10,15 +10,17 @@
 #include <ole2.h>
 
 #include "Input.h"
+#include "Submodules/ImGuiApi.h"
 #include "Sailor.h"
 #include "Tasks/Tasks.h"
 #include "Tasks/Scheduler.h"
-#include "Submodules/ImGuiApi.h"
+#include <windowsx.h>
 
 #pragma comment(lib, "ole32.lib")
 
 using namespace Sailor;
 using namespace Sailor::Win32;
+using Sailor::Platform::InputEvent;
 
 Utils::WindowSizeAndPosition Utils::GetWindowSizeAndPosition(HWND hwnd)
 {
@@ -50,6 +52,18 @@ namespace
 	constexpr size_t c_bracedFileIdLength = 38;
 	constexpr size_t c_maxDropPayloadLength =
 		c_editorAssetDropPrefix.size() + c_bracedFileIdLength;
+
+	uint32_t ResolveNativeKeyCode(WPARAM key, LPARAM flags)
+	{
+		const bool bIsExtended = (flags & (1 << 24)) != 0;
+		switch (key)
+		{
+		case VK_SHIFT: return MapVirtualKeyW(static_cast<UINT>((flags >> 16) & 0xFF), MAPVK_VSC_TO_VK_EX);
+		case VK_CONTROL: return bIsExtended ? VK_RCONTROL : VK_LCONTROL;
+		case VK_MENU: return bIsExtended ? VK_RMENU : VK_LMENU;
+		default: return static_cast<uint32_t>(key);
+		}
+	}
 
 	bool IsEditorViewportToolShortcutKey(uint32_t keyCode)
 	{
@@ -655,6 +669,7 @@ void Sailor::Win32::Window::ProcessWin32Msgs()
 			pWindow = g_windows[i];
 			hWnd = pWindow->m_hWnd;
 		}
+		if (::GetWindowThreadProcessId(hWnd, nullptr) != ::GetCurrentThreadId()) continue;
 
 		while (PeekMessage(&msg, hWnd, 0, 0, PM_REMOVE))
 		{
@@ -663,6 +678,7 @@ void Sailor::Win32::Window::ProcessWin32Msgs()
 				pWindow->SetRunning(false);
 				break;
 			}
+			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
 		pWindow->UpdateMouseCapture();
@@ -954,13 +970,34 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 		return DefWindowProc(hWnd, msg, wParam, lParam);
 	}
 
-	if (auto* imGui = App::GetSubmodule<ImGuiApi>())
-	{
-		imGui->HandleWin32(hWnd, msg, wParam, lParam);
-	}
-
 	switch (msg)
 	{
+	case WM_SETCURSOR:
+	{
+		if (LOWORD(lParam) != HTCLIENT) break;
+		const auto cursor = ImGuiApi::GetRequestedMouseCursor();
+		if (!cursor) break;
+		auto cursorId = IDC_ARROW;
+		switch (*cursor)
+		{
+		case ImGuiMouseCursor_None:
+			SetCursor(nullptr);
+			return TRUE;
+		case ImGuiMouseCursor_TextInput: cursorId = IDC_IBEAM; break;
+		case ImGuiMouseCursor_ResizeAll: cursorId = IDC_SIZEALL; break;
+		case ImGuiMouseCursor_ResizeNS: cursorId = IDC_SIZENS; break;
+		case ImGuiMouseCursor_ResizeEW: cursorId = IDC_SIZEWE; break;
+		case ImGuiMouseCursor_ResizeNESW: cursorId = IDC_SIZENESW; break;
+		case ImGuiMouseCursor_ResizeNWSE: cursorId = IDC_SIZENWSE; break;
+		case ImGuiMouseCursor_Hand: cursorId = IDC_HAND; break;
+		case ImGuiMouseCursor_Wait: cursorId = IDC_WAIT; break;
+		case ImGuiMouseCursor_Progress: cursorId = IDC_APPSTARTING; break;
+		case ImGuiMouseCursor_NotAllowed: cursorId = IDC_NO; break;
+		default: break;
+		}
+		SetCursor(LoadCursor(nullptr, cursorId));
+		return TRUE;
+	}
 	case WM_DPICHANGED:
 	{
 		const auto* suggestedRect = reinterpret_cast<const RECT*>(lParam);
@@ -981,34 +1018,55 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 		return FALSE;
 	}
 	case WM_LBUTTONDOWN:
+	case WM_LBUTTONDBLCLK:
 	case WM_LBUTTONUP:
 	case WM_RBUTTONDOWN:
+	case WM_RBUTTONDBLCLK:
 	case WM_RBUTTONUP:
 	case WM_MBUTTONDOWN:
+	case WM_MBUTTONDBLCLK:
 	case WM_MBUTTONUP:
+	case WM_XBUTTONDOWN:
+	case WM_XBUTTONDBLCLK:
+	case WM_XBUTTONUP:
 	{
-		GlobalInput::SetCursorPosition((int32_t)LOWORD(lParam), (int32_t)HIWORD(lParam));
-
-		if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP)
-			GlobalInput::SetMouseButtonState(0, msg == WM_LBUTTONDOWN ? KeyState::Pressed : KeyState::Up);
-
-		if (msg == WM_RBUTTONDOWN || msg == WM_RBUTTONUP)
-			GlobalInput::SetMouseButtonState(1, msg == WM_RBUTTONDOWN ? KeyState::Pressed : KeyState::Up);
-
-		if (msg == WM_MBUTTONDOWN || msg == WM_MBUTTONUP)
-			GlobalInput::SetMouseButtonState(2, msg == WM_MBUTTONDOWN ? KeyState::Pressed : KeyState::Up);
-
-		return FALSE;
+		const int32_t button = (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP || msg == WM_LBUTTONDBLCLK) ? 0 :
+			(msg == WM_RBUTTONDOWN || msg == WM_RBUTTONUP || msg == WM_RBUTTONDBLCLK) ? 1 :
+			(msg == WM_MBUTTONDOWN || msg == WM_MBUTTONUP || msg == WM_MBUTTONDBLCLK) ? 2 :
+			(GET_XBUTTON_WPARAM(wParam) == XBUTTON1 ? 3 : 4);
+		const bool bIsPressed = msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN ||
+			msg == WM_MBUTTONDOWN || msg == WM_XBUTTONDOWN || msg == WM_LBUTTONDBLCLK ||
+			msg == WM_RBUTTONDBLCLK || msg == WM_MBUTTONDBLCLK || msg == WM_XBUTTONDBLCLK;
+		GlobalInput::QueueNativeEvent({ InputEvent::Type::MouseButton,
+			static_cast<float>(GET_X_LPARAM(lParam)), static_cast<float>(GET_Y_LPARAM(lParam)), 0, button, bIsPressed });
+		if (bIsPressed)
+		{
+			pWindow->m_nativeMouseButtons |= 1u << button;
+			if (!GetCapture()) SetCapture(hWnd);
+		}
+		else
+		{
+			pWindow->m_nativeMouseButtons &= ~(1u << button);
+			if (!pWindow->m_nativeMouseButtons && GetCapture() == hWnd) ReleaseCapture();
+		}
+		return button >= 3 ? TRUE : FALSE;
 	}
 
 	case WM_MOUSEMOVE:
 	{
-		GlobalInput::SetCursorPosition((int32_t)LOWORD(lParam), (int32_t)HIWORD(lParam));
+		GlobalInput::QueueNativeEvent({ InputEvent::Type::MousePos,
+			static_cast<float>(GET_X_LPARAM(lParam)), static_cast<float>(GET_Y_LPARAM(lParam)) });
 		return FALSE;
 	}
 	case WM_MOUSEWHEEL:
+	case WM_MOUSEHWHEEL:
 	{
-		GlobalInput::AddMouseWheelDelta(static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) / static_cast<float>(WHEEL_DELTA));
+		POINT cursor{ GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+		ScreenToClient(hWnd, &cursor);
+		GlobalInput::QueueNativeEvent({ InputEvent::Type::MousePos, static_cast<float>(cursor.x), static_cast<float>(cursor.y) });
+		const float steps = static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) / WHEEL_DELTA;
+		GlobalInput::QueueNativeEvent({ InputEvent::Type::MouseWheel,
+			msg == WM_MOUSEHWHEEL ? -steps : 0.0f, msg == WM_MOUSEWHEEL ? steps : 0.0f });
 		return FALSE;
 	}
 
@@ -1017,8 +1075,9 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 	{
 		if (wParam < 256 && (lParam & 0x40000000) == 0)
 		{
-			const uint32_t keyCode = static_cast<uint32_t>(wParam);
-			GlobalInput::SetKeyState(keyCode, KeyState::Pressed);
+			const uint32_t keyCode = ResolveNativeKeyCode(wParam, lParam);
+			GlobalInput::QueueNativeEvent({ InputEvent::Type::Key, 0.0f, 0.0f, keyCode, -1, true, {},
+				wParam == VK_RETURN && (lParam & (1 << 24)) != 0 });
 			if (pWindow->m_parentHwnd &&
 				pWindow->m_windowClassName.starts_with("SailorEditor") &&
 				IsEditorViewportToolShortcutKey(keyCode))
@@ -1034,16 +1093,42 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 	{
 		if (wParam < 256)
 		{
-			GlobalInput::SetKeyState((uint32_t)wParam, KeyState::Up);
+			if (wParam == VK_SNAPSHOT)
+				GlobalInput::QueueNativeEvent({ InputEvent::Type::Key, 0.0f, 0.0f, VK_SNAPSHOT, -1, true });
+			GlobalInput::QueueNativeEvent({ InputEvent::Type::Key, 0.0f, 0.0f, ResolveNativeKeyCode(wParam, lParam), -1,
+				false, {}, wParam == VK_RETURN && (lParam & (1 << 24)) != 0 });
 		}
 
 		return FALSE;
 	}
 
+	case WM_CHAR:
+	{
+		wchar_t character = static_cast<wchar_t>(wParam);
+		if (!IsWindowUnicode(hWnd) && !MultiByteToWideChar(CP_ACP, 0,
+			reinterpret_cast<const char*>(&wParam), 1, &character, 1)) return FALSE;
+		GlobalInput::QueueNativeEvent({ InputEvent::Type::CharacterUtf16, 0.0f, 0.0f, static_cast<uint32_t>(character) });
+		return FALSE;
+	}
 	case WM_SETFOCUS:
 	case WM_KILLFOCUS:
 		pWindow->SetActive(msg == WM_SETFOCUS);
+		GlobalInput::QueueNativeEvent({ InputEvent::Type::Focus, 0.0f, 0.0f, 0, -1, msg == WM_SETFOCUS });
+		if (msg == WM_KILLFOCUS)
+		{
+			pWindow->m_nativeMouseButtons = 0;
+			if (GetCapture() == hWnd) ReleaseCapture();
+		}
 		pWindow->UpdateMouseCapture();
+		return FALSE;
+	case WM_CANCELMODE:
+	case WM_CAPTURECHANGED:
+		if (pWindow->m_nativeMouseButtons)
+		{
+			pWindow->m_nativeMouseButtons = 0;
+			GlobalInput::QueueNativeEvent({ InputEvent::Type::Reset });
+		}
+		if (msg == WM_CANCELMODE && GetCapture() == hWnd) ReleaseCapture();
 		return FALSE;
 
 	case WM_ACTIVATE:
@@ -1065,6 +1150,7 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 
 	case WM_CLOSE:
 	{
+		GlobalInput::QueueNativeEvent({ InputEvent::Type::Focus });
 		pWindow->RequestMouseCapture(false);
 		pWindow->UpdateMouseCapture();
 		pWindow->SetActive(false);

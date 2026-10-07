@@ -29,7 +29,7 @@ namespace
 	{
 	public:
 		PendingTask(Tasks::Scheduler& scheduler, TaskLifetime& lifetime, EThreadType type) :
-			ITask("Pending shutdown task", type), m_scheduler(scheduler), m_lifetime(lifetime)
+			ITask("Pending shutdown task"_h, type), m_scheduler(scheduler), m_lifetime(lifetime)
 		{
 			m_pSyncBlock = scheduler.AcquireTaskSyncBlock();
 			m_numBlockers = 1;

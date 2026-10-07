@@ -74,12 +74,12 @@ namespace
 			auto inputs = driver->CreateShaderBindings();
 			if (scenario != 0u)
 			{
-				driver->AddSamplerToShaderBindings(inputs, "source", cube, 0u);
+				driver->AddSamplerToShaderBindings(inputs, "source"_h, cube, 0u);
 				commands->ImageMemoryBarrierForComputeSampling(cmd, cube);
 			}
 			// Empty set 0 exercises the actual missing-sampler fallback, not a replacement texture.
 			auto outputs = driver->CreateShaderBindings();
-			driver->AddStorageImageToShaderBindings(outputs, "outputValue", output, 0u);
+			driver->AddStorageImageToShaderBindings(outputs, "outputValue"_h, output, 0u);
 			commands->ImageMemoryBarrier(cmd, output, EImageLayout::ComputeWrite);
 			commands->Dispatch(cmd, shader->GetComputeShaderRHI(), 1u, levels, 1u, { inputs, outputs });
 			commands->ImageMemoryBarrier(cmd, output, EImageLayout::TransferSrcOptimal);
@@ -183,7 +183,7 @@ void TextureUploadTestComponent::Tick(float)
 	}
 	if (m_shader && m_shader->IsReady())
 	{
-		m_validation = Tasks::CreateTaskWithResult<std::string>("Texture upload GPU validation",
+		m_validation = Tasks::CreateTaskWithResult<std::string>("Texture upload GPU validation"_h,
 			[shader = m_shader]() { return ValidateTextures(shader); }, EThreadType::RHI);
 		m_validation->Run();
 	}

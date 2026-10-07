@@ -25,7 +25,7 @@ namespace Sailor::Framegraph
 		static constexpr uint32_t IrradianceMapSize = 32;
 		static constexpr uint32_t BrdfLutSize = 256;
 
-		SAILOR_API static const char* GetName() { return m_name; }
+		SAILOR_API static StringHash GetName() { return "Environment"_h; }
 
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override;
@@ -98,7 +98,7 @@ namespace Sailor::Framegraph
 
 		// Authored HDR environments must initialize without a Sky node to trigger them.
 		bool m_bIsDirty = true;
-		SAILOR_SHARED_API static const char* m_name;
+
 	};
 
 	template class TFrameGraphNode<EnvironmentNode>;

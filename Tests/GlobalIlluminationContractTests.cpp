@@ -6,9 +6,11 @@
 #include "GlobalIllumination/RuntimeGIProbesService.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "Components/LandscapeComponent.h"
 #include "Components/LightComponent.h"
 #include "Components/MeshRendererComponent.h"
 #include "Components/Tests/GlobalIlluminationLandscapeTestScene.h"
+#include "Core/YamlUtils.h"
 #include "ECS/LandscapeECS.h"
 #include "ECS/LightingECS.h"
 #include "ECS/GlobalIlluminationECS.h"
@@ -25,6 +27,8 @@
 #include "Raytracing/GIProbesPathTracer.h"
 #include "Submodules/Editor.h"
 #include "Support/TempDirectory.h"
+#include "Support/FrameGraphContract.h"
+#include "Workspace/WorkspacePathEncoding.h"
 
 #include <algorithm>
 #include <array>
@@ -42,6 +46,7 @@
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 
 #include <glm/gtc/packing.hpp>
@@ -135,11 +140,11 @@ namespace
 		std::_Exit(2);
 	}
 
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -153,24 +158,7 @@ namespace
 			std::istreambuf_iterator<char>());
 	}
 
-	std::string GetSequenceMapping(
-		const YAML::Node& sequence,
-		const char* key)
-	{
-		if (!sequence || !sequence.IsSequence())
-		{
-			return {};
-		}
-		for (const YAML::Node& entry : sequence)
-		{
-			const YAML::Node value = entry[key];
-			if (value && value.IsScalar())
-			{
-				return value.as<std::string>();
-			}
-		}
-		return {};
-	}
+	using Tests::GetSequenceMapping;
 
 	void TestGlobalIlluminationFrameGraphProbeCellContract()
 	{
@@ -874,10 +862,10 @@ namespace
 	{
 		MaterialPtr material = MaterialPtr::Make(allocator, FileId::Invalid);
 		material->SetUniform(
-			"material.baseColorFactor",
+			"material.baseColorFactor"_h,
 			glm::vec4(color, 1.0f));
-		material->SetUniform("material.metallicFactor", 0.0f);
-		material->SetUniform("material.roughnessFactor", 1.0f);
+		material->SetUniform("material.metallicFactor"_h, 0.0f);
+		material->SetUniform("material.roughnessFactor"_h, 1.0f);
 		return material;
 	}
 
@@ -1953,6 +1941,10 @@ namespace
 
 	void TestBinaryRoundTripDeterminismAndCorruption()
 	{
+		const std::string versionText = std::string(GIProbesCurrentBakerVersion) + "-suffix";
+		Require(IsGIProbesBakerVersionSupported(std::string_view(versionText).substr(0, GIProbesCurrentBakerVersion.size())) &&
+			!IsGIProbesBakerVersionSupported(versionText),
+			"baker version matching must respect the supplied text boundary");
 		GIProbesData source = MakeVolume(2.0f, 11u);
 		source.m_bakeSettings.m_skyIndirectIntensity = 1.75f;
 		source.m_probes[7].m_flags |= GIProbeBlockedDirectionBit(5u);
@@ -2050,12 +2042,9 @@ namespace
 
 	void TestAtomicFileAndPortableIdentityBoundary()
 	{
-		const auto id = std::chrono::steady_clock::now().time_since_epoch().count();
-		const std::filesystem::path directory =
-			std::filesystem::temp_directory_path() /
-			("sailor-probes-" + std::to_string(id));
-		const std::filesystem::path firstPath = directory / "Day.probes";
-		const std::filesystem::path copyPath = directory / "CopiedDay.probes";
+		Tests::TempDirectory directory("probes-atomic");
+		const auto firstPath = directory.Path("Day.probes");
+		const auto copyPath = directory.Path("CopiedDay.probes");
 		std::string diagnostic;
 		const GIProbesData source = MakeVolume(1.0f, 21u);
 		Require(GIProbesBinary::SaveAtomic(firstPath, source, diagnostic),
@@ -2076,8 +2065,26 @@ namespace
 		const GIProbesBinaryResult copied = GIProbesBinary::Load(copyPath);
 		Require(copied.IsSuccess() && copied.m_data->m_lightingHash == 21u,
 			"a copied binary must remain independently loadable without an embedded FileId");
-		std::error_code error;
-		std::filesystem::remove_all(directory, error);
+	}
+
+	void TestProbeFixtureCleanupAfterFailure()
+	{
+		struct ExpectedFailure {};
+		std::filesystem::path fixturePath;
+		try
+		{
+			Tests::TempDirectory directory("probes-failure");
+			fixturePath = directory.Get();
+			std::string diagnostic;
+			Require(GIProbesBinary::SaveAtomic(directory.Path("Day.probes"), MakeVolume(1, 21), diagnostic),
+				"failure fixture must create real temporary probe data: " + diagnostic);
+			Require(!GIProbesBinary::Load(directory.Path("Missing.probes")).IsSuccess(),
+				"missing probes must fail to load");
+			throw ExpectedFailure{};
+		}
+		catch (const ExpectedFailure&) {}
+		Require(!std::filesystem::exists(fixturePath),
+			"failed-load fixture must clean up probe data during unwinding");
 	}
 
 	void TestBlendAndAdditiveComposition()
@@ -2505,6 +2512,148 @@ components:
 			"a real level edit must still fail the saved-world bake preflight");
 	}
 
+	void TestProbeBakeComparisonIgnoresMapOrder()
+	{
+		const auto saved = YAML::Load(R"yaml(
+name: BakeWorld
+prefabs:
+  - gameObjects: [{name: Geometry, components: [0]}]
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties: {meshIndex: 2, minLod: 1}
+)yaml");
+		const auto reordered = YAML::Load(R"yaml(
+prefabs:
+  - components:
+      - overrideProperties: {minLod: 1, meshIndex: 2}
+        typename: Sailor::MeshRendererComponent
+    gameObjects: [{components: [0], name: Geometry}]
+name: BakeWorld
+)yaml");
+		std::string diagnostic = "previous failure";
+		Require(AreWorldDocumentsEquivalentForProbeBake(saved, reordered, diagnostic) && diagnostic.empty(),
+			"reordering YAML maps must not make an unchanged world require a save before baking");
+		Require(AreWorldDocumentsEquivalentForProbeBake(reordered, saved, diagnostic),
+			"saved-world equivalence must be symmetric");
+	}
+
+	void TestProbeBakeComparisonUsesComponentDefaults()
+	{
+		const auto& defaults = Reflection::GetCDO("Sailor::MeshRendererComponent");
+		Require(defaults.IsValid() && defaults.GetProperties().ContainsKey("minLod"),
+			"the comparison fixture must use registered engine defaults");
+		YAML::Node saved = YAML::Load(R"yaml(
+name: BakeWorld
+prefabs:
+  - gameObjects: [{name: Geometry, components: [0]}]
+    components: []
+)yaml");
+		saved["prefabs"][0]["components"].push_back(defaults.Serialize());
+		auto omitted = YAML::Clone(saved);
+		omitted["prefabs"][0]["components"][0]["overrideProperties"].remove("minLod");
+		std::string diagnostic;
+		Require(AreWorldDocumentsEquivalentForProbeBake(saved, omitted, diagnostic) &&
+			AreWorldDocumentsEquivalentForProbeBake(omitted, saved, diagnostic),
+			"omitting a reflected default must not make an unchanged world require a save before baking");
+		Require(saved["prefabs"][0]["components"][0]["overrideProperties"]["minLod"].IsDefined() &&
+			!static_cast<const YAML::Node&>(omitted)["prefabs"][0]["components"][0]["overrideProperties"]["minLod"],
+			"comparison must leave both input documents unchanged");
+		omitted["prefabs"][0]["components"][0]["overrideProperties"]["minLod"] = 1;
+		Require(!AreWorldDocumentsEquivalentForProbeBake(saved, omitted, diagnostic) && !diagnostic.empty(),
+			"changing a contributor away from its default must still require a save");
+	}
+
+	void TestProbeBakeComparisonPreservesNestedRecords()
+	{
+		LandscapeVegetationSettings trees;
+		trees.m_modelFileId = FileId::CreateNewFileId();
+		trees.m_instancesPerChunk = 42u;
+		LandscapeVegetationSettings grass = trees;
+		grass.m_residency = ELandscapeVegetationResidency::Grass;
+		grass.m_instancesPerChunk = 256u;
+		LandscapeComponent original;
+		original.SetVegetationProfiles({ trees, grass });
+		YAML::Node saved = YAML::Load(R"yaml(
+name: BakeWorld
+prefabs:
+  - gameObjects: [{name: Landscape, components: [0]}]
+    components: []
+)yaml");
+		saved["prefabs"][0]["components"].push_back(original.GetReflectedData().Serialize());
+		auto reorderedFields = YAML::Clone(saved);
+		auto profile = reorderedFields["prefabs"][0]["components"][0]["overrideProperties"]["vegetationProfiles"][0];
+		TVector<YAML::Node> fields;
+		for (const auto& field : profile) fields.Add(field.first);
+		YAML::Node reorderedProfile(YAML::NodeType::Map);
+		for (size_t i = fields.Num(); i-- > 0;) reorderedProfile[fields[i]] = YAML::Clone(profile[fields[i]]);
+		profile = reorderedProfile;
+		ReflectedData data;
+		data.Deserialize(reorderedFields["prefabs"][0]["components"][0]);
+		LandscapeComponent loaded;
+		loaded.ApplyReflection(data);
+		Require(loaded.GetVegetationProfiles() == original.GetVegetationProfiles(),
+			"reordered record fields must produce the same typed component through normal reflection");
+
+		const auto savedBefore = YAML::Dump(saved);
+		const auto reorderedBefore = YAML::Dump(reorderedFields);
+		std::string diagnostic;
+		Require(AreWorldDocumentsEquivalentForProbeBake(saved, reorderedFields, diagnostic) &&
+			AreWorldDocumentsEquivalentForProbeBake(reorderedFields, saved, diagnostic),
+			"reordering nested record fields must not make an unchanged world require a save before baking");
+		Require(YAML::Dump(saved) == savedBefore && YAML::Dump(reorderedFields) == reorderedBefore,
+			"nested-record comparison must leave both input documents unchanged");
+		profile["priority"] = 2.0f;
+		Require(!AreWorldDocumentsEquivalentForProbeBake(saved, reorderedFields, diagnostic),
+			"a changed nested setting must still require a save before baking");
+		auto reordered = YAML::Clone(saved);
+		reordered["prefabs"][0]["components"][0]["overrideProperties"]["vegetationProfiles"] =
+			TVector<LandscapeVegetationSettings>{ grass, trees };
+		Require(!AreWorldDocumentsEquivalentForProbeBake(saved, reordered, diagnostic),
+			"comparison must preserve the order of reflected record lists");
+
+		profile.remove("priority");
+		LandscapeVegetationSettings invalid;
+		Require(!External::TryConvertYaml(profile, invalid, diagnostic) && diagnostic.find("priority") != std::string::npos,
+			"a nested field without YamlOptional remains required, even when the C++ record has a default");
+		Require(!AreWorldDocumentsEquivalentForProbeBake(saved, reorderedFields, diagnostic),
+			"comparison must not invent missing required record fields");
+	}
+
+	void TestProbeBakeComparisonPreservesContributorEdits()
+	{
+		const auto saved = YAML::Load(R"yaml(
+name: BakeWorld
+prefabs:
+  - gameObjects: [{name: Geometry, components: [0], position: [0, 0, 0, 1]}]
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties: {model: FirstModel, overrideMaterials: [FirstMaterial], meshIndex: 0}
+  - gameObjects: [{name: Light, components: [0]}]
+    components:
+      - typename: Sailor::LightComponent
+        overrideProperties: {intensity: [1, 2, 3]}
+)yaml");
+		auto requireEdit = [&](auto edit, std::string_view message)
+		{
+			auto current = YAML::Clone(saved);
+			edit(current);
+			std::string diagnostic;
+			Require(!AreWorldDocumentsEquivalentForProbeBake(saved, current, diagnostic) && !diagnostic.empty(), message);
+		};
+		requireEdit([](YAML::Node& document)
+			{ document["prefabs"][0]["components"][0]["overrideProperties"]["model"] = "SecondModel"; },
+			"a model change must still require a save before baking");
+		requireEdit([](YAML::Node& document)
+			{ document["prefabs"][0]["components"][0]["overrideProperties"]["overrideMaterials"][0] = "SecondMaterial"; },
+			"a material change must still require a save before baking");
+		requireEdit([](YAML::Node& document)
+			{ document["prefabs"][1]["components"][0]["overrideProperties"]["intensity"][0] = 2; },
+			"a light change must still require a save before baking");
+		requireEdit([](YAML::Node& document)
+			{ document["prefabs"][0]["gameObjects"][0]["position"][0] = 1; },
+			"a transform change must still require a save before baking");
+	}
+
 	void TestBakeControllerRejectsInvalidThreadCountBeforeSceneCapture()
 	{
 		GlobalIlluminationBakeController controller;
@@ -2542,7 +2691,7 @@ components:
 	public:
 		ObservedBakeTask(Function function,
 			TSharedPtr<BakeTaskObservation> observation) :
-			Task("Controlled background bake", std::move(function), EThreadType::Background),
+			Task("Controlled background bake"_h, std::move(function), EThreadType::Background),
 			m_observation(std::move(observation))
 		{}
 
@@ -2805,9 +2954,9 @@ components:
 						GlobalIlluminationLandscapeTestScene::LandscapeChunksX &&
 					properties["chunksZ"].as<uint32_t>() ==
 						GlobalIlluminationLandscapeTestScene::LandscapeChunksZ &&
-					properties["sculptStamps"].size() ==
+					properties["sculptStamps"].as<TVector<LandscapeSculptStamp>>() ==
 						GlobalIlluminationLandscapeTestScene::
-							GetLandscapeSculptStamps().Num();
+							GetLandscapeSculptStamps();
 			}
 			if (typeName == "Sailor::LightComponent")
 			{
@@ -3032,6 +3181,12 @@ components:
 		RHI::RHIGlobalIlluminationState state;
 		state.m_data = original;
 		before.m_states.Add(state);
+		auto copied = before;
+		copied.m_layout = GIProbesDataPtr::Make(*original);
+		copied.m_states[0].m_data = copied.m_layout;
+		Require(RHI::ComputeGlobalIlluminationCoefficientSignature(copied) ==
+			RHI::ComputeGlobalIlluminationCoefficientSignature(before),
+			"identical coefficients in a fresh allocation must retain upload identity");
 		auto refined = GIProbesDataPtr::Make(*original);
 		refined->m_probes[0].m_irradiance[0] *= 2.0f;
 		++refined->m_lightingHash;
@@ -3703,8 +3858,9 @@ components:
 		return probe;
 	}
 
-	void RequireAnalyticSphereIrradiance(const GIProbe& probe, float tolerance)
+	float AnalyticSphereIrradianceError(const GIProbe& probe)
 	{
+		float maximumError = 0;
 		for (uint32_t axis = 0u; axis < 3u; ++axis)
 		{
 			for (float sign : { -1.0f, 1.0f })
@@ -3718,12 +3874,18 @@ components:
 					(1.0f - normal.y) * 0.5f);
 				for (uint32_t channel = 0u; channel < 3u; ++channel)
 				{
-					Require(IsNear(actual[channel], expected[channel], tolerance),
-						"progressive irradiance must cover both hemispheres; error " +
-						std::to_string(std::abs(actual[channel] - expected[channel])));
+					Require(std::isfinite(actual[channel]), "analytic sphere irradiance must remain finite");
+					maximumError = std::max(maximumError, std::abs(actual[channel] - expected[channel]));
 				}
 			}
 		}
+		return maximumError;
+	}
+
+	void RequireAnalyticSphereIrradiance(const GIProbe& probe, float tolerance)
+	{
+		const float error = AnalyticSphereIrradianceError(probe);
+		Require(error <= tolerance, "progressive irradiance must cover both hemispheres; error " + std::to_string(error));
 	}
 
 	void RequireSamePrimarySamples(const ProgressiveDirectionProbe& lhs,
@@ -4401,75 +4563,108 @@ components:
 			"an impossible publication budget must be rejected before workers start");
 	}
 
-	void TestRuntimeGIProbesIgnoreCameraMotion()
+	void TestRuntimeGIProbesCameraIndependence()
 	{
-		RuntimeGIProbesService service;
-		auto constantSampler =
-			TSharedPtr<ConstantBakeRaySampler>::Make(glm::vec3(0.25f));
-		TSharedPtr<IGIProbeBakeRaySampler> sampler = constantSampler;
-		RuntimeGIProbesStartRequest initialRequest = MakeRuntimeGIProbesRequest(
-			sampler,
-			51u,
-			61u);
-		initialRequest.m_qualitySettings.m_maxActiveProbes = 64u;
-		initialRequest.m_qualitySettings.m_initialSamplesPerProbe = 16u;
-		initialRequest.m_qualitySettings.m_targetSamplesPerProbe = 16u;
-		initialRequest.m_qualitySettings.m_maxDirtyUploadBytesPerFrame =
-			64u * 1024u;
-		initialRequest.m_geometryBounds.m_min =
-			glm::vec3(-0.1f, -0.1f, -64.0f);
-		initialRequest.m_geometryBounds.m_max =
-			glm::vec3(0.1f, 0.1f, 576.0f);
-		std::string diagnostic;
-		Require(service.Start(initialRequest, diagnostic),
-			"the initial runtime priority should start: " + diagnostic);
-		Require(WaitForRuntimeGIProbes(
-				service,
-				[](const RuntimeGIProbesStatus& status)
+		struct CameraCase
+		{
+			const char* m_name;
+			glm::vec3 m_firstPosition;
+			glm::vec3 m_step;
+			uint32_t m_viewCount;
+			glm::vec3 m_boundsMin;
+			glm::vec3 m_boundsMax;
+			uint32_t m_maxActiveProbes;
+			uint64_t m_geometryGeneration;
+			uint64_t m_lightingGeneration;
+		};
+		const CameraCase cases[] =
+		{
+			{ "RuntimeGIProbesNearCamera", { 0, 0, 0 }, { 0, 0, 1 }, 2,
+				{ -0.1f, -0.1f, -64 }, { 0.1f, 0.1f, 576 }, 64, 51, 61 },
+			{ "RuntimeGIProbesFarCamera", { 0, 0, 0 }, { 0, 0, 512 }, 2,
+				{ -0.1f, -0.1f, -64 }, { 0.1f, 0.1f, 576 }, 64, 51, 61 },
+			{ "RuntimeGIProbesManyViews", { 4096, 0, 0 }, { 4096, 0, 0 }, 16,
+				{ 4000, -0.1f, -64 }, { 66000, 0.1f, -1 }, 8, 71, 81 }
+		};
+		for (const auto& cameraCase : cases)
+		{
+			RunTest(cameraCase.m_name, [&]
 				{
-					return status.m_lifecycle ==
-						ERuntimeGIProbesLifecycle::Ready;
-				}),
-			"the initial runtime grid should converge");
-		const RuntimeGIProbesStatus initialStatus = service.GetStatus();
-		const GIProbesDataPtr initialData = service.GetPublishedData();
-		Require(initialData && initialData->m_bricks.Num() == 1u &&
-			initialStatus.m_readyProbeCount == initialStatus.m_activeProbeCount,
-			"the fixed runtime grid must converge before camera motion");
+					RuntimeGIProbesService service;
+					auto sampler = TSharedPtr<ConstantBakeRaySampler>::Make(glm::vec3(0.25f));
+					auto request = MakeRuntimeGIProbesRequest(sampler,
+						cameraCase.m_geometryGeneration, cameraCase.m_lightingGeneration);
+					request.m_priorityPosition = cameraCase.m_firstPosition;
+					request.m_geometryBounds.m_min = cameraCase.m_boundsMin;
+					request.m_geometryBounds.m_max = cameraCase.m_boundsMax;
+					request.m_qualitySettings.m_maxActiveProbes = cameraCase.m_maxActiveProbes;
+					request.m_qualitySettings.m_initialSamplesPerProbe = 16;
+					request.m_qualitySettings.m_targetSamplesPerProbe = 16;
+					request.m_qualitySettings.m_maxDirtyUploadBytesPerFrame = 64 * 1024;
+					std::string diagnostic;
+					Require(service.Start(request, diagnostic), "camera fixture must start: " + diagnostic);
+					Require(WaitForRuntimeGIProbes(service, [](const auto& status)
+						{ return status.m_lifecycle == ERuntimeGIProbesLifecycle::Ready; }),
+						"scene-wide grid must converge before camera motion");
+					const auto initialData = service.GetPublishedData();
+					Require(initialData && initialData->m_bricks.Num() == 1,
+						"camera fixture must publish one fixed scene-wide brick");
+					const auto visibilitySamples = sampler->GetVisibilitySampleCount();
+					const auto irradianceSamples = sampler->GetIrradianceSampleCount();
+					const auto requireNoRetrace = [&]
+					{
+						const auto status = service.GetStatus();
+						Require(status.m_readyProbeCount == status.m_activeProbeCount && IsNear(status.m_refinement, 1) &&
+							sampler->GetVisibilitySampleCount() == visibilitySamples &&
+							sampler->GetIrradianceSampleCount() == irradianceSamples,
+							"camera motion must retain every converged probe without tracing visibility or irradiance again");
+					};
+					requireNoRetrace();
+					for (uint32_t view = 1; view < cameraCase.m_viewCount; ++view)
+					{
+						request.m_priorityPosition = cameraCase.m_firstPosition + cameraCase.m_step * float(view);
+						Require(service.Start(request, diagnostic), "moved camera must reuse the grid: " + diagnostic);
+						requireNoRetrace();
+						Require(WaitForRuntimeGIProbes(service, [](const auto& status)
+							{ return status.m_lifecycle == ERuntimeGIProbesLifecycle::Ready; }),
+							"moved camera must leave the fixed grid ready");
+						requireNoRetrace();
+					}
+					service.SetWorkAllowed(false);
+					request.m_priorityPosition = cameraCase.m_firstPosition;
+					Require(service.Start(request, diagnostic), "original camera must reuse the grid while throttled: " + diagnostic);
+					requireNoRetrace();
+					service.Disable();
+				});
+		}
+	}
 
-		RuntimeGIProbesStartRequest movedRequest = initialRequest;
-		movedRequest.m_priorityPosition.z += 512.0f;
-		const uint64_t visibilityBeforeMove =
-			constantSampler->GetVisibilitySampleCount();
-		const uint64_t irradianceBeforeMove =
-			constantSampler->GetIrradianceSampleCount();
-		Require(service.Start(movedRequest, diagnostic),
-			"the moved runtime priority should start: " + diagnostic);
-		const RuntimeGIProbesStatus movedStatus = service.GetStatus();
-		Require(movedStatus.m_readyProbeCount ==
-				movedStatus.m_activeProbeCount &&
-			IsNear(movedStatus.m_refinement, 1.0f) &&
-			constantSampler->GetVisibilitySampleCount() == visibilityBeforeMove &&
-			constantSampler->GetIrradianceSampleCount() == irradianceBeforeMove,
-			"moving the camera must neither replace nor retrace the scene-wide grid");
-
-		service.SetWorkAllowed(false);
-		const uint64_t visibilityBeforeReturn =
-			constantSampler->GetVisibilitySampleCount();
-		const uint64_t irradianceBeforeReturn =
-			constantSampler->GetIrradianceSampleCount();
-		Require(service.Start(initialRequest, diagnostic),
-			"returning to the initial runtime priority should start: " + diagnostic);
-		const RuntimeGIProbesStatus returnedStatus = service.GetStatus();
-		Require(returnedStatus.m_readyProbeCount ==
-				returnedStatus.m_activeProbeCount &&
-			IsNear(returnedStatus.m_refinement, 1.0f) &&
-			constantSampler->GetVisibilitySampleCount() ==
-				visibilityBeforeReturn &&
-			constantSampler->GetIrradianceSampleCount() ==
-				irradianceBeforeReturn,
-			"camera motion must preserve every converged probe without retracing");
-		service.Disable();
+	void TestRuntimeGIProbesContentIdentity()
+	{
+		std::array<GIProbesDataPtr, 3> publications;
+		const std::array radiance{ 0.25f, 0.5f, 0.25f };
+		for (size_t i = 0; i < publications.size(); ++i)
+		{
+			RuntimeGIProbesService service;
+			auto request = MakeRuntimeGIProbesRequest(
+				TSharedPtr<ConstantBakeRaySampler>::Make(glm::vec3(radiance[i])), 11, 21);
+			request.m_qualitySettings.m_targetSamplesPerProbe = 16;
+			request.m_qualitySettings.m_initialPublicationCoverage = 1.0f;
+			std::string diagnostic;
+			Require(service.Start(request, diagnostic), diagnostic);
+			Require(WaitForRuntimeGIProbes(service, [](const RuntimeGIProbesStatus& status)
+				{ return status.m_lifecycle == ERuntimeGIProbesLifecycle::Ready; }),
+				"independent GI services must finish their publications");
+			publications[i] = service.GetPublishedData();
+			Require(publications[i] && service.GetStatus().m_publishedRevision == 1,
+				"each independent service must produce its first complete publication");
+		}
+		Require(publications[0]->m_probes[0].m_irradiance[0] != publications[1]->m_probes[0].m_irradiance[0],
+			"different radiance must produce different coefficients");
+		Require(publications[0]->m_lightingHash != publications[1]->m_lightingHash,
+			"lighting identity must distinguish different content with equal service revision and generation");
+		Require(publications[0] != publications[2] && publications[0]->m_lightingHash == publications[2]->m_lightingHash,
+			"identical lighting must retain its identity across independent services and allocations");
 	}
 
 	void TestRuntimeGIProbesProgressiveSamplingPublication()
@@ -4516,6 +4711,16 @@ components:
 				static_cast<uint32_t>(EGIProbeFlag::Valid)) != 0u;
 			bHasReadyProbe |= bValid;
 			bHasPendingProbe |= !bValid;
+			if (bValid)
+			{
+				for (const auto normal : { glm::vec3(1, 0, 0), glm::vec3(-1, 0, 0),
+					glm::vec3(0, 1, 0), glm::vec3(0, -1, 0), glm::vec3(0, 0, 1), glm::vec3(0, 0, -1) })
+				{
+					const auto irradiance = EvaluateProbeIrradianceSH(probe.m_irradiance, normal);
+					Require(glm::all(glm::lessThanEqual(glm::abs(irradiance - glm::vec3(0.25f)), glm::vec3(0.075f))),
+						"ready probes in a partial publication must already approximate constant irradiance in all directions");
+				}
+			}
 		}
 		Require(bHasReadyProbe && bHasPendingProbe,
 			"initial publication must preserve both completed probes and fallback cells");
@@ -4535,69 +4740,101 @@ components:
 
 	void TestRuntimeGIProbesInitialSphereCoverage()
 	{
-		for (uint32_t initialCount : { 16u, 17u })
+		struct SampleBudget
 		{
-			RuntimeGIProbesService service;
-			auto analyticSampler = TSharedPtr<AnalyticSphereSampler>::Make();
-			TSharedPtr<IGIProbeBakeRaySampler> sampler = analyticSampler;
-			RuntimeGIProbesStartRequest request = MakeRuntimeGIProbesRequest(sampler, 141u, 151u);
-			request.m_qualitySettings.m_initialSamplesPerProbe = initialCount;
-			request.m_qualitySettings.m_targetSamplesPerProbe = 65u;
-			std::string diagnostic;
-			Require(service.Start(request, diagnostic),
-				"the analytic runtime GI fixture should start: " + diagnostic);
-			Require(WaitForRuntimeGIProbes(service, [](const RuntimeGIProbesStatus& status)
-				{
-					return status.m_publishedRevision > 0u;
-				}), "the runtime worker must publish its initial sphere samples");
-
-			const RuntimeGIProbesStatus initial = service.GetStatus();
-			const GIProbesDataPtr initialData = service.GetPublishedData();
-			// Headless execution runs one real worker job per Tick, so this observes
-			// the initial milestone before any probe starts its refinement pass.
-			Require(initialData && initial.m_activeProbeCount == 8u &&
-				initial.m_readyProbeCount == initial.m_activeProbeCount && initial.m_refinement < 1.0f &&
-				analyticSampler->GetSampleCount() == static_cast<uint64_t>(initial.m_activeProbeCount) * initialCount,
-				"first publication must contain only the configured 16/17-sample prefixes");
-			for (const GIProbe& probe : initialData->m_probes)
+			uint32_t m_initial;
+			uint32_t m_target;
+			float m_initialTolerance;
+			float m_finalTolerance;
+		};
+		const SampleBudget budgets[] = { { 16, 65, 0.30f, 0.12f },
+			{ 17, 65, 0.30f, 0.12f }, { 64, 256, 0.12f, 0.06f } };
+		for (const auto& budget : budgets)
+		{
+			float initialErrorSum = 0;
+			float finalErrorSum = 0;
+			for (uint32_t seed : { 0u, 1729u, 9187u })
 			{
-				Require((probe.m_flags & static_cast<uint32_t>(EGIProbeFlag::Valid)) != 0u,
-					"unoccluded analytic probes must be ready in the initial publication");
-				RequireAnalyticSphereIrradiance(probe, 0.30f);
-			}
+				RuntimeGIProbesService service;
+				auto analyticSampler = TSharedPtr<AnalyticSphereSampler>::Make();
+				TSharedPtr<IGIProbeBakeRaySampler> sampler = analyticSampler;
+				RuntimeGIProbesStartRequest request = MakeRuntimeGIProbesRequest(sampler, 141u, 151u);
+				request.m_randomSeed = seed;
+				request.m_qualitySettings.m_initialSamplesPerProbe = budget.m_initial;
+				request.m_qualitySettings.m_targetSamplesPerProbe = budget.m_target;
+				std::string diagnostic;
+				Require(service.Start(request, diagnostic),
+					"the analytic runtime GI fixture should start: " + diagnostic);
+				Require(WaitForRuntimeGIProbes(service, [](const RuntimeGIProbesStatus& status)
+					{
+						return status.m_publishedRevision > 0u;
+					}), "the runtime worker must publish its initial sphere samples");
 
-			GIProbeTraceRequest traceRequest;
-			traceRequest.m_settings.m_randomSeed = request.m_randomSeed;
-			const AnalyticSphereSampler referenceSampler;
-			const GIProbe complete = TraceIrradiancePrefix(traceRequest, referenceSampler, 65u, 65u);
-			Require(WaitForRuntimeGIProbes(service, [&](const RuntimeGIProbesStatus& status)
+				const RuntimeGIProbesStatus initial = service.GetStatus();
+				const GIProbesDataPtr initialData = service.GetPublishedData();
+				// Headless execution runs one real worker job per Tick, so this observes
+				// the initial milestone before any probe starts its refinement pass.
+				Require(initialData && initial.m_activeProbeCount == 8u &&
+					initial.m_readyProbeCount == initial.m_activeProbeCount && initial.m_refinement < 1.0f &&
+					analyticSampler->GetSampleCount() == static_cast<uint64_t>(initial.m_activeProbeCount) * budget.m_initial,
+					"first publication must contain only the configured initial sample prefixes");
+				float initialError = 0;
+				for (const GIProbe& probe : initialData->m_probes)
 				{
-					const GIProbesDataPtr data = service.GetPublishedData();
-					return status.m_lifecycle == ERuntimeGIProbesLifecycle::Ready &&
-						status.m_publishedRevision > initial.m_publishedRevision && data &&
-						!data->m_probes.IsEmpty() && HasSameIrradianceBits(data->m_probes[0], complete);
-				}), "the runtime worker must publish the completed odd sample budget");
-			Require(analyticSampler->GetSampleCount() == static_cast<uint64_t>(initial.m_activeProbeCount) * 65u,
-				"refinement must extend each prefix without retracing its earlier irradiance samples");
-			const GIProbesDataPtr finalData = service.GetPublishedData();
-			uint64_t transportHash = 0;
-			Require(ComputeGIProbesTransportHash(*finalData, transportHash) &&
-				finalData->m_transportHash == transportHash && finalData != initialData,
-				"the real runtime publisher must use complete transport content identity");
-			RHI::RHIGlobalIlluminationSnapshot initialSnapshot;
-			initialSnapshot.m_layout = initialData;
-			RHI::RHIGlobalIlluminationSnapshot finalSnapshot;
-			finalSnapshot.m_layout = finalData;
-			Require(RHI::ComputeGlobalIlluminationLayoutSignature(initialSnapshot) ==
-				RHI::ComputeGlobalIlluminationLayoutSignature(finalSnapshot),
-				"fully covered runtime SH refinement must not invalidate the GPU layout");
-			for (const GIProbe& probe : finalData->m_probes)
-			{
-				Require(HasSameIrradianceBits(probe, complete),
-					"published runtime irradiance must match the completed production accumulator");
-				RequireAnalyticSphereIrradiance(probe, 0.12f);
+					Require((probe.m_flags & static_cast<uint32_t>(EGIProbeFlag::Valid)) != 0u,
+						"unoccluded analytic probes must be ready in the initial publication");
+					initialError = std::max(initialError, AnalyticSphereIrradianceError(probe));
+				}
+				Require(initialError <= budget.m_initialTolerance,
+					"initial published probes must reproduce constant/hemisphere irradiance in opposite directions");
+				const GIProbe retainedInitialProbe = initialData->m_probes[0];
+
+				GIProbeTraceRequest traceRequest;
+				traceRequest.m_settings.m_randomSeed = request.m_randomSeed;
+				const AnalyticSphereSampler referenceSampler;
+				const GIProbe complete = TraceIrradiancePrefix(traceRequest, referenceSampler, budget.m_target, budget.m_target);
+				Require(WaitForRuntimeGIProbes(service, [&](const RuntimeGIProbesStatus& status)
+					{
+						const GIProbesDataPtr data = service.GetPublishedData();
+						return status.m_lifecycle == ERuntimeGIProbesLifecycle::Ready &&
+							status.m_publishedRevision > initial.m_publishedRevision && data &&
+							!data->m_probes.IsEmpty() && HasSameIrradianceBits(data->m_probes[0], complete);
+					}), "the runtime worker must publish the completed sample budget");
+				Require(analyticSampler->GetSampleCount() == static_cast<uint64_t>(initial.m_activeProbeCount) * budget.m_target,
+					"refinement must extend each prefix without retracing its earlier irradiance samples");
+				const GIProbesDataPtr finalData = service.GetPublishedData();
+				uint64_t transportHash = 0;
+				Require(ComputeGIProbesTransportHash(*finalData, transportHash) &&
+					finalData->m_transportHash == transportHash && finalData != initialData,
+					"the real runtime publisher must use complete transport content identity");
+				RHI::RHIGlobalIlluminationSnapshot initialSnapshot;
+				initialSnapshot.m_layout = initialData;
+				RHI::RHIGlobalIlluminationSnapshot finalSnapshot;
+				finalSnapshot.m_layout = finalData;
+				Require(RHI::ComputeGlobalIlluminationLayoutSignature(initialSnapshot) ==
+					RHI::ComputeGlobalIlluminationLayoutSignature(finalSnapshot),
+					"fully covered runtime SH refinement must not invalidate the GPU layout");
+				float finalError = 0;
+				for (const GIProbe& probe : finalData->m_probes)
+				{
+					Require(HasSameIrradianceBits(probe, complete),
+						"published runtime irradiance must match the completed production accumulator");
+					finalError = std::max(finalError, AnalyticSphereIrradianceError(probe));
+				}
+				Require(finalError <= budget.m_finalTolerance,
+					"refined published irradiance must meet the tighter analytic error bound");
+				Require(HasSameProbeBits(initialData->m_probes[0], retainedInitialProbe),
+					"refining a later publication must not mutate a retained initial probe");
+				initialErrorSum += initialError;
+				finalErrorSum += finalError;
+				std::cout << "ProbeRadiometry initial=" << budget.m_initial << " target=" << budget.m_target
+					<< " seed=" << seed << " error=" << initialError << " -> " << finalError << '\n';
+				service.Disable();
 			}
-			service.Disable();
+			// A single noisy prefix need not improve monotonically. The fixed seed
+			// ensemble must improve, and every publication has its own error bound.
+			Require(finalErrorSum < initialErrorSum,
+				"refinement must reduce analytic irradiance error across the fixed seed ensemble");
 		}
 	}
 
@@ -4674,78 +4911,6 @@ components:
 			boundarySampler->GetSampleCount() == samplesBeforeMove,
 			"camera motion must retain relocated probes without retracing: " +
 				movedStatus.m_diagnostic + " " + diagnostic);
-		service.Disable();
-	}
-
-	void TestRuntimeGIProbesKeepOneGridAcrossManyViews()
-	{
-		RuntimeGIProbesService service;
-		auto constantSampler =
-			TSharedPtr<ConstantBakeRaySampler>::Make(glm::vec3(0.25f));
-		TSharedPtr<IGIProbeBakeRaySampler> sampler = constantSampler;
-		RuntimeGIProbesStartRequest request = MakeRuntimeGIProbesRequest(
-			sampler,
-			71u,
-			81u);
-		request.m_qualitySettings.m_initialSamplesPerProbe = 16u;
-		request.m_qualitySettings.m_targetSamplesPerProbe = 16u;
-		request.m_qualitySettings.m_maxDirtyUploadBytesPerFrame =
-			64u * 1024u;
-		request.m_geometryBounds.m_min =
-			glm::vec3(4000.0f, -0.1f, -64.0f);
-		request.m_geometryBounds.m_max =
-			glm::vec3(66000.0f, 0.1f, -1.0f);
-		std::string diagnostic;
-		const auto convergeAt = [&service, &request, &diagnostic](float x)
-		{
-			request.m_priorityPosition.x = x;
-			Require(service.Start(request, diagnostic),
-				"a runtime priority view should start: " + diagnostic);
-			Require(WaitForRuntimeGIProbes(
-					service,
-					[](const RuntimeGIProbesStatus& status)
-					{
-						return status.m_lifecycle ==
-							ERuntimeGIProbesLifecycle::Ready;
-					}),
-				"the fixed runtime grid should stay converged");
-		};
-
-		convergeAt(4096.0f);
-		const RuntimeGIProbesStartRequest oldestRequest = request;
-		const uint64_t visibilityAfterInitialGrid =
-			constantSampler->GetVisibilitySampleCount();
-		const uint64_t irradianceAfterInitialGrid =
-			constantSampler->GetIrradianceSampleCount();
-		for (uint32_t viewIndex = 1u; viewIndex < 16u; ++viewIndex)
-		{
-			convergeAt(4096.0f * static_cast<float>(viewIndex + 1u));
-		}
-		const RuntimeGIProbesStatus filledStatus = service.GetStatus();
-		Require(filledStatus.m_readyProbeCount ==
-				filledStatus.m_activeProbeCount &&
-			constantSampler->GetVisibilitySampleCount() ==
-				visibilityAfterInitialGrid &&
-			constantSampler->GetIrradianceSampleCount() ==
-				irradianceAfterInitialGrid,
-			"many camera positions must keep the same converged scene-wide grid");
-
-		service.SetWorkAllowed(false);
-		const uint64_t visibilityBeforeReturn =
-			constantSampler->GetVisibilitySampleCount();
-		const uint64_t irradianceBeforeReturn =
-			constantSampler->GetIrradianceSampleCount();
-		Require(service.Start(oldestRequest, diagnostic),
-			"the original priority view should restart: " + diagnostic);
-		const RuntimeGIProbesStatus returnedStatus = service.GetStatus();
-		Require(returnedStatus.m_readyProbeCount ==
-				returnedStatus.m_activeProbeCount &&
-			IsNear(returnedStatus.m_refinement, 1.0f) &&
-			constantSampler->GetVisibilitySampleCount() ==
-				visibilityBeforeReturn &&
-			constantSampler->GetIrradianceSampleCount() ==
-				irradianceBeforeReturn,
-			"returning to an earlier view must not retrace the fixed grid");
 		service.Disable();
 	}
 
@@ -5106,12 +5271,6 @@ components:
 
 		GIProbesBakeRequest parallel = request;
 		parallel.m_threadCount = 4u;
-		bool bSawParallelStage = false;
-		parallel.m_progress = [&bSawParallelStage](
-			const GIProbesBakeProgress& progress)
-		{
-			bSawParallelStage |= progress.m_stage.find("(4 threads)") != std::string::npos;
-		};
 		const ConcurrentSeedDrivenBakeRaySampler parallelSampler(4u);
 		const GIProbesBakeResult parallelResult = GIProbesBaker::Bake(
 			parallel,
@@ -5131,7 +5290,6 @@ components:
 		}
 		Require(
 			parallelSampler.GetObservedThreadCount() == 4u &&
-			bSawParallelStage &&
 			first.m_data->m_layoutHash == parallelResult.m_data->m_layoutHash &&
 			first.m_data->m_transportHash ==
 				parallelResult.m_data->m_transportHash &&
@@ -5448,6 +5606,43 @@ components:
 			"instead of making its entire mesh transparent");
 	}
 
+	void TestThicknessMaterialConversionAndSampling()
+	{
+		auto fixture = MakeEveningLandscapeRaytracingFixture();
+		auto material = fixture.m_materials[0];
+		MaterialSamplingPathTracer tracer;
+		const auto sampleThickness = [&]
+		{
+			// GI publishes captured values; pixel-only edits do not change the live material's revision.
+			const auto materials = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
+			Require(tracer.InitializeSceneSnapshot(fixture.m_instances, materials, {}, false),
+				"thickness fixture must run production material conversion");
+			return tracer.SamplePreparedMaterial(0).m_thicknessFactor;
+		};
+		Require(IsNear(sampleThickness(), 0) && !tracer.PreparedMaterial(0).HasThicknessTexture(),
+			"a material without thickness must sample zero and have no texture slot");
+		material->SetUniform("material.thicknessFactor"_h, 2.0f);
+		Require(IsNear(sampleThickness(), 2) && !tracer.PreparedMaterial(0).HasThicknessTexture(),
+			"without a texture, production sampling must preserve the authored thickness factor");
+
+		auto texture = TObjectPtr<CpuTextureFixture>::Make(fixture.m_allocator, FileId::Invalid);
+		material->SetSampler("thicknessSampler"_h, texture);
+		for (const auto pixel : { glm::u8vec4(64, 102, 192, 255),
+			glm::u8vec4(230, 102, 192, 255), glm::u8vec4(230, 102, 9, 255) })
+		{
+			texture->SetPixel(pixel);
+			Require(IsNear(sampleThickness(), 0.8f) && tracer.PreparedMaterial(0).HasThicknessTexture(),
+				"converted thickness must use linear green; independent red/blue edits must not affect it");
+		}
+		texture->SetPixel(glm::u8vec4(230, 204, 9, 255));
+		Require(IsNear(sampleThickness(), 1.6f),
+			"a green-channel edit must update production thickness sampling");
+		material->SetUniform("material.thicknessFactor"_h, 0.5f);
+		Require(IsNear(sampleThickness(), 0.4f), "thickness factor edits must scale the converted texture sample");
+		material->SetUniform("material.thicknessFactor"_h, 0.0f);
+		Require(IsNear(sampleThickness(), 0), "a bound texture must not override zero authored thickness");
+	}
+
 	void TestGiMaterialSnapshotsOutliveOwnerEdits()
 	{
 		auto fixture = MakeEveningLandscapeRaytracingFixture();
@@ -5461,24 +5656,24 @@ components:
 		auto material = TObjectPtr<CapturedGiTestMaterial>::Make(fixture.m_allocator);
 		auto texture = TObjectPtr<CpuTextureFixture>::Make(fixture.m_allocator, FileId::Invalid);
 		texture->SetPixel(glm::u8vec4(255u, 0u, 0u, 255u));
-		material->SetSampler("baseColorSampler", texture);
-		material->SetUniform("material.baseColorFactor", glm::vec4(0.1f));
-		material->SetUniform("material.albedo", glm::vec4(0.8f, 0.6f, 0.4f, 1.0f));
-		material->SetUniform("material.emissiveFactor", glm::vec4(0.1f));
-		material->SetUniform("material.emissive", glm::vec4(0.2f));
-		material->SetUniform("material.emission", glm::vec4(1.0f, 2.0f, 3.0f, 1.0f));
-		material->SetUniform("material.roughnessFactor", 0.9f);
-		material->SetUniform("material.roughness", 0.3f);
-		material->SetUniform("material.metallicFactor", 0.9f);
-		material->SetUniform("material.metallic", 0.2f);
-		material->SetUniform("material.clearcoatFactor", 0.25f);
-		material->SetUniform("material.clearcoatRoughnessFactor", 0.45f);
-		material->SetUniform("material.sheenColorFactor", glm::vec4(0.2f, 0.3f, 0.4f, 1.0f));
-		material->SetUniform("material.sheenRoughnessFactor", 0.6f);
-		material->SetUniform("material.transmissionFactor", 0.4f);
-		material->SetUniform("material.thicknessFactor", 0.7f);
-		material->SetUniform("material.indexOfRefraction", 1.33f);
-		material->SetUniform("material.layerUvScale", glm::vec4(2.0f, 3.0f, 4.0f, 5.0f));
+		material->SetSampler("baseColorSampler"_h, texture);
+		material->SetUniform("material.baseColorFactor"_h, glm::vec4(0.1f));
+		material->SetUniform("material.albedo"_h, glm::vec4(0.8f, 0.6f, 0.4f, 1.0f));
+		material->SetUniform("material.emissiveFactor"_h, glm::vec4(0.1f));
+		material->SetUniform("material.emissive"_h, glm::vec4(0.2f));
+		material->SetUniform("material.emission"_h, glm::vec4(1.0f, 2.0f, 3.0f, 1.0f));
+		material->SetUniform("material.roughnessFactor"_h, 0.9f);
+		material->SetUniform("material.roughness"_h, 0.3f);
+		material->SetUniform("material.metallicFactor"_h, 0.9f);
+		material->SetUniform("material.metallic"_h, 0.2f);
+		material->SetUniform("material.clearcoatFactor"_h, 0.25f);
+		material->SetUniform("material.clearcoatRoughnessFactor"_h, 0.45f);
+		material->SetUniform("material.sheenColorFactor"_h, glm::vec4(0.2f, 0.3f, 0.4f, 1.0f));
+		material->SetUniform("material.sheenRoughnessFactor"_h, 0.6f);
+		material->SetUniform("material.transmissionFactor"_h, 0.4f);
+		material->SetUniform("material.thicknessFactor"_h, 0.7f);
+		material->SetUniform("material.indexOfRefraction"_h, 1.33f);
+		material->SetUniform("material.layerUvScale"_h, glm::vec4(2.0f, 3.0f, 4.0f, 5.0f));
 		material->SetRenderState(RHI::RenderState(true, false, 0.0f, false,
 			RHI::ECullMode::None, RHI::EBlendMode::AlphaBlending));
 		renderer->GetMaterials().Add(material);
@@ -5523,13 +5718,13 @@ components:
 		}
 
 		texture->SetPixel(glm::u8vec4(0u, 0u, 255u, 255u));
-		material->SetUniform("material.albedo", glm::vec4(0.2f, 0.4f, 0.9f, 1.0f));
-		material->SetUniform("material.emission", glm::vec4(4.0f, 5.0f, 6.0f, 1.0f));
-		material->SetUniform("material.roughness", 0.8f);
-		material->SetUniform("material.metallic", 0.7f);
-		material->SetUniform("material.clearcoatFactor", 0.75f);
-		material->SetUniform("material.transmissionFactor", 0.8f);
-		material->SetUniform("material.indexOfRefraction", 1.8f);
+		material->SetUniform("material.albedo"_h, glm::vec4(0.2f, 0.4f, 0.9f, 1.0f));
+		material->SetUniform("material.emission"_h, glm::vec4(4.0f, 5.0f, 6.0f, 1.0f));
+		material->SetUniform("material.roughness"_h, 0.8f);
+		material->SetUniform("material.metallic"_h, 0.7f);
+		material->SetUniform("material.clearcoatFactor"_h, 0.75f);
+		material->SetUniform("material.transmissionFactor"_h, 0.8f);
+		material->SetUniform("material.indexOfRefraction"_h, 1.8f);
 		material->SetRenderState(RHI::RenderState(true, true, 0.0f, false,
 			RHI::ECullMode::Back, RHI::EBlendMode::None));
 		GIProbesSceneSnapshot second;
@@ -5593,7 +5788,8 @@ components:
 	void TestCapturedTextureDecodeUsesSourceRevisions()
 	{
 		Tests::TempDirectory source("gi-texture");
-		const auto imagePath = source.Path("pixel.tga");
+		const auto imagePath = source.Path(Workspace::PathFromUtf8(
+			reinterpret_cast<const char*>(u8"pixel \u042f \u00e9 \u8239 \U0001f6a2.tga")));
 		const auto writeImage = [&](const glm::u8vec3& color)
 			{
 				std::array<uint8_t, 21> bytes{};
@@ -5612,7 +5808,7 @@ components:
 		TextureAssetInfo info;
 		auto metadata = info.Serialize();
 		metadata["fileId"] = FileId::CreateNewFileId();
-		metadata["filename"] = imagePath.string();
+		metadata["filename"] = Workspace::PathToUtf8(imagePath);
 		metadata["bShouldGenerateMips"] = false;
 		info.Deserialize(metadata);
 		TextureImporter::CpuDecodeRequest first;
@@ -5633,21 +5829,22 @@ components:
 		Require(!TextureImporter::DecodeTextureCpu(first, pixels, width, height, mipLevels) &&
 			pixels.IsEmpty() && width == 0 && height == 0,
 			"a captured source must reject replacement pixels instead of mixing revisions");
-		metadata["filename"] = imagePath.string();
+		metadata["filename"] = Workspace::PathToUtf8(imagePath);
 		info.Deserialize(metadata);
 		TextureImporter::CpuDecodeRequest second;
 		Require(TextureImporter::CaptureCpuDecodeRequest(info, second) &&
 			TextureImporter::DecodeTextureCpu(second, pixels, width, height, mipLevels) && pixels[2] == 255u,
 			"a fresh capture must decode the edited source");
 
-		const auto gltfPath = source.Path("source.gltf");
+		const auto gltfPath = source.Path(Workspace::PathFromUtf8(
+			reinterpret_cast<const char*>(u8"source \u042f \u00e9 \u8239 \U0001f6a2.gltf")));
 		{
 			std::ofstream output(gltfPath);
-			output << R"({"asset":{"version":"2.0"},"images":[{"uri":"pixel.tga"}],"textures":[{"source":0}]})";
+			output << R"({"asset":{"version":"2.0"},"images":[{"uri":"pixel%20%D0%AF%20%C3%A9%20%E8%88%B9%20%F0%9F%9A%A2.tga"}],"textures":[{"source":0}]})";
 			output.close();
 			Require(static_cast<bool>(output), "the glTF texture source must be written");
 		}
-		metadata["filename"] = gltfPath.string();
+		metadata["filename"] = Workspace::PathToUtf8(gltfPath);
 		metadata["glbTextureIndex"] = 0;
 		info.Deserialize(metadata);
 		TextureImporter::CpuDecodeRequest embedded;
@@ -5673,8 +5870,8 @@ components:
 		auto fixture = MakeEveningLandscapeRaytracingFixture();
 		auto texture = TObjectPtr<CpuTextureFixture>::Make(fixture.m_allocator, FileId::Invalid);
 		texture->SetPixel(glm::u8vec4(255u, 0u, 0u, 255u));
-		fixture.m_materials[0]->SetUniform("material.baseColorFactor", glm::vec4(1.0f));
-		fixture.m_materials[0]->SetSampler("baseColorSampler", texture);
+		fixture.m_materials[0]->SetUniform("material.baseColorFactor"_h, glm::vec4(1.0f));
+		fixture.m_materials[0]->SetSampler("baseColorSampler"_h, texture);
 		const auto first = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
 		texture->SetPixel(glm::u8vec4(0u, 0u, 255u, 255u));
 		const auto second = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
@@ -5709,7 +5906,7 @@ components:
 		Require(tracer.InitializeScene(fixture.m_instances, fixture.m_materials, {}, false) &&
 			tracer.GetLastScenePreparationStats().m_uniqueMaterialCount == 0u,
 			"an unchanged live material signature must keep its existing preparation cache hit");
-		fixture.m_materials[0]->SetUniform("material.roughness", 0.35f);
+		fixture.m_materials[0]->SetUniform("material.roughness"_h, 0.35f);
 		Require(tracer.InitializeScene(fixture.m_instances, fixture.m_materials, {}, false) &&
 			tracer.GetLastScenePreparationStats().m_uniqueMaterialCount == fixture.m_materials.Num() &&
 			IsNear(tracer.SamplePreparedMaterial(0u).m_orm.y, 0.35f),
@@ -5735,10 +5932,10 @@ components:
 		cpuTextureFixture->SetPixel(glm::u8vec4(64u, 128u, 192u, 255u));
 		const TexturePtr sharedTexture = cpuTextureFixture;
 		fixture.m_materials[0]->SetSampler(
-			"baseColorSampler",
+			"baseColorSampler"_h,
 			sharedTexture);
 		fixture.m_materials[1]->SetSampler(
-			"baseColorSampler",
+			"baseColorSampler"_h,
 			sharedTexture);
 
 		TVector<MaterialPtr> duplicatedMaterials;
@@ -6041,7 +6238,7 @@ components:
 		auto materials = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
 		auto material = TSharedPtr<Raytracing::PathTracer::MaterialSnapshot>::Make(*materials[0]);
 		for (uint32_t index = 0u; index < 4096u; ++index)
-			material->m_samplers.Add({ "customSampler" + std::to_string(index), {} });
+			material->m_samplers.Add({ StringHash::Runtime("customSampler" + std::to_string(index)), {} });
 		materials[0] = material;
 		Raytracing::GIProbesPathTracer tracer;
 		uint32_t reports = 0u, warnings = 0u;
@@ -6278,7 +6475,7 @@ components:
 		fixture.m_instances[0].m_blas.Clear();
 		auto materials = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
 		auto textured = TSharedPtr<Raytracing::PathTracer::MaterialSnapshot>::Make(*materials[0]);
-		textured->m_samplers.Add({ "baseColorSampler", { texture } });
+		textured->m_samplers.Add({ "baseColorSampler"_h, { texture } });
 		materials[0] = textured;
 		GIProbesSceneSnapshot scene;
 		scene.m_instances = fixture.m_instances;
@@ -6381,7 +6578,7 @@ components:
 		auto material = TObjectPtr<CapturedGiTestMaterial>::Make(allocator);
 		auto texture = TObjectPtr<CpuTextureFixture>::Make(allocator, FileId::Invalid);
 		texture->SetPixel(glm::u8vec4(255, 0, 0, 255));
-		material->SetSampler("baseColorSampler", texture);
+		material->SetSampler("baseColorSampler"_h, texture);
 		Raytracing::PathTracer::MaterialSnapshotCache cache;
 		const TVector<MaterialPtr> slots{ material, material, {} };
 		const auto first = Raytracing::PathTracer::CaptureMaterials(slots, &cache);
@@ -6390,7 +6587,7 @@ components:
 		const auto pixels = first[0]->m_samplers[0].m_second.m_texture;
 		const auto surfaceRevision = material->GetSurfaceRevision();
 		const auto contentRevision = material->GetContentRevision();
-		for (const char* name : { "material.emissiveFactor", "material.emissive", "material.emission" })
+		for (const auto name : { "material.emissiveFactor"_h, "material.emissive"_h, "material.emission"_h })
 		{
 			material->SetUniform(name, glm::vec4(2, 4, 8, 0));
 			const auto changed = Raytracing::PathTracer::CaptureMaterials(slots, &cache);
@@ -6404,14 +6601,14 @@ components:
 			const auto unchanged = Raytracing::PathTracer::CaptureMaterials(slots, &cache);
 			Require(unchanged[0] == changed[0], "unchanged owner capture must reuse the material value itself");
 		}
-		material->SetUniform("material.baseColorFactor", glm::vec4(1, 1, 1, 0.25f));
+		material->SetUniform("material.baseColorFactor"_h, glm::vec4(1, 1, 1, 0.25f));
 		const auto alpha = Raytracing::PathTracer::CaptureMaterials(slots, &cache);
 		Require(material->GetSurfaceRevision() > surfaceRevision &&
 			alpha[0]->m_parameters.m_baseColorFactor.a == 0.25f &&
 			alpha[0]->m_samplers[0].m_second.m_texture != pixels,
 			"alpha changes must invalidate the retained surface capture");
 		texture->SetPixel(glm::u8vec4(0, 0, 255, 255));
-		material->SetSampler("baseColorSampler", texture);
+		material->SetSampler("baseColorSampler"_h, texture);
 		const auto rebound = Raytracing::PathTracer::CaptureMaterials(slots, &cache);
 		Require((*rebound[0]->m_samplers[0].m_second.m_texture->m_data)[2] == 255 &&
 			(*pixels->m_data)[0] == 255 && (*pixels->m_data)[2] == 0,
@@ -6433,7 +6630,7 @@ components:
 		auto materials = Raytracing::PathTracer::CaptureMaterials(fixture.m_materials);
 		auto material = TSharedPtr<Raytracing::PathTracer::MaterialSnapshot>::Make(
 			*materials[0]);
-		material->m_samplers.Add({ "baseColorSampler", { MakeCapturedRedTexture(imagePath) } });
+		material->m_samplers.Add({ "baseColorSampler"_h, { MakeCapturedRedTexture(imagePath) } });
 		material->m_parameters.m_emissiveFactor = glm::vec3(0);
 		GIProbesSceneSnapshot scene;
 		scene.m_instances = fixture.m_instances;
@@ -6539,7 +6736,7 @@ components:
 		auto material = TSharedPtr<Raytracing::PathTracer::MaterialSnapshot>::Make(*materials[0]);
 		Raytracing::PathTracer::SamplerSnapshot binding;
 		binding.m_texture = texture;
-		material->m_samplers.Add({ "baseColorSampler", std::move(binding) });
+		material->m_samplers.Add({ "baseColorSampler"_h, std::move(binding) });
 		materials[0] = std::move(material);
 		GIProbesBakeSettings settings;
 		Raytracing::GIProbesPathTracer tracer;
@@ -6661,7 +6858,7 @@ components:
 		auto material = TSharedPtr<Raytracing::PathTracer::MaterialSnapshot>::Make(*materials[0]);
 		Raytracing::PathTracer::SamplerSnapshot binding;
 		binding.m_texture = texture;
-		material->m_samplers.Add({ "baseColorSampler", binding });
+		material->m_samplers.Add({ "baseColorSampler"_h, binding });
 		materials[0] = material;
 		Raytracing::GIProbesPathTracer tracer;
 		uint32_t reports = 0u, warnings = 0u;
@@ -6896,7 +7093,7 @@ components:
 			allocator,
 			glm::vec3(0.8f));
 		unresolvedMaterial->SetSampler(
-			"baseColorSampler",
+			"baseColorSampler"_h,
 			TObjectPtr<CpuTextureFixture>::Make(
 				allocator,
 				FileId::Invalid));
@@ -7233,31 +7430,31 @@ components:
 		EveningLandscapeRaytracingFixture fixture =
 			MakeEveningLandscapeRaytracingFixture();
 		MaterialPtr layeredMaterial = fixture.m_materials[0];
-		layeredMaterial->SetUniform("material.clearcoatFactor", 0.8f);
+		layeredMaterial->SetUniform("material.clearcoatFactor"_h, 0.8f);
 		layeredMaterial->SetUniform(
-			"material.clearcoatRoughnessFactor",
+			"material.clearcoatRoughnessFactor"_h,
 			0.6f);
 		layeredMaterial->SetUniform(
-			"material.clearcoatNormalScale",
+			"material.clearcoatNormalScale"_h,
 			0.5f);
 		layeredMaterial->SetUniform(
-			"material.sheenColorFactor",
+			"material.sheenColorFactor"_h,
 			glm::vec4(0.75f, 0.5f, 0.25f, 0.0f));
 		layeredMaterial->SetUniform(
-			"material.sheenRoughnessFactor",
+			"material.sheenRoughnessFactor"_h,
 			0.9f);
 		auto layeredTexture = TObjectPtr<CpuTextureFixture>::Make(
 			fixture.m_allocator,
 			FileId::Invalid);
 		layeredTexture->SetPixel(glm::u8vec4(128u, 64u, 192u, 32u));
 		const TexturePtr texture = layeredTexture;
-		layeredMaterial->SetSampler("clearcoatSampler", texture);
+		layeredMaterial->SetSampler("clearcoatSampler"_h, texture);
 		layeredMaterial->SetSampler(
-			"clearcoatRoughnessSampler",
+			"clearcoatRoughnessSampler"_h,
 			texture);
-		layeredMaterial->SetSampler("clearcoatNormalSampler", texture);
-		layeredMaterial->SetSampler("sheenColorSampler", texture);
-		layeredMaterial->SetSampler("sheenRoughnessSampler", texture);
+		layeredMaterial->SetSampler("clearcoatNormalSampler"_h, texture);
+		layeredMaterial->SetSampler("sheenColorSampler"_h, texture);
+		layeredMaterial->SetSampler("sheenRoughnessSampler"_h, texture);
 
 		MaterialSamplingPathTracer preparedPathTracer;
 		Require(preparedPathTracer.InitializeScene(
@@ -7520,637 +7717,245 @@ components:
 		world.Clear();
 	}
 
-	void TestPointLightRadiusAttenuationAndSecondaryBounce()
+	Math::Triangle MakeLightingTriangle(const glm::vec3& a, const glm::vec3& b,
+		const glm::vec3& c, const glm::vec3& normal, const glm::vec3& tangent,
+		const glm::vec3& bitangent, const glm::vec4& color = glm::vec4(0.0f))
 	{
-		Memory::ObjectAllocatorPtr allocator =
-			Memory::ObjectAllocatorPtr::Make(
-				Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
-		TVector<MaterialPtr> materials;
-		materials.Add(MakeDiffuseFixtureMaterial(
-			allocator,
-			glm::vec3(0.8f)));
-
-		Math::Triangle floor{};
-		floor.m_vertices[0] = glm::vec3(-100.0f, 0.0f, -100.0f);
-		floor.m_vertices[1] = glm::vec3(0.0f, 0.0f, 100.0f);
-		floor.m_vertices[2] = glm::vec3(100.0f, 0.0f, -100.0f);
-		floor.m_centroid =
-			(floor.m_vertices[0] + floor.m_vertices[1] +
-				floor.m_vertices[2]) / 3.0f;
-		for (uint32_t vertexIndex = 0u; vertexIndex < 3u; ++vertexIndex)
+		Math::Triangle triangle{};
+		triangle.m_vertices[0] = a;
+		triangle.m_vertices[1] = b;
+		triangle.m_vertices[2] = c;
+		triangle.m_centroid = (a + b + c) / 3.0f;
+		for (uint32_t i = 0; i < 3; ++i)
 		{
-			floor.m_normals[vertexIndex] = glm::vec3(0.0f, 1.0f, 0.0f);
-			floor.m_tangent[vertexIndex] = glm::vec3(1.0f, 0.0f, 0.0f);
-			floor.m_bitangent[vertexIndex] = glm::vec3(0.0f, 0.0f, -1.0f);
-			floor.m_colors[vertexIndex] = glm::vec4(1.0f);
+			triangle.m_normals[i] = normal;
+			triangle.m_tangent[i] = tangent;
+			triangle.m_bitangent[i] = bitangent;
+			triangle.m_colors[i] = color;
 		}
-
-		auto triangles = TSharedPtr<TVector<Math::Triangle>>::Make();
-		triangles->Add(floor);
-		auto blas = TSharedPtr<Raytracing::BVH>::Make(1u);
-		GlobalIlluminationLandscapeTestScene::BuildBakeBlas(
-			*blas,
-			*triangles);
-		Math::AABB floorBounds;
-		for (const glm::vec3& vertex : floor.m_vertices)
-		{
-			floorBounds.Extend(vertex);
-		}
-
-		Raytracing::PathTracer::TLASInstance floorInstance;
-		floorInstance.m_triangles = triangles;
-		floorInstance.m_blas = blas;
-		floorInstance.m_worldBounds = floorBounds;
-		floorInstance.m_worldMatrix = glm::mat4(1.0f);
-		floorInstance.m_inverseWorldMatrix = glm::mat4(1.0f);
-		floorInstance.m_materialBaseOffset = 0;
-		TVector<Raytracing::PathTracer::TLASInstance> instances;
-		instances.Add(std::move(floorInstance));
-
-		Raytracing::PathTracer::Params params{};
-		params.m_numSamples = 1u;
-		params.m_numAmbientSamples = 1u;
-		params.m_maxBounces = 0u;
-		params.m_msaa = 1u;
-		params.m_ambient = glm::vec3(0.0f);
-		params.m_bIncludeDirectLighting = true;
-		params.m_bIncludeEnvironment = false;
-		params.m_bIncludeEmissive = false;
-
-		Raytracing::LightProxy pointLight;
-		pointLight.m_type = ELightType::Point;
-		pointLight.m_intensity = glm::vec3(7.0f, 5.0f, 3.0f);
-
-		const auto expectedAttenuation = [&](float distance, float radius)
-		{
-			const float normalizedDistance = glm::clamp(
-				distance / radius,
-				0.0f,
-				1.0f);
-			const float normalizedDistanceSquared =
-				normalizedDistance * normalizedDistance;
-			const float rangeBase = glm::clamp(
-				1.0f - normalizedDistanceSquared *
-					normalizedDistanceSquared,
-				0.0f,
-				1.0f);
-			const float rangeWindow = rangeBase * rangeBase;
-			const float safeDistance = std::max(distance, 0.01f);
-			return rangeWindow / (safeDistance * safeDistance);
-		};
-
-		const auto sampleDirect = [&](const Raytracing::LightProxy& sourceLight,
-			float distance,
-			float radius)
-		{
-			Raytracing::LightProxy light = sourceLight;
-			light.m_worldPosition = glm::vec3(0.0f, distance, 0.0f);
-			light.m_bounds = glm::vec3(radius);
-			TVector<Raytracing::LightProxy> lights;
-			lights.Add(light);
-
-			Raytracing::PathTracer pathTracer;
-			Require(pathTracer.InitializeScene(
-					instances,
-					materials,
-					lights,
-					false),
-				"the Point Light attenuation fixture must initialize");
-			Raytracing::PathTracer::PreparedRaySample sample;
-			Require(pathTracer.SamplePreparedSceneRay(
-					glm::vec3(0.0f, 2.0f, 0.0f),
-					glm::vec3(0.0f, -1.0f, 0.0f),
-					4.0f,
-					params,
-					11u,
-					sample) && sample.m_bHit,
-				"the Point Light attenuation fixture must hit the receiver");
-			return sample.m_radiance;
-		};
-		const auto samplePoint = [&](float distance, float radius)
-		{
-			return sampleDirect(pointLight, distance, radius);
-		};
-
-		// The fixture uses a rough, non-metallic 0.8-gray surface with aligned
-		// normal, view, and light directions. Evaluate that closed-form BRDF in
-		// the test instead of reaching through the Windows DLL boundary to the
-		// intentionally internal LightingModel implementation.
-		constexpr float Pi = 3.14159265358979323846f;
-		const glm::vec3 directBrdf(
-			0.96f * 0.8f / Pi + 0.04f / (Pi * 4.001f));
-		const auto expectedDirect = [&](float distance, float radius)
-		{
-			return directBrdf * pointLight.m_intensity *
-				expectedAttenuation(distance, radius);
-		};
-		const auto requireNear = [](const glm::vec3& actual,
-			const glm::vec3& expected,
-			const std::string& message)
-		{
-			Require(
-				glm::length(actual - expected) <=
-					0.0001f * std::max(1.0f, glm::length(expected)),
-				message);
-		};
-
-		const glm::vec3 middleRadiance = samplePoint(5.0f, 10.0f);
-		requireNear(
-			middleRadiance,
-			expectedDirect(5.0f, 10.0f),
-			"CPU Point Light attenuation must use the surface-to-light distance");
-		requireNear(
-			samplePoint(8.0f, 10.0f),
-			expectedDirect(8.0f, 10.0f),
-			"CPU Point Light inverse-square attenuation must match the realtime shader");
-		requireNear(
-			samplePoint(9.5f, 10.0f),
-			expectedDirect(9.5f, 10.0f),
-			"CPU Point Light falloff must match the KHR range window");
-		const glm::vec3 narrowRadiusRadiance = samplePoint(5.0f, 6.0f);
-		requireNear(
-			narrowRadiusRadiance,
-			expectedDirect(5.0f, 6.0f),
-			"changing radius must evaluate the same smooth KHR range window");
-		Require(
-			glm::length(narrowRadiusRadiance) < glm::length(middleRadiance),
-			"a narrower Point Light range must reduce radiance at a fixed distance");
-
-		Raytracing::LightProxy spotLight = pointLight;
-		spotLight.m_type = ELightType::Spot;
-		spotLight.m_cutOff = glm::vec2(0.9f, 0.5f);
-		const float middleConeCosine =
-			(spotLight.m_cutOff.x + spotLight.m_cutOff.y) * 0.5f;
-		spotLight.m_direction = glm::normalize(glm::vec3(
-			sqrt(1.0f - middleConeCosine * middleConeCosine),
-			-middleConeCosine,
-			0.0f));
-		requireNear(
-			sampleDirect(spotLight, 5.0f, 10.0f),
-			expectedDirect(5.0f, 10.0f) * 0.25f,
-			"CPU Spot Light angular falloff must square the normalized cone weight");
-
-		auto blockedTriangles =
-			TSharedPtr<TVector<Math::Triangle>>::Make();
-		blockedTriangles->Add(floor);
-		Math::Triangle blocker{};
-		blocker.m_vertices[0] = glm::vec3(-2.0f, 3.0f, -2.0f);
-		blocker.m_vertices[1] = glm::vec3(2.0f, 3.0f, -2.0f);
-		blocker.m_vertices[2] = glm::vec3(0.0f, 3.0f, 2.0f);
-		blocker.m_centroid =
-			(blocker.m_vertices[0] + blocker.m_vertices[1] +
-				blocker.m_vertices[2]) / 3.0f;
-		for (uint32_t vertexIndex = 0u; vertexIndex < 3u; ++vertexIndex)
-		{
-			blocker.m_normals[vertexIndex] = glm::vec3(0.0f, -1.0f, 0.0f);
-			blocker.m_tangent[vertexIndex] = glm::vec3(1.0f, 0.0f, 0.0f);
-			blocker.m_bitangent[vertexIndex] = glm::vec3(0.0f, 0.0f, 1.0f);
-		}
-		blockedTriangles->Add(blocker);
-		auto blockedBlas = TSharedPtr<Raytracing::BVH>::Make(
-			static_cast<uint32_t>(blockedTriangles->Num()));
-		GlobalIlluminationLandscapeTestScene::BuildBakeBlas(
-			*blockedBlas,
-			*blockedTriangles);
-		Math::AABB blockedBounds;
-		for (const Math::Triangle& triangle : *blockedTriangles)
-		{
-			for (const glm::vec3& vertex : triangle.m_vertices)
-			{
-				blockedBounds.Extend(vertex);
-			}
-		}
-		Raytracing::PathTracer::TLASInstance blockedInstance;
-		blockedInstance.m_triangles = blockedTriangles;
-		blockedInstance.m_blas = blockedBlas;
-		blockedInstance.m_worldBounds = blockedBounds;
-		blockedInstance.m_worldMatrix = glm::mat4(1.0f);
-		blockedInstance.m_inverseWorldMatrix = glm::mat4(1.0f);
-		blockedInstance.m_materialBaseOffset = 0;
-		TVector<Raytracing::PathTracer::TLASInstance> blockedInstances;
-		blockedInstances.Add(std::move(blockedInstance));
-		const auto sampleBehindBlocker = [&](bool bCastShadows)
-		{
-			Raytracing::LightProxy light = pointLight;
-			light.m_worldPosition = glm::vec3(0.0f, 5.0f, 0.0f);
-			light.m_bounds = glm::vec3(10.0f);
-			light.m_bCastShadows = bCastShadows;
-			TVector<Raytracing::LightProxy> lights;
-			lights.Add(light);
-			Raytracing::PathTracer pathTracer;
-			Require(pathTracer.InitializeScene(
-					blockedInstances,
-					materials,
-					lights,
-					false),
-				"the Point Light blocker fixture must initialize");
-			Raytracing::PathTracer::PreparedRaySample sample;
-			Require(pathTracer.SamplePreparedSceneRay(
-					glm::vec3(0.0f, 2.0f, 0.0f),
-					glm::vec3(0.0f, -1.0f, 0.0f),
-					4.0f,
-					params,
-					13u,
-					sample) && sample.m_bHit,
-				"the Point Light blocker fixture must hit the receiver");
-			return sample.m_radiance;
-		};
-		Require(
-			glm::length(sampleBehindBlocker(true)) <= 0.000001f,
-			"a shadowed Point Light must be occluded during GI baking");
-		requireNear(
-			sampleBehindBlocker(false),
-			expectedDirect(5.0f, 10.0f),
-			"a Point Light with shadows disabled must illuminate GI receivers through blockers");
-
-		auto behindLightTriangles =
-			TSharedPtr<TVector<Math::Triangle>>::Make();
-		behindLightTriangles->Add(floor);
-		Math::Triangle behindLightBlocker = blocker;
-		for (glm::vec3& vertex : behindLightBlocker.m_vertices)
-		{
-			vertex.y = 5.05f;
-		}
-		behindLightBlocker.m_centroid =
-			(behindLightBlocker.m_vertices[0] +
-				behindLightBlocker.m_vertices[1] +
-				behindLightBlocker.m_vertices[2]) / 3.0f;
-		behindLightTriangles->Add(behindLightBlocker);
-		auto behindLightBlas = TSharedPtr<Raytracing::BVH>::Make(
-			static_cast<uint32_t>(behindLightTriangles->Num()));
-		GlobalIlluminationLandscapeTestScene::BuildBakeBlas(
-			*behindLightBlas,
-			*behindLightTriangles);
-		Math::AABB behindLightBounds;
-		for (const Math::Triangle& triangle : *behindLightTriangles)
-		{
-			for (const glm::vec3& vertex : triangle.m_vertices)
-			{
-				behindLightBounds.Extend(vertex);
-			}
-		}
-		Raytracing::PathTracer::TLASInstance behindLightInstance;
-		behindLightInstance.m_triangles = behindLightTriangles;
-		behindLightInstance.m_blas = behindLightBlas;
-		behindLightInstance.m_worldBounds = behindLightBounds;
-		behindLightInstance.m_worldMatrix = glm::mat4(1.0f);
-		behindLightInstance.m_inverseWorldMatrix = glm::mat4(1.0f);
-		behindLightInstance.m_materialBaseOffset = 0;
-		TVector<Raytracing::PathTracer::TLASInstance> behindLightInstances;
-		behindLightInstances.Add(std::move(behindLightInstance));
-		Raytracing::LightProxy endpointLight = pointLight;
-		endpointLight.m_worldPosition = glm::vec3(0.0f, 5.0f, 0.0f);
-		endpointLight.m_bounds = glm::vec3(10.0f);
-		TVector<Raytracing::LightProxy> endpointLights;
-		endpointLights.Add(endpointLight);
-		Raytracing::PathTracer endpointPathTracer;
-		Require(endpointPathTracer.InitializeScene(
-				behindLightInstances,
-				materials,
-				endpointLights,
-				false),
-			"the local-light endpoint fixture must initialize");
-		Raytracing::PathTracer::Params endpointParams = params;
-		endpointParams.m_rayBiasBase = 0.05f;
-		endpointParams.m_rayBiasScale = 0.05f;
-		Raytracing::PathTracer::PreparedRaySample endpointSample;
-		Require(endpointPathTracer.SamplePreparedSceneRay(
-				glm::vec3(0.0f, 2.0f, 0.0f),
-				glm::vec3(0.0f, -1.0f, 0.0f),
-				4.0f,
-				endpointParams,
-				19u,
-				endpointSample) && endpointSample.m_bHit,
-			"the local-light endpoint fixture must hit its receiver");
-		requireNear(
-			endpointSample.m_radiance,
-			expectedDirect(5.0f, 10.0f),
-			"geometry behind a local light must not shadow its GI contribution");
-
-		auto thinBlockerTriangles =
-			TSharedPtr<TVector<Math::Triangle>>::Make();
-		thinBlockerTriangles->Add(floor);
-		const glm::vec3 thinBlockerDirection = glm::normalize(
-			glm::vec3(1.0f, 1.0f, 0.0f));
-		const glm::vec3 thinBlockerTangent = glm::normalize(
-			glm::vec3(-1.0f, 1.0f, 0.0f));
-		const glm::vec3 thinBlockerCenter = thinBlockerDirection * 0.06f;
-		Math::Triangle thinBlocker{};
-		thinBlocker.m_vertices[0] = thinBlockerCenter +
-			thinBlockerTangent * 0.012f + glm::vec3(0.0f, 0.0f, 0.012f);
-		thinBlocker.m_vertices[1] = thinBlockerCenter -
-			thinBlockerTangent * 0.012f + glm::vec3(0.0f, 0.0f, 0.012f);
-		thinBlocker.m_vertices[2] = thinBlockerCenter -
-			glm::vec3(0.0f, 0.0f, 0.024f);
-		thinBlocker.m_centroid =
-			(thinBlocker.m_vertices[0] + thinBlocker.m_vertices[1] +
-				thinBlocker.m_vertices[2]) / 3.0f;
-		for (uint32_t vertexIndex = 0u; vertexIndex < 3u; ++vertexIndex)
-		{
-			thinBlocker.m_normals[vertexIndex] = -thinBlockerDirection;
-			thinBlocker.m_tangent[vertexIndex] = thinBlockerTangent;
-			thinBlocker.m_bitangent[vertexIndex] = glm::vec3(0.0f, 0.0f, 1.0f);
-		}
-		thinBlockerTriangles->Add(thinBlocker);
-		auto thinBlockerBlas = TSharedPtr<Raytracing::BVH>::Make(
-			static_cast<uint32_t>(thinBlockerTriangles->Num()));
-		GlobalIlluminationLandscapeTestScene::BuildBakeBlas(
-			*thinBlockerBlas,
-			*thinBlockerTriangles);
-		Math::AABB thinBlockerBounds;
-		for (const Math::Triangle& triangle : *thinBlockerTriangles)
-		{
-			for (const glm::vec3& vertex : triangle.m_vertices)
-			{
-				thinBlockerBounds.Extend(vertex);
-			}
-		}
-		Raytracing::PathTracer::TLASInstance thinBlockerInstance;
-		thinBlockerInstance.m_triangles = thinBlockerTriangles;
-		thinBlockerInstance.m_blas = thinBlockerBlas;
-		thinBlockerInstance.m_worldBounds = thinBlockerBounds;
-		thinBlockerInstance.m_worldMatrix = glm::mat4(1.0f);
-		thinBlockerInstance.m_inverseWorldMatrix = glm::mat4(1.0f);
-		thinBlockerInstance.m_materialBaseOffset = 0;
-		TVector<Raytracing::PathTracer::TLASInstance> thinBlockerInstances;
-		thinBlockerInstances.Add(std::move(thinBlockerInstance));
-
-		Raytracing::LightProxy thinBlockerLight = pointLight;
-		thinBlockerLight.m_worldPosition = glm::vec3(1.0f, 1.0f, 0.0f);
-		thinBlockerLight.m_bounds = glm::vec3(3.0f);
-		TVector<Raytracing::LightProxy> thinBlockerLights;
-		thinBlockerLights.Add(thinBlockerLight);
-		GIProbesBakeSettings thinBlockerSettings;
-		thinBlockerSettings.m_bounceCount = 1u;
-		thinBlockerSettings.m_normalBias = 0.05f;
-		thinBlockerSettings.m_viewBias = 0.05f;
-		thinBlockerSettings.m_bIncludeSky = false;
-		thinBlockerSettings.m_bIncludeEmissive = false;
-		thinBlockerSettings.m_bIncludeDirectLighting = true;
-		Raytracing::GIProbesPathTracer thinBlockerPathTracer;
-		Require(thinBlockerPathTracer.Initialize(
-				thinBlockerInstances,
-				materials,
-				thinBlockerLights,
-				thinBlockerSettings,
-				glm::vec3(0.0f)),
-			"the thin GI shadow blocker fixture must initialize");
-		GIProbeBakeRaySample thinBlockerSample;
-		std::string thinBlockerDiagnostic;
-		Require(thinBlockerPathTracer.Sample(
-				glm::vec3(0.0f, 2.0f, 0.0f),
-				glm::vec3(0.0f, -1.0f, 0.0f),
-				4.0f,
-				17u,
-				thinBlockerSample,
-				thinBlockerDiagnostic) &&
-			thinBlockerSample.m_bHit,
-			"the thin GI shadow blocker fixture must hit its receiver: " +
-				thinBlockerDiagnostic);
-		Require(
-			glm::length(thinBlockerSample.m_radiance) <= 0.000001f,
-			"runtime probe interpolation biases must not make bake rays jump "
-			"across thin shadow blockers");
-
-		const glm::vec3 largeWorldOffset(8000.0f, 0.0f, -8000.0f);
-		Math::AABB translatedBounds;
-		for (const Math::Triangle& triangle : *blockedTriangles)
-		{
-			for (const glm::vec3& vertex : triangle.m_vertices)
-			{
-				translatedBounds.Extend(vertex + largeWorldOffset);
-			}
-		}
-		Raytracing::PathTracer::TLASInstance translatedInstance;
-		translatedInstance.m_triangles = blockedTriangles;
-		translatedInstance.m_blas = blockedBlas;
-		translatedInstance.m_worldBounds = translatedBounds;
-		translatedInstance.m_worldMatrix = glm::translate(
-			glm::mat4(1.0f),
-			largeWorldOffset);
-		translatedInstance.m_inverseWorldMatrix = glm::translate(
-			glm::mat4(1.0f),
-			-largeWorldOffset);
-		translatedInstance.m_materialBaseOffset = 0;
-		TVector<Raytracing::PathTracer::TLASInstance> translatedInstances;
-		translatedInstances.Add(std::move(translatedInstance));
-		const auto sampleLargeWorldBlocker = [&](bool bCastShadows)
-		{
-			Raytracing::LightProxy light = pointLight;
-			light.m_worldPosition =
-				largeWorldOffset + glm::vec3(0.0f, 5.0f, 0.0f);
-			light.m_bounds = glm::vec3(10.0f);
-			light.m_bCastShadows = bCastShadows;
-			TVector<Raytracing::LightProxy> lights;
-			lights.Add(light);
-			Raytracing::PathTracer pathTracer;
-			Require(pathTracer.InitializeScene(
-					translatedInstances,
-					materials,
-					lights,
-					false),
-				"the large-world Point Light blocker fixture must initialize");
-			Raytracing::PathTracer::Params largeWorldParams = params;
-			largeWorldParams.m_rayBiasBase = 0.05f;
-			largeWorldParams.m_rayBiasScale = 0.05f;
-			Raytracing::PathTracer::PreparedRaySample sample;
-			Require(pathTracer.SamplePreparedSceneRay(
-					largeWorldOffset + glm::vec3(0.0f, 2.0f, 0.0f),
-					glm::vec3(0.0f, -1.0f, 0.0f),
-					4.0f,
-					largeWorldParams,
-					13u,
-					sample) && sample.m_bHit,
-				"the large-world Point Light fixture must hit the receiver");
-			return sample.m_radiance;
-		};
-		Require(
-			glm::length(sampleLargeWorldBlocker(true)) <= 0.000001f,
-			"GI shadow bias must not grow with absolute world coordinates and jump past blockers");
-		requireNear(
-			sampleLargeWorldBlocker(false),
-			expectedDirect(5.0f, 10.0f),
-			"large-world GI lighting must remain unchanged when shadow traversal is disabled");
-		Require(
-			glm::length(samplePoint(5.0f, 5.0f)) <= 0.000001f &&
-				glm::length(samplePoint(5.0f, 4.0f)) <= 0.000001f,
-			"Point Light radiance must be zero at and beyond the authored radius");
-
-		Raytracing::LightProxy crossingLight = pointLight;
-		crossingLight.m_worldPosition = glm::vec3(12.0f, 5.0f, 0.0f);
-		crossingLight.m_bounds = glm::vec3(10.0f);
-		TVector<Raytracing::LightProxy> crossingLights;
-		crossingLights.Add(crossingLight);
-		Raytracing::PathTracer crossingPathTracer;
-		Require(crossingPathTracer.InitializeScene(
-				instances,
-				materials,
-				crossingLights,
-				false),
-			"the Point Light vacuum fixture must initialize");
-		Raytracing::PathTracer::PreparedRaySample crossingSample;
-		Require(crossingPathTracer.SamplePreparedSceneRay(
-				glm::vec3(-8.0f, 5.0f, 0.0f),
-				glm::vec3(1.0f, 0.0f, 0.0f),
-				40.0f,
-				params,
-				12u,
-				crossingSample),
-			"the CPU baker must accept a ray crossing a Point Light range");
-		Require(
-			!crossingSample.m_bHit &&
-				glm::length(crossingSample.m_radiance) <= 0.000001f,
-			"crossing a Point Light range in vacuum must not emit volumetric radiance");
-
-		auto bounceTriangles = TSharedPtr<TVector<Math::Triangle>>::Make();
-		bounceTriangles->Add(floor);
-		const auto addWallTriangle = [&](const glm::vec3& a,
-			const glm::vec3& b,
-			const glm::vec3& c)
-		{
-			Math::Triangle wall{};
-			wall.m_vertices[0] = a;
-			wall.m_vertices[1] = b;
-			wall.m_vertices[2] = c;
-			wall.m_centroid = (a + b + c) / 3.0f;
-			for (uint32_t vertexIndex = 0u; vertexIndex < 3u; ++vertexIndex)
-			{
-				wall.m_normals[vertexIndex] = glm::vec3(-1.0f, 0.0f, 0.0f);
-				wall.m_tangent[vertexIndex] = glm::vec3(0.0f, 0.0f, 1.0f);
-				wall.m_bitangent[vertexIndex] = glm::vec3(0.0f, 1.0f, 0.0f);
-				wall.m_colors[vertexIndex] = glm::vec4(1.0f);
-			}
-			bounceTriangles->Add(std::move(wall));
-		};
-		addWallTriangle(
-			glm::vec3(4.0f, 0.0f, -12.0f),
-			glm::vec3(4.0f, 12.0f, -12.0f),
-			glm::vec3(4.0f, 12.0f, 12.0f));
-		addWallTriangle(
-			glm::vec3(4.0f, 0.0f, -12.0f),
-			glm::vec3(4.0f, 12.0f, 12.0f),
-			glm::vec3(4.0f, 0.0f, 12.0f));
-
-		auto bounceBlas = TSharedPtr<Raytracing::BVH>::Make(
-			static_cast<uint32_t>(bounceTriangles->Num()));
-		GlobalIlluminationLandscapeTestScene::BuildBakeBlas(
-			*bounceBlas,
-			*bounceTriangles);
-		Math::AABB bounceBounds;
-		for (const Math::Triangle& triangle : *bounceTriangles)
-		{
-			for (const glm::vec3& vertex : triangle.m_vertices)
-			{
-				bounceBounds.Extend(vertex);
-			}
-		}
-		Raytracing::PathTracer::TLASInstance bounceInstance;
-		bounceInstance.m_triangles = bounceTriangles;
-		bounceInstance.m_blas = bounceBlas;
-		bounceInstance.m_worldBounds = bounceBounds;
-		bounceInstance.m_worldMatrix = glm::mat4(1.0f);
-		bounceInstance.m_inverseWorldMatrix = glm::mat4(1.0f);
-		bounceInstance.m_materialBaseOffset = 0;
-		TVector<Raytracing::PathTracer::TLASInstance> bounceInstances;
-		bounceInstances.Add(std::move(bounceInstance));
-
-		Raytracing::LightProxy bounceLight = pointLight;
-		bounceLight.m_worldPosition = glm::vec3(3.0f, 4.0f, 0.0f);
-		bounceLight.m_intensity = glm::vec3(4000.0f);
-		bounceLight.m_bounds = glm::vec3(4.5f);
-		TVector<Raytracing::LightProxy> bounceLights;
-		bounceLights.Add(bounceLight);
-		Raytracing::PathTracer bouncePathTracer;
-		Require(bouncePathTracer.InitializeScene(
-				bounceInstances,
-				materials,
-				bounceLights,
-				false),
-			"the secondary Point Light fixture must initialize");
-
-		Raytracing::PathTracer::Params directOnlyParams = params;
-		Raytracing::PathTracer::PreparedRaySample directOnlySample;
-		Require(bouncePathTracer.SamplePreparedSceneRay(
-				glm::vec3(0.0f, 5.0f, 0.0f),
-				glm::vec3(0.0f, -1.0f, 0.0f),
-				10.0f,
-				directOnlyParams,
-				1u,
-				directOnlySample) && directOnlySample.m_bHit,
-			"the secondary Point Light fixture must hit its first receiver");
-		Require(
-			glm::length(directOnlySample.m_radiance) <= 0.000001f,
-			"the first receiver outside Point Light radius must remain dark");
-
-		Raytracing::PathTracer::Params bounceParams = params;
-		bounceParams.m_maxBounces = 1u;
-		bounceParams.m_rayBiasBase = 0.001f;
-		float strongestSecondaryContribution = 0.0f;
-		for (uint32_t seed = 1u; seed <= 2048u; ++seed)
-		{
-			Raytracing::PathTracer::PreparedRaySample sample;
-			Require(bouncePathTracer.SamplePreparedSceneRay(
-					glm::vec3(0.0f, 5.0f, 0.0f),
-					glm::vec3(0.0f, -1.0f, 0.0f),
-					10.0f,
-					bounceParams,
-					seed,
-					sample) && sample.m_bHit,
-				"the secondary Point Light fixture must sample the floor");
-			strongestSecondaryContribution = std::max(
-				strongestSecondaryContribution,
-				glm::length(sample.m_radiance));
-			if (strongestSecondaryContribution > 0.01f)
-			{
-				break;
-			}
-		}
-		Require(strongestSecondaryContribution > 0.01f,
-			"a real secondary surface inside Point Light radius must carry baked radiance");
-
-		TVector<MaterialPtr> lowThroughputMaterials;
-		MaterialPtr lowThroughputMaterial = MakeDiffuseFixtureMaterial(
-			allocator,
-			glm::vec3(0.005f));
-		lowThroughputMaterial->SetUniform(
-			"material.indexOfRefraction",
-			1.0f);
-		lowThroughputMaterials.Add(lowThroughputMaterial);
-		Raytracing::PathTracer lowThroughputPathTracer;
-		Require(lowThroughputPathTracer.InitializeScene(
-				bounceInstances,
-				lowThroughputMaterials,
-				bounceLights,
-				false),
-			"the low-throughput secondary-light fixture must initialize");
-		float strongestLowThroughputContribution = 0.0f;
-		for (uint32_t seed = 1u; seed <= 2048u; ++seed)
-		{
-			Raytracing::PathTracer::PreparedRaySample sample;
-			Require(lowThroughputPathTracer.SamplePreparedSceneRay(
-					glm::vec3(0.0f, 5.0f, 0.0f),
-					glm::vec3(0.0f, -1.0f, 0.0f),
-					10.0f,
-					bounceParams,
-					seed,
-					sample) && sample.m_bHit,
-				"the low-throughput fixture must sample the floor");
-			const float contribution = glm::length(sample.m_radiance);
-			Require(std::isfinite(contribution),
-				"low-throughput secondary radiance must remain finite");
-			strongestLowThroughputContribution = std::max(
-				strongestLowThroughputContribution,
-				contribution);
-			if (strongestLowThroughputContribution > 0.000001f)
-			{
-				break;
-			}
-		}
-		Require(strongestLowThroughputContribution > 0.000001f,
-			"finite-bounce GI must preserve weak indirect paths instead of "
-			"discarding them with a throughput threshold");
+		return triangle;
 	}
 
+	Math::Triangle MakeLightingFloor()
+	{
+		return MakeLightingTriangle({ -100, 0, -100 }, { 0, 0, 100 }, { 100, 0, -100 },
+			{ 0, 1, 0 }, { 1, 0, 0 }, { 0, 0, -1 }, glm::vec4(1));
+	}
+
+	Math::Triangle MakeLightingBlocker(float height)
+	{
+		return MakeLightingTriangle({ -2, height, -2 }, { 2, height, -2 }, { 0, height, 2 },
+			{ 0, -1, 0 }, { 1, 0, 0 }, { 0, 0, 1 });
+	}
+
+	struct LocalLightScene
+	{
+		Memory::ObjectAllocatorPtr m_allocator = Memory::ObjectAllocatorPtr::Make(
+			Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
+		TVector<MaterialPtr> m_materials;
+		TVector<Raytracing::PathTracer::TLASInstance> m_instances;
+		Raytracing::PathTracer::Params m_params{};
+		glm::vec3 m_offset;
+
+		explicit LocalLightScene(TVector<Math::Triangle> triangles, glm::vec3 offset = glm::vec3(0)) :
+			m_offset(offset)
+		{
+			m_materials.Add(MakeDiffuseFixtureMaterial(m_allocator, glm::vec3(0.8f)));
+			auto geometry = TSharedPtr<TVector<Math::Triangle>>::Make(std::move(triangles));
+			auto blas = TSharedPtr<Raytracing::BVH>::Make(static_cast<uint32_t>(geometry->Num()));
+			GlobalIlluminationLandscapeTestScene::BuildBakeBlas(*blas, *geometry);
+			Raytracing::PathTracer::TLASInstance instance;
+			instance.m_triangles = geometry;
+			instance.m_blas = blas;
+			for (const auto& triangle : *geometry)
+				for (const auto& vertex : triangle.m_vertices) instance.m_worldBounds.Extend(vertex + offset);
+			instance.m_worldMatrix = glm::translate(glm::mat4(1), offset);
+			instance.m_inverseWorldMatrix = glm::translate(glm::mat4(1), -offset);
+			instance.m_materialBaseOffset = 0;
+			m_instances.Add(std::move(instance));
+			m_params.m_numSamples = m_params.m_numAmbientSamples = m_params.m_msaa = 1;
+			m_params.m_maxBounces = 0;
+			m_params.m_ambient = glm::vec3(0);
+			m_params.m_bIncludeDirectLighting = true;
+			m_params.m_bIncludeEnvironment = m_params.m_bIncludeEmissive = false;
+		}
+
+		glm::vec3 SampleReceiver(const Raytracing::LightProxy& light, uint32_t seed) const
+		{
+			Raytracing::PathTracer tracer;
+			Require(tracer.InitializeScene(m_instances, m_materials, { light }, false),
+				"local-light scene must initialize");
+			Raytracing::PathTracer::PreparedRaySample sample;
+			Require(tracer.SamplePreparedSceneRay(m_offset + glm::vec3(0, 2, 0),
+				glm::vec3(0, -1, 0), 4, m_params, seed, sample) && sample.m_bHit,
+				"local-light ray must hit the floor receiver");
+			return sample.m_radiance;
+		}
+	};
+
+	Raytracing::LightProxy MakePointLight(glm::vec3 position = glm::vec3(0, 5, 0), float radius = 10)
+	{
+		Raytracing::LightProxy light;
+		light.m_type = ELightType::Point;
+		light.m_intensity = glm::vec3(7, 5, 3);
+		light.m_worldPosition = position;
+		light.m_bounds = glm::vec3(radius);
+		return light;
+	}
+
+	glm::vec3 ExpectedPointRadiance(float distance, float radius)
+	{
+		// Closed-form BRDF for an aligned view/light on the rough, non-metallic
+		// 0.8-gray receiver. Keep the oracle independent of LightingModel.
+		constexpr float Pi = 3.14159265358979323846f;
+		const float brdf = 0.96f * 0.8f / Pi + 0.04f / (Pi * 4.001f);
+		const float normalizedDistance = glm::clamp(distance / radius, 0.0f, 1.0f);
+		const float squared = normalizedDistance * normalizedDistance;
+		const float window = glm::clamp(1.0f - squared * squared, 0.0f, 1.0f);
+		const float safeDistance = std::max(distance, 0.01f);
+		return glm::vec3(7, 5, 3) * brdf * (window * window / (safeDistance * safeDistance));
+	}
+
+	void RequireRadianceNear(const glm::vec3& actual, const glm::vec3& expected, std::string_view message)
+	{
+		Require(glm::length(actual - expected) <= 0.0001f * std::max(1.0f, glm::length(expected)), message);
+	}
+
+	void TestPointLightRadiusAttenuation()
+	{
+		LocalLightScene scene({ MakeLightingFloor() });
+		for (const auto sample : { glm::vec2(5, 10), glm::vec2(8, 10), glm::vec2(9.5f, 10), glm::vec2(5, 6) })
+		{
+			const float distance = sample.x;
+			const float radius = sample.y;
+			const auto actual = scene.SampleReceiver(MakePointLight({ 0, distance, 0 }, radius), 11);
+			RequireRadianceNear(actual, ExpectedPointRadiance(distance, radius),
+				"point attenuation must use surface distance, inverse square and the smooth KHR range window");
+		}
+		Require(glm::length(scene.SampleReceiver(MakePointLight({ 0, 5, 0 }, 6), 11)) <
+			glm::length(scene.SampleReceiver(MakePointLight(), 11)),
+			"narrowing a point light's range must reduce radiance at a fixed distance");
+		for (float radius : { 5.0f, 4.0f })
+			Require(glm::length(scene.SampleReceiver(MakePointLight({ 0, 5, 0 }, radius), 11)) <= 0.000001f,
+				"point radiance must be zero at and beyond its authored radius");
+	}
+
+	void TestSpotLightAngularAttenuation()
+	{
+		LocalLightScene scene({ MakeLightingFloor() });
+		auto light = MakePointLight();
+		light.m_type = ELightType::Spot;
+		light.m_cutOff = glm::vec2(0.9f, 0.5f);
+		const float cosine = (light.m_cutOff.x + light.m_cutOff.y) * 0.5f;
+		light.m_direction = glm::normalize(glm::vec3(sqrt(1.0f - cosine * cosine), -cosine, 0));
+		RequireRadianceNear(scene.SampleReceiver(light, 11), ExpectedPointRadiance(5, 10) * 0.25f,
+			"spot angular falloff must square the normalized cone weight");
+	}
+
+	void TestPointLightShadowAndLargeWorldTranslation()
+	{
+		for (const auto offset : { glm::vec3(0), glm::vec3(8000, 0, -8000) })
+		{
+			LocalLightScene scene({ MakeLightingFloor(), MakeLightingBlocker(3) }, offset);
+			if (offset != glm::vec3(0))
+				scene.m_params.m_rayBiasBase = scene.m_params.m_rayBiasScale = 0.05f;
+			auto light = MakePointLight(offset + glm::vec3(0, 5, 0));
+			light.m_bCastShadows = true;
+			Require(glm::length(scene.SampleReceiver(light, 13)) <= 0.000001f,
+				"point shadows must survive translation without world-coordinate bias jumping across blockers");
+			light.m_bCastShadows = false;
+			RequireRadianceNear(scene.SampleReceiver(light, 13), ExpectedPointRadiance(5, 10),
+				"disabling shadows must restore radiance at both world positions");
+		}
+	}
+
+	void TestPointLightShadowEndpoint()
+	{
+		LocalLightScene scene({ MakeLightingFloor(), MakeLightingBlocker(5.05f) });
+		scene.m_params.m_rayBiasBase = scene.m_params.m_rayBiasScale = 0.05f;
+		RequireRadianceNear(scene.SampleReceiver(MakePointLight(), 19), ExpectedPointRadiance(5, 10),
+			"geometry behind a local light must not shadow its GI contribution");
+	}
+
+	void TestProbeBiasDoesNotSkipThinShadowBlocker()
+	{
+		const auto direction = glm::normalize(glm::vec3(1, 1, 0));
+		const auto tangent = glm::normalize(glm::vec3(-1, 1, 0));
+		const auto center = direction * 0.06f;
+		const auto blocker = MakeLightingTriangle(
+			center + tangent * 0.012f + glm::vec3(0, 0, 0.012f),
+			center - tangent * 0.012f + glm::vec3(0, 0, 0.012f),
+			center - glm::vec3(0, 0, 0.024f), -direction, tangent, { 0, 0, 1 });
+		LocalLightScene scene({ MakeLightingFloor(), blocker });
+		GIProbesBakeSettings settings;
+		settings.m_bounceCount = 1;
+		settings.m_normalBias = settings.m_viewBias = 0.05f;
+		settings.m_bIncludeSky = settings.m_bIncludeEmissive = false;
+		settings.m_bIncludeDirectLighting = true;
+		Raytracing::GIProbesPathTracer tracer;
+		Require(tracer.Initialize(scene.m_instances, scene.m_materials,
+			{ MakePointLight({ 1, 1, 0 }, 3) }, settings, glm::vec3(0)),
+			"thin GI shadow blocker fixture must initialize");
+		GIProbeBakeRaySample sample;
+		std::string diagnostic;
+		Require(tracer.Sample({ 0, 2, 0 }, { 0, -1, 0 }, 4, 17, sample, diagnostic) && sample.m_bHit,
+			"thin GI shadow blocker ray must hit its receiver: " + diagnostic);
+		Require(glm::length(sample.m_radiance) <= 0.000001f,
+			"probe interpolation biases must not make bake rays jump across thin shadow blockers");
+	}
+
+	void TestPointLightRangeDoesNotEmitInVacuum()
+	{
+		LocalLightScene scene({ MakeLightingFloor() });
+		Raytracing::PathTracer tracer;
+		Require(tracer.InitializeScene(scene.m_instances, scene.m_materials,
+			{ MakePointLight({ 12, 5, 0 }) }, false), "point-light vacuum fixture must initialize");
+		Raytracing::PathTracer::PreparedRaySample sample;
+		Require(tracer.SamplePreparedSceneRay({ -8, 5, 0 }, { 1, 0, 0 }, 40, scene.m_params, 12, sample),
+			"CPU baker must accept a ray crossing a point light's range");
+		Require(!sample.m_bHit && glm::length(sample.m_radiance) <= 0.000001f,
+			"crossing a light's range in vacuum must not emit volumetric radiance");
+	}
+
+	void TestPointLightSecondaryBounce(bool bLowThroughput)
+	{
+		LocalLightScene scene({ MakeLightingFloor(),
+			MakeLightingTriangle({ 4, 0, -12 }, { 4, 12, -12 }, { 4, 12, 12 },
+				{ -1, 0, 0 }, { 0, 0, 1 }, { 0, 1, 0 }, glm::vec4(1)),
+			MakeLightingTriangle({ 4, 0, -12 }, { 4, 12, 12 }, { 4, 0, 12 },
+				{ -1, 0, 0 }, { 0, 0, 1 }, { 0, 1, 0 }, glm::vec4(1)) });
+		if (bLowThroughput)
+		{
+			scene.m_materials[0] = MakeDiffuseFixtureMaterial(scene.m_allocator, glm::vec3(0.005f));
+			scene.m_materials[0]->SetUniform("material.indexOfRefraction"_h, 1.0f);
+		}
+		auto light = MakePointLight({ 3, 4, 0 }, 4.5f);
+		light.m_intensity = glm::vec3(4000);
+		Raytracing::PathTracer tracer;
+		Require(tracer.InitializeScene(scene.m_instances, scene.m_materials, { light }, false),
+			"secondary point-light fixture must initialize");
+		Raytracing::PathTracer::PreparedRaySample direct;
+		Require(tracer.SamplePreparedSceneRay({ 0, 5, 0 }, { 0, -1, 0 }, 10, scene.m_params, 1, direct) && direct.m_bHit,
+			"secondary point-light fixture must hit its first receiver");
+		Require(glm::length(direct.m_radiance) <= 0.000001f,
+			"first receiver outside the light radius must remain dark without a bounce");
+		scene.m_params.m_maxBounces = 1;
+		scene.m_params.m_rayBiasBase = 0.001f;
+		const float threshold = bLowThroughput ? 0.000001f : 0.01f;
+		float strongest = 0;
+		for (uint32_t seed = 1; seed <= 2048; ++seed)
+		{
+			Raytracing::PathTracer::PreparedRaySample sample;
+			Require(tracer.SamplePreparedSceneRay({ 0, 5, 0 }, { 0, -1, 0 }, 10, scene.m_params, seed, sample) && sample.m_bHit,
+				"secondary point-light ray must sample the floor");
+			const float contribution = glm::length(sample.m_radiance);
+			Require(std::isfinite(contribution), "secondary radiance must remain finite");
+			strongest = std::max(strongest, contribution);
+			if (strongest > threshold) break;
+		}
+		Require(strongest > threshold,
+			"finite-bounce GI must preserve indirect paths, including weak throughput");
+	}
 	void TestHdrEnvironmentImportanceDistribution()
 	{
 		constexpr uint32_t Width = 64u;
@@ -8279,8 +8084,8 @@ components:
 		const glm::vec3 baseColor(0.8f, 0.6f, 0.4f);
 		TVector<MaterialPtr> materials;
 		auto mirrorMaterial = MakeDiffuseFixtureMaterial(allocator, baseColor);
-		mirrorMaterial->SetUniform("material.metallicFactor", 1.0f);
-		mirrorMaterial->SetUniform("material.roughnessFactor", 0.0f);
+		mirrorMaterial->SetUniform("material.metallicFactor"_h, 1.0f);
+		mirrorMaterial->SetUniform("material.roughnessFactor"_h, 0.0f);
 		materials.Add(mirrorMaterial);
 
 		Math::Triangle floor{};
@@ -8610,7 +8415,7 @@ components:
 			allocator,
 			glm::vec3(1.0f));
 		emitterMaterial->SetUniform(
-			"material.emissiveFactor",
+			"material.emissiveFactor"_h,
 			glm::vec4(20.0f, 4.0f, 1.0f, 0.0f));
 		materials.Add(std::move(emitterMaterial));
 
@@ -8772,7 +8577,7 @@ components:
 			"extinguishing an emitter must rebuild its distribution without darkening the previous receiver");
 	}
 
-	void TestAlphaCutoutTraversalMatchesRasterVisibility()
+	void TestCpuAlphaCutoutTraversal()
 	{
 		Memory::ObjectAllocatorPtr allocator =
 			Memory::ObjectAllocatorPtr::Make(
@@ -8785,8 +8590,8 @@ components:
 		auto cutoutMaterial = MakeDiffuseFixtureMaterial(
 			allocator,
 			glm::vec3(1.0f));
-		cutoutMaterial->SetSampler("baseColorSampler", cutoutTexture);
-		cutoutMaterial->SetUniform("material.alphaCutoff", 0.5f);
+		cutoutMaterial->SetSampler("baseColorSampler"_h, cutoutTexture);
+		cutoutMaterial->SetUniform("material.alphaCutoff"_h, 0.5f);
 		cutoutMaterial->SetRenderState(RHI::RenderState(
 			true,
 			true,
@@ -8883,7 +8688,7 @@ components:
 				allocator,
 				glm::vec3(1.0f));
 			material->SetUniform(
-				"material.baseColorFactor",
+				"material.baseColorFactor"_h,
 				glm::vec4(1.0f, 1.0f, 1.0f, alpha));
 			material->SetRenderState(RHI::RenderState(
 				true,
@@ -8991,6 +8796,7 @@ int main(int argc, char** argv)
 			TestPhysicalHdrFrameGraphContract);
 		RunTest("BinaryRoundTripDeterminismAndCorruption", TestBinaryRoundTripDeterminismAndCorruption);
 		RunTest("AtomicFileAndPortableIdentityBoundary", TestAtomicFileAndPortableIdentityBoundary);
+		RunTest("ProbeFixtureCleanupAfterFailure", TestProbeFixtureCleanupAfterFailure);
 		RunTest("BlendAndAdditiveComposition", TestBlendAndAdditiveComposition);
 		RunTest("SphericalHarmonicsAndSpatialSampling", TestSphericalHarmonicsAndSpatialSampling);
 		RunTest("ConstantIrradianceReceiverSelection", TestConstantIrradianceReceiverSelection);
@@ -9001,6 +8807,10 @@ int main(int argc, char** argv)
 		RunTest(
 			"ProbeBakeSavedWorldComparisonIgnoresEditorOnlyPrefabs",
 			TestProbeBakeSavedWorldComparisonIgnoresEditorOnlyPrefabs);
+		RunTest("ProbeBakeComparisonIgnoresMapOrder", TestProbeBakeComparisonIgnoresMapOrder);
+		RunTest("ProbeBakeComparisonUsesComponentDefaults", TestProbeBakeComparisonUsesComponentDefaults);
+		RunTest("ProbeBakeComparisonPreservesNestedRecords", TestProbeBakeComparisonPreservesNestedRecords);
+		RunTest("ProbeBakeComparisonPreservesContributorEdits", TestProbeBakeComparisonPreservesContributorEdits);
 		RunTest(
 			"BakeControllerRejectsInvalidThreadCountBeforeSceneCapture",
 			TestBakeControllerRejectsInvalidThreadCountBeforeSceneCapture);
@@ -9014,6 +8824,7 @@ int main(int argc, char** argv)
 			"GIBakeQualityLabCoversCanonicalCases",
 			TestGIBakeQualityLabCoversCanonicalCases);
 		RunTest("GpuLayoutContentIdentity", TestGpuLayoutContentIdentity);
+		RunTest("RuntimeGIProbesContentIdentity", TestRuntimeGIProbesContentIdentity);
 		RunTest("GpuPackingAndWeightOnlyUpdates", TestGpuPackingAndWeightOnlyUpdates);
 		RunTest("AdaptiveBakerAndLayoutReuse", TestAdaptiveBakerAndLayoutReuse);
 		RunTest("BakeWorkerFailureDiagnostics", TestBakeWorkerFailureDiagnostics);
@@ -9042,9 +8853,7 @@ int main(int argc, char** argv)
 		RunTest(
 			"RuntimeGIProbesFixedGridReuseAndBudgets",
 			TestRuntimeGIProbesFixedGridReuseAndBudgets);
-		RunTest(
-			"RuntimeGIProbesIgnoreCameraMotion",
-			TestRuntimeGIProbesIgnoreCameraMotion);
+		RunTest("RuntimeGIProbesCameraIndependence", TestRuntimeGIProbesCameraIndependence);
 		RunTest(
 			"RuntimeGIProbesProgressiveSamplingPublication",
 			TestRuntimeGIProbesProgressiveSamplingPublication);
@@ -9054,9 +8863,6 @@ int main(int argc, char** argv)
 		RunTest(
 			"RuntimeGIProbesRetainRelocationAcrossCameraMotion",
 			TestRuntimeGIProbesRetainRelocationAcrossCameraMotion);
-		RunTest(
-			"RuntimeGIProbesKeepOneGridAcrossManyViews",
-			TestRuntimeGIProbesKeepOneGridAcrossManyViews);
 		RunTest(
 			"AnisotropicAdaptiveSubdivisionHonorsSpacing",
 			TestAnisotropicAdaptiveSubdivisionHonorsSpacing);
@@ -9077,6 +8883,7 @@ int main(int argc, char** argv)
 		RunTest(
 			"LayeredGltfTransport",
 			TestLayeredGltfTransport);
+		RunTest("ThicknessMaterialConversionAndSampling", TestThicknessMaterialConversionAndSampling);
 		RunTest(
 			"GiMaterialSnapshotsOutliveOwnerEdits",
 			TestGiMaterialSnapshotsOutliveOwnerEdits);
@@ -9120,9 +8927,14 @@ int main(int argc, char** argv)
 		RunTest(
 			"PointLightModeChangesBakedRadiance",
 			TestPointLightModeChangesBakedRadiance);
-		RunTest(
-			"PointLightRadiusAttenuationAndSecondaryBounce",
-			TestPointLightRadiusAttenuationAndSecondaryBounce);
+		RunTest("PointLightRadiusAttenuation", TestPointLightRadiusAttenuation);
+		RunTest("SpotLightAngularAttenuation", TestSpotLightAngularAttenuation);
+		RunTest("PointLightShadowAndLargeWorldTranslation", TestPointLightShadowAndLargeWorldTranslation);
+		RunTest("PointLightShadowEndpoint", TestPointLightShadowEndpoint);
+		RunTest("ProbeBiasDoesNotSkipThinShadowBlocker", TestProbeBiasDoesNotSkipThinShadowBlocker);
+		RunTest("PointLightRangeDoesNotEmitInVacuum", TestPointLightRangeDoesNotEmitInVacuum);
+		RunTest("PointLightSecondaryBounce", [] { TestPointLightSecondaryBounce(false); });
+		RunTest("PointLightLowThroughputBounce", [] { TestPointLightSecondaryBounce(true); });
 		RunTest(
 			"HdrEnvironmentImportanceDistribution",
 			TestHdrEnvironmentImportanceDistribution);
@@ -9133,8 +8945,8 @@ int main(int argc, char** argv)
 			"EmissiveTrianglesIlluminateProbeReceivers",
 			TestEmissiveTrianglesIlluminateProbeReceivers);
 		RunTest(
-			"AlphaCutoutTraversalMatchesRasterVisibility",
-			TestAlphaCutoutTraversalMatchesRasterVisibility);
+			"CpuAlphaCutoutTraversal",
+			TestCpuAlphaCutoutTraversal);
 		RunTest(
 			"AlphaBlendDirectLightTransmittance",
 			TestAlphaBlendDirectLightTransmittance);

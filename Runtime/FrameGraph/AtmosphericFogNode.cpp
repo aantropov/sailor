@@ -14,14 +14,10 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 
-#ifndef _SAILOR_IMPORT_
-const char* AtmosphericFogNode::m_name = "AtmosphericFog";
-#endif
-
 AtmosphericFogNode::AtmosphericFogNode()
 {
-	SetVec4("fog", glm::vec4(0.0f));
-	SetVec4("scattering", glm::vec4(0.9f, 0.3f, 0.95f, 0.35f));
+	SetVec4("fog"_h, glm::vec4(0.0f));
+	SetVec4("scattering"_h, glm::vec4(0.9f, 0.3f, 0.95f, 0.35f));
 }
 
 void AtmosphericFogNode::PreloadShader()
@@ -46,21 +42,21 @@ void AtmosphericFogNode::Process(RHIFrameGraphPtr frameGraph, RHICommandListPtr 
 	SAILOR_PROFILE_FUNCTION();
 	ResetDrawCallStats();
 
-	m_parameters.m_fog = GetVec4("fog");
-	m_parameters.m_scattering = GetVec4("scattering");
+	m_parameters.m_fog = GetVec4("fog"_h);
+	m_parameters.m_scattering = GetVec4("scattering"_h);
 	for (uint32_t i = 0; i < 4; ++i)
 	{
 		if (!std::isfinite(m_parameters.m_fog[i]) || !std::isfinite(m_parameters.m_scattering[i])) return;
 	}
 	if (m_parameters.m_fog.x <= 0.0f || m_parameters.m_scattering.z <= 0.0f || !frameGraph) return;
 
-	RHITexturePtr color = GetResolvedAttachment("color", frameGraph.GetRawPtr());
-	RHISurfacePtr surface = GetRHIResource("color", frameGraph.GetRawPtr()).DynamicCast<RHISurface>();
-	RHITexturePtr depth = GetResolvedAttachment("depthSampler", frameGraph.GetRawPtr());
+	RHITexturePtr color = GetResolvedAttachment("color"_h, frameGraph.GetRawPtr());
+	RHISurfacePtr surface = GetRHIResource("color"_h, frameGraph.GetRawPtr()).DynamicCast<RHISurface>();
+	RHITexturePtr depth = GetResolvedAttachment("depthSampler"_h, frameGraph.GetRawPtr());
 	if (!color || !depth || !sceneView.m_frameBindings) return;
 	PreloadShader();
 	if (!IsShaderReady()) return;
-	const auto environment = frameGraph->GetSampler("g_irradianceCubemap").DynamicCast<RHICubemap>();
+	const auto environment = frameGraph->GetSampler("g_irradianceCubemap"_h).DynamicCast<RHICubemap>();
 	if (!environment) return;
 	const float transitionSeconds = glm::max(m_parameters.m_scattering.w, 0.0f);
 	const float deltaTime = std::isfinite(sceneView.m_deltaTime) ? glm::max(sceneView.m_deltaTime, 0.0f) : 0.0f;
@@ -78,7 +74,7 @@ void AtmosphericFogNode::Process(RHIFrameGraphPtr frameGraph, RHICommandListPtr 
 		m_parameters.m_directionToSun = glm::vec4(0, 1, 0, 0);
 		m_parameters.m_sunIlluminance = glm::vec4(0);
 		SkyParameters sky;
-		if (const auto node = frameGraph->GetGraphNode("Environment").DynamicCast<EnvironmentNode>();
+		if (const auto node = frameGraph->GetGraphNode("Environment"_h).DynamicCast<EnvironmentNode>();
 			node && node->GetEnvironmentSkyParams(sky))
 		{
 			m_parameters.m_directionToSun = glm::vec4(Math::SafeNormalize(-glm::vec3(sky.m_lightDirection),
@@ -99,20 +95,20 @@ void AtmosphericFogNode::Process(RHIFrameGraphPtr frameGraph, RHICommandListPtr 
 
 	auto& driver = App::GetSubmodule<Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<Renderer>()->GetDriverCommands();
-	RHITexturePtr sampledDepth = GetSampledAttachment("depthSampler", frameGraph.GetRawPtr());
+	RHITexturePtr sampledDepth = GetSampledAttachment("depthSampler"_h, frameGraph.GetRawPtr());
 	if (!m_bindings || m_depthTexture != sampledDepth || lightingChanged)
 	{
 		m_bindings = driver->CreateShaderBindings();
 		driver->FillShadersLayout(m_bindings,
 			{ m_shader->GetDebugVertexShaderRHI(), m_shader->GetDebugFragmentShaderRHI() }, 1);
-		driver->AddBufferToShaderBindings(m_bindings, "data", sizeof(ShaderParameters), 0, EShaderBindingType::UniformBuffer);
-		driver->AddSamplerToShaderBindings(m_bindings, "depthSampler", sampledDepth, 1);
-		driver->AddSamplerToShaderBindings(m_bindings, "environmentSampler", m_environment, 2);
-		driver->AddSamplerToShaderBindings(m_bindings, "previousEnvironmentSampler", m_previousEnvironment, 3);
+		driver->AddBufferToShaderBindings(m_bindings, "data"_h, sizeof(ShaderParameters), 0, EShaderBindingType::UniformBuffer);
+		driver->AddSamplerToShaderBindings(m_bindings, "depthSampler"_h, sampledDepth, 1);
+		driver->AddSamplerToShaderBindings(m_bindings, "environmentSampler"_h, m_environment, 2);
+		driver->AddSamplerToShaderBindings(m_bindings, "previousEnvironmentSampler"_h, m_previousEnvironment, 3);
 		m_bindings->RecalculateCompatibility();
 		m_depthTexture = sampledDepth;
 	}
-	commands->UpdateShaderBinding(transferCommandList, m_bindings->GetOrAddShaderBinding("data"), &m_parameters, sizeof(m_parameters));
+	commands->UpdateShaderBinding(transferCommandList, m_bindings->GetOrAddShaderBinding("data"_h), &m_parameters, sizeof(m_parameters));
 	const bool multisampling = surface && surface->NeedsResolve();
 	if (!m_material || m_bMultisampling != multisampling)
 	{

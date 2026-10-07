@@ -2,6 +2,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "Submodules/EditorRemote/RemoteViewportWindowsTransport.h"
@@ -11,11 +12,11 @@ using namespace Sailor::EditorRemote;
 
 namespace
 {
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -320,6 +321,11 @@ namespace
 	{
 		Sailor::Tests::TestViewportPresentFailure<WindowsViewportLoopbackBinding, FakeWindowsSharedSurfaceProvider, FakeWindowsViewportPresenter>(MakeViewport());
 	}
+
+	void TestWindowsLoopbackProducerFailure()
+	{
+		Sailor::Tests::TestViewportProducerFailure<WindowsViewportLoopbackBinding, FakeWindowsSharedSurfaceProvider, FakeWindowsViewportPresenter>(MakeViewport());
+	}
 }
 
 int main()
@@ -334,6 +340,7 @@ int main()
 		{ "WindowsBackendFailurePropagationAndOrdering", TestWindowsBackendFailurePropagationAndOrdering },
 		{ "WindowsBackendRetriesPreparedFrame", TestWindowsBackendRetriesPreparedFrame },
 		{ "WindowsLoopbackPresentFailure", TestWindowsLoopbackPresentFailure },
+		{ "WindowsLoopbackProducerFailure", TestWindowsLoopbackProducerFailure },
 	};
 
 	for (const auto& test : tests)

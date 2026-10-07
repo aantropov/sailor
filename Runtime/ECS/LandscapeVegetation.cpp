@@ -10,60 +10,6 @@
 
 namespace Sailor::LandscapeECSInternal
 {
-	static void MarkChunksIntersectingStamp(LandscapeData& data,
-		const TVector<float>& stamps,
-		size_t offset,
-		float margin)
-	{
-		if (offset + 4u >= stamps.Num())
-		{
-			return;
-		}
-
-		const float radius = (std::max)(stamps[offset + 2u], 0.001f) + margin;
-		const glm::vec2 center(stamps[offset], stamps[offset + 1u]);
-		const float landscapeWidth = data.m_chunksX * data.m_chunkSize;
-		const float landscapeDepth = data.m_chunksZ * data.m_chunkSize;
-		for (uint32_t z = 0u; z < data.m_chunksZ; ++z)
-		{
-			for (uint32_t x = 0u; x < data.m_chunksX; ++x)
-			{
-				const glm::vec2 minimum(
-					x * data.m_chunkSize - landscapeWidth * 0.5f, z * data.m_chunkSize - landscapeDepth * 0.5f);
-				const glm::vec2 maximum = minimum + glm::vec2(data.m_chunkSize);
-				const glm::vec2 closest = glm::clamp(center, minimum, maximum);
-				if (glm::distance(center, closest) <= radius)
-				{
-					data.m_dirtyChunks.Insert(z * data.m_chunksX + x);
-				}
-			}
-		}
-	}
-
-	void MarkChunksAffectedByStampChanges(LandscapeData& data,
-		const TVector<float>& previous,
-		const TVector<float>& current,
-		float margin)
-	{
-		const size_t numStamps = (std::max)(previous.Num(), current.Num()) / 5u;
-		for (size_t stampIndex = 0u; stampIndex < numStamps; ++stampIndex)
-		{
-			const size_t offset = stampIndex * 5u;
-			bool bSame = offset + 4u < previous.Num() && offset + 4u < current.Num();
-			for (size_t valueIndex = 0u; bSame && valueIndex < 5u; ++valueIndex)
-			{
-				bSame = previous[offset + valueIndex] == current[offset + valueIndex];
-			}
-			if (bSame)
-			{
-				continue;
-			}
-
-			MarkChunksIntersectingStamp(data, previous, offset, margin);
-			MarkChunksIntersectingStamp(data, current, offset, margin);
-		}
-	}
-
 	static float SampleLandscapeChunkHeight(const LandscapeData& data, const LandscapeChunk& chunk, float x, float z)
 	{
 		const uint32_t resolution = chunk.m_heightResolution;
@@ -120,7 +66,7 @@ namespace Sailor::LandscapeECSInternal
 
 		LandscapeVegetationAssetData loaded;
 		std::string diagnostic;
-		if (!loaded.Load(assetInfo->GetAssetFilepath(), diagnostic))
+		if (!loaded.Load(Workspace::PathFromUtf8(assetInfo->GetAssetFilepath()), diagnostic))
 		{
 			SAILOR_LOG_ERROR("LandscapeECS: cannot load vegetation asset %s: %s",
 				data.m_vegetationAsset.ToString().c_str(),
@@ -181,12 +127,12 @@ namespace Sailor::LandscapeECSInternal
 			for (size_t profileIndex = 0u; profileIndex < data.m_vegetationProfiles.Num(); ++profileIndex)
 			{
 				const auto& profile = data.m_vegetationProfiles[profileIndex];
-				if (!profile.m_modelFileId)
+				if (!profile.m_settings.m_modelFileId)
 				{
 					continue;
 				}
-				chunk.m_instances.Reserve(chunk.m_instances.Num() + profile.m_instancesPerChunk);
-				for (uint32_t instanceIndex = 0u; instanceIndex < profile.m_instancesPerChunk; ++instanceIndex)
+				chunk.m_instances.Reserve(chunk.m_instances.Num() + profile.m_settings.m_instancesPerChunk);
+				for (uint32_t instanceIndex = 0u; instanceIndex < profile.m_settings.m_instancesPerChunk; ++instanceIndex)
 				{
 					const uint32_t randomSeed =
 						data.m_seed ^ static_cast<uint32_t>(chunk.m_chunkX * 92821u + chunk.m_chunkZ * 68917u +
@@ -265,6 +211,12 @@ namespace Sailor::LandscapeECSInternal
 		{
 			data.m_vegetationAssetData = std::move(generated);
 			data.m_bVegetationAssetLoaded = true;
+			for (uint32_t profile = 0; profile < data.m_vegetationProfiles.Num(); ++profile)
+			{
+				data.m_dirtyVegetationProfiles.Insert(profile);
+				data.m_bIsVegetationCollisionDirty |= data.m_vegetationProfiles[profile].m_settings.HasCollision();
+			}
+			data.MarkDirty();
 		}
 		data.m_bReloadVegetationAsset = false;
 		SAILOR_LOG("LandscapeECS: saved %llu instances to vegetation asset %s.",
@@ -345,8 +297,8 @@ namespace Sailor::LandscapeECSInternal
 		}
 		else
 		{
-			placements.Reserve(profile.m_instancesPerChunk);
-			for (uint32_t instanceIndex = 0u; instanceIndex < profile.m_instancesPerChunk; ++instanceIndex)
+			placements.Reserve(profile.m_settings.m_instancesPerChunk);
+			for (uint32_t instanceIndex = 0u; instanceIndex < profile.m_settings.m_instancesPerChunk; ++instanceIndex)
 			{
 				const uint32_t randomSeed =
 					data.m_seed ^ static_cast<uint32_t>(chunk.m_chunkX * 92821u + chunk.m_chunkZ * 68917u +

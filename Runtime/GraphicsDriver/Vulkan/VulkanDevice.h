@@ -12,7 +12,11 @@
 #include "VulkanPipileneStates.h"
 
 using namespace Sailor;
-class FrameState;
+
+namespace Sailor
+{
+	class FrameState;
+}
 
 namespace Sailor::Platform
 {
@@ -162,6 +166,12 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void vkCmdDebugMarkerBegin(VulkanCommandBufferPtr cmdBuffer, const VkDebugMarkerMarkerInfoEXT* markerInfo);
 		SAILOR_API void vkCmdDebugMarkerEnd(VulkanCommandBufferPtr cmdBuffer);
 		SAILOR_API void SetDebugName(VkObjectType type, uint64_t objectHandle, const std::string& name);
+		void SetDebugName(VkObjectType type, uint64_t objectHandle, StringHash name)
+		{
+#ifndef _SHIPPING
+			SetDebugName(type, objectHandle, name.ToString());
+#endif
+		}
 
 	protected:
 

@@ -6,6 +6,69 @@ namespace Editor.Tests;
 public sealed class EditorEngineProtocolTests
 {
     [Fact]
+    public void GoldenExitCodeRequestAndResponse_MatchGeneratedMessages()
+    {
+        var requestBytes = Convert.FromHexString("0801109601820100");
+        var request = ProtocolRequest.Parser.ParseFrom(requestBytes);
+        Assert.Equal(1u, request.ProtocolVersion);
+        Assert.Equal(150ul, request.RequestId);
+        Assert.Equal(ProtocolRequest.CommandOneofCase.GetExitCode, request.CommandCase);
+        Assert.Equal(requestBytes, request.ToByteArray());
+
+        var responseBytes = Convert.FromHexString("0801109601180128016200");
+        var response = ProtocolResponse.Parser.ParseFrom(responseBytes);
+        Assert.Equal(1u, response.ProtocolVersion);
+        Assert.Equal(150ul, response.RequestId);
+        Assert.True(response.Success);
+        Assert.True(response.SupportsStrictInstanceIds);
+        Assert.Equal(ProtocolResponse.ResultOneofCase.Int32Result, response.ResultCase);
+        Assert.Equal(0, response.Int32Result.Value);
+        Assert.Equal(responseBytes, response.ToByteArray());
+    }
+
+    [Theory]
+    [InlineData("5200", ProtocolResponse.ResultOneofCase.EmptyResult)]
+    [InlineData("5A00", ProtocolResponse.ResultOneofCase.BoolResult)]
+    [InlineData("6200", ProtocolResponse.ResultOneofCase.Int32Result)]
+    [InlineData("6A00", ProtocolResponse.ResultOneofCase.Uint32Result)]
+    [InlineData("7200", ProtocolResponse.ResultOneofCase.Uint64Result)]
+    [InlineData("7A00", ProtocolResponse.ResultOneofCase.StringResult)]
+    [InlineData("820100", ProtocolResponse.ResultOneofCase.StringListResult)]
+    [InlineData("8A0100", ProtocolResponse.ResultOneofCase.AssetReloadStateResult)]
+    [InlineData("920100", ProtocolResponse.ResultOneofCase.InstanceIdResult)]
+    [InlineData("9A0100", ProtocolResponse.ResultOneofCase.ViewportEventBatchResult)]
+    [InlineData("A20100", ProtocolResponse.ResultOneofCase.Vector4Result)]
+    [InlineData("AA0100", ProtocolResponse.ResultOneofCase.ViewportToolStateResult)]
+    [InlineData("B20100", ProtocolResponse.ResultOneofCase.AnimatorStateResult)]
+    [InlineData("BA0100", ProtocolResponse.ResultOneofCase.EditorRenderModeResult)]
+    [InlineData("C20100", ProtocolResponse.ResultOneofCase.GiProbesBakeStatusResult)]
+    [InlineData("CA0100", ProtocolResponse.ResultOneofCase.GlobalIlluminationStateResult)]
+    [InlineData("A20600", ProtocolResponse.ResultOneofCase.ModelFingerprintStatusResult)]
+    public void GoldenEmptyResults_PreserveOneofPresence(string hex, ProtocolResponse.ResultOneofCase expected)
+    {
+        var bytes = Convert.FromHexString(hex);
+        var response = ProtocolResponse.Parser.ParseFrom(bytes);
+        Assert.Equal(expected, response.ResultCase);
+        Assert.Equal(bytes, response.ToByteArray());
+    }
+
+    [Fact]
+    public void GoldenScalars_PreserveBooleanAndNegativeInt32()
+    {
+        var boolBytes = Convert.FromHexString("0801109601180128015A020801");
+        var boolean = ProtocolResponse.Parser.ParseFrom(boolBytes);
+        Assert.Equal(ProtocolResponse.ResultOneofCase.BoolResult, boolean.ResultCase);
+        Assert.True(boolean.BoolResult.Value);
+        Assert.Equal(boolBytes, boolean.ToByteArray());
+
+        var intBytes = Convert.FromHexString("080110960118012801620B08FDFFFFFFFFFFFFFFFF01");
+        var integer = ProtocolResponse.Parser.ParseFrom(intBytes);
+        Assert.Equal(ProtocolResponse.ResultOneofCase.Int32Result, integer.ResultCase);
+        Assert.Equal(-3, integer.Int32Result.Value);
+        Assert.Equal(intBytes, integer.ToByteArray());
+    }
+
+    [Fact]
     public void RequestRoundTrip_PreservesVersionIdentityUnicodeAndCommand()
     {
         var request = new ProtocolRequest

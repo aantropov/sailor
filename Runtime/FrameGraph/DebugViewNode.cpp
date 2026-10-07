@@ -7,13 +7,9 @@ using namespace Sailor;
 using namespace Sailor::Framegraph;
 using namespace Sailor::RHI;
 
-#ifndef _SAILOR_IMPORT_
-const char* DebugViewNode::m_name = "DebugView";
-#endif
-
 Tasks::TaskPtr<void, void> DebugViewNode::Prepare(
 	RHIFrameGraphPtr,
-	const RHISceneViewSnapshot&)
+	RHISceneViewSnapshot&)
 {
 	EnsurePasses();
 	for (auto& pass : m_debugPasses)
@@ -79,8 +75,8 @@ void DebugViewNode::EnsurePasses()
 	}
 
 	m_litPass = TRefPtr<BlitNode>::Make();
-	CopyResource(*m_litPass, "src", "src");
-	CopyResource(*m_litPass, "dst", "dst");
+	CopyResource(*m_litPass, "src"_h, "src"_h);
+	CopyResource(*m_litPass, "dst"_h, "dst"_h);
 
 	constexpr std::array modes{
 		ESceneViewRenderMode::AmbientOcclusion,
@@ -91,20 +87,20 @@ void DebugViewNode::EnsurePasses()
 	{
 		auto& pass = m_debugPasses[index];
 		pass = TRefPtr<PostProcessNode>::Make();
-		pass->SetString("shader", GetString("shader"));
+		pass->SetString("shader"_h, GetString("shader"_h));
 		pass->SetString(
-			"defines",
+			"defines"_h,
 			GetSceneViewRenderModeShaderDefine(modes[index]));
-		CopyResource(*pass, "color", "dst");
-		CopyResource(*pass, "ldrSceneSampler", "src");
-		CopyResource(*pass, "linearDepthSampler", "linearDepth");
+		CopyResource(*pass, "color"_h, "dst"_h);
+		CopyResource(*pass, "ldrSceneSampler"_h, "src"_h);
+		CopyResource(*pass, "linearDepthSampler"_h, "linearDepth"_h);
 	}
 }
 
 void DebugViewNode::CopyResource(
 	BaseFrameGraphNode& destination,
-	const std::string& destinationName,
-	const std::string& sourceName)
+	StringHash destinationName,
+	StringHash sourceName)
 {
 	if (m_resourceParams.ContainsKey(sourceName))
 	{

@@ -1,14 +1,7 @@
 #include "Cubemap.h"
-#include "Texture.h"
-#include "RenderTarget.h"
-#include "Types.h"
-#include "GraphicsDriver/Vulkan/VulkanApi.h"
-#include "GraphicsDriver/Vulkan/VulkanImage.h"
-#include "GraphicsDriver/Vulkan/VulkanImageView.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
-using namespace Sailor::GraphicsDriver::Vulkan;
 
 RHITexturePtr RHICubemap::GetFace(uint32_t face, uint32_t mipLevel) const
 {
@@ -27,7 +20,12 @@ RHITexturePtr RHICubemap::GetFace(uint32_t face, uint32_t mipLevel) const
 
 RHICubemapPtr RHICubemap::GetMipLevel(uint32_t mipLevel) const
 {
-	if (!HasMipMaps() && mipLevel > 0)
+	if (mipLevel == 0)
+	{
+		return const_cast<RHICubemap*>(this)->ToRefPtr<RHICubemap>();
+	}
+
+	if (!HasMipMaps())
 	{
 		return nullptr;
 	}

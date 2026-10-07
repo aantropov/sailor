@@ -1,6 +1,7 @@
 #pragma once
 #include "Core/Defines.h"
 #include "Core/SpinLock.h"
+#include "Core/StringHash.h"
 #include "Memory/RefPtr.hpp"
 #include "Memory/SharedPtr.hpp"
 #include "Math/Math.h"
@@ -590,7 +591,7 @@ namespace Sailor::RHI
 	struct ShaderLayoutBindingMember
 	{
 		EShaderBindingMemberType m_type = EShaderBindingMemberType::Float;
-		std::string m_name = "";
+		StringHash m_name{};
 		uint32_t m_absoluteOffset = 0u;
 		uint32_t m_size = 0u;
 		uint32_t m_arrayCount = 1u;
@@ -614,7 +615,7 @@ namespace Sailor::RHI
 	struct ShaderLayoutBinding
 	{
 		EShaderBindingType m_type = EShaderBindingType::CombinedImageSampler;
-		std::string m_name = "";
+		StringHash m_name{};
 		TVector<ShaderLayoutBindingMember> m_members{};
 
 		uint8_t m_binding = 0u;
@@ -805,7 +806,7 @@ namespace Sailor::RHI
 
 	struct GpuTiming
 	{
-		std::string m_name;
+		StringHash m_name;
 		ECommandListQueue m_queue = ECommandListQueue::Graphics;
 		float m_durationMilliseconds = 0.0f;
 	};
@@ -884,6 +885,7 @@ namespace Sailor::RHI
 	};
 
 	typedef TRefPtr<class RHIResource> RHIResourcePtr;
+	using RHIResourceConstPtr = TRefPtr<const RHIResource>;
 
 	// Used to hold/track RHI resources
 	class SAILOR_API IDependent

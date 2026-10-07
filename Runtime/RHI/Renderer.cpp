@@ -14,6 +14,7 @@
 #include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
 #include "Components/TestComponent.h"
 #include "Components/MeshRendererComponent.h"
+#include "Components/SkyComponent.h"
 #include "Engine/World.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
@@ -26,37 +27,43 @@
 #include "Settings/GraphicsSettings.h"
 #include "FrameGraph/EditorReadbackNode.h"
 #include "FrameGraph/CPUPathTracerNode.h"
+#include "FrameGraph/SkyNode.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
 
-namespace
+struct Renderer::FrameSubmission
 {
-	struct RenderSubmissionBeginState
-	{
-		~RenderSubmissionBeginState()
-		{
-			if (m_bMaterialCaptureActive)
-			{
-				RHIMaterial::EndSubmissionVersionCapture(m_submissionId);
-			}
-		}
+	explicit FrameSubmission(uint64_t submissionId) :
+		m_submissionId(submissionId),
+		m_materialRevision(RHIMaterial::BeginSubmissionVersionCapture(submissionId))
+	{}
 
-		bool m_bLifecycleReady = false;
-		bool m_bHasSwapchainImage = false;
-		bool m_bMaterialCaptureActive = false;
-		uint64_t m_submissionId = 0ull;
-		uint64_t m_materialRevision = 0ull;
-		uint32_t m_flightSlot = 0u;
-		RHIRenderSubmissionContextPtr m_context{};
-	};
-}
+	~FrameSubmission()
+	{
+		RHIMaterial::EndSubmissionVersionCapture(m_submissionId);
+	}
+
+	FrameSubmission(const FrameSubmission&) = delete;
+	FrameSubmission& operator=(const FrameSubmission&) = delete;
+
+	const uint64_t m_submissionId;
+	const uint64_t m_materialRevision;
+	uint64_t m_frameGraphResourceGeneration = 0;
+	bool m_bHasSwapchainImage = false;
+	bool m_bUseDriverDepthBuffer = false;
+	bool m_bResourcesSucceeded = false;
+	RHIFrameGraphPtr m_frameGraph;
+	RHISceneViewPtr m_sceneView;
+	RHIRenderSubmissionContextPtr m_context;
+	FrameSubmissionResult m_result;
+};
 
 void IDelayedInitialization::TraceVisit(class TRefPtr<RHIResource> visitor, bool& bShouldRemoveFromList)
 {
 	bShouldRemoveFromList = false;
 
-	if (auto fence = TRefPtr<RHI::RHIFence>(visitor.GetRawPtr()))
+	if (auto fence = visitor.StaticCast<RHI::RHIFence>())
 	{
 		const auto status = fence->GetStatus();
 		if (status != RHI::EFenceStatus::Pending)
@@ -180,6 +187,7 @@ Renderer::~Renderer()
 	m_previousSceneVersionRelease.Clear();
 	m_editorReadback.Clear();
 	m_frameGraph.Clear();
+	m_skyNode.Clear();
 	m_cachedSceneViews.Clear();
 	m_submissionContexts.Clear();
 	m_driverInstance.Clear();
@@ -332,6 +340,7 @@ bool Renderer::BeginConditionalDestroy()
 	m_bIsInitialized = false;
 
 	m_frameGraph.Clear();
+	m_skyNode.Clear();
 	m_cachedSceneViews.Clear();
 	m_submissionContexts.Clear();
 	return true;
@@ -396,10 +405,10 @@ void Renderer::RemoveSceneView(WorldPtr worldPtr)
 	m_cachedSceneViews.Remove(worldPtr);
 }
 
-void Renderer::QueueEditorReadback(EditorReadbackFramePtr frame)
+void Renderer::QueueEditorReadback(ReadbackFramePtr frame)
 {
 	if (!frame) return;
-	Tasks::CreateTask("Publish editor readback", [this, frame = std::move(frame)]()
+	Tasks::CreateTask("Publish editor readback"_h, [this, frame = std::move(frame)]()
 		{
 			if (frame->m_generation == m_frameGraphResourceGeneration &&
 				(!m_editorReadback || frame->m_frameIndex > m_editorReadback->m_frameIndex))
@@ -441,7 +450,7 @@ bool Renderer::EnsureFrameGraph()
 	if (m_frameGraph)
 	{
 		m_bUseDriverDepthBuffer =
-			!m_frameGraph->GetRHI()->GetRenderTarget("DepthBuffer");
+			!m_frameGraph->GetRHI()->GetRenderTarget("DepthBuffer"_h);
 		if (m_bUseDriverDepthBuffer && !App::HasEditor())
 		{
 			SAILOR_LOG(
@@ -455,7 +464,7 @@ bool Renderer::EnsureFrameGraph()
 		if (App::HasEditor() && !readback)
 		{
 			readback = TRefPtr<Framegraph::EditorReadbackNode>::Make();
-			readback->SetTag("EditorReadback");
+			readback->SetTag("EditorReadback"_h);
 			graph->GetGraph().Add(readback);
 		}
 #endif
@@ -466,6 +475,28 @@ bool Renderer::EnsureFrameGraph()
 		m_bUseDriverDepthBuffer = false;
 	}
 	return m_frameGraph.IsValid();
+}
+
+void Renderer::UpdateSkyParameters(WorldPtr world, RHIFrameGraphPtr graph)
+{
+	auto node = graph->GetGraphNode("Sky"_h).DynamicCast<Framegraph::SkyNode>();
+	if (!node)
+	{
+		m_skyNode.Clear();
+		return;
+	}
+	const auto sky = world->GetECS<LightingECS>()->GetSky();
+	const SkyParameters parameters = sky ? sky->GetSkyParameters() : SkyParameters{};
+	if (node == m_skyNode && parameters == m_publishedSkyParams) return;
+	m_skyNode = node;
+	m_publishedSkyParams = parameters;
+	auto update = Tasks::CreateTask("Update sky parameters"_h, [node, parameters]() mutable
+		{
+			node->SetSkyParams(parameters);
+		}, EThreadType::Render);
+	// The previous frame may still be waiting for RHI preparation.
+	if (m_previousRenderFrame) update->Join(m_previousRenderFrame);
+	update->Run();
 }
 
 bool Renderer::PushFrame(const Sailor::FrameState& frame)
@@ -493,485 +524,450 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		return false;
 	}
 
-	WorldPtr world = frame.GetWorld();
-	RHISceneViewPtr rhiSceneView;
-	const uint64_t currentFrame = world->GetCurrentFrame();
-	const uint64_t submissionId = m_nextSubmissionId.fetch_add(1ull, std::memory_order_relaxed);
 	auto rhiFrameGraph = m_frameGraph->GetRHI();
-	const uint64_t frameGraphResourceGeneration = m_frameGraphResourceGeneration;
-	const bool bUseDriverDepthBuffer = m_bUseDriverDepthBuffer;
-	auto submissionBeginState = TSharedPtr<RenderSubmissionBeginState>::Make();
-	submissionBeginState->m_submissionId = submissionId;
-	submissionBeginState->m_materialRevision =
-		RHIMaterial::BeginSubmissionVersionCapture(submissionId);
-	submissionBeginState->m_bMaterialCaptureActive = true;
+	UpdateSkyParameters(frame.GetWorld(), rhiFrameGraph);
+	auto submission = TSharedPtr<FrameSubmission>::Make(
+		m_nextSubmissionId.fetch_add(1ull, std::memory_order_relaxed));
+	submission->m_frameGraph = std::move(rhiFrameGraph);
+	submission->m_frameGraphResourceGeneration = m_frameGraphResourceGeneration;
+	submission->m_bUseDriverDepthBuffer = m_bUseDriverDepthBuffer;
+	CaptureSceneView(*submission, frame);
 
+	// This task borrows the state only until the synchronous acquire wait.
+	auto acquire = Tasks::CreateTaskWithResult<bool>("Acquire render submission flight"_h,
+		[this, &submission]() { return AcquireSubmission(*submission); }, EThreadType::Render);
+	if (m_previousRenderFrame) acquire->Join(m_previousRenderFrame);
+	acquire->Run();
+	acquire->Wait();
+	if (!acquire->GetResult())
 	{
-		SAILOR_PROFILE_SCOPE("Copy scene view to render thread");
-
-		rhiSceneView = GetOrAddSceneView(world);
-
-		rhiSceneView->m_world = world;
-		rhiSceneView->m_renderMode = App::GetEditorRenderMode();
-		world->GetECS<StaticMeshRendererECS>()->CopySceneView(rhiSceneView);
-		world->GetECS<LandscapeECS>()->AppendSceneView(rhiSceneView);
-		if (auto* pathTracerEcs = world->GetECS<PathTracerECS>())
-		{
-			const bool tracing = std::any_of(rhiFrameGraph->GetGraph().begin(), rhiFrameGraph->GetGraph().end(),
-				[mode = rhiSceneView->m_renderMode](const auto& node)
-				{
-					const auto* tracer = dynamic_cast<const Framegraph::CPUPathTracerNode*>(node.GetRawPtr());
-					return tracer && tracer->IsEnabled(mode);
-				});
-			pathTracerEcs->SetPathTracingEnabled(tracing);
-			pathTracerEcs->CopySceneView(rhiSceneView);
-		}
-		rhiSceneView->m_globalIlluminationMode =
-			EGlobalIlluminationMode::Baked;
-		rhiSceneView->m_bGlobalIlluminationEnabled = true;
-		rhiSceneView->m_globalIllumination.Clear();
-		if (auto* globalIlluminationEcs = world->GetECS<GlobalIlluminationECS>())
-		{
-			rhiSceneView->m_globalIlluminationMode =
-				globalIlluminationEcs->GetWorldSettings().m_mode;
-			rhiSceneView->m_bGlobalIlluminationEnabled =
-				globalIlluminationEcs->IsEnabled();
-			rhiSceneView->m_globalIllumination =
-				rhiSceneView->m_bGlobalIlluminationEnabled &&
-				rhiSceneView->m_globalIlluminationMode !=
-					EGlobalIlluminationMode::NoGI
-					? globalIlluminationEcs->GetActiveSnapshot()
-					: RHIGlobalIlluminationSnapshotPtr{};
-		}
-		world->GetECS<CameraECS>()->CopyCameraData(rhiSceneView);
-
-		rhiSceneView->m_deltaTime = frame.GetDeltaTime();
-		rhiSceneView->m_currentTime = frame.GetWorld()->GetTime();
-	}
-
-	const uint64_t sceneRevision = rhiSceneView->m_sceneRevision;
-	auto acquireRenderSubmission = Tasks::CreateTask(
-		"Acquire render submission flight " + std::to_string(currentFrame),
-		[this, rhiFrameGraph, rhiSceneView, submissionId, sceneRevision,
-			frameGraphResourceGeneration, submissionBeginState]() mutable
-		{
-			uint32_t flightSlot = 0u;
-			bool bHasSwapchainImage = false;
-			submissionBeginState->m_bLifecycleReady =
-				m_driverInstance->BeginRenderSubmission(
-					flightSlot,
-					bHasSwapchainImage);
-			submissionBeginState->m_flightSlot = flightSlot;
-			submissionBeginState->m_bHasSwapchainImage = bHasSwapchainImage;
-			if (auto readback = Framegraph::EditorReadbackNode::Find(*rhiFrameGraph))
-			{
-				QueueEditorReadback(readback->TakeCompletedFrame());
-			}
-
-			if (submissionBeginState->m_bLifecycleReady &&
-				flightSlot < m_submissionContexts.Num())
-			{
-				auto context = m_submissionContexts[flightSlot];
-				context->BeginSubmission(
-					submissionId,
-					flightSlot,
-					sceneRevision,
-					submissionBeginState->m_materialRevision,
-					frameGraphResourceGeneration);
-				for (const auto& spatialVersion : rhiSceneView->m_sceneVersions)
-				{
-					if (!spatialVersion || !spatialVersion->m_scene ||
-						!spatialVersion->m_sceneVersion)
-					{
-						continue;
-					}
-
-					auto flightState = spatialVersion->m_scene->PrepareFlight(
-						flightSlot,
-						spatialVersion->m_sceneVersion);
-					context->RetainResource(spatialVersion->m_scene);
-					context->RetainResource(spatialVersion->m_sceneVersion);
-					context->RetainResource(flightState);
-					spatialVersion->m_scene->CollectGarbage();
-				}
-				rhiSceneView->SetSubmissionContext(context);
-				submissionBeginState->m_context = std::move(context);
-			}
-			else
-			{
-				submissionBeginState->m_bLifecycleReady = false;
-				ResetFrameCadence();
-				InvalidateGpuTimings();
-				SAILOR_LOG_ERROR(
-					"Renderer::PushFrame: failed to acquire render submission flight slot.");
-			}
-
-			this->GetDriver()->TrackResources_ThreadSafe();
-		},
-		Sailor::EThreadType::Render);
-	if (m_previousRenderFrame.IsValid())
-	{
-		acquireRenderSubmission->Join(m_previousRenderFrame);
-	}
-	acquireRenderSubmission->Run();
-	acquireRenderSubmission->Wait();
-
-	if (!submissionBeginState->m_bLifecycleReady ||
-		!submissionBeginState->m_context)
-	{
-		if (submissionBeginState->m_bMaterialCaptureActive)
-		{
-			RHIMaterial::EndSubmissionVersionCapture(submissionId);
-			submissionBeginState->m_bMaterialCaptureActive = false;
-		}
-		rhiSceneView->Clear();
-		auto& list = m_cachedSceneViews.At_Lock(world);
-		auto it = list.FindIf([&](const auto& el)
-			{
-				return el.m_first == rhiSceneView;
-			});
-		if (it != list.end())
-		{
-			(*it).m_second = true;
-		}
-		m_cachedSceneViews.Unlock(world);
+		ReturnSceneView(submission->m_sceneView);
 		return false;
 	}
 
-	{
-		SAILOR_PROFILE_SCOPE("Prepare flight-local scene view");
-		world->GetECS<AnimationECS>()->FillAnimationData(rhiSceneView);
-		world->GetECS<LightingECS>()->FillLightingData(rhiSceneView);
-		rhiSceneView->m_drawImGui = frame.GetDrawImGuiTask();
-		rhiSceneView->PrepareDebugDrawCommandLists(
-			world,
-			rhiFrameGraph->GetSceneRenderExtent());
-		rhiSceneView->PrepareSnapshots();
-	}
-
-	{
-		SAILOR_PROFILE_SCOPE("Push frame");
-
-		auto renderFrame1 = Tasks::CreateTask("Render Frame " + std::to_string(currentFrame),
-			[this, rhiFrameGraph = rhiFrameGraph, frame, rhiSceneView, submissionId,
-				bUseDriverDepthBuffer, frameGraphResourceGeneration, submissionBeginState]() mutable
-			{
-				SAILOR_PROFILE_SCOPE("Render Frame");
-				bool bSubmissionResourcesSucceeded = false;
-				FrameSubmissionResult frameSubmission;
-				auto frameInstance = frame;
-				const bool bGpuQueriesEnabled = App::GetRenderStatsMode() ==
-					Settings::ERenderStatsMode::RenderStatsAndQueries &&
-					m_driverInstance->SupportsGpuFrameTimeQueries();
-				if (m_timings.GetGpuTimings().m_generation != m_gpuTimingGeneration.load(std::memory_order_acquire) ||
-					m_profiledFrameGraphGeneration != frameGraphResourceGeneration ||
-					m_bGpuQueriesEnabled != bGpuQueriesEnabled)
-				{
-					m_profiledFrameGraphGeneration = frameGraphResourceGeneration;
-					m_bGpuQueriesEnabled = bGpuQueriesEnabled;
-					InvalidateGpuTimings();
-				}
-
-				TVector<RHI::RHICommandListPtr> primaryCommandLists;
-				TVector<RHI::RHICommandListPtr> transferCommandLists;
-
-				auto updateFrameRHI = [&frameInstance = frameInstance](RHISemaphorePtr& inOutChainSemaphore)
-					{
-						SAILOR_PROFILE_SCOPE("Submit & Wait frame command lists");
-						for (uint32_t i = 0; i < frameInstance.NumCommandLists; i++)
-						{
-							if (auto pCommandList = frameInstance.GetCommandBuffer(i))
-							{
-								auto signalSemaphore = GetDriver()->CreateWaitSemaphore();
-								auto fence = RHIFencePtr::Make();
-								GetDriver()->SetDebugName(signalSemaphore, std::format("frameInstance CommandBuffer {}", i));
-								GetDriver()->SetDebugName(fence, std::format("frameInstance CommandBuffer {}", i));
-
-								if (!GetDriver()->SubmitCommandList(pCommandList, fence, signalSemaphore, inOutChainSemaphore))
-								{
-									SAILOR_LOG_ERROR("Renderer::PushFrame: failed to submit frame command buffer %u.", i);
-									return false;
-								}
-
-								inOutChainSemaphore = signalSemaphore;
-							}
-						}
-
-						return true;
-					};
-
-				const bool bHasSwapchainImage = submissionBeginState->m_bHasSwapchainImage;
-				if (submissionBeginState->m_bLifecycleReady)
-				{
-					bool bFrameGraphProcessed = false;
-					RHISemaphorePtr chainSemaphore{};
-					const bool bCanRenderFrame = !m_bForceStop &&
-						(bHasSwapchainImage || App::HasEditor());
-					bool bFrameSubmitsSucceeded = true;
-					bool bGpuFrameTimeQueryStarted = false;
-					if (bCanRenderFrame && bGpuQueriesEnabled)
-					{
-						bGpuFrameTimeQueryStarted =
-							m_driverInstance->BeginGpuFrameTimeQuery(m_timings.GetGpuTimings().m_generation);
-					}
-
-					if (bFrameSubmitsSucceeded && !m_bForceStop)
-					{
-						bFrameSubmitsSucceeded = updateFrameRHI(chainSemaphore);
-					}
-					DrawCallStats drawCallStats;
-					RHIGlobalIlluminationRenderStats globalIlluminationStats;
-
-					if (bFrameSubmitsSucceeded && bCanRenderFrame &&
-						!m_bFrameGraphOutdated && !m_pViewport->IsIconic())
-					{
-						if (!App::HasEditor())
-						{
-							rhiFrameGraph->SetRenderTarget("BackBuffer", m_driverInstance->GetBackBuffer());
-							if (bUseDriverDepthBuffer)
-							{
-								if (auto depthBuffer = m_driverInstance->GetDepthBuffer())
-								{
-									rhiFrameGraph->SetRenderTarget("DepthBuffer", depthBuffer);
-								}
-								else
-								{
-									SAILOR_LOG_ERROR(
-										"Renderer::PushFrame: the legacy frame graph requires a driver DepthBuffer, but none is available.");
-									bFrameSubmitsSucceeded = false;
-								}
-							}
-						}
-
-						if (bFrameSubmitsSucceeded)
-						{
-							RHISemaphorePtr frameGraphChainSemaphore = chainSemaphore;
-							const bool bFrameGraphSucceeded = rhiFrameGraph->Process(
-								rhiSceneView,
-								transferCommandLists,
-								primaryCommandLists,
-								chainSemaphore,
-								frameGraphChainSemaphore);
-							chainSemaphore = frameGraphChainSemaphore;
-							if (!bFrameGraphSucceeded)
-							{
-								SAILOR_LOG_ERROR("Renderer::PushFrame: FrameGraph command buffer submission failed.");
-								bFrameSubmitsSucceeded = false;
-							}
-							else
-							{
-								bFrameGraphProcessed = true;
-								drawCallStats = rhiFrameGraph->GetDrawCallStats();
-								globalIlluminationStats =
-									rhiFrameGraph->GetGlobalIlluminationRenderStats();
-							}
-						}
-					}
-
-					if (bFrameSubmitsSucceeded)
-					{
-						SAILOR_PROFILE_SCOPE("Submit transfer command lists");
-						uint32_t i = 0;
-						for (auto& cmdList : transferCommandLists)
-						{
-							auto signalSemaphore = GetDriver()->CreateWaitSemaphore();
-							auto fence = RHIFencePtr::Make();
-							GetDriver()->SetDebugName(signalSemaphore, std::format("rhiFrameGraph TransferCommandList {}", i));
-							GetDriver()->SetDebugName(fence, std::format("rhiFrameGraph TransferCommandList {}", i));
-
-							if (!GetDriver()->SubmitCommandList(cmdList, fence, signalSemaphore, chainSemaphore))
-							{
-								SAILOR_LOG_ERROR("Renderer::PushFrame: failed to submit FrameGraph transfer command buffer %u.", i);
-								bFrameSubmitsSucceeded = false;
-								break;
-							}
-
-							chainSemaphore = signalSemaphore;
-							i++;
-						}
-					}
-
-					if (bGpuFrameTimeQueryStarted)
-					{
-						if (bFrameSubmitsSucceeded)
-						{
-							m_driverInstance->EndGpuFrameTimeQuery();
-						}
-						else
-						{
-							m_driverInstance->CancelGpuFrameTimeQuery();
-						}
-					}
-
-					TVector<RHISemaphorePtr> waitFrameUpdate;
-					if (chainSemaphore)
-					{
-						waitFrameUpdate.Add(chainSemaphore);
-						if (bFrameSubmitsSucceeded && submissionBeginState->m_context)
-						{
-							submissionBeginState->m_context->SetResourceReadySemaphore(chainSemaphore);
-						}
-					}
-
-					if (!bFrameSubmitsSucceeded)
-					{
-						TVector<RHICommandListPtr> noCommandLists;
-						const FrameSubmissionResult flightRelease = bHasSwapchainImage ?
-							m_driverInstance->PresentFrame(frame, noCommandLists, waitFrameUpdate) :
-							m_driverInstance->SubmitFrameWithoutPresent(
-								noCommandLists,
-								waitFrameUpdate);
-						if (!flightRelease.m_bSubmitted)
-						{
-							SAILOR_LOG_ERROR("Renderer::PushFrame: failed to fence an acquired flight slot after a submit failure.");
-						}
-					}
-
-					if (bFrameSubmitsSucceeded)
-					{
-						const auto completion = submissionBeginState->m_context->GetFrameCompletion();
-						frameSubmission = bHasSwapchainImage
-							? m_driverInstance->PresentFrame(frame, primaryCommandLists, waitFrameUpdate, completion)
-							: m_driverInstance->SubmitFrameWithoutPresent(primaryCommandLists, waitFrameUpdate, completion);
-					}
-
-					// End/Cancel can publish an invalid result for this frame even before GPU polling.
-					const auto gpuTimingResult = m_driverInstance->TakeGpuTimingResult();
-					if (bFrameGraphProcessed && frameSubmission.m_bSubmitted)
-					{
-						PublishGpuTimings(gpuTimingResult);
-						if (m_timings.RecordFrame(RendererTimings::Clock::now(), frameSubmission))
-						{
-							m_stats.m_renderFps.store(m_timings.GetRenderFps(), std::memory_order_relaxed);
-							m_stats.m_presentFps.store(m_timings.GetPresentFps(), std::memory_order_relaxed);
-#if defined(SAILOR_BUILD_WITH_VULKAN)
-							size_t heapUsage = 0;
-							size_t heapBudget = 0;
-
-							VulkanApi::GetInstance()->GetMainDevice()->GetOccupiedVideoMemory(VkMemoryHeapFlagBits::VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, heapBudget, heapUsage);
-
-							m_stats.m_gpuHeapUsage = heapUsage;
-							m_stats.m_gpuHeapBudget = heapBudget;
-							m_stats.m_numSubmittedCommandBuffers = m_driverInstance->GetNumSubmittedCommandBuffers();
-							UpdateMemoryStats();
-#endif // SAILOR_BUILD_WITH_VULKAN
-						}
-					}
-					else
-					{
-						ResetFrameCadence();
-						InvalidateGpuTimings();
-					}
-
-					const bool bFrameCompleted = bHasSwapchainImage ?
-						frameSubmission.m_bPresented : frameSubmission.m_bSubmitted;
-					if (bFrameCompleted)
-					{
-						bSubmissionResourcesSucceeded = bFrameGraphProcessed;
-						UpdateGlobalIlluminationRenderStats(
-							globalIlluminationStats);
-						m_stats.m_numBatches.store(drawCallStats.m_numBatches, std::memory_order_relaxed);
-						m_stats.m_numInstances.store(drawCallStats.m_numInstances, std::memory_order_relaxed);
-					}
-					else
-					{
-						UpdateGlobalIlluminationRenderStats({});
-						if (submissionBeginState->m_context)
-						{
-							submissionBeginState->m_context->InvalidateSubmissionResources();
-						}
-						m_stats.m_numBatches.store(0u, std::memory_order_relaxed);
-						m_stats.m_numInstances.store(0u, std::memory_order_relaxed);
-					}
-				}
-				if (!frameSubmission.m_bSubmitted)
-				{
-					if (auto completion = submissionBeginState->m_context->GetFrameCompletion()) completion->MarkSubmissionFailed();
-				}
-				if (auto readback = Framegraph::EditorReadbackNode::Find(*rhiFrameGraph))
-				{
-					QueueEditorReadback(readback->TakeCompletedFrame());
-				}
-				if (submissionBeginState->m_bMaterialCaptureActive)
-				{
-					RHIMaterial::EndSubmissionVersionCapture(submissionId);
-					submissionBeginState->m_bMaterialCaptureActive = false;
-				}
-
-				rhiFrameGraph->CompleteMotionHistory(rhiSceneView, bSubmissionResourcesSucceeded);
-				rhiSceneView->CompleteSubmissionResources(
-					bSubmissionResourcesSucceeded);
-
-				{
-					SAILOR_PROFILE_SCOPE("Clear after Present");
-
-					{
-						SAILOR_PROFILE_SCOPE("Clear submitted scene view");
-						// Bound deferred ownership to one older frame. Normally its release
-						// overlaps the next frame's setup and is already complete here.
-						if (m_previousSceneVersionRelease)
-						{
-							SAILOR_PROFILE_SCOPE("Wait previous scene version release");
-							m_previousSceneVersionRelease->Wait();
-							m_previousSceneVersionRelease.Clear();
-						}
-						if (!rhiSceneView->m_sceneVersions.IsEmpty() ||
-							!rhiSceneView->m_virtualSceneVersions.IsEmpty() ||
-							rhiSceneView->m_retainedSceneVersions)
-						{
-							m_previousSceneVersionRelease = Tasks::CreateTask("Release submitted scene versions",
-								[spatial = std::move(rhiSceneView->m_sceneVersions),
-									versions = std::move(rhiSceneView->m_virtualSceneVersions),
-									retained = std::move(rhiSceneView->m_retainedSceneVersions)]() mutable
-								{
-									SAILOR_PROFILE_SCOPE("Reclaim submitted scene versions");
-									spatial.Clear();
-									versions.Clear();
-									retained.Clear();
-								}, EThreadType::Worker);
-						}
-						// Drop snapshot references before the worker runs, so the last
-						// reference (and expensive root destruction) stays with the task.
-						rhiSceneView->Clear();
-						if (m_previousSceneVersionRelease)
-						{
-							m_previousSceneVersionRelease->Run();
-						}
-					}
-
-					{
-						SAILOR_PROFILE_SCOPE("Return scene view to cache");
-						auto& list = m_cachedSceneViews.At_Lock(rhiSceneView->m_world);
-						auto it = list.FindIf([&](const auto& el) { return el.m_first == rhiSceneView; });
-						if (it != list.end())
-						{
-							(*it).m_second = true;
-						}
-
-						m_cachedSceneViews.Unlock(rhiSceneView->m_world);
-					}
-
-					GetDriver()->CollectGarbage_RenderThread();
-				}
-			}, Sailor::EThreadType::Render);
-
-		auto prepareRenderFrame = rhiFrameGraph->Prepare(rhiSceneView);
-
-		for (auto& t : prepareRenderFrame)
+	PrepareSceneView(*submission, frame);
+	auto prepareTasks = submission->m_frameGraph->Prepare(submission->m_sceneView);
+	auto render = Tasks::CreateTask("Render Frame"_h,
+		[this, frame, submission = std::move(submission)]() mutable
 		{
-			renderFrame1->Join(t);
-		}
-
-		renderFrame1->Run();
-		for (auto& t : prepareRenderFrame)
-		{
-			t->Run();
-		}
-
-		m_previousRenderFrame = renderFrame1;
-	}
-
+			// Release capture when execution ends, not when the retained task dies.
+			auto current = std::move(submission);
+			RecordAndSubmitFrame(*current, frame);
+			CompleteFrame(*current);
+		}, EThreadType::Render);
+	for (auto& task : prepareTasks) render->Join(task);
+	render->Run();
+	for (auto& task : prepareTasks) task->Run();
+	m_previousRenderFrame = render;
 	return true;
+}
+
+void Renderer::CaptureSceneView(FrameSubmission& submission, const Sailor::FrameState& frame)
+{
+	auto& rhiSceneView = submission.m_sceneView;
+	auto& rhiFrameGraph = submission.m_frameGraph;
+	auto* world = frame.GetWorld();
+	SAILOR_PROFILE_SCOPE("Copy scene view to render thread");
+
+	rhiSceneView = GetOrAddSceneView(world);
+
+	rhiSceneView->m_world = world;
+	rhiSceneView->m_renderMode = App::GetEditorRenderMode();
+	world->GetECS<StaticMeshRendererECS>()->CopySceneView(rhiSceneView);
+	world->GetECS<LandscapeECS>()->AppendSceneView(rhiSceneView);
+	if (auto* pathTracerEcs = world->GetECS<PathTracerECS>())
+	{
+		const bool tracing = std::any_of(rhiFrameGraph->GetGraph().begin(), rhiFrameGraph->GetGraph().end(),
+			[mode = rhiSceneView->m_renderMode](const auto& node)
+			{
+				const auto* tracer = dynamic_cast<const Framegraph::CPUPathTracerNode*>(node.GetRawPtr());
+				return tracer && tracer->IsEnabled(mode);
+			});
+		pathTracerEcs->SetPathTracingEnabled(tracing);
+		pathTracerEcs->CopySceneView(rhiSceneView);
+	}
+	rhiSceneView->m_globalIlluminationMode =
+		EGlobalIlluminationMode::Baked;
+	rhiSceneView->m_bGlobalIlluminationEnabled = true;
+	rhiSceneView->m_globalIllumination.Clear();
+	if (auto* globalIlluminationEcs = world->GetECS<GlobalIlluminationECS>())
+	{
+		rhiSceneView->m_globalIlluminationMode =
+			globalIlluminationEcs->GetWorldSettings().m_mode;
+		rhiSceneView->m_bGlobalIlluminationEnabled =
+			globalIlluminationEcs->IsEnabled();
+		rhiSceneView->m_globalIllumination =
+			rhiSceneView->m_bGlobalIlluminationEnabled &&
+			rhiSceneView->m_globalIlluminationMode !=
+				EGlobalIlluminationMode::NoGI
+				? globalIlluminationEcs->GetActiveSnapshot()
+				: RHIGlobalIlluminationSnapshotPtr{};
+	}
+	world->GetECS<CameraECS>()->CopyCameraData(rhiSceneView);
+	rhiSceneView->m_deltaTime = frame.GetDeltaTime();
+	rhiSceneView->m_currentTime = world->GetTime();
+}
+
+bool Renderer::AcquireSubmission(FrameSubmission& submission)
+{
+	auto& rhiSceneView = submission.m_sceneView;
+	auto& rhiFrameGraph = submission.m_frameGraph;
+	uint32_t flightSlot = 0u;
+	const bool bAcquired =
+		m_driverInstance->BeginRenderSubmission(
+			flightSlot,
+			submission.m_bHasSwapchainImage);
+	if (auto readback = Framegraph::EditorReadbackNode::Find(*rhiFrameGraph))
+	{
+		QueueEditorReadback(readback->TakeCompletedFrame());
+	}
+
+	if (bAcquired &&
+		flightSlot < m_submissionContexts.Num())
+	{
+		auto context = m_submissionContexts[flightSlot];
+		context->BeginSubmission(
+			submission.m_submissionId,
+			flightSlot,
+			submission.m_materialRevision,
+			submission.m_frameGraphResourceGeneration);
+		for (const auto& spatialVersion : rhiSceneView->m_sceneVersions)
+		{
+			if (!spatialVersion || !spatialVersion->m_scene ||
+				!spatialVersion->m_sceneVersion)
+			{
+				continue;
+			}
+
+			auto scene = spatialVersion->m_scene;
+			auto flightState = scene->PrepareFlight(
+				flightSlot,
+				spatialVersion->m_sceneVersion);
+			context->RetainResource(scene);
+			context->RetainResource(spatialVersion->m_sceneVersion);
+			context->RetainResource(flightState);
+			scene->CollectGarbage();
+		}
+		rhiSceneView->SetSubmissionContext(context);
+		submission.m_context = std::move(context);
+	}
+	else
+	{
+		ResetFrameCadence();
+		InvalidateGpuTimings();
+		SAILOR_LOG_ERROR(
+			"Renderer::PushFrame: failed to acquire render submission flight slot.");
+	}
+
+	this->GetDriver()->TrackResources_ThreadSafe();
+	return static_cast<bool>(submission.m_context);
+}
+
+void Renderer::PrepareSceneView(FrameSubmission& submission, const Sailor::FrameState& frame)
+{
+	auto& rhiSceneView = submission.m_sceneView;
+	auto& rhiFrameGraph = submission.m_frameGraph;
+	auto* world = frame.GetWorld();
+	SAILOR_PROFILE_SCOPE("Prepare flight-local scene view");
+	world->GetECS<AnimationECS>()->FillAnimationData(rhiSceneView);
+	world->GetECS<LightingECS>()->FillLightingData(rhiSceneView);
+	rhiSceneView->m_drawImGui = frame.GetDrawImGuiTask();
+	rhiSceneView->PrepareDebugDrawCommandLists(
+		world,
+		rhiFrameGraph->GetSceneRenderExtent());
+	rhiSceneView->PrepareSnapshots();
+}
+
+void Renderer::RecordAndSubmitFrame(FrameSubmission& submission, const Sailor::FrameState& frame)
+{
+	auto& rhiSceneView = submission.m_sceneView;
+	auto& rhiFrameGraph = submission.m_frameGraph;
+	SAILOR_PROFILE_SCOPE("Render Frame");
+	auto& frameSubmission = submission.m_result;
+	const bool bGpuQueriesEnabled = App::GetRenderStatsMode() ==
+		Settings::ERenderStatsMode::RenderStatsAndQueries &&
+		m_driverInstance->SupportsGpuFrameTimeQueries();
+	if (m_timings.GetGpuTimings().m_generation != m_gpuTimingGeneration.load(std::memory_order_acquire) ||
+		m_profiledFrameGraphGeneration != submission.m_frameGraphResourceGeneration ||
+		m_bGpuQueriesEnabled != bGpuQueriesEnabled)
+	{
+		m_profiledFrameGraphGeneration = submission.m_frameGraphResourceGeneration;
+		m_bGpuQueriesEnabled = bGpuQueriesEnabled;
+		InvalidateGpuTimings();
+	}
+
+	TVector<RHI::RHICommandListPtr> primaryCommandLists;
+	TVector<RHI::RHICommandListPtr> transferCommandLists;
+
+	auto updateFrameRHI = [&frame](RHISemaphorePtr& inOutChainSemaphore)
+		{
+			SAILOR_PROFILE_SCOPE("Submit & Wait frame command lists");
+			for (uint32_t i = 0; i < FrameState::NumCommandLists; i++)
+			{
+				if (auto pCommandList = frame.GetCommandBuffer(i))
+				{
+					auto signalSemaphore = GetDriver()->CreateWaitSemaphore();
+					auto fence = RHIFencePtr::Make();
+					GetDriver()->SetDebugName(signalSemaphore, std::format("frameInstance CommandBuffer {}", i));
+					GetDriver()->SetDebugName(fence, std::format("frameInstance CommandBuffer {}", i));
+
+					if (!GetDriver()->SubmitCommandList(pCommandList, fence, signalSemaphore, inOutChainSemaphore))
+					{
+						SAILOR_LOG_ERROR("Renderer::PushFrame: failed to submit frame command buffer %u.", i);
+						return false;
+					}
+
+					inOutChainSemaphore = signalSemaphore;
+				}
+			}
+
+			return true;
+		};
+
+	const bool bHasSwapchainImage = submission.m_bHasSwapchainImage;
+	bool bFrameGraphProcessed = false;
+	RHISemaphorePtr chainSemaphore{};
+	const bool bCanRenderFrame = !m_bForceStop &&
+		(bHasSwapchainImage || App::HasEditor());
+	bool bFrameSubmitsSucceeded = true;
+	bool bGpuFrameTimeQueryStarted = false;
+	if (bCanRenderFrame && bGpuQueriesEnabled)
+	{
+		bGpuFrameTimeQueryStarted =
+			m_driverInstance->BeginGpuFrameTimeQuery(m_timings.GetGpuTimings().m_generation);
+	}
+
+	if (bFrameSubmitsSucceeded && !m_bForceStop)
+	{
+		bFrameSubmitsSucceeded = updateFrameRHI(chainSemaphore);
+	}
+	DrawCallStats drawCallStats;
+	RHIGlobalIlluminationRenderStats globalIlluminationStats;
+
+	if (bFrameSubmitsSucceeded && bCanRenderFrame &&
+		!m_bFrameGraphOutdated && !m_pViewport->IsIconic())
+	{
+		if (!App::HasEditor())
+		{
+			rhiFrameGraph->SetRenderTarget("BackBuffer"_h, m_driverInstance->GetBackBuffer());
+			if (submission.m_bUseDriverDepthBuffer)
+			{
+				if (auto depthBuffer = m_driverInstance->GetDepthBuffer())
+				{
+					rhiFrameGraph->SetRenderTarget("DepthBuffer"_h, depthBuffer);
+				}
+				else
+				{
+					SAILOR_LOG_ERROR(
+						"Renderer::PushFrame: the legacy frame graph requires a driver DepthBuffer, but none is available.");
+					bFrameSubmitsSucceeded = false;
+				}
+			}
+		}
+
+		if (bFrameSubmitsSucceeded)
+		{
+			RHISemaphorePtr frameGraphChainSemaphore = chainSemaphore;
+			const bool bFrameGraphSucceeded = rhiFrameGraph->Process(
+				rhiSceneView,
+				transferCommandLists,
+				primaryCommandLists,
+				chainSemaphore,
+				frameGraphChainSemaphore);
+			chainSemaphore = frameGraphChainSemaphore;
+			if (!bFrameGraphSucceeded)
+			{
+				SAILOR_LOG_ERROR("Renderer::PushFrame: FrameGraph command buffer submission failed.");
+				bFrameSubmitsSucceeded = false;
+			}
+			else
+			{
+				bFrameGraphProcessed = true;
+				drawCallStats = rhiFrameGraph->GetDrawCallStats();
+				globalIlluminationStats =
+					rhiFrameGraph->GetGlobalIlluminationRenderStats();
+			}
+		}
+	}
+
+	if (bFrameSubmitsSucceeded)
+	{
+		SAILOR_PROFILE_SCOPE("Submit transfer command lists");
+		uint32_t i = 0;
+		for (auto& cmdList : transferCommandLists)
+		{
+			auto signalSemaphore = GetDriver()->CreateWaitSemaphore();
+			auto fence = RHIFencePtr::Make();
+			GetDriver()->SetDebugName(signalSemaphore, std::format("rhiFrameGraph TransferCommandList {}", i));
+			GetDriver()->SetDebugName(fence, std::format("rhiFrameGraph TransferCommandList {}", i));
+
+			if (!GetDriver()->SubmitCommandList(cmdList, fence, signalSemaphore, chainSemaphore))
+			{
+				SAILOR_LOG_ERROR("Renderer::PushFrame: failed to submit FrameGraph transfer command buffer %u.", i);
+				bFrameSubmitsSucceeded = false;
+				break;
+			}
+
+			chainSemaphore = signalSemaphore;
+			i++;
+		}
+	}
+
+	if (bGpuFrameTimeQueryStarted)
+	{
+		if (bFrameSubmitsSucceeded)
+		{
+			m_driverInstance->EndGpuFrameTimeQuery();
+		}
+		else
+		{
+			m_driverInstance->CancelGpuFrameTimeQuery();
+		}
+	}
+
+	TVector<RHISemaphorePtr> waitFrameUpdate;
+	if (chainSemaphore)
+	{
+		waitFrameUpdate.Add(chainSemaphore);
+		if (bFrameSubmitsSucceeded && submission.m_context)
+		{
+			submission.m_context->SetResourceReadySemaphore(chainSemaphore);
+		}
+	}
+
+	if (!bFrameSubmitsSucceeded)
+	{
+		TVector<RHICommandListPtr> noCommandLists;
+		const FrameSubmissionResult flightRelease = bHasSwapchainImage ?
+			m_driverInstance->PresentFrame(frame, noCommandLists, waitFrameUpdate) :
+			m_driverInstance->SubmitFrameWithoutPresent(
+				noCommandLists,
+				waitFrameUpdate);
+		if (!flightRelease.m_bSubmitted)
+		{
+			SAILOR_LOG_ERROR("Renderer::PushFrame: failed to fence an acquired flight slot after a submit failure.");
+		}
+	}
+
+	if (bFrameSubmitsSucceeded)
+	{
+		const auto completion = submission.m_context->GetFrameCompletion();
+		frameSubmission = bHasSwapchainImage
+			? m_driverInstance->PresentFrame(frame, primaryCommandLists, waitFrameUpdate, completion)
+			: m_driverInstance->SubmitFrameWithoutPresent(primaryCommandLists, waitFrameUpdate, completion);
+	}
+
+	// End/Cancel can publish an invalid result for this frame even before GPU polling.
+	const auto gpuTimingResult = m_driverInstance->TakeGpuTimingResult();
+	if (bFrameGraphProcessed && frameSubmission.m_bSubmitted)
+	{
+		PublishGpuTimings(gpuTimingResult);
+		if (m_timings.RecordFrame(RendererTimings::Clock::now(), frameSubmission))
+		{
+			m_stats.m_renderFps.store(m_timings.GetRenderFps(), std::memory_order_relaxed);
+			m_stats.m_presentFps.store(m_timings.GetPresentFps(), std::memory_order_relaxed);
+#if defined(SAILOR_BUILD_WITH_VULKAN)
+			size_t heapUsage = 0;
+			size_t heapBudget = 0;
+
+			VulkanApi::GetInstance()->GetMainDevice()->GetOccupiedVideoMemory(VkMemoryHeapFlagBits::VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, heapBudget, heapUsage);
+
+			m_stats.m_gpuHeapUsage = heapUsage;
+			m_stats.m_gpuHeapBudget = heapBudget;
+			m_stats.m_numSubmittedCommandBuffers = m_driverInstance->GetNumSubmittedCommandBuffers();
+			UpdateMemoryStats();
+#endif // SAILOR_BUILD_WITH_VULKAN
+		}
+	}
+	else
+	{
+		ResetFrameCadence();
+		InvalidateGpuTimings();
+	}
+
+	const bool bFrameCompleted = bHasSwapchainImage ?
+		frameSubmission.m_bPresented : frameSubmission.m_bSubmitted;
+	if (bFrameCompleted)
+	{
+		submission.m_bResourcesSucceeded = bFrameGraphProcessed;
+		UpdateGlobalIlluminationRenderStats(
+			globalIlluminationStats);
+		m_stats.m_numBatches.store(drawCallStats.m_numBatches, std::memory_order_relaxed);
+		m_stats.m_numInstances.store(drawCallStats.m_numInstances, std::memory_order_relaxed);
+	}
+	else
+	{
+		UpdateGlobalIlluminationRenderStats({});
+		if (submission.m_context)
+		{
+			submission.m_context->InvalidateSubmissionResources();
+		}
+		m_stats.m_numBatches.store(0u, std::memory_order_relaxed);
+		m_stats.m_numInstances.store(0u, std::memory_order_relaxed);
+	}
+}
+
+void Renderer::CompleteFrame(FrameSubmission& submission)
+{
+	auto& rhiSceneView = submission.m_sceneView;
+	auto& rhiFrameGraph = submission.m_frameGraph;
+	if (!submission.m_result.m_bSubmitted)
+	{
+		if (auto completion = submission.m_context->GetFrameCompletion()) completion->MarkSubmissionFailed();
+	}
+	if (auto readback = Framegraph::EditorReadbackNode::Find(*rhiFrameGraph))
+	{
+		QueueEditorReadback(readback->TakeCompletedFrame());
+	}
+	rhiSceneView->CompleteSubmissionResources(
+		submission.m_bResourcesSucceeded);
+
+	SAILOR_PROFILE_SCOPE("Clear after Present");
+	// Bound deferred ownership to one older frame. Normally its release
+	// overlaps the next frame's setup and is already complete here.
+	if (m_previousSceneVersionRelease)
+	{
+		SAILOR_PROFILE_SCOPE("Wait previous scene version release");
+		m_previousSceneVersionRelease->Wait();
+		m_previousSceneVersionRelease.Clear();
+	}
+	if (!rhiSceneView->m_sceneVersions.IsEmpty() ||
+		!rhiSceneView->m_virtualSceneVersions.IsEmpty() ||
+		rhiSceneView->m_retainedSceneVersions)
+	{
+		m_previousSceneVersionRelease = Tasks::CreateTask("Release submitted scene versions"_h,
+			[spatial = std::move(rhiSceneView->m_sceneVersions),
+				versions = std::move(rhiSceneView->m_virtualSceneVersions),
+				retained = std::move(rhiSceneView->m_retainedSceneVersions)]() mutable
+			{
+				SAILOR_PROFILE_SCOPE("Reclaim submitted scene versions");
+				spatial.Clear();
+				versions.Clear();
+				retained.Clear();
+			}, EThreadType::Worker);
+	}
+	// Drop snapshot references before the worker runs, so the last
+	// reference (and expensive root destruction) stays with the task.
+	ReturnSceneView(rhiSceneView);
+	if (m_previousSceneVersionRelease)
+	{
+		m_previousSceneVersionRelease->Run();
+	}
+	GetDriver()->CollectGarbage_RenderThread();
+}
+
+void Renderer::ReturnSceneView(RHISceneViewPtr& rhiSceneView)
+{
+	SAILOR_PROFILE_SCOPE("Return scene view to cache");
+	rhiSceneView->Clear();
+	auto& list = m_cachedSceneViews.At_Lock(rhiSceneView->m_world);
+	auto it = list.FindIf([&](const auto& el) { return el.m_first == rhiSceneView; });
+	if (it != list.end())
+	{
+		(*it).m_second = true;
+	}
+
+	m_cachedSceneViews.Unlock(rhiSceneView->m_world);
 }
 
 void Renderer::WaitIdle()

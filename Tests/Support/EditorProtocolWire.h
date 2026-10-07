@@ -1,11 +1,12 @@
 #pragma once
 
 #include "EditorEngineProtocolInternal.h"
+#include "Protocol/Generated/editor_engine.pb.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <string>
-#include <utility>
+#include <string_view>
 
 namespace Sailor::Tests::ProtocolWire
 {
@@ -42,30 +43,36 @@ namespace Sailor::Tests::ProtocolWire
 	inline void AppendBytesField(
 		std::string& payload,
 		const uint32_t fieldNumber,
-		const std::string& value)
+		std::string_view value)
 	{
 		AppendKey(payload, fieldNumber, 2u);
 		AppendVarint(payload, value.size());
 		payload.append(value);
 	}
 
-	inline std::string MakeRequest(
+	inline std::string MakeVersionedRequest(
+		const uint32_t version,
 		const uint64_t requestId,
-		const uint32_t commandField,
-		const std::string& commandPayload = {})
+		const uint32_t commandField = 0u,
+		std::string_view commandPayload = {})
 	{
 		std::string payload;
-		AppendVarintField(
-			payload,
-			1u,
-			Protocol::EditorEngineProtocolVersion);
-		AppendVarintField(payload, 2u, requestId);
-		AppendBytesField(payload, commandField, commandPayload);
+		AppendVarintField(payload, 1u, version);
+		if (requestId != 0u) AppendVarintField(payload, 2u, requestId);
+		if (commandField != 0u) AppendBytesField(payload, commandField, commandPayload);
 		return payload;
 	}
 
+	inline std::string MakeRequest(
+		const uint64_t requestId,
+		const uint32_t commandField,
+		std::string_view commandPayload = {})
+	{
+		return MakeVersionedRequest(Protocol::EditorEngineProtocolVersion, requestId, commandField, commandPayload);
+	}
+
 	inline bool ReadVarint(
-		const std::string& payload,
+		std::string_view payload,
 		size_t& offset,
 		uint64_t& outValue)
 	{
@@ -85,10 +92,15 @@ namespace Sailor::Tests::ProtocolWire
 		return false;
 	}
 
+	inline bool ReadVarint(const uint8_t* data, size_t size, size_t& offset, uint64_t& outValue)
+	{
+		return ReadVarint(std::string_view(reinterpret_cast<const char*>(data), size), offset, outValue);
+	}
+
 	inline bool ReadBytes(
-		const std::string& payload,
+		std::string_view payload,
 		size_t& offset,
-		std::string& outValue)
+		std::string_view& outValue)
 	{
 		uint64_t length = 0u;
 		if (!ReadVarint(payload, offset, length) ||
@@ -97,11 +109,20 @@ namespace Sailor::Tests::ProtocolWire
 			return false;
 		}
 
-		outValue.assign(
-			payload.data() + offset,
-			static_cast<size_t>(length));
+		outValue = payload.substr(offset, static_cast<size_t>(length));
 		offset += static_cast<size_t>(length);
 		return true;
+	}
+
+	inline bool ReadNestedScalar(std::string_view payload, uint64_t& outValue)
+	{
+		outValue = 0u;
+		if (payload.empty()) return true;
+
+		size_t offset = 0u;
+		uint64_t key = 0u;
+		return ReadVarint(payload, offset, key) && key == 8u &&
+			ReadVarint(payload, offset, outValue) && offset == payload.size();
 	}
 
 	struct TProtocolResponseWire
@@ -116,9 +137,13 @@ namespace Sailor::Tests::ProtocolWire
 	};
 
 	inline bool ParseResponse(
-		const std::string& payload,
+		std::string_view payload,
 		TProtocolResponseWire& outResponse)
 	{
+		// Only field-number constants are used: generated message instances stay
+		// in SailorLib, which owns the single protobuf descriptor registration.
+		using Response = sailor::editor::v1::ProtocolResponse;
+		outResponse = {};
 		size_t offset = 0u;
 		while (offset < payload.size())
 		{
@@ -141,19 +166,19 @@ namespace Sailor::Tests::ProtocolWire
 				}
 				switch (fieldNumber)
 				{
-				case 1u:
+				case Response::kProtocolVersionFieldNumber:
 					outResponse.m_protocolVersion = value;
 					break;
 
-				case 2u:
+				case Response::kRequestIdFieldNumber:
 					outResponse.m_requestId = value;
 					break;
 
-				case 3u:
+				case Response::kSuccessFieldNumber:
 					outResponse.m_bSuccess = value != 0u;
 					break;
 
-				case 5u:
+				case Response::kSupportsStrictInstanceIdsFieldNumber:
 					outResponse.m_bSupportsStrictInstanceIds =
 						value != 0u;
 					break;
@@ -165,20 +190,21 @@ namespace Sailor::Tests::ProtocolWire
 			}
 			if (wireType == 2u)
 			{
-				std::string value;
+				std::string_view value;
 				if (!ReadBytes(payload, offset, value))
 				{
 					return false;
 				}
-				if (fieldNumber == 4u)
+				if (fieldNumber == Response::kErrorFieldNumber)
 				{
-					outResponse.m_error = std::move(value);
+					outResponse.m_error = value;
 				}
-				else if (fieldNumber >= 10u &&
-					fieldNumber <= 19u)
+				else if ((fieldNumber >= Response::kEmptyResultFieldNumber &&
+					fieldNumber <= Response::kGlobalIlluminationStateResultFieldNumber) ||
+					fieldNumber == Response::kModelFingerprintStatusResultFieldNumber)
 				{
 					outResponse.m_resultField = fieldNumber;
-					outResponse.m_resultPayload = std::move(value);
+					outResponse.m_resultPayload = value;
 				}
 				continue;
 			}

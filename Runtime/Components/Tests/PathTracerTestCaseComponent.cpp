@@ -12,6 +12,9 @@ using namespace Sailor;
 void PathTracerTestCaseComponent::BeginPlay()
 {
 	TestCaseComponent::BeginPlay();
+	m_capture.Clear();
+	m_framesSinceStart = 0;
+	m_framesAfterCaptureRequest = 0;
 
 	m_bProxiesAttached = AttachProxies();
 	m_bPendingPathTracerConfig = !ConfigurePathTracer();
@@ -35,29 +38,47 @@ void PathTracerTestCaseComponent::Tick(float)
 	}
 
 	m_framesSinceStart++;
-	if (!m_bCaptureRequested)
+	if (!m_capture)
 	{
 		if (m_framesSinceStart < m_captureAfterFrames)
 		{
 			return;
 		}
 
-		m_bCaptureRequested = true;
+		auto* renderer = App::GetSubmodule<RHI::Renderer>();
+		auto graph = renderer ? renderer->GetFrameGraph() : FrameGraphPtr{};
+		auto node = graph ? graph->GetRHI()->GetGraphNode(Framegraph::CPUPathTracerNode::GetName()).DynamicCast<Framegraph::CPUPathTracerNode>() : nullptr;
+		if (!node)
+		{
+			MarkFailed("CPUPathTracerNode is not available.");
+			return;
+		}
+		m_capture = node->DoOneCapture();
 		m_framesAfterCaptureRequest = 0;
-	}
-
-	std::string error;
-	if (CaptureOutput(error))
-	{
-		MarkPassed();
 		return;
 	}
 
-	m_framesAfterCaptureRequest++;
-	if (m_framesAfterCaptureRequest > m_timeoutFrames)
+	if (!m_capture->IsFinished())
 	{
-		MarkFailed(error.empty() ? "Path tracer output is not ready." : error);
+		if (++m_framesAfterCaptureRequest > m_timeoutFrames)
+			MarkFailed("Timed out waiting for the requested path tracer image.");
+		return;
 	}
+	const auto& image = m_capture->GetResult();
+	if (!image)
+	{
+		MarkFailed("Path tracer capture was cancelled or the requested camera produced no image.");
+		return;
+	}
+	TVector<glm::u8vec4> pixels(image->m_pixels.Num());
+	for (size_t i = 0; i < pixels.Num(); ++i) pixels[i] = Utils::LinearToSRGB8(image->m_pixels[i]);
+	std::string error;
+	if (SaveImageToPng(pixels, image->m_extent, m_outputName, error))
+	{
+		AddJournalEvent("CaptureSmoke", "Requested CPU image saved; image correctness was not evaluated.");
+		MarkPassed();
+	}
+	else MarkFailed(error);
 }
 
 bool PathTracerTestCaseComponent::AttachProxies()
@@ -105,44 +126,16 @@ bool PathTracerTestCaseComponent::ConfigurePathTracer()
 		return false;
 	}
 
-	cpuPathTracer->SetFloat("enabled", m_bEnableNode ? 1.0f : 0.0f);
-	cpuPathTracer->SetFloat("samplesPerFrame", m_samplesPerFrame);
-	cpuPathTracer->SetFloat("maxBounces", m_maxBounces);
-	cpuPathTracer->SetFloat("blend", m_blend);
-	cpuPathTracer->SetFloat("rayBiasBase", m_rayBiasBase);
-	cpuPathTracer->SetFloat("rayBiasScale", m_rayBiasScale);
+	Tasks::CreateTask("Configure CPU path tracer"_h,
+		[node = cpuPathTracer, bIsEnabled = m_bEnableNode, samples = m_samplesPerFrame,
+			bounces = m_maxBounces, blend = m_blend, biasBase = m_rayBiasBase, biasScale = m_rayBiasScale]() mutable
+		{
+			node->SetFloat("enabled"_h, bIsEnabled ? 1.0f : 0.0f);
+			node->SetFloat("samplesPerFrame"_h, samples);
+			node->SetFloat("maxBounces"_h, bounces);
+			node->SetFloat("blend"_h, blend);
+			node->SetFloat("rayBiasBase"_h, biasBase);
+			node->SetFloat("rayBiasScale"_h, biasScale);
+		}, EThreadType::Render)->Run();
 	return true;
-}
-
-bool PathTracerTestCaseComponent::CaptureOutput(std::string& outError) const
-{
-	auto renderer = App::GetSubmodule<RHI::Renderer>();
-	if (!renderer || !renderer->GetFrameGraph())
-	{
-		outError = "Renderer frame graph is not available.";
-		return false;
-	}
-
-	auto cpuPathTracerNode = renderer->GetFrameGraph()->GetRHI()->GetGraphNode(Framegraph::CPUPathTracerNode::GetName()).DynamicCast<Framegraph::CPUPathTracerNode>();
-	if (!cpuPathTracerNode)
-	{
-		outError = "CPUPathTracerNode is not available.";
-		return false;
-	}
-
-	TVector<glm::u8vec4> image;
-	glm::uvec2 extent{};
-	if (!cpuPathTracerNode->GetLastRenderedImage(image, extent))
-	{
-		outError = "Path tracer output is not ready yet.";
-		return false;
-	}
-
-	if (image.Num() < (size_t)extent.x * (size_t)extent.y)
-	{
-		outError = "Path tracer output is incomplete.";
-		return false;
-	}
-
-	return TestCaseComponent::SaveImageToPng(image, extent, m_outputName, outError);
 }

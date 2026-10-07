@@ -52,10 +52,7 @@ namespace Sailor
 		float m_directionalLightIlluminance = 320000.0f;
 		bool m_bSpawnPointLights = true;
 
-		float m_minFps = FLT_MAX;
-		float m_maxFps = 0.0f;
-		double m_sumFps = 0.0;
-		uint64_t m_numFpsSamples = 0;
+		TVector<float> m_simulationFrameTimes;
 	};
 }
 

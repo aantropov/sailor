@@ -4,7 +4,7 @@
 #include "Engine/Object.h"
 #include "RHI/Types.h"
 #include "RHI/RenderSubmission.h"
-#include "RHI/Batch.hpp"
+#include "RHI/PackedDraw.hpp"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
 #include "FrameGraph/RenderSceneTextureCache.h"
@@ -42,9 +42,9 @@ namespace Sailor
 		// Custom materials use the main-pass shader interface, not the compact depth layout.
 		using CustomPerInstanceData = Framegraph::RenderSceneNode::PerInstanceData;
 
-		SAILOR_API static const char* GetName() { return m_name; }
+		SAILOR_API static StringHash GetName() { return "DepthPrepass"_h; }
 
-		SAILOR_API virtual Tasks::TaskPtr<void, void> Prepare(RHI::RHIFrameGraphPtr frameGraph, const RHI::RHISceneViewSnapshot& sceneView) override;
+		SAILOR_API virtual Tasks::TaskPtr<void, void> Prepare(RHI::RHIFrameGraphPtr frameGraph, RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandLists, const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override;
 		SAILOR_API RHI::ESortingOrder GetSortingOrder() const;
@@ -133,8 +133,9 @@ namespace Sailor
 		Framegraph::TextureBindingCache m_textureBindingCache;
 		RHI::TPackedDrawPagedArenaCache<PerInstanceData> m_pagedArenaCache;
 		RHI::TPackedDrawPagedArenaCache<CustomPerInstanceData> m_customPagedArenaCache;
+		RHI::RHIPackedDrawSceneChanges m_arenaChanges;
+		RHI::RHIPackedDrawSceneChanges m_customArenaChanges;
 
-		SAILOR_SHARED_API static const char* m_name;
 	};
 
 	namespace Framegraph

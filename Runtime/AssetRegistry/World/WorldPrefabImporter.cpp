@@ -304,7 +304,7 @@ bool WorldPrefab::CommitLinkedInstanceUpdates(
 	}
 
 	if (pendingUpdates.Num() != numPrefabInstanceRoots ||
-		world->m_prefabInstances.Num() != numPrefabInstanceRoots)
+		world->m_prefabLinks.m_instances.Num() != numPrefabInstanceRoots)
 	{
 		outDiagnostic =
 			"the linked prefab set changed before its baselines could be committed";
@@ -316,7 +316,7 @@ bool WorldPrefab::CommitLinkedInstanceUpdates(
 	for (const auto& pendingUpdate : pendingUpdates)
 	{
 		if (!pendingRoots.Insert(pendingUpdate.m_rootInstanceId) ||
-			!world->m_prefabInstances.ContainsKey(
+			!world->m_prefabLinks.m_instances.ContainsKey(
 				pendingUpdate.m_rootInstanceId))
 		{
 			outDiagnostic =
@@ -416,14 +416,14 @@ bool WorldPrefab::CommitLinkedInstanceUpdates(
 	for (auto& pendingUpdate : pendingUpdates)
 	{
 		PrefabInstanceLink& link =
-			world->m_prefabInstances[
+			world->m_prefabLinks.m_instances[
 				pendingUpdate.m_rootInstanceId];
 		link.m_sourceToInstanceIds =
 			std::move(pendingUpdate.m_sourceToInstanceIds);
 		link.m_effectiveBaseline =
 			std::move(pendingUpdate.m_effectiveBaseline);
 	}
-	world->m_prefabInstanceRootsByObject =
+	world->m_prefabLinks.m_rootsByObject =
 		std::move(nextPrefabInstanceRootsByObject);
 
 	return true;
@@ -472,7 +472,7 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 		}
 	}
 
-	if (linkedRoots.Num() != world->m_prefabInstances.Num())
+	if (linkedRoots.Num() != world->m_prefabLinks.m_instances.Num())
 	{
 		res->m_loadDiagnostic =
 			"cannot serialize world: authoritative prefab roots and derived metadata are inconsistent";
@@ -504,7 +504,7 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 		const FileId& sourcePrefabId =
 			root->GetFileId();
 		const PrefabInstanceLink* validatedLink = nullptr;
-		if (!world->m_prefabInstances.ContainsKey(
+		if (!world->m_prefabLinks.m_instances.ContainsKey(
 				rootInstanceId) ||
 			!world->TryGetPrefabInstance(
 				rootInstanceId,
@@ -520,7 +520,7 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 			return res;
 		}
 		PrefabInstanceLink& link =
-			world->m_prefabInstances[rootInstanceId];
+			world->m_prefabLinks.m_instances[rootInstanceId];
 		for (const auto& mapping :
 			link.m_sourceToInstanceIds)
 		{
@@ -534,9 +534,9 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 
 			if (!validatedLinkedMembers.Insert(
 					liveInstanceId) ||
-				!world->m_prefabInstanceRootsByObject.
+				!world->m_prefabLinks.m_rootsByObject.
 					ContainsKey(liveInstanceId) ||
-				world->m_prefabInstanceRootsByObject[
+				world->m_prefabLinks.m_rootsByObject[
 					liveInstanceId] != rootInstanceId)
 			{
 				res->m_loadDiagnostic =
@@ -811,7 +811,7 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 	}
 
 	if (validatedLinkedMembers.Num() !=
-		world->m_prefabInstanceRootsByObject.Num())
+		world->m_prefabLinks.m_rootsByObject.Num())
 	{
 		res->m_loadDiagnostic =
 			"cannot serialize world: the derived prefab membership cache contains stale entries";
@@ -882,7 +882,7 @@ void WorldPrefabImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExp
 		return;
 	}
 
-	SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
+	SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath());
 	if (!bWasExpired)
 	{
 		return;
@@ -958,11 +958,11 @@ Tasks::TaskPtr<WorldPrefabPtr> WorldPrefabImporter::LoadWorld(FileId uid, WorldP
 	// There is no promise, we need to load WorldPrefab
 	if (WorldPrefabAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<WorldPrefabAssetInfoPtr>(uid))
 	{
-		SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
+		SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath());
 
 		WorldPrefabPtr pWorldPrefab = WorldPrefabPtr::Make(m_allocator, uid);
 
-		promise = Tasks::CreateTaskWithResult<WorldPrefabPtr>("Load WorldPrefab",
+		promise = Tasks::CreateTaskWithResult<WorldPrefabPtr>("Load WorldPrefab"_h,
 			[pWorldPrefab, assetInfo]() mutable
 			{
 				std::string text;

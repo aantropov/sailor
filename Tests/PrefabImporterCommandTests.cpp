@@ -44,7 +44,7 @@ namespace
 		{
 			const auto count = App::GetSubmodule<Tasks::Scheduler>()->GetNumThreads(type);
 			for (uint32_t i = 0; i < count; ++i)
-				m_tasks.Add(Tasks::CreateTask("Hold prefab test queue", [this]()
+				m_tasks.Add(Tasks::CreateTask("Hold prefab test queue"_h, [this]()
 					{
 						++m_entered;
 						m_release.wait();
@@ -152,12 +152,12 @@ namespace
 		auto prefabConsumer = prefabTask->Then<bool>([](PrefabPtr value)
 			{
 				return value && value->IsReady() && value->Serialize()["gameObjects"].size() == 2;
-			}, "Consume loaded prefab", EThreadType::Worker);
+			}, "Consume loaded prefab"_h, EThreadType::Worker);
 		auto worldConsumer = worldTask->Then<bool>([](WorldPrefabPtr value)
 			{
 				return value && value->IsReady() && value->GetName() == "CPU world" &&
 					value->GetGameObjects().Num() == 1 && value->GetGameObjects()[0]->IsReady();
-			}, "Consume loaded world", EThreadType::Worker);
+			}, "Consume loaded world"_h, EThreadType::Worker);
 		workers.Release();
 		const bool completed = WaitFor([&]() { return prefabConsumer->IsFinished() && worldConsumer->IsFinished(); });
 		std::cout << "Prefab/world with RHI held: ready=" << prefab->IsReady() << '/' << world->IsReady()
@@ -424,7 +424,7 @@ namespace
 				PrefabWorld live;
 				for (auto prefab : prepared->GetGameObjects())
 				{
-					auto root = live.Instantiate(prefab, true);
+					auto root = live.Instantiate(prefab, EPrefabInstanceIdPolicy::RequireExact);
 					Require(static_cast<bool>(root), "the prepared record must instantiate with its persistent identities");
 					if (!prefab->IsLinkedInstanceRecord()) continue;
 					Require(root->GetParent() && root->GetParent()->GetInstanceId() == parentId &&
@@ -609,7 +609,7 @@ namespace Sailor::Tests
 		TestCpuCompletion(workspace);
 		TestFailedLoadRetry(workspace);
 		TestLinkedSourceFailureRetry(workspace);
-		auto snapshots = Tasks::CreateTaskWithResult<std::string>("Check linked prefab source snapshots", [&]()
+		auto snapshots = Tasks::CreateTaskWithResult<std::string>("Check linked prefab source snapshots"_h, [&]()
 			{
 				try { TestLinkedSourceSnapshots(workspace); TestLinkedValidationBoundary(); return std::string{}; }
 				catch (const std::exception& error) { return std::string(error.what()); }

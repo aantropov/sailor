@@ -1,6 +1,6 @@
 #include "ShadowPrepassNode.h"
 #include "Core/StringHash.h"
-#include "RHI/Batch.hpp"
+#include "RHI/PackedDrawCommands.hpp"
 #include "RHI/MaterialPreparationCache.h"
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
@@ -20,10 +20,6 @@
 
 using namespace Sailor;
 using namespace Sailor::RHI;
-
-#ifndef _SAILOR_IMPORT_
-const char* ShadowPrepassNode::m_name = "ShadowPrepass";
-#endif
 
 namespace
 {
@@ -134,7 +130,7 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddCustomShadowMaterial(
 
 	auto shaderCompiler = App::GetSubmodule<ShaderCompiler>();
 	auto shaderAsset = shaderCompiler->LoadShaderAsset(
-		sourceShader->GetFileId()).Lock();
+		sourceShader->GetFileId());
 	if (!shaderAsset || !shaderAsset->GetSupportedDefines().Contains("PACKED_SHADOW_CASTER"))
 	{
 		return nullptr;
@@ -222,21 +218,21 @@ void ShadowPrepassNode::EvictCustomShadowMaterials(uint64_t frame)
 	}
 }
 
-Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGraph, const RHI::RHISceneViewSnapshot& sceneView)
+Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGraph, RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
 	if (!sceneView.m_submissionContext)
 	{
 		return {};
 	}
-	std::string virtualizeInstancePayloadsSetting;
+	std::string_view virtualizeInstancePayloadsSetting;
 	const bool bVirtualizeInstancePayloads =
-		!TryGetString("VirtualizeInstancePayloads", virtualizeInstancePayloadsSetting) ||
+		!TryGetString("VirtualizeInstancePayloads"_h, virtualizeInstancePayloadsSetting) ||
 		virtualizeInstancePayloadsSetting != "false";
 
 	// Shader cache misses can wait for Worker jobs, so material/arena preparation
 	// uses RHI. Independent packet finalization runs on the general Worker pool.
-	return Tasks::CreateTask("Prepare ShadowPrepassNode " + std::to_string(sceneView.m_frame),
+	return Tasks::CreateTask("Prepare ShadowPrepassNode"_h,
 		[this, holdRhiResources = frameGraph, &sceneView, bVirtualizeInstancePayloads]()
 		{
 			SAILOR_PROFILE_SCOPE("Prepare shadow packets");
@@ -281,7 +277,7 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 					BuildStableArenas(sceneView, *submissionResources, preparedMaterials, passIndex);
 				}
 				BuildVisiblePacket(sceneView, *submissionResources, preparedMaterials, passIndex, bVirtualizeInstancePayloads);
-				auto finalize = Tasks::CreateTask("Finalize shadow packet",
+				auto finalize = Tasks::CreateTask("Finalize shadow packet"_h,
 					[view = submissionResources->m_activeShadowViews[passIndex]]()
 					{
 						SAILOR_PROFILE_SCOPE("Finalize shadow packet");
@@ -327,6 +323,9 @@ void ShadowPrepassNode::BuildStableArenas(const RHISceneViewSnapshot& sceneView,
 	const uint64_t materialSubmissionId = sceneView.m_submissionContext->GetSubmissionId();
 	const size_t opaqueQueueTag = "Opaque"_h.GetHash();
 	const size_t maskedQueueTag = "Masked"_h.GetHash();
+	RHIPackedDrawSceneState sceneState{ sceneView.m_sceneVersions };
+	HashCombine(sceneState.m_configurationRevision, static_cast<uint32_t>(shadowPass.m_shadowType),
+		sceneView.m_submissionContext->GetMaterialRevision());
 	for (const EMobilityType mobility : { EMobilityType::Static, EMobilityType::Stationary })
 	{
 		const size_t arenaPayloadIndex = TPackedDrawPacket<PerInstanceData>::ToSegmentIndex(mobility);
@@ -340,180 +339,181 @@ void ShadowPrepassNode::BuildStableArenas(const RHISceneViewSnapshot& sceneView,
 			viewResources.m_packet.UseSharedArenaPayload(mobility, std::move(payload));
 			continue;
 		}
-		m_pagedArenaCache.BeginUpdate(
-			arenaCacheSlot, payloadRevision, sceneView.m_frame);
+		m_arenaChanges.Gather(sceneState, m_pagedArenaCache.GetSceneState(arenaCacheSlot), mobility, true);
+		m_pagedArenaCache.BeginUpdate(arenaCacheSlot, payloadRevision, sceneView.m_frame, sceneState);
+		for (const auto& proxy : m_arenaChanges.m_removed)
+			m_pagedArenaCache.RemoveRange(BuildPackedDrawRangeKey(proxy.m_handle, proxy.m_record->m_producerKey, proxy.m_resource));
 		auto& rangeInstances = resources.m_arenaRangeInstances;
 		auto& rangeStableKeys = resources.m_arenaRangeStableKeys;
 		auto& rangeMaterialVersionRuns = resources.m_arenaRangeMaterialVersionRuns;
-		sceneView.ForEachShadowCaster(mobility,
-			[&](const RHIVisibleShadowCaster& proxy)
+		auto buildRange = [&](const RHIVisibleShadowCaster& proxy)
+		{
+			const auto* source = proxy.GetSource();
+			if (!source)
 			{
-				const auto* source = proxy.GetSource();
-				if (!source || !proxy.m_resource)
+				return;
+			}
+			const uint64_t rangeKey =
+				BuildPackedDrawRangeKey(proxy.m_handle, proxy.GetProducerKey(), proxy.m_resource);
+			size_t rangeRevision = proxy.m_resource->m_shadowRevision;
+			HashCombine(rangeRevision, static_cast<uint32_t>(shadowPass.m_shadowType),
+				proxy.GetContentRevision(), std::hash<glm::mat4>{}(proxy.GetWorldMatrix()),
+				proxy.GetSkeletonOffset());
+			HashCombine(rangeRevision, proxy.m_record->m_materialRevision,
+				proxy.m_record->m_shadowRevision, proxy.m_record->m_renderFlags);
+			for (const auto& shadowMesh : source->m_meshes)
+			{
+				if (shadowMesh.m_customDepthMaterial)
 				{
-					return;
+					const auto materialVersion =
+						shadowMesh.m_customDepthMaterial->GetVersionForSubmission(
+							materialSubmissionId);
+					HashCombine(
+						rangeRevision, materialVersion ? materialVersion->GetVersionId() : 0ull);
 				}
-				const uint64_t rangeKey =
-					BuildPackedDrawRangeKey(proxy.m_handle, proxy.GetProducerKey(), proxy.m_resource);
-				size_t rangeRevision = proxy.m_resource->m_shadowRevision;
-				HashCombine(rangeRevision, static_cast<uint32_t>(shadowPass.m_shadowType),
-					proxy.GetContentRevision(), std::hash<glm::mat4>{}(proxy.GetWorldMatrix()),
-					proxy.GetSkeletonOffset());
-				if (proxy.m_record)
+			}
+			for (const auto& group : proxy.m_resource->m_proxy.m_instancedGroups)
+			{
+				for (const auto& material : group.m_materials)
 				{
-					HashCombine(rangeRevision, proxy.m_record->m_materialRevision,
-						proxy.m_record->m_shadowRevision, proxy.m_record->m_renderFlags);
-				}
-				for (const auto& shadowMesh : source->m_meshes)
-				{
-					if (shadowMesh.m_customDepthMaterial)
+					if (material && material->GetRenderState().IsRequiredCustomDepthShader())
 					{
 						const auto materialVersion =
-							shadowMesh.m_customDepthMaterial->GetVersionForSubmission(
-								materialSubmissionId);
-						HashCombine(
-							rangeRevision, materialVersion ? materialVersion->GetVersionId() : 0ull);
+							material->GetVersionForSubmission(materialSubmissionId);
+						HashCombine(rangeRevision,
+							materialVersion ? materialVersion->GetVersionId() : 0ull);
 					}
 				}
-				for (const auto& group : proxy.m_resource->m_proxy.m_instancedGroups)
-				{
-					for (const auto& material : group.m_materials)
-					{
-						if (material && material->GetRenderState().IsRequiredCustomDepthShader())
-						{
-							const auto materialVersion =
-								material->GetVersionForSubmission(materialSubmissionId);
-							HashCombine(rangeRevision,
-								materialVersion ? materialVersion->GetVersionId() : 0ull);
-						}
-					}
-				}
-				if (m_pagedArenaCache.TryReuseRange(rangeKey, rangeRevision))
+			}
+			if (m_pagedArenaCache.TryReuseRange(rangeKey, rangeRevision))
+			{
+				return;
+			}
+			rangeInstances.Clear(false);
+			rangeStableKeys.Clear(false);
+			rangeMaterialVersionRuns.Clear(false);
+
+			auto addArenaShadowInstance =
+				[&](const RHIMeshPtr& mesh, const glm::mat4& model, size_t renderQueueTag,
+					float baseColorAlpha, uint32_t baseColorSampler, float alphaCutoff,
+					const ShaderSetPtr& customDepthShader,
+					const RHIMaterialPtr& customDepthMaterial,
+					const RHIMaterialVersionPtr& customDepthMaterialVersion, uint64_t stableKey)
+			{
+				if (renderQueueTag != opaqueQueueTag && renderQueueTag != maskedQueueTag)
 				{
 					return;
 				}
-				rangeInstances.Clear(false);
-				rangeStableKeys.Clear(false);
-				rangeMaterialVersionRuns.Clear(false);
-
-				auto addArenaShadowInstance =
-					[&](const RHIMeshPtr& mesh, const glm::mat4& model, size_t renderQueueTag,
-						float baseColorAlpha, uint32_t baseColorSampler, float alphaCutoff,
-						const ShaderSetPtr& customDepthShader,
-						const RHIMaterialPtr& customDepthMaterial,
-						const RHIMaterialVersionPtr& customDepthMaterialVersion, uint64_t stableKey)
-				{
-					if (renderQueueTag != opaqueQueueTag && renderQueueTag != maskedQueueTag)
-					{
-						return;
-					}
-					if (!mesh)
-					{
-						payloadComplete[arenaPayloadIndex] = false;
-						return;
-					}
-
-					const bool bSkinned =
-						proxy.GetSkeletonOffset() != (std::numeric_limits<uint32_t>::max)() &&
-						mesh->m_vertexDescription->HasAttribute(
-							RHIVertexDescription::DefaultBoneIdsBinding) &&
-						mesh->m_vertexDescription->HasAttribute(
-							RHIVertexDescription::DefaultBoneWeightsBinding);
-					const bool bMasked = renderQueueTag == maskedQueueTag;
-					auto depthMaterial = SelectShadowMaterial(
-						mesh->m_vertexDescription, shadowPass.m_shadowType, bSkinned, bMasked,
-						customDepthShader, customDepthMaterial, customDepthMaterialVersion, sceneView.m_frame);
-					if (!depthMaterial || !preparedMaterials.Get(depthMaterial).m_bHasGraphicsShaders)
-					{
-						payloadComplete[arenaPayloadIndex] = false;
-						return;
-					}
-
-					// Shadow materials are immutable derivatives of the exact source
-					// version resolved for this submission.
-					RHIBatch batch = preparedMaterials.MakeBatch(depthMaterial, mesh);
-					auto data = MakeInstanceData(model, *mesh, preparedMaterials.Get(depthMaterial).m_materialInstance,
-						bSkinned ? proxy.GetSkeletonOffset() : (std::numeric_limits<uint32_t>::max)(),
-						baseColorAlpha, baseColorSampler, alphaCutoff);
-					rangeInstances.Add(std::move(data));
-					rangeStableKeys.Add(stableKey);
-					AppendPackedDrawArenaMaterialVersion(
-						rangeMaterialVersionRuns, batch.m_materialVersion);
-				};
-
-				for (size_t shadowMeshIndex = 0u; shadowMeshIndex < source->m_meshes.Num();
-					++shadowMeshIndex)
-				{
-					const auto& shadowMesh = source->m_meshes[shadowMeshIndex];
-					addArenaShadowInstance(shadowMesh.m_mesh, proxy.ResolveMeshWorldMatrix(shadowMesh),
-						shadowMesh.m_renderQueueTag, shadowMesh.m_baseColorFactor.a,
-						shadowMesh.m_baseColorSampler, shadowMesh.m_alphaCutoff,
-						shadowMesh.m_customDepthShader, shadowMesh.m_customDepthMaterial,
-						shadowMesh.m_customDepthMaterial
-							? shadowMesh.m_customDepthMaterial->GetVersionForSubmission(
-								  materialSubmissionId)
-							: RHIMaterialVersionPtr{},
-						BuildPackedDrawStableKey(proxy.m_handle, proxy.GetProducerKey(), 0u,
-							static_cast<uint32_t>(shadowMeshIndex), 0u));
-				}
-
-				const auto& topology = proxy.m_resource->m_proxy;
-				for (size_t groupIndex = 0u; groupIndex < topology.m_instancedGroups.Num();
-					++groupIndex)
-				{
-					const auto& group = topology.m_instancedGroups[groupIndex];
-					if (!group.m_bCastShadows)
-					{
-						continue;
-					}
-					for (size_t meshIndex = 0u; meshIndex < group.m_meshes.Num(); ++meshIndex)
-					{
-						const size_t renderQueueTag = meshIndex < group.m_renderQueueTags.Num()
-							? group.m_renderQueueTags[meshIndex]
-							: 0u;
-						ShaderSetPtr customDepthShader;
-						RHIMaterialPtr customDepthMaterial;
-						if (meshIndex < group.m_sourceMaterialShaders.Num() &&
-							group.m_sourceMaterialShaders[meshIndex] &&
-							meshIndex < group.m_materials.Num() && group.m_materials[meshIndex] &&
-							group.m_materials[meshIndex]
-								->GetRenderState()
-								.IsRequiredCustomDepthShader())
-						{
-							customDepthShader = group.m_sourceMaterialShaders[meshIndex];
-							customDepthMaterial = group.m_materials[meshIndex];
-						}
-						for (size_t instanceIndex = 0u;
-							instanceIndex < group.m_instanceTransforms.Num(); ++instanceIndex)
-						{
-							addArenaShadowInstance(group.m_meshes[meshIndex],
-								proxy.ResolveInstancedMeshWorldMatrix(group, instanceIndex, meshIndex),
-								renderQueueTag,
-								meshIndex < group.m_baseColorFactors.Num()
-									? group.m_baseColorFactors[meshIndex].a
-									: 1.0f,
-								meshIndex < group.m_baseColorSamplers.Num()
-									? group.m_baseColorSamplers[meshIndex]
-									: 0u,
-								meshIndex < group.m_alphaCutoffs.Num() ? group.m_alphaCutoffs[meshIndex]
-																	   : 0.5f,
-								customDepthShader, customDepthMaterial,
-								customDepthMaterial
-									? customDepthMaterial->GetVersionForSubmission(materialSubmissionId)
-									: RHIMaterialVersionPtr{},
-								BuildPackedDrawStableKey(proxy.m_handle, proxy.GetProducerKey(),
-									static_cast<uint32_t>(groupIndex + 1u),
-									static_cast<uint32_t>(meshIndex),
-									static_cast<uint32_t>(instanceIndex)));
-						}
-					}
-				}
-				if (!m_pagedArenaCache.ReplaceRange(rangeKey, rangeRevision, rangeInstances,
-						rangeStableKeys, &rangeMaterialVersionRuns))
+				if (!mesh)
 				{
 					payloadComplete[arenaPayloadIndex] = false;
+					return;
 				}
-			});
+
+				const bool bSkinned =
+					proxy.GetSkeletonOffset() != (std::numeric_limits<uint32_t>::max)() &&
+					mesh->m_vertexDescription->HasAttribute(
+						RHIVertexDescription::DefaultBoneIdsBinding) &&
+					mesh->m_vertexDescription->HasAttribute(
+						RHIVertexDescription::DefaultBoneWeightsBinding);
+				const bool bMasked = renderQueueTag == maskedQueueTag;
+				auto depthMaterial = SelectShadowMaterial(
+					mesh->m_vertexDescription, shadowPass.m_shadowType, bSkinned, bMasked,
+					customDepthShader, customDepthMaterial, customDepthMaterialVersion, sceneView.m_frame);
+				if (!depthMaterial || !preparedMaterials.Get(depthMaterial).m_bHasGraphicsShaders)
+				{
+					payloadComplete[arenaPayloadIndex] = false;
+					return;
+				}
+
+				// Shadow materials are immutable derivatives of the exact source
+				// version resolved for this submission.
+				RHIBatch batch = preparedMaterials.MakeBatch(depthMaterial, mesh);
+				auto data = MakeInstanceData(model, *mesh, preparedMaterials.Get(depthMaterial).m_materialInstance,
+					bSkinned ? proxy.GetSkeletonOffset() : (std::numeric_limits<uint32_t>::max)(),
+					baseColorAlpha, baseColorSampler, alphaCutoff);
+				rangeInstances.Add(std::move(data));
+				rangeStableKeys.Add(stableKey);
+				AppendPackedDrawArenaMaterialVersion(
+					rangeMaterialVersionRuns, batch.m_materialVersion);
+			};
+
+			for (size_t shadowMeshIndex = 0u; shadowMeshIndex < source->m_meshes.Num();
+				++shadowMeshIndex)
+			{
+				const auto& shadowMesh = source->m_meshes[shadowMeshIndex];
+				addArenaShadowInstance(shadowMesh.m_mesh, proxy.ResolveMeshWorldMatrix(shadowMesh),
+					shadowMesh.m_renderQueueTag, shadowMesh.m_baseColorFactor.a,
+					shadowMesh.m_baseColorSampler, shadowMesh.m_alphaCutoff,
+					shadowMesh.m_customDepthShader, shadowMesh.m_customDepthMaterial,
+					shadowMesh.m_customDepthMaterial
+						? shadowMesh.m_customDepthMaterial->GetVersionForSubmission(
+							  materialSubmissionId)
+						: RHIMaterialVersionPtr{},
+					BuildPackedDrawStableKey(proxy.m_handle, proxy.GetProducerKey(), 0u,
+						static_cast<uint32_t>(shadowMeshIndex), 0u));
+			}
+
+			const auto& topology = proxy.m_resource->m_proxy;
+			for (size_t groupIndex = 0u; groupIndex < topology.m_instancedGroups.Num();
+				++groupIndex)
+			{
+				const auto& group = topology.m_instancedGroups[groupIndex];
+				if (!group.m_bCastShadows)
+				{
+					continue;
+				}
+				for (size_t meshIndex = 0u; meshIndex < group.m_meshes.Num(); ++meshIndex)
+				{
+					const size_t renderQueueTag = meshIndex < group.m_renderQueueTags.Num()
+						? group.m_renderQueueTags[meshIndex]
+						: 0u;
+					ShaderSetPtr customDepthShader;
+					RHIMaterialPtr customDepthMaterial;
+					if (meshIndex < group.m_sourceMaterialShaders.Num() &&
+						group.m_sourceMaterialShaders[meshIndex] &&
+						meshIndex < group.m_materials.Num() && group.m_materials[meshIndex] &&
+						group.m_materials[meshIndex]
+							->GetRenderState()
+							.IsRequiredCustomDepthShader())
+					{
+						customDepthShader = group.m_sourceMaterialShaders[meshIndex];
+						customDepthMaterial = group.m_materials[meshIndex];
+					}
+					for (size_t instanceIndex = 0u;
+						instanceIndex < group.m_instanceTransforms.Num(); ++instanceIndex)
+					{
+						addArenaShadowInstance(group.m_meshes[meshIndex],
+							proxy.ResolveInstancedMeshWorldMatrix(group, instanceIndex, meshIndex),
+							renderQueueTag,
+							meshIndex < group.m_baseColorFactors.Num()
+								? group.m_baseColorFactors[meshIndex].a
+								: 1.0f,
+							meshIndex < group.m_baseColorSamplers.Num()
+								? group.m_baseColorSamplers[meshIndex]
+								: 0u,
+							meshIndex < group.m_alphaCutoffs.Num() ? group.m_alphaCutoffs[meshIndex]
+																   : 0.5f,
+							customDepthShader, customDepthMaterial,
+							customDepthMaterial
+								? customDepthMaterial->GetVersionForSubmission(materialSubmissionId)
+								: RHIMaterialVersionPtr{},
+							BuildPackedDrawStableKey(proxy.m_handle, proxy.GetProducerKey(),
+								static_cast<uint32_t>(groupIndex + 1u),
+								static_cast<uint32_t>(meshIndex),
+								static_cast<uint32_t>(instanceIndex)));
+					}
+				}
+			}
+			if (!m_pagedArenaCache.ReplaceRange(rangeKey, rangeRevision, rangeInstances,
+					rangeStableKeys, &rangeMaterialVersionRuns))
+			{
+				payloadComplete[arenaPayloadIndex] = false;
+			}
+		};
+		for (const auto& proxy : m_arenaChanges.m_updated)
+			buildRange(RHIVisibleShadowCaster(proxy.m_handle, *proxy.m_record, *proxy.m_resource));
+		m_arenaChanges.Clear();
 
 		auto arenaPayload =
 			m_pagedArenaCache.EndUpdate(payloadComplete[arenaPayloadIndex]);
@@ -642,11 +642,7 @@ void ShadowPrepassNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView
 			viewResources.m_packet.Add(std::move(batch), mesh, data, stableKey, payloadMobility);
 		}
 
-		const auto* topology = proxy.m_resource ? &proxy.m_resource->m_proxy : nullptr;
-		if (!topology)
-		{
-			continue;
-		}
+		const auto* topology = &proxy.m_resource->m_proxy;
 
 		for (size_t groupIndex = 0u; groupIndex < topology->m_instancedGroups.Num(); ++groupIndex)
 		{
@@ -824,7 +820,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		{
 			auto candidateBindings = driver->CreateShaderBindings();
 			if (driver->FillShadersLayout(candidateBindings, { m_pBlurVerticalShader->GetDebugVertexShaderRHI(), m_pBlurVerticalShader->GetDebugFragmentShaderRHI() }, 1) &&
-				driver->AddBufferToShaderBindings(candidateBindings, "data", sizeof(glm::vec4) * 3, 0, RHI::EShaderBindingType::UniformBuffer))
+				driver->AddBufferToShaderBindings(candidateBindings, "data"_h, sizeof(glm::vec4) * 3, 0, RHI::EShaderBindingType::UniformBuffer))
 			{
 				RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
 				RenderState renderState{ false, false, 0.0f, false, ECullMode::Front, EBlendMode::None, EFillMode::Fill, 0, false };
@@ -845,7 +841,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		auto candidateBindings = driver->CreateShaderBindings();
 		if (driver->FillShadersLayout(candidateBindings, { m_pBlurVerticalShader->GetDebugVertexShaderRHI(), m_pBlurVerticalShader->GetDebugFragmentShaderRHI() }, 1))
 		{
-			RHIShaderBindingPtr initialBlurDataBinding = driver->AddBufferToShaderBindings(candidateBindings, "data", sizeof(glm::vec4) * 3, 0, RHI::EShaderBindingType::UniformBuffer);
+			RHIShaderBindingPtr initialBlurDataBinding = driver->AddBufferToShaderBindings(candidateBindings, "data"_h, sizeof(glm::vec4) * 3, 0, RHI::EShaderBindingType::UniformBuffer);
 			if (initialBlurDataBinding)
 			{
 				const float defaultBlurRadius = 3.0f;
@@ -860,7 +856,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	{
 		commands->BeginDebugRegion(
 			commandList,
-			"Downsample Local Shadow Tiles",
+			"Downsample Local Shadow Tiles"_h,
 			DebugContext::Color_CmdTransfer);
 		for (const auto& blit : sceneView.m_shadowMapsToBlit)
 		{
@@ -932,7 +928,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		return;
 	}
 
-	commands->BeginDebugRegion(commandList, std::string(GetName()), DebugContext::Color_CmdGraphics);
+	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdGraphics);
 	{
 		const uint32_t NumShadowPasses = (uint32_t)sceneView.m_shadowMapsToUpdate.Num();
 
@@ -952,13 +948,13 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 				auto candidateBindings = driver->CreateShaderBindings();
 				if (driver->AddSsboToShaderBindings(
 					candidateBindings,
-					"data",
+					"data"_h,
 					sizeof(PerInstanceData),
 					numInstances,
 					0u) &&
 					driver->AddSsboToShaderBindings(
 						candidateBindings,
-						"indices",
+						"indices"_h,
 						sizeof(uint32_t),
 						numInstanceIndices,
 						1u))
@@ -1115,7 +1111,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 					const uint32_t vertexOffset = (uint32_t)fullscreenMesh->m_vertexBuffer->GetOffset() / (uint32_t)fullscreenMesh->m_vertexDescription->GetVertexStride();
 					commands->BindVertexBuffer(commandList, fullscreenMesh->m_vertexBuffer, 0);
 					commands->BindIndexBuffer(commandList, fullscreenMesh->m_indexBuffer, 0);
-					RHIShaderBindingPtr blurDataBinding = blurShaderBindings->GetOrAddShaderBinding("data");
+					RHIShaderBindingPtr blurDataBinding = blurShaderBindings->GetOrAddShaderBinding("data"_h);
 					// The flight reuses this UBO for every shadow map.
 					commands->MemoryBarrier(commandList, static_cast<EAccessFlags>(EAccessBit::UniformRead_Bit), static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit));
 					commands->UpdateShaderBinding(commandList, blurDataBinding, &shadowPass.m_blurRadius, sizeof(glm::vec2));
@@ -1123,11 +1119,11 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 					bool bBlurComplete = false;
 
 					// Blur Horizontal
-					commands->BeginDebugRegion(commandList, "Blur Horizontal", DebugContext::Color_CmdPostProcess);
+					commands->BeginDebugRegion(commandList, "Blur Horizontal"_h, DebugContext::Color_CmdPostProcess);
 					{
 						bBlurComplete = static_cast<bool>(driver->AddSamplerToShaderBindings(
 							blurShaderBindings,
-							"colorSampler",
+							"colorSampler"_h,
 							shadowPass.m_shadowMap,
 							1));
 
@@ -1177,10 +1173,10 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 					if (bBlurComplete)
 					{
 						// Blur Vertical
-						commands->BeginDebugRegion(commandList, "Blur Vertical", DebugContext::Color_CmdPostProcess);
+						commands->BeginDebugRegion(commandList, "Blur Vertical"_h, DebugContext::Color_CmdPostProcess);
 						bBlurComplete = static_cast<bool>(driver->AddSamplerToShaderBindings(
 							blurShaderBindings,
-							"colorSampler",
+							"colorSampler"_h,
 							blurAttachment,
 							1));
 

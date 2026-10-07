@@ -19,8 +19,19 @@ namespace Sailor::EditorRemote
 		CAMetalLayer = 2
 	};
 
-	struct MacNativeHostHandle
+	struct SAILOR_SHARED_API MacNativeHostHandle
 	{
+		MacNativeHostHandle() = default;
+#if defined(__APPLE__)
+		MacNativeHostHandle(MacNativeHostHandleKind kind, uintptr_t value);
+		MacNativeHostHandle(const MacNativeHostHandle& rhs);
+		MacNativeHostHandle(MacNativeHostHandle&& rhs) noexcept;
+		MacNativeHostHandle& operator=(MacNativeHostHandle rhs) noexcept;
+		~MacNativeHostHandle();
+#else
+		MacNativeHostHandle(MacNativeHostHandleKind kind, uintptr_t value) : m_kind(kind), m_value(value) {}
+#endif
+		// Own the native reference before a host enters pending or presentation state.
 		MacNativeHostHandleKind m_kind = MacNativeHostHandleKind::None;
 		uintptr_t m_value = 0;
 

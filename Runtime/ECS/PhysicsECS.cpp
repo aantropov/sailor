@@ -16,6 +16,32 @@ using namespace Sailor;
 
 namespace
 {
+	Math::Transform InterpolateBodyTransform(const RigidBodyData& data, float alpha)
+	{
+		return Math::Transform(
+			glm::vec4(glm::mix(data.m_previousPose.m_position, data.m_currentPose.m_position, alpha), 1.0f),
+			glm::normalize(glm::slerp(data.m_previousPose.m_rotation, data.m_currentPose.m_rotation, alpha)),
+			glm::vec4(data.m_bodyScale, 1.0f));
+	}
+
+	glm::mat4 GetSimulatedParentMatrix(const PhysicsECS& physics, GameObject& object, float alpha)
+	{
+		if (auto body = object.GetComponent<RigidBodyComponent>())
+		{
+			const auto& data = physics.GetComponentData(body->GetComponentIndex());
+			if (data.m_motionType == Physics::ERigidBodyMotionType::Dynamic && data.m_bodyId != RigidBodyData::InvalidBodyId)
+			{
+				return InterpolateBodyTransform(data, alpha).Matrix();
+			}
+		}
+		const auto& transform = object.GetTransformComponent();
+		if (auto parent = object.GetParent())
+		{
+			return GetSimulatedParentMatrix(physics, *parent, alpha) * transform.GetCachedRelativeMatrix();
+		}
+		return transform.GetCachedWorldMatrix();
+	}
+
 	constexpr float c_gravity = 9.81f;
 	constexpr float c_twoPi = 6.28318530718f;
 
@@ -140,7 +166,7 @@ bool PhysicsECS::BuildBodyDesc(
 	outDesc.m_instanceId = gameObject->GetInstanceId();
 	outDesc.m_motionType = rigidBody->GetMotionType();
 	outDesc.m_position = glm::vec3(worldTransform.m_position);
-	outDesc.m_rotation = worldTransform.m_rotation;
+	outDesc.m_rotation = worldTransform.GetRotation();
 	outDesc.m_scale = glm::vec3(worldTransform.m_scale);
 	outDesc.m_linearVelocity = rigidBody->GetInitialLinearVelocity();
 	outDesc.m_angularVelocity = rigidBody->GetInitialAngularVelocity();
@@ -266,7 +292,7 @@ void PhysicsECS::SyncAuthoredTransforms(float fixedDeltaTime)
 			m_physicsWorld->SetBodyTransform(
 				data.m_bodyId,
 				glm::vec3(worldTransform.m_position),
-				worldTransform.m_rotation,
+				worldTransform.GetRotation(),
 				data.m_motionType == Physics::ERigidBodyMotionType::Kinematic,
 				fixedDeltaTime);
 			data.m_lastAppliedTransformFrame = GetWorld()->GetCurrentFrame();
@@ -392,7 +418,6 @@ void PhysicsECS::ApplyBuoyancyForces(
 
 void PhysicsECS::ApplyDynamicTransforms(float interpolationAlpha)
 {
-	TVector<size_t> updatedComponents;
 	for (size_t index = 0; index < m_components.Num(); ++index)
 	{
 		if (!IsComponentRegistered(index))
@@ -413,21 +438,17 @@ void PhysicsECS::ApplyDynamicTransforms(float interpolationAlpha)
 			continue;
 		}
 
-		const glm::vec3 worldPosition = glm::mix(
-			data.m_previousPose.m_position,
-			data.m_currentPose.m_position,
-			interpolationAlpha);
-		const glm::quat worldRotation = glm::normalize(glm::slerp(
-			data.m_previousPose.m_rotation,
-			data.m_currentPose.m_rotation,
-			interpolationAlpha));
+		const auto worldTransform = InterpolateBodyTransform(data, interpolationAlpha);
+		const glm::vec3 worldPosition(worldTransform.m_position);
+		const glm::quat worldRotation = worldTransform.GetRotation();
 
 		glm::vec3 localPosition = worldPosition;
 		glm::quat localRotation = worldRotation;
 		if (auto parent = gameObject->GetParent())
 		{
+			// Parent and child bodies are independent of ECS slot order.
 			if (!Physics::TryConvertWorldPoseToLocal(
-					parent->GetTransformComponent().GetCachedWorldMatrix(),
+					GetSimulatedParentMatrix(*this, *parent, interpolationAlpha),
 					worldPosition,
 					worldRotation,
 					localPosition,
@@ -440,21 +461,11 @@ void PhysicsECS::ApplyDynamicTransforms(float interpolationAlpha)
 		auto& transform = gameObject->GetTransformComponent();
 		transform.SetPosition(localPosition);
 		transform.SetRotation(localRotation);
-		updatedComponents.Add(index);
-	}
-
-	if (!updatedComponents.IsEmpty())
-	{
-		GetWorld()->GetECS<TransformECS>()->Tick(0.0f);
-		for (size_t index : updatedComponents)
-		{
-			m_components[index].m_lastAppliedTransformFrame =
-				GetWorld()->GetCurrentFrame();
-		}
+		data.m_lastAppliedTransformFrame = GetWorld()->GetCurrentFrame();
 	}
 }
 
-Tasks::ITaskPtr PhysicsECS::Tick(float deltaTime)
+void PhysicsECS::Tick(float deltaTime)
 {
 	if (!GetWorld()->IsPhysicsSimulationEnabled())
 	{
@@ -463,13 +474,13 @@ Tasks::ITaskPtr PhysicsECS::Tick(float deltaTime)
 			m_accumulator = 0.0f;
 		}
 		m_bWasSimulationEnabled = false;
-		return {};
+		return;
 	}
 	m_bWasSimulationEnabled = true;
 
 	if (!EnsurePhysicsWorld())
 	{
-		return {};
+		return;
 	}
 
 	SyncAuthoredTransforms(m_fixedDeltaTime);
@@ -486,13 +497,13 @@ Tasks::ITaskPtr PhysicsECS::Tick(float deltaTime)
 			m_accumulator / m_fixedDeltaTime,
 			0.0f,
 			1.0f));
-		return {};
+		return;
 	}
 	m_accumulator -= m_fixedDeltaTime * numSteps;
 
 	bool bStepSucceeded = true;
 	auto physicsTask = Tasks::CreateTask(
-		"Physics fixed step",
+		"Physics fixed step"_h,
 		[this, numSteps, &bStepSucceeded]()
 		{
 			for (uint32_t step = 0; step < numSteps; ++step)
@@ -535,7 +546,6 @@ Tasks::ITaskPtr PhysicsECS::Tick(float deltaTime)
 			0.0f,
 			1.0f));
 	}
-	return physicsTask;
 }
 
 bool PhysicsECS::Raycast(
@@ -627,6 +637,11 @@ bool PhysicsECS::CreateStaticCompound(
 	desc.m_bAllowSleeping = true;
 	desc.m_shapes = shapes;
 	return m_physicsWorld->CreateBody(desc, outBodyId);
+}
+
+bool PhysicsECS::SetExternalBodyTransform(uint32_t bodyId, const glm::vec3& position, const glm::quat& rotation)
+{
+	return m_physicsWorld && m_physicsWorld->SetBodyTransform(bodyId, position, rotation, false, 0.0f);
 }
 
 void PhysicsECS::DestroyExternalBody(uint32_t bodyId)

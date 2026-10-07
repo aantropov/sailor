@@ -296,7 +296,7 @@ bool Utils::TryLoadSingleYamlDocument(
 
 size_t Utils::CountYamlMapField(
 	const YAML::Node& map,
-	const std::string& fieldName,
+	std::string_view fieldName,
 	YAML::Node* outField)
 {
 	if (outField != nullptr)
@@ -326,7 +326,7 @@ size_t Utils::CountYamlMapField(
 
 YAML::Node Utils::FindYamlMapField(
 	const YAML::Node& map,
-	const std::string& fieldName)
+	std::string_view fieldName)
 {
 	YAML::Node field(YAML::NodeType::Undefined);
 	CountYamlMapField(map, fieldName, &field);
@@ -341,7 +341,7 @@ Utils::YamlMapValidationResult Utils::ValidateYamlMap(
 		return { EYamlMapValidationError::ExpectedMap, {} };
 	}
 
-	TSet<std::string> fields;
+	TSet<std::string_view> fields;
 	for (const auto& field : map)
 	{
 		if (!field.first.IsScalar())
@@ -349,14 +349,14 @@ Utils::YamlMapValidationResult Utils::ValidateYamlMap(
 			return { EYamlMapValidationError::NonScalarKey, {} };
 		}
 
-		const std::string name = field.first.Scalar();
+		const std::string_view name = field.first.Scalar();
 		if (name.empty())
 		{
-			return { EYamlMapValidationError::EmptyKey, name };
+			return { EYamlMapValidationError::EmptyKey, {} };
 		}
 		if (!fields.Insert(name))
 		{
-			return { EYamlMapValidationError::DuplicateKey, name };
+			return { EYamlMapValidationError::DuplicateKey, std::string(name) };
 		}
 	}
 
@@ -365,8 +365,8 @@ Utils::YamlMapValidationResult Utils::ValidateYamlMap(
 
 Utils::YamlMapValidationResult Utils::ValidateYamlMapFields(
 	const YAML::Node& map,
-	const TVector<std::string>& requiredFields,
-	const TVector<std::string>& optionalFields)
+	const TVector<std::string_view>& requiredFields,
+	const TVector<std::string_view>& optionalFields)
 {
 	const YamlMapValidationResult mapValidation = ValidateYamlMap(map);
 	if (!mapValidation.IsValid())
@@ -374,32 +374,32 @@ Utils::YamlMapValidationResult Utils::ValidateYamlMapFields(
 		return mapValidation;
 	}
 
-	TSet<std::string> expectedFields;
-	for (const std::string& field : requiredFields)
+	TSet<std::string_view> expectedFields;
+	for (const std::string_view field : requiredFields)
 	{
 		expectedFields.Insert(field);
 	}
-	for (const std::string& field : optionalFields)
+	for (const std::string_view field : optionalFields)
 	{
 		expectedFields.Insert(field);
 	}
 
-	TSet<std::string> actualFields;
+	TSet<std::string_view> actualFields;
 	for (const auto& field : map)
 	{
-		const std::string name = field.first.Scalar();
+		const std::string_view name = field.first.Scalar();
 		actualFields.Insert(name);
 		if (!expectedFields.Contains(name))
 		{
-			return { EYamlMapValidationError::UnknownField, name };
+			return { EYamlMapValidationError::UnknownField, std::string(name) };
 		}
 	}
 
-	for (const std::string& field : requiredFields)
+	for (const std::string_view field : requiredFields)
 	{
 		if (!actualFields.Contains(field))
 		{
-			return { EYamlMapValidationError::MissingField, field };
+			return { EYamlMapValidationError::MissingField, std::string(field) };
 		}
 	}
 

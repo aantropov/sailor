@@ -46,7 +46,7 @@ namespace Sailor::Framegraph
 
 	public:
 
-		SAILOR_API static const char* GetName() { return m_name; }
+		SAILOR_API static StringHash GetName() { return "Sky"_h; }
 
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph,
 			RHI::RHICommandListPtr transferCommandList,
@@ -66,8 +66,6 @@ namespace Sailor::Framegraph
 		SAILOR_API bool GetEnvironmentSkyParams(SkyParameters& skyParams) const;
 
 	protected:
-
-		SAILOR_SHARED_API static const char* m_name;
 
 		struct PushConstants
 		{

@@ -4,20 +4,11 @@
 using namespace Sailor;
 using namespace Sailor::Tasks;
 
-/*
-void TransformComponent::SetPosition(const glm::vec4& position)
-{
-	if (position != m_transform.m_position)
-	{
-		MarkDirty();
-		SetPosition(vec3(position));
-	}
-}*/
-
 void TransformComponent::SetNewParent(const TransformComponent* parent)
 {
 	MarkDirty();
-	m_newParent = GetOwner().StaticCast<GameObject>()->GetWorld()->GetECS<TransformECS>()->GetComponentIndex(parent);
+	auto* transforms = GetOwner().StaticCast<GameObject>()->GetWorld()->GetECS<TransformECS>();
+	transforms->RequestParent(transforms->GetComponentIndex(this), transforms->GetComponentIndex(parent));
 }
 
 void TransformComponent::SetPosition(const glm::vec3& position)
@@ -31,10 +22,11 @@ void TransformComponent::SetPosition(const glm::vec3& position)
 
 void TransformComponent::SetRotation(const glm::quat& quat)
 {
-	if (quat != m_transform.m_rotation)
+	const auto previous = m_transform.GetRotation();
+	m_transform.SetRotation(quat);
+	if (previous != m_transform.GetRotation())
 	{
 		MarkDirty();
-		m_transform.m_rotation = quat;
 	}
 }
 
@@ -58,70 +50,140 @@ void TransformComponent::MarkDirty()
 	m_frameLastChange = GetOwner().StaticCast<GameObject>()->GetWorld()->GetCurrentFrame();
 }
 
-void TransformECS::MarkDirty(TransformComponent* ptr)
+void TransformECS::MarkDirty(TransformComponent* component)
 {
-	m_dirtyComponents.Add(TransformECS::GetComponentIndex(ptr));
+	if (component->m_dirtyIndex == ECS::InvalidIndex)
+	{
+		component->m_dirtyIndex = m_dirtyComponents.Num();
+		m_dirtyComponents.Add(GetComponentIndex(component));
+	}
 }
 
-void TransformECS::OnComponentUnregistered(size_t index, TransformComponent&)
+void TransformECS::RemoveDirty(TransformComponent& component)
 {
-	if (GetWorld() && GetWorld()->IsClearing())
+	if (component.m_dirtyIndex == ECS::InvalidIndex) return;
+	const size_t dirtyIndex = component.m_dirtyIndex;
+	const size_t moved = *m_dirtyComponents.Last();
+	m_dirtyComponents.RemoveAtSwap(dirtyIndex);
+	if (dirtyIndex < m_dirtyComponents.Num()) m_components[moved].m_dirtyIndex = dirtyIndex;
+	component.m_dirtyIndex = ECS::InvalidIndex;
+#if defined(SAILOR_ECS_TEST_HOOKS)
+	m_numRemovalVisits += 1 + (dirtyIndex < m_dirtyComponents.Num());
+#endif
+}
+
+void TransformECS::RemovePendingParent(TransformComponent& component)
+{
+	if (component.m_pendingChildIndex == ECS::InvalidIndex) return;
+	auto& children = m_pendingChildren[component.m_newParent];
+	const size_t childIndex = component.m_pendingChildIndex;
+	const size_t moved = *children.Last();
+	children.RemoveAtSwap(childIndex);
+	if (childIndex < children.Num()) m_components[moved].m_pendingChildIndex = childIndex;
+	component.m_pendingChildIndex = ECS::InvalidIndex;
+#if defined(SAILOR_ECS_TEST_HOOKS)
+	m_numRemovalVisits += 1 + (childIndex < children.Num());
+#endif
+	if (children.IsEmpty()) m_pendingChildren.Remove(component.m_newParent);
+}
+
+void TransformECS::RemovePublishedParent(TransformComponent& component)
+{
+	if (component.m_parent == ECS::InvalidIndex) return;
+	auto& children = m_components[component.m_parent].m_children;
+	const size_t childIndex = component.m_parentChildIndex;
+	const size_t moved = *children.Last();
+	children.RemoveAtSwap(childIndex);
+	if (childIndex < children.Num()) m_components[moved].m_parentChildIndex = childIndex;
+	component.m_parent = ECS::InvalidIndex;
+	component.m_parentChildIndex = ECS::InvalidIndex;
+#if defined(SAILOR_ECS_TEST_HOOKS)
+	m_numRemovalVisits += 2 + (childIndex < children.Num());
+#endif
+}
+
+void TransformECS::RequestParent(size_t index, size_t parent)
+{
+	auto& component = m_components[index];
+	if (GetWorld()->IsClearing())
 	{
+		// EndPlay callbacks can reparent after another transform slot was released.
+		// The whole hierarchy is retiring; its reverse links are cleared in EndPlay.
+		component.m_newParent = parent;
 		return;
 	}
-	m_dirtyComponents.Remove(index);
-
-	// A transform can be queued for reparenting while its previous parent is removed.
-	// Clear only relationships that still target the released slot so a pending move
-	// to another live parent survives cleanup and slot reuse cannot inherit hierarchy.
-	const size_t currentFrame = GetWorld() ? GetWorld()->GetCurrentFrame() : 0;
-	for (size_t otherIndex = 0; otherIndex < m_components.Num(); ++otherIndex)
+	if (component.m_newParent == parent) return;
+	RemovePendingParent(component);
+	component.m_newParent = parent;
+	if (parent != ECS::InvalidIndex && parent != component.m_parent)
 	{
-		if (otherIndex == index)
-		{
-			continue;
-		}
+		auto& children = m_pendingChildren[parent];
+		component.m_pendingChildIndex = children.Num();
+		children.Add(index);
+	}
+}
 
-		auto& other = m_components[otherIndex];
-		other.m_children.Remove(index);
+void TransformECS::ApplyParent(size_t index)
+{
+	auto& component = m_components[index];
+	if (component.m_parent == component.m_newParent) return;
+	RemovePendingParent(component);
+	RemovePublishedParent(component);
+	component.m_parent = component.m_newParent;
+	if (component.m_parent != ECS::InvalidIndex)
+	{
+		auto& children = m_components[component.m_parent].m_children;
+		component.m_parentChildIndex = children.Num();
+		children.Add(index);
+	}
+}
 
-		bool bRelationshipChanged = false;
-		if (other.m_parent == index)
-		{
-			other.m_parent = ECS::InvalidIndex;
-			bRelationshipChanged = true;
-		}
+void TransformECS::OnComponentUnregistered(size_t index, TransformComponent& component)
+{
+	if (GetWorld() && GetWorld()->IsClearing()) return;
+	RemoveDirty(component);
+	RemovePendingParent(component);
+	RemovePublishedParent(component);
+#if defined(SAILOR_ECS_TEST_HOOKS)
+	++m_numRemovalVisits;
+#endif
 
-		if (other.m_newParent == index)
-		{
-			other.m_newParent = ECS::InvalidIndex;
-			bRelationshipChanged = true;
-		}
+	while (!component.m_children.IsEmpty())
+	{
+		auto& child = m_components[*component.m_children.Last()];
+		RemovePublishedParent(child);
+		// A move away from the removed parent must survive until the next Tick.
+		if (child.m_newParent == index) child.m_newParent = ECS::InvalidIndex;
+		child.MarkDirty();
+#if defined(SAILOR_ECS_TEST_HOOKS)
+		++m_numRemovalVisits;
+#endif
+	}
 
-		if (bRelationshipChanged && other.m_bIsActive)
-		{
-			other.m_bIsDirty = true;
-			other.m_frameLastChange = currentFrame;
-			m_dirtyComponents.AddUnique(otherIndex);
-		}
+	TVector<size_t>* pending = nullptr;
+	while (m_pendingChildren.Find(index, pending))
+	{
+		auto& child = m_components[*pending->Last()];
+		RemovePendingParent(child);
+		child.m_newParent = ECS::InvalidIndex;
+		child.MarkDirty();
+#if defined(SAILOR_ECS_TEST_HOOKS)
+		++m_numRemovalVisits;
+#endif
 	}
 }
 
 void TransformECS::EndPlay()
 {
+	m_pendingChildren.Clear();
 	m_dirtyComponents.Clear();
 	ECS::TSystem<TransformECS, TransformComponent>::EndPlay();
 }
 
-Tasks::ITaskPtr TransformECS::PostTick()
-{
-	m_dirtyComponents.Clear(false);
-	return nullptr;
-}
-
-Tasks::ITaskPtr TransformECS::Tick(float deltaTime)
+void TransformECS::Tick(float deltaTime)
 {
 	SAILOR_PROFILE_FUNCTION();
+	if (m_dirtyComponents.IsEmpty()) return;
 
 	// We guess that the amount of changed transform during frame
 	// Could be much less than the whole transforms num
@@ -134,31 +196,15 @@ Tasks::ITaskPtr TransformECS::Tick(float deltaTime)
 		// We should sort the dirty components to make the pass
 		// more cache-friendly
 		m_dirtyComponents.Sort();
+		for (size_t i = 0; i < m_dirtyComponents.Num(); ++i)
+			m_components[m_dirtyComponents[i]].m_dirtyIndex = i;
 
 		// Update only changed transforms
 		for (auto& i : m_dirtyComponents)
 		{
 			auto& data = m_components[i];
 
-			size_t parentId = data.m_newParent;
-
-			// First resolve relations
-			if (parentId != data.m_parent)
-			{
-				if (data.m_parent != ECS::InvalidIndex)
-				{
-					auto& parentData = m_components[data.m_parent];
-					parentData.m_children.RemoveFirst(i);
-				}
-
-				data.m_parent = parentId;
-
-				if (data.m_parent != ECS::InvalidIndex)
-				{
-					auto& parentData = m_components[data.m_parent];
-					parentData.m_children.Add(i);
-				}
-			}
+			ApplyParent(i);
 
 			if (data.m_bIsActive)
 			{
@@ -175,7 +221,7 @@ Tasks::ITaskPtr TransformECS::Tick(float deltaTime)
 			{
 				CalculateMatrices(data);
 
-				m_dirtyComponents.RemoveAtSwap(i);
+				RemoveDirty(data);
 				i--;
 			}
 		}
@@ -198,25 +244,7 @@ Tasks::ITaskPtr TransformECS::Tick(float deltaTime)
 			auto& data = m_components[i];
 			if (data.m_bIsDirty)
 			{
-				size_t parentId = data.m_newParent;
-
-				// First resolve relations
-				if (parentId != data.m_parent)
-				{
-					if (data.m_parent != ECS::InvalidIndex)
-					{
-						auto& parentData = m_components[data.m_parent];
-						parentData.m_children.RemoveFirst(i);
-					}
-
-					data.m_parent = parentId;
-
-					if (data.m_parent != ECS::InvalidIndex)
-					{
-						auto& parentData = m_components[data.m_parent];
-						parentData.m_children.Add(i);
-					}
-				}
+				ApplyParent(i);
 
 				if (data.m_bIsActive)
 				{
@@ -234,7 +262,8 @@ Tasks::ITaskPtr TransformECS::Tick(float deltaTime)
 		}
 	}
 
-	return nullptr;
+	for (size_t index : m_dirtyComponents) m_components[index].m_dirtyIndex = ECS::InvalidIndex;
+	m_dirtyComponents.Clear(false);
 }
 
 void TransformECS::CalculateMatrices(TransformComponent& parent)

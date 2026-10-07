@@ -13,9 +13,11 @@
 
 #include <bitset>
 #include <limits>
+#include <optional>
 
 namespace Sailor
 {
+	class SkyComponent;
 	using WorldPtr = class World*;
 	using GameObjectPtr = TObjectPtr<class GameObject>;
 
@@ -54,7 +56,7 @@ namespace Sailor
 		bool m_bContainsDynamicCasters = false;
 		bool m_bContainsAnimatedCasters = false;
 		bool m_bContainsCameraLodCasters = false;
-		TSharedPtr<TVector<RHI::RHISceneVersionPtr>> m_casterSceneVersions{};
+		TSharedPtr<const TVector<RHI::RHISceneVersionPtr>> m_casterSceneVersions{};
 		RHI::RHIRenderTargetPtr m_shadowMap{};
 		RHI::RHISubmissionCompletionTokenPtr m_submissionToken{};
 		RHI::RHISubmissionCompletionTokenPtr m_payloadCompletionToken{};
@@ -65,7 +67,7 @@ namespace Sailor
 			const glm::mat4& lightMatrix,
 			size_t lodCameraRevision,
 			uint64_t sceneRevision,
-			const TSharedPtr<TVector<RHI::RHISceneVersionPtr>>& sceneVersions,
+			const TSharedPtr<const TVector<RHI::RHISceneVersionPtr>>& sceneVersions,
 			const Math::Frustum& shadowFrustum,
 			const RHI::RHISubmissionCompletionTokenPtr& currentSubmissionToken = {},
 			uint64_t animationRevision = 0ull) const;
@@ -167,21 +169,26 @@ namespace Sailor
 		using LightShaderData = RHI::RHILightShaderData;
 
 		SAILOR_API virtual void BeginPlay() override;
-		SAILOR_API virtual Tasks::ITaskPtr Tick(float deltaTime) override;
+		SAILOR_API virtual void Tick(float deltaTime) override;
 		SAILOR_API virtual void EndPlay() override;
 		SAILOR_API virtual uint32_t GetOrder() const override { return 150; }
 
 		SAILOR_API void GetLightProxies(TVector<Raytracing::LightProxy>& outLights) const;
+		// Main-thread component lifecycle. The lowest owner instance ID selects the sky.
+		SAILOR_API void RegisterSky(TObjectPtr<SkyComponent> sky);
+		SAILOR_API void UnregisterSky(const SkyComponent* sky);
+		SAILOR_API TObjectPtr<SkyComponent> GetSky() const;
+		size_t GetNumSkies() const { return m_skies.Num(); }
 		uint64_t GetLightingRevision() const { return m_lightingRevision; }
 		SAILOR_API void GetGlobalIlluminationBakeLightProxies(
 			TVector<Raytracing::LightProxy>& outLights) const;
 		void FillLightingData(RHI::RHISceneViewPtr& sceneView);
 
-		float GetShadowsOccupiedMemoryMb() const { return m_shadowMapsMb; }
-		float GetCsmShadowsOccupiedMemoryMb() const { return m_csmShadowMapsMb; }
+		float GetShadowsOccupiedMemoryMb() const { return m_shadows.m_mapsMb; }
+		float GetCsmShadowsOccupiedMemoryMb() const { return m_shadows.m_csmMapsMb; }
 		float GetLocalShadowsOccupiedMemoryMb() const
 		{
-			return (std::max)(0.0f, m_shadowMapsMb - m_csmShadowMapsMb);
+			return (std::max)(0.0f, m_shadows.m_mapsMb - m_shadows.m_csmMapsMb);
 		}
 		float GetShadowsMemoryBudgetMb() const { return m_shadowsMemoryBudgetMb; }
 		void SetShadowsMemoryBudgetMb(float budgetMb)
@@ -193,12 +200,13 @@ namespace Sailor
 		void CollectLightProxies(
 			TVector<Raytracing::LightProxy>& outLights,
 			bool bGlobalIlluminationBakeContributorsOnly) const;
+		TVector<TObjectPtr<SkyComponent>> m_skies;
 
 		SAILOR_API void PrepareCSMPasses(
 			const RHI::RHISceneViewPtr& sceneView,
 			const Math::Transform& cameraTransform,
 			const CameraData& cameraData,
-			const TVector<RHI::RHILightProxy>& directionalLights,
+			const RHI::RHILightProxy& directionalLight,
 			uint32_t flightSlot,
 			LightingShadowFlightResources& flightResources,
 			uint32_t& snapshotIndex,
@@ -252,41 +260,42 @@ namespace Sailor
 
 		SAILOR_API void GetLightsInFrustum(const Math::Frustum& frustum,
 			const Math::Transform& cameraTransform,
-			TVector<RHI::RHILightProxy>& outDirectionalLights,
+			std::optional<RHI::RHILightProxy>& outDirectionalLight,
 			TVector<RHI::RHILightProxy>& outSortedPointLights,
 			TVector<RHI::RHILightProxy>& outSortedSpotLights);
 
 		// Lights
 		uint32_t m_numLights = 0;
-		RHI::RHIShaderBindingSetPtr m_lightsData;
 		TVector<LightShaderData> m_cpuLightsData{};
-		TSharedPtr<TVector<LightShaderData>> m_publishedLightsData{};
+		TSharedPtr<const TVector<LightShaderData>> m_publishedLightsData{};
 		TVector<TSharedPtr<TVector<LightShaderData>>> m_lightsSnapshotPool{};
 		uint64_t m_lightingRevision = 0ull;
 
-		// Shadows
-		// Texture template shared by immutable per-flight lighting descriptors.
-		RHI::RHIShaderBindingPtr m_shadowMaps;
-		TVector<RHI::RHITexturePtr> m_shadowMapTextures{};
-		std::bitset<MaxShadowMapSamplers - NumCascades> m_writableLocalShadowAtlases{};
-		bool m_bShadowMapBindingsDirty = false;
+		struct ShadowState
+		{
+			uint32_t m_directionalLightIndex = InvalidShadowMapIndex;
+			// Texture template shared by immutable per-flight lighting descriptors.
+			RHI::RHIShaderBindingSetPtr m_bindings;
+			TVector<RHI::RHITexturePtr> m_textures;
+			std::bitset<MaxShadowMapSamplers - NumCascades> m_writableLocalAtlases{};
+			bool m_bBindingsDirty = false;
+			TVector<RHI::RHIRenderTargetPtr> m_csmMaps;
+			TVector<LightingShadowFlightResources> m_flights;
+			TVector<uint32_t> m_mapOwners;
+			TVector<LocalLightShadowAllocation> m_localAllocations;
+			TVector<LocalShadowAtlas> m_localAtlases;
+			TVector<RHI::RHILightProxy> m_pointLightsScratch;
+			TVector<RHI::RHILightProxy> m_spotLightsScratch;
+			TVector<glm::mat4> m_cascadeProjectionScratch;
+			TVector<RHI::RHIVisibleShadowCaster> m_csmBroadCastersScratch;
+			RHI::RHIRenderTargetPtr m_defaultMap;
+			float m_mapsMb = 0.0f;
+			float m_csmMapsMb = 0.0f;
+			uint64_t m_localAllocationRevision = 0ull;
+		};
 
-		TVector<RHI::RHIRenderTargetPtr> m_csmShadowMaps;
-		TVector<LightingShadowFlightResources> m_shadowFlightResources;
-		TVector<uint32_t> m_shadowMapOwners;
-		TVector<LocalLightShadowAllocation> m_localShadowAllocations;
-		TVector<LocalShadowAtlas> m_localShadowAtlases;
-		TVector<RHI::RHILightProxy> m_directionalLightsScratch{};
-		TVector<RHI::RHILightProxy> m_pointLightsScratch{};
-		TVector<RHI::RHILightProxy> m_spotLightsScratch{};
-		TVector<glm::mat4> m_cascadeProjectionScratch{};
-		TVector<RHI::RHIVisibleShadowCaster> m_csmBroadCastersScratch{};
-
-		RHI::RHIRenderTargetPtr m_defaultShadowMap;
-		float m_shadowMapsMb = 0;
-		float m_csmShadowMapsMb = 0;
+		ShadowState m_shadows;
 		float m_shadowsMemoryBudgetMb = DefaultShadowsMemoryBudgetMb;
-		uint64_t m_localShadowAllocationRevision = 0ull;
 	};
 
 	template class ECS::TSystem<LightingECS, LightData>;
