@@ -869,6 +869,18 @@ bool EditorRuntime::SetEditorSelection(TVector<InstanceId> selection)
 		});
 }
 
+void EditorRuntime::ShowMainWindow(bool bShow)
+{
+	if (auto editor = App::GetSubmodule<Editor>())
+	{
+#if defined(_WIN32)
+		editor->ShowMainWindow(false);
+#else
+		editor->ShowMainWindow(bShow);
+#endif
+	}
+}
+
 void EditorRuntime::SetEditorViewport(uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height)
 {
 	width = std::max(width, 1u);

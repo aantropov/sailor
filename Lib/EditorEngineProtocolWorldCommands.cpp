@@ -3,6 +3,7 @@
 #include "Memory/UniquePtr.hpp"
 #include "Editor/EditorRuntimeBridge.h"
 #include "Editor/EditorScene.h"
+#include "Editor/EditorInterop.h"
 #include "Engine/InstanceId.h"
 #include "Protocol/Generated/editor_engine.pb.h"
 #include "Sailor.h"
@@ -51,7 +52,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 	static void DispatchSerializeEngineTypes(ProtocolResponse& response)
 	{
 		char* value = nullptr;
-		const uint32_t length = Sailor::App::SerializeEngineTypes(&value);
+		const uint32_t length = Sailor::EditorRuntime::SerializeEngineTypes(&value);
 		Sailor::TUniquePtr<char[]> ownedValue(value);
 		SetStringResult(response, value, length);
 	}
@@ -59,7 +60,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 	static void DispatchSerializeEditorTypes(ProtocolResponse& response)
 	{
 		char* value = nullptr;
-		const uint32_t length = Sailor::App::SerializeEditorTypes(&value);
+		const uint32_t length = Sailor::EditorRuntime::SerializeEditorTypes(&value);
 		Sailor::TUniquePtr<char[]> ownedValue(value);
 		SetStringResult(response, value, length);
 	}
@@ -67,7 +68,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 	static void DispatchSerializeWorkspaceCacheIdentity(ProtocolResponse& response)
 	{
 		char* value = nullptr;
-		const uint32_t length = Sailor::App::SerializeWorkspaceCacheIdentity(&value);
+		const uint32_t length = Sailor::EditorRuntime::SerializeWorkspaceCacheIdentity(&value);
 		Sailor::TUniquePtr<char[]> ownedValue(value);
 		SetStringResult(response, value, length);
 	}

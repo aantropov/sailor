@@ -1,4 +1,6 @@
 #include "EditorEngineProtocolInternal.h"
+#include "Editor/EditorInterop.h"
+#include "Editor/EditorRuntimeBridge.h"
 
 #include "Memory/UniquePtr.hpp"
 #include "Protocol/Generated/editor_engine.pb.h"
@@ -182,7 +184,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			requestedCount > 0 ? Sailor::TUniquePtr<char*[]>::Make(requestedCount) : Sailor::TUniquePtr<char*[]>{};
 		std::vector<Sailor::TUniquePtr<char[]>> ownedMessages;
 		ownedMessages.reserve(requestedCount);
-		const uint32_t numMessages = Sailor::App::PullEditorMessages(messages.GetRawPtr(), requestedCount);
+		const uint32_t numMessages = Sailor::EditorRuntime::PullEditorMessages(messages.GetRawPtr(), requestedCount);
 		for (uint32_t i = 0; i < requestedCount; ++i)
 		{
 			ownedMessages.emplace_back(messages[i]);
@@ -267,22 +269,22 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 
 		case ProtocolRequest::kPreviewAudioAsset:
 			SetBoolResult(
-				response, Sailor::App::PreviewEditorAudioAsset(request.preview_audio_asset().file_id().c_str()));
+				response, Sailor::EditorRuntime::PreviewEditorAudioAsset(request.preview_audio_asset().file_id().c_str()));
 			break;
 
 		case ProtocolRequest::kRequestModelFingerprint:
-			SetBoolResult(response, Sailor::App::RequestModelFingerprint(request.request_model_fingerprint().file_id().c_str()));
+			SetBoolResult(response, Sailor::EditorRuntime::RequestModelFingerprint(request.request_model_fingerprint().file_id().c_str()));
 			break;
 
 		case ProtocolRequest::kGetModelFingerprintStatus:
 			SetSuccess(response);
 			response.mutable_model_fingerprint_status_result()->set_status(
 				static_cast<sailor::editor::v1::ModelFingerprintStatus>(
-					Sailor::App::GetModelFingerprintStatus(request.get_model_fingerprint_status().file_id().c_str())));
+					Sailor::EditorRuntime::GetModelFingerprintStatus(request.get_model_fingerprint_status().file_id().c_str())));
 			break;
 
 		case ProtocolRequest::kShowMainWindow:
-			Sailor::App::ShowMainWindow(request.show_main_window().show());
+			Sailor::EditorRuntime::ShowMainWindow(request.show_main_window().show());
 			SetEmptyResult(response);
 			break;
 

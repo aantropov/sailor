@@ -10,6 +10,7 @@ namespace Sailor::EditorRemote { struct MacRendererFrameSource; }
 
 namespace Sailor::EditorRuntime
 {
+	SAILOR_API void ShowMainWindow(bool bShow);
 	SAILOR_API void SetEditorViewport(uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height);
 	SAILOR_API TVector<EditorViewport::Event> PullEditorViewportEvents(uint32_t num);
 	SAILOR_API bool TraceViewportRay(

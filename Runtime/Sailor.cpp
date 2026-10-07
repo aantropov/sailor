@@ -98,6 +98,11 @@ const Workspace::WorkspaceContext& App::GetWorkspaceContext()
 	return s_pInstance->m_workspaceContext;
 }
 
+const Workspace::WorkspaceModuleManager* App::GetWorkspaceModuleManager()
+{
+	return s_pInstance ? s_pInstance->m_pWorkspaceModuleManager.GetRawPtr() : nullptr;
+}
+
 const Settings::GraphicsSettings& App::GetGraphicsSettings()
 {
 	return g_graphicsSettingsState.m_projectSettings;

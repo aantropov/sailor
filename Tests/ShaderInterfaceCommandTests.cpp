@@ -1,4 +1,5 @@
 #include "Sailor.h"
+#include "Editor/EditorInterop.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "FrameGraph/BloomNode.h"
@@ -312,7 +313,7 @@ namespace
 	{
 		std::array<char*, 64> messages{};
 		bool found = false;
-		while (const auto count = App::PullEditorMessages(messages.data(), static_cast<uint32_t>(messages.size())))
+		while (const auto count = EditorRuntime::PullEditorMessages(messages.data(), static_cast<uint32_t>(messages.size())))
 		{
 			for (uint32_t i = 0; i < count; ++i)
 			{

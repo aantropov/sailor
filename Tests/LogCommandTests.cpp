@@ -1,5 +1,6 @@
 #include "Core/LogMacros.h"
 #include "Sailor.h"
+#include "Editor/EditorInterop.h"
 #include "Submodules/Editor.h"
 #include "Tasks/Tasks.h"
 
@@ -42,7 +43,7 @@ namespace
 	{
 		std::vector<std::string> result;
 		std::array<char*, 1024> messages{};
-		const uint32_t count = App::PullEditorMessages(messages.data(), static_cast<uint32_t>(messages.size()));
+		const uint32_t count = EditorRuntime::PullEditorMessages(messages.data(), static_cast<uint32_t>(messages.size()));
 		for (uint32_t i = 0; i < count; ++i)
 		{
 			const std::string message(messages[i]);

@@ -1,3 +1,4 @@
+#include "EditorInterop.h"
 #include "EditorScene.h"
 #include "Sailor.h"
 
@@ -75,9 +76,9 @@ namespace
 	}
 }
 
-uint32_t App::PullEditorMessages(char** messages, uint32_t num)
+uint32_t EditorRuntime::PullEditorMessages(char** messages, uint32_t num)
 {
-	auto editor = GetSubmodule<Editor>();
+	auto editor = App::GetSubmodule<Editor>();
 	if (!editor || !messages)
 	{
 		return 0;
@@ -107,7 +108,7 @@ uint32_t App::PullEditorMessages(char** messages, uint32_t num)
 	return numMsg;
 }
 
-uint32_t App::SerializeEngineTypes(char** yamlNode)
+uint32_t EditorRuntime::SerializeEngineTypes(char** yamlNode)
 {
 	if (!yamlNode)
 	{
@@ -134,7 +135,7 @@ uint32_t App::SerializeEngineTypes(char** yamlNode)
 	return 0;
 }
 
-uint32_t App::SerializeEditorTypes(char** yamlNode)
+uint32_t EditorRuntime::SerializeEditorTypes(char** yamlNode)
 {
 	if (!yamlNode)
 	{
@@ -143,11 +144,11 @@ uint32_t App::SerializeEditorTypes(char** yamlNode)
 
 	yamlNode[0] = nullptr;
 	YAML::Node editorTypes = Reflection::ExportEngineTypes();
-	if (App* app = GetInstance(); app && app->m_pWorkspaceModuleManager)
+	if (const auto* module = App::GetWorkspaceModuleManager())
 	{
 		YAML::Node combinedTypes;
 		std::string mergeError;
-		if (!app->m_pWorkspaceModuleManager->BuildEditorTypeMetadata(
+		if (!module->BuildEditorTypeMetadata(
 				editorTypes,
 				combinedTypes,
 				mergeError))
@@ -181,14 +182,11 @@ uint32_t App::SerializeEditorTypes(char** yamlNode)
 	yamlNode[0] = serializedOutput.Release();
 
 	return static_cast<uint32_t>(length);
-
-	yamlNode[0] = nullptr;
-	return 0;
 }
 
-uint32_t App::SerializeWorkspaceCacheIdentity(char** yamlNode)
+uint32_t EditorRuntime::SerializeWorkspaceCacheIdentity(char** yamlNode)
 {
-	if (!yamlNode || !GetInstance())
+	if (!yamlNode || !App::GetInstance())
 	{
 		return 0;
 	}
@@ -198,8 +196,8 @@ uint32_t App::SerializeWorkspaceCacheIdentity(char** yamlNode)
 		"editor-types",
 		"editor-types-v1",
 		1,
-		GetWorkspaceContext());
-	const auto& module = GetInstance()->m_pWorkspaceModuleManager;
+		App::GetWorkspaceContext());
+	const auto* module = App::GetWorkspaceModuleManager();
 	if (module && module->IsRegistered())
 	{
 		identity.m_producerIdentity += ";module-types=" + std::to_string(module->GetTypeCatalogHash());
@@ -225,12 +223,9 @@ uint32_t App::SerializeWorkspaceCacheIdentity(char** yamlNode)
 	yamlNode[0] = serializedOutput.Release();
 
 	return static_cast<uint32_t>(length);
-
-	yamlNode[0] = nullptr;
-	return 0;
 }
 
-bool App::PreviewEditorAudioAsset(const char* strFileId)
+bool EditorRuntime::PreviewEditorAudioAsset(const char* strFileId)
 {
 	if (!strFileId || strFileId[0] == '\0')
 	{
@@ -238,9 +233,9 @@ bool App::PreviewEditorAudioAsset(const char* strFileId)
 	}
 
 	const std::string fileIdValue = strFileId;
-	return ExecuteOnEngineMainThread<bool>(false, [fileIdValue]()
+	return App::ExecuteOnEngineMainThread<bool>(false, [fileIdValue]()
 		{
-			auto* editor = GetSubmodule<Editor>();
+			auto* editor = App::GetSubmodule<Editor>();
 			if (!editor)
 			{
 				return false;
@@ -251,24 +246,30 @@ bool App::PreviewEditorAudioAsset(const char* strFileId)
 		});
 }
 
-bool App::RequestModelFingerprint(const char* strFileId)
+bool EditorRuntime::RequestModelFingerprint(const char* strFileId)
 {
-	if (!strFileId || !strFileId[0]) return false;
-	return ExecuteOnEngineMainThread<bool>(false, [value = std::string(strFileId)]()
+	if (!strFileId || !strFileId[0])
+	{
+		return false;
+	}
+	return App::ExecuteOnEngineMainThread<bool>(false, [value = std::string(strFileId)]()
 		{
-			auto* importer = GetSubmodule<ModelImporter>();
+			auto* importer = App::GetSubmodule<ModelImporter>();
 			const FileId fileId(value);
 			return importer && fileId && importer->RequestFingerprint(fileId);
 		});
 }
 
-uint32_t App::GetModelFingerprintStatus(const char* strFileId)
+uint32_t EditorRuntime::GetModelFingerprintStatus(const char* strFileId)
 {
-	if (!strFileId || !strFileId[0]) return static_cast<uint32_t>(ModelImporter::EFingerprintStatus::Unavailable);
-	return ExecuteOnEngineMainThread<uint32_t>(static_cast<uint32_t>(ModelImporter::EFingerprintStatus::Unavailable),
+	if (!strFileId || !strFileId[0])
+	{
+		return static_cast<uint32_t>(ModelImporter::EFingerprintStatus::Unavailable);
+	}
+	return App::ExecuteOnEngineMainThread<uint32_t>(static_cast<uint32_t>(ModelImporter::EFingerprintStatus::Unavailable),
 		[value = std::string(strFileId)]()
 		{
-			auto* importer = GetSubmodule<ModelImporter>();
+			auto* importer = App::GetSubmodule<ModelImporter>();
 			const FileId fileId(value);
 			return static_cast<uint32_t>(importer && fileId ? importer->GetFingerprintStatus(fileId) :
 				ModelImporter::EFingerprintStatus::Unavailable);
@@ -699,16 +700,4 @@ bool EditorRuntime::InstantiateEditorPrefabFromYaml(
 
 			return bInstantiated;
 		});
-}
-
-void App::ShowMainWindow(bool bShow)
-{
-	if (auto editor = GetSubmodule<Editor>())
-	{
-#if defined(_WIN32)
-		editor->ShowMainWindow(false);
-#else
-		editor->ShowMainWindow(bShow);
-#endif
-	}
 }

@@ -64,6 +64,7 @@ namespace Sailor
 		SAILOR_API static App* GetInstance();
 		SAILOR_API static const std::string& GetWorkspace();
 		SAILOR_API static const Workspace::WorkspaceContext& GetWorkspaceContext();
+		SAILOR_API static const Workspace::WorkspaceModuleManager* GetWorkspaceModuleManager();
 		SAILOR_API static const Settings::GraphicsSettings& GetGraphicsSettings();
 		SAILOR_API static const Settings::GraphicsQualityProfile& GetActiveGraphicsSettings();
 		SAILOR_API static Settings::EGraphicsQualitySelection GetSelectedGraphicsQuality();
@@ -105,14 +106,6 @@ namespace Sailor
 		SAILOR_API static bool IsRendererInitialized();
 		SAILOR_API static bool HasEditor();
 		SAILOR_API static bool IsEditorMode();
-		SAILOR_API static uint32_t PullEditorMessages(char** messages, uint32_t num);
-		SAILOR_API static uint32_t SerializeEngineTypes(char** yamlNode);
-		SAILOR_API static uint32_t SerializeEditorTypes(char** yamlNode);
-		SAILOR_API static uint32_t SerializeWorkspaceCacheIdentity(char** yamlNode);
-		SAILOR_API static bool PreviewEditorAudioAsset(const char* strFileId);
-		SAILOR_API static bool RequestModelFingerprint(const char* strFileId);
-		SAILOR_API static uint32_t GetModelFingerprintStatus(const char* strFileId);
-		SAILOR_API static void ShowMainWindow(bool bShow);
 
 		static SubmoduleBase* GetSubmodule(uint32_t index)
 		{
