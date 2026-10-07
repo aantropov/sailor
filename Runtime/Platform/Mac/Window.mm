@@ -487,7 +487,7 @@ void Window::Show(bool bShowWindow)
 	m_bIsShown = bShowWindow;
 }
 
-void Window::SetWindowTitle(LPCSTR lString)
+void Window::SetWindowTitle(const char* titleText)
 {
 	NSWindow* window = (__bridge NSWindow*)m_hWnd;
 	if (!window)
@@ -497,7 +497,7 @@ void Window::SetWindowTitle(LPCSTR lString)
 
 	@autoreleasepool
 	{
-		NSString* title = [NSString stringWithUTF8String:lString ? lString : ""];
+		NSString* title = [NSString stringWithUTF8String:titleText ? titleText : ""];
 		if (!title)
 		{
 			return;
@@ -521,9 +521,9 @@ void Window::TrackParentWindowPosition(const RECT& viewport)
 	(void)viewport;
 }
 
-bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inHeight, bool inbIsFullScreen, bool bIsVsyncRequested, HWND parentHwnd)
+bool Window::Create(const char* title, const char* className, int32_t inWidth, int32_t inHeight, bool inbIsFullScreen, bool bIsVsyncRequested, void* parentWindow)
 {
-	m_parentHwnd = parentHwnd;
+	m_parentHwnd = parentWindow;
 	m_windowClassName = className;
 	m_bIsVsyncRequested = bIsVsyncRequested;
 	m_width = inWidth;
@@ -539,7 +539,7 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 			[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 		}
 
-		const NSWindowStyleMask style = parentHwnd == nullptr ?
+		const NSWindowStyleMask style = parentWindow == nullptr ?
 			(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable) :
 			NSWindowStyleMaskBorderless;
 

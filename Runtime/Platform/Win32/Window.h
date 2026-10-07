@@ -1,6 +1,9 @@
 #pragma once
 
 #include "Platform/Window.h"
+#if defined(_WIN32)
+#include <wtypes.h>
+#endif
 #include <atomic>
 #include <mutex>
 #include <optional>
@@ -98,13 +101,13 @@ namespace Sailor::Win32
 		SAILOR_API void SetRunning(bool value) override { m_bIsRunning = value; }
 		SAILOR_API void SetFullscreen(bool value) override { m_bIsFullscreen = value; }
 #if defined(__APPLE__)
-		SAILOR_API void SetWindowTitle(LPCSTR lString) override;
+		SAILOR_API void SetWindowTitle(const char* title) override;
 #else
-		SAILOR_API void SetWindowTitle(LPCSTR lString) override {
+		SAILOR_API void SetWindowTitle(const char* title) override {
 #if defined(_WIN32)
-			SetWindowText(m_hWnd, lString);
+			SetWindowText(m_hWnd, title);
 #else
-			(void)lString;
+			(void)title;
 #endif
 		}
 #endif
@@ -123,21 +126,21 @@ namespace Sailor::Win32
 		SAILOR_API int32_t GetHeight() const override { return m_height; }
 		SAILOR_API bool IsVsyncRequested() const override { return m_bIsVsyncRequested; }
 
-		SAILOR_API bool Create(LPCSTR title = "Sailor", LPCSTR className = "SailorViewport", int32_t width = 1920, int32_t height = 1080, bool bIsFullScreen = false, bool bRequestVsync = false, HWND parentHwnd = NULL) override;
+		SAILOR_API bool Create(const char* title = "Sailor", const char* className = "SailorViewport", int32_t width = 1920, int32_t height = 1080, bool bIsFullScreen = false, bool bRequestVsync = false, void* parentWindow = nullptr) override;
 		SAILOR_API void Destroy() override;
 
 		SAILOR_API glm::ivec2 GetRenderArea() const override { return m_renderArea; }
 		SAILOR_API void SetRenderArea(const glm::ivec2& renderArea) override { m_renderArea = renderArea; }
 
 		SAILOR_API bool IsParentWindowValid() const override;
-		SAILOR_API void TrackParentWindowPosition(const RECT& viewport) override;
+		SAILOR_API void TrackParentWindowPosition(const RECT& viewport);
 
 		SAILOR_API void Show(bool bShowWindow) override;
 
 		// Window size
 		SAILOR_API glm::ivec2 GetCenterPointScreen() const override;
 		SAILOR_API glm::ivec2 GetCenterPointClient() const override;
-		SAILOR_API void SetWindowPos(const RECT& rect) override;
+		SAILOR_API void SetWindowPos(const RECT& rect);
 		SAILOR_API void RecalculateWindowSize() override;
 		SAILOR_API void ChangeWindowSize(int32_t width, int32_t height, bool bIsFullScreen = false) override;
 		SAILOR_API void ProcessSystemMessages() override;

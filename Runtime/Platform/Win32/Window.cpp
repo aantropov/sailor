@@ -464,9 +464,9 @@ void Window::TrackParentWindowPosition(const RECT& viewport)
 	}
 }
 
-bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inHeight, bool inbIsFullScreen, bool bIsVsyncRequested, HWND parentHwnd)
+bool Window::Create(const char* title, const char* className, int32_t inWidth, int32_t inHeight, bool inbIsFullScreen, bool bIsVsyncRequested, void* parentWindow)
 {
-	m_parentHwnd = parentHwnd;
+	m_parentHwnd = static_cast<HWND>(parentWindow);
 	m_windowClassName = className;
 
 	WNDCLASSEX            wcx{};
