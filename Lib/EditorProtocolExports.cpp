@@ -14,17 +14,21 @@ namespace
 	{
 		try
 		{
-			Sailor::Protocol::RequestEditorEngineProtocolStop();
-		}
-		catch (...)
-		{
-		}
-		Sailor::Protocol::StopEditorEngineWebSocketServer();
-		try
-		{
-			Sailor::Protocol::WaitForEditorEngineProtocolStartDrain();
-			if (!bShutdownEngine) return true;
-			Sailor::Protocol::DrainEditorEngineProtocolForShutdown();
+			if (bShutdownEngine)
+			{
+				// Close admission before joining socket callbacks or the Start worker.
+				Sailor::Protocol::DrainEditorEngineProtocolForShutdown();
+			}
+			else
+			{
+				Sailor::Protocol::RequestEditorEngineProtocolStop();
+			}
+			Sailor::Protocol::StopEditorEngineWebSocketServer();
+			if (!bShutdownEngine)
+			{
+				Sailor::Protocol::WaitForEditorEngineProtocolStartDrain();
+				return true;
+			}
 			if (Sailor::App::Shutdown())
 			{
 				Sailor::Protocol::ResetEditorEngineProtocolLifecycle();
@@ -33,6 +37,7 @@ namespace
 		}
 		catch (...)
 		{
+			Sailor::Protocol::StopEditorEngineWebSocketServer();
 		}
 		Sailor::Protocol::FailEditorEngineProtocolShutdown();
 		return false;

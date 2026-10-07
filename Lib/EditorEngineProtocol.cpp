@@ -409,11 +409,14 @@ void Sailor::Protocol::WaitForEditorEngineProtocolStartDrain()
 	GetEditorEngineProtocolLifecycleGate().WaitForStartDrainAndJoin();
 }
 
-void Sailor::Protocol::DrainEditorEngineProtocolForShutdown()
+void Sailor::Protocol::DrainEditorEngineProtocolForShutdown(
+	const EditorEngineProtocolDependencies& dependencies)
 {
-	auto& gate = GetEditorEngineProtocolLifecycleGate();
+	auto& gate = dependencies.m_lifecycleGate ? *dependencies.m_lifecycleGate : GetEditorEngineProtocolLifecycleGate();
 	std::string error;
 	gate.TryBeginShutdown(error);
+	gate.WaitForInitializationDrain();
+	EditorEngineProtocolCommands::StopEngine(dependencies);
 	gate.WaitForShutdownDrain();
 	gate.WaitForStartDrainAndJoin();
 }

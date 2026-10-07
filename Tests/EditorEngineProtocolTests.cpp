@@ -2061,6 +2061,68 @@ namespace
 		gate.CompleteShutdown();
 	}
 
+	void TestLocalHostDrainStopsBeforeWaitingForStart()
+	{
+		using namespace std::chrono_literals;
+		struct TDrainSource
+		{
+			Sailor::Protocol::TEditorEngineProtocolLifecycleGate m_gate;
+			std::promise<void> m_startEntered;
+			std::promise<void> m_releaseStart;
+			std::promise<void> m_stopEntered;
+			bool m_bAdmissionClosedAtStop = false;
+		} source;
+
+		PrepareInitializedLifecycle(source.m_gate);
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_context = &source;
+		dependencies.m_lifecycleGate = &source.m_gate;
+		dependencies.m_start = [](void* context)
+			{
+				auto& state = *static_cast<TDrainSource*>(context);
+				state.m_startEntered.set_value();
+				state.m_releaseStart.get_future().wait();
+			};
+		dependencies.m_stop = [](void* context)
+			{
+				auto& state = *static_cast<TDrainSource*>(context);
+				std::string error;
+				state.m_bAdmissionClosedAtStop = !state.m_gate.TryAcquireOperation(error, false);
+				if (!state.m_bAdmissionClosedAtStop)
+				{
+					state.m_gate.ReleaseOperation();
+				}
+				state.m_stopEntered.set_value();
+			};
+
+		TProtocolBuffer buffer;
+		const auto start = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 1u,
+			c_startCommandField), buffer, dependencies);
+		std::future<void> drain;
+		Sailor::Tests::ScopeExit releaseStart([&]() { source.m_releaseStart.set_value(); });
+		Require(start.m_bSuccess && source.m_startEntered.get_future().wait_for(1s) == std::future_status::ready,
+			"local-host drain fixture must enter the admitted Start worker");
+		std::string error;
+		Require(source.m_gate.TryAcquireOperation(error, false), "the active session must admit its existing operation");
+		Sailor::Tests::ScopeExit releaseOperation([&]() { source.m_gate.ReleaseOperation(); });
+		drain = std::async(std::launch::async, [&]()
+			{
+				Sailor::Protocol::DrainEditorEngineProtocolForShutdown(dependencies);
+			});
+
+		const bool bStopEntered = source.m_stopEntered.get_future().wait_for(1s) == std::future_status::ready;
+		const bool bWaitedForStart = drain.wait_for(20ms) == std::future_status::timeout;
+		releaseStart.Run();
+		const bool bWaitedForOperation = drain.wait_for(20ms) == std::future_status::timeout;
+		releaseOperation.Run();
+		drain.get();
+		Require(bStopEntered && source.m_bAdmissionClosedAtStop,
+			"local-host drain must close admission and request Stop before waiting for Start");
+		Require(bWaitedForStart && bWaitedForOperation && !source.m_gate.IsStartActive(),
+			"local-host drain must retain the session until Start and admitted operations finish");
+		source.m_gate.CompleteShutdown();
+	}
+
 	TDecodedResponse InvokeStartPromptly(
 		const uint64_t requestId,
 		const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies,
@@ -2582,6 +2644,7 @@ int main()
 		TestShutdownDrainsAnAdmittedStop();
 		TestStopWaitsForInitializationAndSkipsClosedSessions();
 		TestThrowingStopReleasesItsOperation();
+		TestLocalHostDrainStopsBeforeWaitingForStart();
 		TestStartAcknowledgesBeforeWorkerExitAndStopJoins();
 		TestImmediateStopAfterStartAcknowledgementCannotBeLost();
 		TestShutdownStopsAndJoinsWorkerBeforeShutdownRoutine();

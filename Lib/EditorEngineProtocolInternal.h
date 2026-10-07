@@ -107,7 +107,8 @@ namespace Sailor::Protocol
 	bool SetMacViewportHost(uint64_t viewportId, uintptr_t layer);
 	void RequestEditorEngineProtocolStop();
 	void WaitForEditorEngineProtocolStartDrain();
-	void DrainEditorEngineProtocolForShutdown();
+	SAILOR_SHARED_API void DrainEditorEngineProtocolForShutdown(
+		const EditorEngineProtocolDependencies& dependencies = {});
 	void ResetEditorEngineProtocolLifecycle();
 	void FailEditorEngineProtocolShutdown();
 }
