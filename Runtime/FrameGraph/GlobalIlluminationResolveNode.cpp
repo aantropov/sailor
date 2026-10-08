@@ -44,6 +44,15 @@ void GlobalIlluminationResolveNode::Process(
 	{
 		return;
 	}
+	if (sceneView.m_globalIllumination && sceneView.m_globalIllumination->m_layout &&
+		sceneView.m_globalIllumination->m_layout->m_bricks.Num() == 1u)
+	{
+		// A single grid has only one candidate. Material sampling still checks
+		// its bounds and probe validity; no screen-space traversal is needed.
+		commands->ImageMemoryBarrier(commandList, probeCellIndicesTexture, EImageLayout::TransferDstOptimal);
+		commands->ClearImage(commandList, probeCellIndicesTexture, glm::vec4(1.0f));
+		return;
+	}
 	if (!m_shader)
 	{
 		if (const auto shaderInfo = App::GetSubmodule<AssetRegistry>()

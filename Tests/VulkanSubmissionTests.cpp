@@ -1957,12 +1957,13 @@ namespace
 		Require(!texture, "an incomplete immediate upload must not publish a usable texture");
 	}
 
-	std::vector<uint32_t> ReadImage(IGraphicsDriver& driver, VulkanImagePtr image, uint32_t mip = 0u, uint32_t layer = 0u)
+	std::vector<uint32_t> ReadImage(IGraphicsDriver& driver, VulkanImagePtr image, uint32_t mip = 0u, uint32_t layer = 0u,
+		uint32_t wordsPerPixel = 1u)
 	{
 		const uint32_t width = std::max(1u, image->m_extent.width >> mip);
 		const uint32_t height = std::max(1u, image->m_extent.height >> mip);
 		const uint32_t depth = std::max(1u, image->m_extent.depth >> mip);
-		std::vector<uint32_t> result(width * height * depth);
+		std::vector<uint32_t> result(width * height * depth * wordsPerPixel);
 		auto buffer = driver.CreateBuffer(result.size() * sizeof(uint32_t), EBufferUsageBit::BufferTransferDst_Bit,
 			EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
 		auto command = driver.CreateCommandList(false, ECommandListQueue::Graphics);
@@ -2207,10 +2208,10 @@ namespace
 		auto& driver = *Renderer::GetDriver().DynamicCast<VulkanGraphicsDriver>();
 		auto graph = RHIFrameGraphPtr::Make();
 		auto node = TRefPtr<Framegraph::GlobalIlluminationResolveNode>::Make();
+		auto cells = driver.CreateRenderTarget(glm::ivec2(8), 1, ETextureFormat::R32G32B32A32_SFLOAT);
 		node->SetRHIResource("depthSampler"_h,
 			driver.CreateRenderTarget(glm::ivec2(16), 1, ETextureFormat::R32_SFLOAT));
-		node->SetRHIResource("probeCellIndices"_h,
-			driver.CreateRenderTarget(glm::ivec2(8), 1, ETextureFormat::R32G32B32A32_SFLOAT));
+		node->SetRHIResource("probeCellIndices"_h, cells);
 		for (auto mode : { EGlobalIlluminationMode::NoGI, EGlobalIlluminationMode::Baked, EGlobalIlluminationMode::Runtime })
 		{
 			for (bool enabled : { false, true })
@@ -2239,6 +2240,26 @@ namespace
 			}
 		}
 		std::cout << "GI resolve: NoGI/quality disabled record no GPU work; enabled and probe debug retain fallback clears\n";
+		RHISceneViewSnapshot scene;
+		scene.m_globalIlluminationMode = EGlobalIlluminationMode::Runtime;
+		scene.m_bGlobalIlluminationEnabled = true;
+		scene.m_globalIllumination = RHIGlobalIlluminationSnapshotPtr::Make();
+		scene.m_globalIllumination->m_layout = GIProbesDataPtr::Make();
+		for (uint32_t brickCount : { 1u, 2u, 0u, 1u })
+		{
+			scene.m_globalIllumination->m_layout->m_bricks.Resize(brickCount);
+			auto command = driver.CreateCommandList(false, ECommandListQueue::Graphics);
+			driver.BeginCommandList(command, true);
+			node->Process(graph, {}, command, scene);
+			driver.RestoreImageBarriers(command);
+			driver.EndCommandList(command);
+			Require(driver.SubmitCommandList_Immediate(command), "GI cell candidates must reach the GPU");
+			// Without lighting bindings, nonuniform/empty layouts still clear to zero.
+			const uint32_t expected = brickCount == 1u ? std::bit_cast<uint32_t>(1.0f) : 0u;
+			Require(ReadImage(driver, cells->m_vulkan.m_image, 0u, 0u, 4u) == std::vector<uint32_t>(8u * 8u * 4u, expected),
+				"single-grid candidates must fill all four channels and not survive a layout change");
+		}
+		std::cout << "GI resolve: single-grid candidate pixels and layout transitions passed\n";
 	}
 
 	void TestSurfacePending()
