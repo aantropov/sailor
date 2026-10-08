@@ -303,6 +303,36 @@ namespace BlockAllocatorTests
 			"pool block release and slot reuse must free each backing allocation exactly once");
 	}
 
+	void TestFragmentedPoolRecovery()
+	{
+		AllocatorStats stats;
+		{
+			Sailor::Memory::TPoolAllocator<MisalignedAllocator> allocator(16384, 1,
+				(std::numeric_limits<size_t>::max)());
+			allocator.GetGlobalAllocator().m_stats = &stats;
+			std::vector<Sailor::Memory::TMemoryPtr<void*>> allocations;
+			for (size_t i = 0; i < 12002; ++i)
+			{
+				allocations.push_back(allocator.Allocate(1, 1));
+			}
+			auto* address = *allocations.front();
+			// More than 6000 separate holes retires the pool's detailed free layout.
+			for (size_t i = 0; i < allocations.size(); i += 2)
+			{
+				allocator.Free(allocations[i]);
+			}
+			for (size_t i = 1; i < allocations.size(); i += 2)
+			{
+				allocator.Free(allocations[i]);
+			}
+			auto reused = allocator.Allocate(1, 1);
+			Require(*reused == address && stats.m_capacities.size() == 1,
+				"a fully freed fragmented pool must restore its whole range for reuse");
+			allocator.Free(reused);
+		}
+		Require(stats.m_freedBlocks == 1, "fragmentation recovery must not leak the retained backing block");
+	}
+
 	void TestMultiPoolTypedReuse()
 	{
 		Sailor::Memory::TMultiPoolAllocator<> allocator;
@@ -334,6 +364,7 @@ int main()
 		BlockAllocatorTests::TestReuseAndCoalescing();
 		BlockAllocatorTests::TestPoolTypedReuse();
 		BlockAllocatorTests::TestPoolReleasedBlockIndex();
+		BlockAllocatorTests::TestFragmentedPoolRecovery();
 		BlockAllocatorTests::TestMultiPoolTypedReuse();
 		BlockAllocatorTests::TestReleasedBlockSlotReuse();
 		BlockAllocatorTests::TestLargeLogicalAllocations();

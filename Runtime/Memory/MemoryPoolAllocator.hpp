@@ -296,6 +296,7 @@ namespace Sailor::Memory
 				{
 					m_blocks[index].m_bIsOutOfSync = false;
 					m_blocks[index].m_layout.Clear();
+					m_blocks[index].m_layout.Add({ 0, m_blocks[index].m_blockSize });
 					m_blocks[index].m_notTrackedEmptySpace = 0;
 
 					if (std::find(m_layout.begin(), m_layout.end(), index) == m_layout.end())
