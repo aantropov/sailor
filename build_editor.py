@@ -118,7 +118,7 @@ def find_engine_library(config: str) -> Path | None:
     ]
     existing_candidates = [candidate for candidate in candidates if candidate.exists()]
     if not existing_candidates:
-        print(f"Engine library was not found, skipping app sync: {candidates}")
+        print(f"Engine library was not found, skipping staging: {candidates}")
         return None
     return max(existing_candidates, key=lambda candidate: candidate.stat().st_mtime_ns)
 
@@ -135,40 +135,6 @@ def stage_engine_library(config: str) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, destination)
     print(f"Staged engine library for editor build: {destination}")
-
-
-def sync_engine_library(config: str, output: Path | None, runtime: str | None) -> None:
-    source = find_engine_library(config)
-    if source is None:
-        return
-    library_name = source.name
-
-    search_roots = [
-        REPO_ROOT / "Binaries" / "Editor" / config,
-        REPO_ROOT / "Binaries" / "Editor" / config.lower(),
-    ]
-    if output:
-        search_roots.append(output.resolve())
-
-    seen: set[Path] = set()
-    for root in search_roots:
-        if not root.exists():
-            continue
-
-        for app in root.rglob("SailorEditor.app"):
-            app = app.resolve()
-            if runtime and runtime not in app.parts:
-                continue
-            if app in seen:
-                continue
-            seen.add(app)
-
-            for relative_dir in ("Contents/Resources", "Contents/MonoBundle"):
-                destination_dir = app / relative_dir
-                if destination_dir.exists():
-                    destination = destination_dir / library_name
-                    shutil.copy2(source, destination)
-                    print(f"Synced engine library: {destination}")
 
 
 def main() -> int:
@@ -188,6 +154,7 @@ def main() -> int:
 
     maybe_build_engine(args.build_engine, args.config)
     remove_generated_imgui_ini(args.config, args.output)
+    # MSBuild packages and signs the staged library as part of the app.
     stage_engine_library(args.config)
 
     dotnet = detect_dotnet()
@@ -203,7 +170,6 @@ def main() -> int:
 
     run(command, env=env)
     build_mcp_bridge(dotnet, args.config, env)
-    sync_engine_library(args.config, args.output, args.runtime)
 
     print("\nDone.")
     print(f"Framework: {args.framework}")
