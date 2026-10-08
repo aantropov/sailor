@@ -1,4 +1,4 @@
-# Native editor restart integration
+# Native editor service integration
 
 This macOS headless target compiles the production `EngineService` Mac path and
 uses the production protocol client, socket transport, module loader and cache.
@@ -24,6 +24,13 @@ changed types/defaults, recovery of a world using the new component, editor-only
 startup without the module, and recovery after the module is restored. All
 workspace files and caches are generated in a unique temporary directory.
 The shared host resets its ready/stop markers and checks native exit codes.
+
+The asset-reimport scenario is shared with `Editor.Contracts.Tests`: that target
+calls the protocol directly; this one calls `EngineService`. It checks generated
+material repair, authored values and FileIds, unchanged normal loads, full-reload
+notifications and rejection after Stop. Both service tests run serially because
+they share the queued UI dispatcher. Actual `AssetsService` and menu interaction
+remain outside this headless target.
 
 For ThreadSanitizer, build `build-audit-tsan` and use its `Binaries/Release`,
 `Tests/Release` and `Lib/Release` directories with `TSAN_OPTIONS=halt_on_error=1`.

@@ -7,6 +7,7 @@ using Xunit.Abstractions;
 
 namespace Editor.Tests.EngineIntegration;
 
+[Collection("LocalEngineProtocolTransport")]
 public sealed class EngineModuleReloadTests(ITestOutputHelper log)
 {
     [NativeEditorFact]

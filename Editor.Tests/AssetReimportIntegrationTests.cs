@@ -4,6 +4,9 @@ using SailorEditor.Protocol;
 using SailorEditor.Workspace;
 using YamlDotNet.RepresentationModel;
 using Xunit.Abstractions;
+#if MACCATALYST
+using SailorEditor.Services;
+#endif
 
 namespace Editor.Tests;
 
@@ -21,8 +24,10 @@ public sealed class AssetReimportIntegrationTests(ITestOutputHelper log)
         try
         {
             var content = Directory.CreateDirectory(Path.Combine(workspace, "Content")).FullName;
-            await new WorkspaceManifestSerializer().SaveAsync(Path.Combine(workspace, "workspace.sailor"),
-                WorkspaceManifest.CreateDefault("Editor reimport integration", engine));
+            var manifestPath = Path.Combine(workspace, "workspace.sailor");
+            var serializer = new WorkspaceManifestSerializer();
+            var manifest = WorkspaceManifest.CreateDefault("Editor reimport integration", engine);
+            await serializer.SaveAsync(manifestPath, manifest);
             var sourcePath = Path.Combine(content, "Panel.gltf");
             var source = JsonNode.Parse("""
                 {
@@ -44,8 +49,13 @@ public sealed class AssetReimportIntegrationTests(ITestOutputHelper log)
             using (var geometry = new BinaryWriter(File.Create(Path.Combine(content, "Panel.bin"))))
             {
                 foreach (var value in new float[] { -1, -1, 0, 1, -1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1 })
+                {
                     geometry.Write(value);
-                foreach (var index in new ushort[] { 0, 1, 2 }) geometry.Write(index);
+                }
+                foreach (var index in new ushort[] { 0, 1, 2 })
+                {
+                    geometry.Write(index);
+                }
             }
             await File.WriteAllTextAsync(sourcePath, source.ToJsonString());
             await File.WriteAllTextAsync(sourcePath + ".asset", $$"""
@@ -60,6 +70,22 @@ public sealed class AssetReimportIntegrationTests(ITestOutputHelper log)
             using var host = new NativeEditorHost(workspace, engine, log);
             await using var client = new EngineProtocolClient(new LocalEngineProtocolTransport(
                 host, (endpoint, token) => new ClientWebSocketEngineProtocolTransport(endpoint, token)));
+#if MACCATALYST
+            // The service target runs the same material checks through the production editor service.
+            Assert.True(OperatingSystem.IsMacOS());
+            var lifecycle = new WorkspaceLifecycleService(serializer, new WorkspaceTemplateService(serializer),
+                new RecentWorkspaceStore(Path.Combine(workspace, "Recent.yaml")));
+            var opened = await lifecycle.OpenAsync(manifestPath);
+            Assert.True(opened.Succeeded, opened.Error);
+            var session = opened.Session!;
+            var launch = EngineLaunchContract.Resolve(workspace, manifestPath, session.ContentDirectory,
+                session.CacheDirectory, engine, manifest.WorkspaceId);
+            await using var service = new EngineService(lifecycle, client);
+            await service.StartAsync(launch, false, ["--null-audio", "--no-title-stats"]);
+            Assert.Equal(EngineLifecycleState.Running, service.State);
+            Func<Task<bool>> reimport = () => service.ReimportAssetAsync(ModelId);
+            Func<Task<bool>> update = () => service.UpdateAssetAsync(ModelId);
+#else
             await client.InitializeAsync([
                 "SailorEditorIntegration", "--workspace", workspace, "--editor", "--new-world",
                 "--port", "0", "--noconsole", "--null-audio", "--no-title-stats"
@@ -68,15 +94,20 @@ public sealed class AssetReimportIntegrationTests(ITestOutputHelper log)
             using (var started = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
             {
                 while (!await client.IsEngineRunningAsync(started.Token))
+                {
                     await Task.Delay(10, started.Token);
+                }
             }
+            Func<Task<bool>> reimport = () => client.ReimportAssetAsync(ModelId);
+            Func<Task<bool>> update = () => client.UpdateAssetAsync(ModelId);
+#endif
 
-            Assert.True(await client.ReimportAssetAsync(ModelId));
+            Assert.True(await reimport());
             var beforeLoad = ReadContent(content);
             var instance = await client.CreateModelInstanceAsync(ModelId, "Panel", "", false, null, "");
             Assert.True(instance.Succeeded);
             Assert.False(string.IsNullOrEmpty(instance.InstanceId));
-            Assert.True(await client.UpdateAssetAsync(ModelId));
+            Assert.True(await update());
             AssertContentUnchanged(beforeLoad, content);
             var materialPath = Assert.Single(Directory.GetFiles(content, "*.mat", SearchOption.AllDirectories));
             var materialInfoPath = materialPath + ".asset";
@@ -95,7 +126,7 @@ public sealed class AssetReimportIntegrationTests(ITestOutputHelper log)
                  "KHR_materials_emissive_strength": {"emissiveStrength": 4}}
                 """);
             await File.WriteAllTextAsync(sourcePath, source.ToJsonString());
-            Assert.True(await client.ReimportAssetAsync(ModelId));
+            Assert.True(await reimport());
             material = ReadYaml(materialPath);
             Assert.Equal(materialId, Scalar(ReadYaml(materialInfoPath), "fileId"));
             Assert.Equal(authoredShader, Scalar(material, "shaderUid"));
@@ -110,37 +141,63 @@ public sealed class AssetReimportIntegrationTests(ITestOutputHelper log)
             var sourceTime = File.GetLastWriteTimeUtc(sourcePath);
             ((YamlMappingNode)material["uniformsFloat"]).Children["material.transmissionFactor"] = new YamlScalarNode("0.1");
             WriteYaml(materialPath, material);
-            Assert.True(await client.UpdateAssetAsync(ModelId));
+            Assert.True(await update());
             Assert.Equal(0.1f, Number(ReadYaml(materialPath), "uniformsFloat", "material.transmissionFactor"));
-            Assert.True(await client.ReimportAssetAsync(ModelId));
+            Assert.True(await reimport());
             Assert.Equal(0.8f, Number(ReadYaml(materialPath), "uniformsFloat", "material.transmissionFactor"));
             Assert.Equal(sourceBytes, await File.ReadAllBytesAsync(sourcePath));
             Assert.Equal(sourceTime, File.GetLastWriteTimeUtc(sourcePath));
 
             var valid = await File.ReadAllTextAsync(materialPath);
             await File.WriteAllTextAsync(materialPath, "uniformsFloat: [");
-            Assert.False(await client.ReimportAssetAsync(ModelId));
-            Assert.False(await client.ReimportAssetAsync(ModelId));
+            Assert.False(await reimport());
+            Assert.False(await reimport());
             await File.WriteAllTextAsync(materialPath, valid);
-            Assert.True(await client.ReimportAssetAsync(ModelId));
+            Assert.True(await reimport());
             Assert.Equal(materialId, Scalar(ReadYaml(materialInfoPath), "fileId"));
 
             File.Delete(materialPath);
-            Assert.True(await client.ReimportAssetAsync(ModelId));
+            Assert.True(await reimport());
             Assert.Equal(materialId, Scalar(ReadYaml(materialInfoPath), "fileId"));
             Assert.Equal(0.8f, Number(ReadYaml(materialPath), "uniformsFloat", "material.transmissionFactor"));
             var repaired = await File.ReadAllBytesAsync(materialPath);
             var repairedTime = File.GetLastWriteTimeUtc(materialPath);
-            Assert.True(await client.ReimportAssetAsync(ModelId));
+            Assert.True(await reimport());
             Assert.Equal(repaired, await File.ReadAllBytesAsync(materialPath));
             Assert.Equal(repairedTime, File.GetLastWriteTimeUtc(materialPath));
 
+#if MACCATALYST
+            // A full reload publishes the completion consumed by AssetsService to refresh its tree.
+            var completions = new List<AssetReloadCompletion>();
+            service.OnAssetReloadCompleted += completions.Add;
+            using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
+            {
+                var reload = service.RequestAssetReloadAsync(timeout.Token);
+                while (!reload.IsCompleted || completions.Count == 0)
+                {
+                    MainThread.Drain();
+                    await Task.Delay(10, timeout.Token);
+                }
+                Assert.True(await reload);
+            }
+            var state = await client.GetAssetReloadStateAsync();
+            Assert.True(state.Available);
+            Assert.Equal(new AssetReloadCompletion(state.CompletedGeneration, true), Assert.Single(completions));
+            await service.StopAsync();
+            Assert.Equal(EngineLifecycleState.Stopped, service.State);
+            var stoppedContent = ReadContent(content);
+            Assert.False(await reimport());
+            AssertContentUnchanged(stoppedContent, content);
+#endif
             await client.DisposeAsync();
             Assert.Equal(0, host.ExitCode);
             Assert.Contains("Managed editor protocol host completed", host.Output);
         }
         finally
         {
+#if MACCATALYST
+            MainThread.Drain();
+#endif
             Directory.Delete(workspace, recursive: true);
         }
     }
