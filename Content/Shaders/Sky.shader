@@ -892,13 +892,15 @@ glslFragment: |
     
     float dA[10];
     float dB[10];
-    float dC[10];
+    float phase[10];
     
     for(int j = 0; j < data.scatteringSteps; j++)
     {
        dA[j] = pow(data.scatteringDensity, j);
        dB[j] = pow(data.scatteringIntensity, j);
-       dC[j] = pow(data.scatteringPhase, j);
+       const float phaseScale = pow(data.scatteringPhase, j);
+       phase[j] = data.phaseInfluence1 * PhaseHenyeyGreenstein(mu, phaseScale * data.eccentrisy1) +
+         data.phaseInfluence2 * PhaseHenyeyGreenstein(mu, phaseScale * data.eccentrisy2);
     }
     
     const uint StepsHighDetail = 128;
@@ -922,38 +924,18 @@ glslFragment: |
         float density = CloudsSampleDensity(position) * avrStep;
         if(density > 0)
         {
+            // Scattering orders share the same sample-to-sun optical depth.
+            // Their density, intensity and phase factors are applied below.
+            const float sunDensity = CloudsSampleDirectDensity(position, dirToSun);
+            const float sunVisibility = SunVisibility(position, dirToSun);
+            const float m3 = data.cloudsAttenuation2 * density;
             for(int j = 0; j < data.scatteringSteps; j++)
             {
-                vec3 randomVec = vec3(0);
-                if(j > 0)
-                {
-                    const vec3 randomSample =
-                      texture(g_noiseSampler, position.xz + j / 16.0f).xyz -
-                      0.5f;
-                    const float randomLengthSquared = dot(
-                      randomSample,
-                      randomSample);
-                    randomVec = randomLengthSquared > 1e-12f
-                      ? randomSample * inversesqrt(randomLengthSquared) * 10.0f
-                      : vec3(0.0f);
-                }
-                
-                vec3 localPosition = position + randomVec;
-                
-                float sunDensity = CloudsSampleDirectDensity(localPosition, dirToSun);
-                
-                float m11 = data.phaseInfluence1 * PhaseHenyeyGreenstein(mu, dC[j] * data.eccentrisy1);
-                float m12 = data.phaseInfluence2 * PhaseHenyeyGreenstein(mu, dC[j] * data.eccentrisy2);
                 float m2 = exp(-dA[j] * data.cloudsAttenuation1 * sunDensity);
-                float m3 = data.cloudsAttenuation2 * density;
-                
-                const float sunVisibility = SunVisibility(
-                  localPosition,
-                  dirToSun);
                 if(sunVisibility > 0.0f)
                 {
                     colorLow += sunVisibility * dB[j] *
-                      (m11 + m12) * m2 * m3 * transmittanceLow;
+                      phase[j] * m2 * m3 * transmittanceLow;
                 }
                 
             }
