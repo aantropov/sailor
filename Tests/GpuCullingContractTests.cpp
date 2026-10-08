@@ -232,6 +232,54 @@ renderTargets:
 		}
 	}
 
+	void TestDepthAttachmentFrameGraphContract()
+	{
+		for (const char* rendererPath : { "DefaultRenderer.renderer", "EditorRenderer.renderer", "ExperimentalRenderer.renderer" })
+		{
+			const auto renderer = YAML::LoadFile(
+				(std::filesystem::path(SAILOR_TEST_SOURCE_DIR) / "Content" / rendererPath).string());
+			TMap<std::string, YAML::Node> targets;
+			for (const auto& target : renderer["renderTargets"])
+			{
+				targets[target["name"].as<std::string>()].reset(target);
+			}
+
+			for (const auto& pass : renderer["frame"])
+			{
+				const auto depthName = GetFrameGraphAttachment(pass, "depthStencil");
+				if (depthName.empty())
+				{
+					continue;
+				}
+				Require(targets.ContainsKey(depthName),
+					std::string(rendererPath) + " must declare consumed depth attachment " + depthName);
+				const auto& depth = targets[depthName];
+				Require(depth["format"].as<std::string>() == "D32_SFLOAT_S8_UINT",
+					"engine graph depth attachments must retain their depth/stencil format");
+
+				const auto colorName = GetFrameGraphAttachment(pass, "color");
+				if (colorName.empty())
+				{
+					continue;
+				}
+				if (colorName == "BackBuffer")
+				{
+					Require(depth["width"].as<std::string>() == "ViewportWidth" &&
+						depth["height"].as<std::string>() == "ViewportHeight",
+						"back-buffer depth must use the viewport extent, not the scaled render extent");
+				}
+				else
+				{
+					Require(targets.ContainsKey(colorName), "the paired color attachment must be declared");
+					const auto& color = targets[colorName];
+					Require(depth["width"].as<std::string>() == color["width"].as<std::string>() &&
+						depth["height"].as<std::string>() == color["height"].as<std::string>(),
+						"depth and color attachments in the same pass must share their extent");
+				}
+			}
+		}
+	}
+
 	void TestRendererGpuCullingPassContract()
 	{
 		const std::filesystem::path contentRoot =
@@ -2421,6 +2469,7 @@ int main(int argc, char** argv)
 		{ "WorkspaceFrameGraphNodeExports", TestWorkspaceFrameGraphNodeExports },
 		{ "AtmosphericFogBlendAndDisabledPass", TestAtmosphericFogBlendAndDisabledPass },
 		{ "ShadowDistanceSettings", TestShadowDistanceSettings },
+		{ "DepthAttachmentFrameGraphContract", TestDepthAttachmentFrameGraphContract },
 		{ "RendererGpuCullingPassContract", TestRendererGpuCullingPassContract },
 		{ "CurrentDepthPyramidReadiness", TestCurrentDepthPyramidReadiness },
 		{ "FrameGraphSequenceMappings", TestFrameGraphSequenceMappings },
