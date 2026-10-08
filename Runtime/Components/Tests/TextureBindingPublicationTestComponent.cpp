@@ -495,7 +495,7 @@ namespace
 		const auto fill = [&]()
 		{
 			scene->m_rhiLightsDataPerCamera.Clear(false);
-			lighting->FillLightingData(scene);
+			lighting->FillLightingData(scene, scene->m_submissionContext->GetFlightSlot());
 			scene->PrepareSnapshots();
 		};
 		// This World's first Fill is B. Only the node, not Lighting's CSM result, has warm A.

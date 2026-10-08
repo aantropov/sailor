@@ -93,7 +93,7 @@ namespace
 		{
 			lighting->Tick(0.0f);
 			scene->m_rhiLightsDataPerCamera.Clear(false);
-			lighting->FillLightingData(scene);
+			lighting->FillLightingData(scene, scene->m_submissionContext->GetFlightSlot());
 		};
 		const auto validateScene = [&](const RHISceneViewPtr& scene, uint32_t shadowOwner, bool bExpectUpdates) -> std::string
 		{
@@ -258,7 +258,7 @@ namespace
 		{
 			// Fill appends these entries; reuse the camera/context/token, not the previous output vector.
 			scene->m_rhiLightsDataPerCamera.Clear(false);
-			lighting->FillLightingData(scene);
+			lighting->FillLightingData(scene, scene->m_submissionContext->GetFlightSlot());
 		};
 
 		fill();

@@ -743,7 +743,7 @@ namespace
 		const auto fill = [&]()
 		{
 			scene->m_rhiLightsDataPerCamera.Clear(false);
-			lighting->FillLightingData(scene);
+			lighting->FillLightingData(scene, scene->m_submissionContext->GetFlightSlot());
 			scene->PrepareSnapshots();
 			scene->m_snapshots[0].m_frameBindings = FrameBindings();
 		};

@@ -80,7 +80,7 @@ namespace Sailor::RHI
 		struct FrameSubmission;
 		void CaptureSceneView(FrameSubmission& submission, const Sailor::FrameState& frame);
 		bool AcquireSubmission(FrameSubmission& submission);
-		void PrepareSceneView(FrameSubmission& submission, const Sailor::FrameState& frame);
+		void PrepareSceneView(FrameSubmission& submission);
 		void RecordAndSubmitFrame(FrameSubmission& submission, const Sailor::FrameState& frame);
 		void CompleteFrame(FrameSubmission& submission);
 		void ReturnSceneView(RHISceneViewPtr& sceneView);
@@ -98,6 +98,7 @@ namespace Sailor::RHI
 
 		std::atomic<bool> m_bFrameGraphOutdated = false;
 		std::atomic<bool> m_bForceStop = false;
+		std::atomic<uint32_t> m_numPendingFrames = 0u;
 
 		RHI::Stats m_stats{};
 

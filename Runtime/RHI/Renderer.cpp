@@ -505,7 +505,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 	if (m_bForceStop ||
 		(!App::HasEditor() && m_driverInstance->ShouldFixLostDevice(m_pViewport)) ||
-		App::GetSubmodule<Tasks::Scheduler>()->GetNumTasks(EThreadType::Render) > MaxFramesInQueue)
+		m_numPendingFrames.load(std::memory_order_acquire) >= MaxFramesInQueue)
 	{
 		return false;
 	}
@@ -527,36 +527,52 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	submission->m_frameGraph = std::move(rhiFrameGraph);
 	submission->m_frameGraphResourceGeneration = m_frameGraphResourceGeneration;
 
-	// Acquire does not read the scene view, so Main can capture it while Render waits.
-	auto acquire = Tasks::CreateTaskWithResult<bool>("Acquire render submission flight"_h,
-		[this, &submission]() { return AcquireSubmission(*submission); }, EThreadType::Render);
-	if (m_previousRenderFrame)
-	{
-		acquire->Join(m_previousRenderFrame);
-	}
-	acquire->Run();
+	// Capture every live ECS input before allowing Main to tick the next frame.
 	CaptureSceneView(*submission, frame);
-	acquire->Wait();
-	if (!acquire->GetResult())
-	{
-		ReturnSceneView(submission->m_sceneView);
-		return false;
-	}
-
-	PrepareSceneView(*submission, frame);
-	auto prepareTasks = submission->m_frameGraph->Prepare(submission->m_sceneView);
 	auto render = Tasks::CreateTask("Render Frame"_h,
-		[this, frame, submission = std::move(submission)]() mutable
+		[this, frame, submission]() mutable
 		{
 			// Release capture when execution ends, not when the retained task dies.
 			auto current = std::move(submission);
-			RecordAndSubmitFrame(*current, frame);
-			CompleteFrame(*current);
+			if (current->m_context)
+			{
+				RecordAndSubmitFrame(*current, frame);
+				CompleteFrame(*current);
+			}
+			else
+			{
+				current->m_sceneView->CompleteSubmissionResources(false);
+				ReturnSceneView(current->m_sceneView);
+			}
+			m_numPendingFrames.fetch_sub(1u, std::memory_order_release);
 		}, EThreadType::Render);
-	for (auto& task : prepareTasks) render->Join(task);
-	render->Run();
-	for (auto& task : prepareTasks) task->Run();
+	auto prepare = Tasks::CreateTask("Prepare render submission flight"_h,
+		[this, submission = std::move(submission), render]() mutable
+		{
+			auto current = std::move(submission);
+			auto record = std::move(render);
+			if (AcquireSubmission(*current))
+			{
+				PrepareSceneView(*current);
+				auto tasks = current->m_frameGraph->Prepare(current->m_sceneView);
+				for (auto& task : tasks)
+				{
+					record->Join(task);
+				}
+				for (auto& task : tasks)
+				{
+					task->Run();
+				}
+			}
+			record->Run();
+		}, EThreadType::Render);
+	if (m_previousRenderFrame)
+	{
+		prepare->Join(m_previousRenderFrame);
+	}
 	m_previousRenderFrame = render;
+	m_numPendingFrames.fetch_add(1u, std::memory_order_relaxed);
+	prepare->Run();
 	return true;
 }
 
@@ -604,6 +620,13 @@ void Renderer::CaptureSceneView(FrameSubmission& submission, const Sailor::Frame
 	world->GetECS<CameraECS>()->CopyCameraData(rhiSceneView);
 	rhiSceneView->m_deltaTime = frame.GetDeltaTime();
 	rhiSceneView->m_currentTime = world->GetTime();
+	world->GetECS<AnimationECS>()->FillAnimationData(rhiSceneView);
+	const uint32_t shadowSlot = static_cast<uint32_t>(
+		(submission.m_submissionId - 1u) % m_submissionContexts.Num());
+	world->GetECS<LightingECS>()->FillLightingData(rhiSceneView, shadowSlot);
+	rhiSceneView->m_drawImGui = frame.GetDrawImGuiTask();
+	rhiSceneView->PrepareDebugDrawCommandLists(world, rhiFrameGraph->GetSceneRenderExtent());
+	rhiSceneView->PrepareSnapshots();
 }
 
 bool Renderer::AcquireSubmission(FrameSubmission& submission)
@@ -642,11 +665,9 @@ bool Renderer::AcquireSubmission(FrameSubmission& submission)
 	return static_cast<bool>(submission.m_context);
 }
 
-void Renderer::PrepareSceneView(FrameSubmission& submission, const Sailor::FrameState& frame)
+void Renderer::PrepareSceneView(FrameSubmission& submission)
 {
 	auto& rhiSceneView = submission.m_sceneView;
-	auto& rhiFrameGraph = submission.m_frameGraph;
-	auto* world = frame.GetWorld();
 	SAILOR_PROFILE_SCOPE("Prepare flight-local scene view");
 	auto& context = submission.m_context;
 	for (const auto& spatialVersion : rhiSceneView->m_sceneVersions)
@@ -667,13 +688,6 @@ void Renderer::PrepareSceneView(FrameSubmission& submission, const Sailor::Frame
 		scene->CollectGarbage();
 	}
 	rhiSceneView->SetSubmissionContext(context);
-	world->GetECS<AnimationECS>()->FillAnimationData(rhiSceneView);
-	world->GetECS<LightingECS>()->FillLightingData(rhiSceneView);
-	rhiSceneView->m_drawImGui = frame.GetDrawImGuiTask();
-	rhiSceneView->PrepareDebugDrawCommandLists(
-		world,
-		rhiFrameGraph->GetSceneRenderExtent());
-	rhiSceneView->PrepareSnapshots();
 }
 
 void Renderer::RecordAndSubmitFrame(FrameSubmission& submission, const Sailor::FrameState& frame)

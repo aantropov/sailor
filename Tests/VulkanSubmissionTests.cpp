@@ -4923,6 +4923,8 @@ frame: []
 		void Process(RHIFrameGraphPtr, RHICommandListPtr transfer, RHICommandListPtr command, const RHISceneViewSnapshot& snapshot) override
 		{
 			++m_numProcessed;
+			m_recordedWorldFrame = snapshot.m_frame;
+			m_recordedWorldTime = snapshot.m_currentTime;
 			m_transferCommand = transfer;
 			m_bCapturedVersionMatches = m_material->GetVersionForSubmission(
 				snapshot.m_submissionContext->GetSubmissionId()) == m_version;
@@ -4953,6 +4955,8 @@ frame: []
 		RHICommandListPtr m_recordedCommand;
 		RHICommandListPtr m_transferCommand;
 		uint64_t m_generation = 0;
+		uint64_t m_recordedWorldFrame = 0;
+		float m_recordedWorldTime = 0.0f;
 		uint32_t m_payload = 0;
 		std::atomic<bool> m_bStarted{ false }, m_bReleased{ false };
 		bool m_bPrepared = false;
@@ -5183,39 +5187,41 @@ frame: []
 		const auto sceneVersion = capturedView->m_virtualSceneVersions[0];
 		capturedView.Clear();
 		const uint32_t retainedVersionRefs = sceneVersion.NumRefs();
-		std::atomic<bool> bCaptureBlocked{ false };
+		const uint64_t capturedWorldFrame = world->GetCurrentFrame();
+		const float capturedWorldTime = world->GetTime();
+		std::atomic<bool> bNextFrameProcessed{ false };
 		bool bCapturedWhileWaiting = false;
+		bool bAdvancedWhileWaiting = false;
 		bool bPreservedResources = false;
 		VkResult signalResult = VK_ERROR_UNKNOWN;
 		std::jthread releaseGpu([&]()
 			{
-				// Hold the first capture step until acquisition has entered its real fence wait.
-				RendererSubmissionTestAccess::LockSceneViews(*renderer, world.GetRawPtr());
-				bCaptureBlocked.store(true);
-				bCaptureBlocked.notify_one();
 				const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-				while (!bWaitStarted.load() && std::chrono::steady_clock::now() < deadline)
+				while ((!bWaitStarted.load() || !bNextFrameProcessed.load()) &&
+					std::chrono::steady_clock::now() < deadline)
 				{
 					std::this_thread::yield();
 				}
-				const bool bAcquiringBeforeCapture = bWaitStarted.load();
-				RendererSubmissionTestAccess::UnlockSceneViews(*renderer, world.GetRawPtr());
-				while (sceneVersion.NumRefs() <= retainedVersionRefs && std::chrono::steady_clock::now() < deadline)
-				{
-					std::this_thread::yield();
-				}
-				bCapturedWhileWaiting = bAcquiringBeforeCapture && sceneVersion.NumRefs() > retainedVersionRefs;
+				bCapturedWhileWaiting = bWaitStarted.load() && sceneVersion.NumRefs() > retainedVersionRefs;
+				bAdvancedWhileWaiting = bPushReturned.load() && bNextFrameProcessed.load();
 				const VkFence nativeFence = *firstFence;
 				bPreservedResources = bWaitStarted.load() &&
 					vkWaitForFences(*device, 1, &nativeFence, VK_TRUE, 50000000ull) == VK_TIMEOUT &&
-					!bPushReturned.load() && firstResources->m_numResets.load() == resetCount;
+					firstResources->m_numResets.load() == resetCount;
 				signalResult = vkSetEvent(*device, node->m_gpuGate);
 			});
-		bCaptureBlocked.wait(false);
 		const bool bAccepted = renderer->PushFrame(frame);
 		bPushReturned.store(true);
+		const uint64_t previousWorldFrame = world->GetCurrentFrame();
+		FrameState nextFrame(world.GetRawPtr(), frame.GetTime() + 16, {}, { 32, 24 }, &frame);
+		engine->ProcessCpuFrame(nextFrame);
+		bNextFrameProcessed.store(world->GetCurrentFrame() > previousWorldFrame);
 		releaseGpu.join();
 		Require(bCapturedWhileWaiting, "CPU scene capture must progress while acquisition waits for its GPU fence");
+		Require(bAdvancedWhileWaiting, "the next world tick must finish while the previous GPU flight is still pending");
+		scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+		Require(node->m_recordedWorldFrame == capturedWorldFrame && node->m_recordedWorldTime == capturedWorldTime,
+			"queued rendering must use the captured frame and time after the live world advances");
 		Require(bPreservedResources && signalResult == VK_SUCCESS && bAccepted &&
 			node->m_resources == firstResources && firstResources->m_numResets.load() == resetCount + 1u,
 			"Renderer must reset flight resources once, only after their GPU completion");
@@ -5228,7 +5234,7 @@ frame: []
 				*static_cast<const uint32_t*>(readbacks[i]->GetPointer()) == 2200u + i,
 				"renderer flight reuse must retain each original completion and GPU payload");
 		}
-		std::cout << "Renderer pending GPU flight: overlapping CPU capture, resources retained until fence, one reset on reuse, all payloads passed\n";
+		std::cout << "Renderer pending GPU flight: next world tick overlaps acquisition, resources retained until fence, one reset on reuse, all payloads passed\n";
 	}
 
 	enum class RendererFailure { None, Upload, MainSubmit, Present, GraphRefresh, GraphUpload };
@@ -5460,9 +5466,10 @@ frame: []
 						});
 				});
 			accepted = renderer->PushFrame(refusedFrame);
+			scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 		}
-		Require(!accepted && refusals == 1 && heldVersions == 2 && node->m_material->GetHistorySize() == 1,
-			"failed acquisition must close the captured material revision before returning");
+		Require(accepted && refusals == 1 && heldVersions == 2 && node->m_material->GetHistorySize() == 1,
+			"queued acquisition failure must close the captured material revision when the task completes");
 		auto returned = renderer->GetOrAddSceneView(world.GetRawPtr());
 		Require(returned == node->m_view && !returned->m_submissionContext,
 			"failed acquisition must return its cleared scene view without recording another frame");

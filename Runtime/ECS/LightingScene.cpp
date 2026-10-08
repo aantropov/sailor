@@ -12,15 +12,12 @@
 using namespace Sailor;
 using namespace Sailor::Tasks;
 
-void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
+void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView, uint32_t shadowSlot)
 {
 	SAILOR_PROFILE_FUNCTION();
-	if (!sceneView || !sceneView->m_submissionContext)
-	{
-		SAILOR_LOG_ERROR("LightingECS::FillLightingData requires an acquired render submission flight.");
-		return;
-	}
-	const uint32_t flightSlot = sceneView->m_submissionContext->GetFlightSlot();
+	// This only prepares CPU commands and immutable bindings. Shadow image writes
+	// execute in render-queue order; their cache ring need not acquire a GPU flight.
+	const uint32_t flightSlot = shadowSlot;
 	if (m_shadows.m_flights.Num() <= flightSlot)
 	{
 		m_shadows.m_flights.Resize(static_cast<size_t>(flightSlot) + 1u);

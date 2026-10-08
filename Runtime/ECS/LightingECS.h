@@ -181,7 +181,7 @@ namespace Sailor
 		uint64_t GetLightingRevision() const { return m_lightingRevision; }
 		SAILOR_API void GetGlobalIlluminationBakeLightProxies(
 			TVector<Raytracing::LightProxy>& outLights, const LightData* excludedLight = nullptr) const;
-		void FillLightingData(RHI::RHISceneViewPtr& sceneView);
+		void FillLightingData(RHI::RHISceneViewPtr& sceneView, uint32_t shadowSlot);
 
 		float GetShadowsOccupiedMemoryMb() const { return m_shadows.m_mapsMb; }
 		float GetCsmShadowsOccupiedMemoryMb() const { return m_shadows.m_csmMapsMb; }
