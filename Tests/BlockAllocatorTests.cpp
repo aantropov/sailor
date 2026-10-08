@@ -1,4 +1,6 @@
 #include "Memory/MemoryBlockAllocator.hpp"
+#include "Memory/MemoryPoolAllocator.hpp"
+#include "Memory/MemoryMultiPoolAllocator.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -230,6 +232,80 @@ namespace BlockAllocatorTests
 		Require(stats.m_capacities.size() == 2 && stats.m_freedBlocks == 2,
 			"logical backing allocations must be released normally without reserving CPU gigabytes");
 	}
+
+	void TestPoolTypedReuse()
+	{
+		AllocatorStats stats;
+		{
+			Sailor::Memory::TPoolAllocator<MisalignedAllocator> allocator(128, 16,
+				(std::numeric_limits<size_t>::max)());
+			allocator.GetGlobalAllocator().m_stats = &stats;
+			auto first = allocator.Allocate<uint32_t>(4);
+			auto second = allocator.Allocate<uint32_t>(4);
+			auto* address = *first;
+			std::memset(*second, 0x3c, second.m_size);
+			allocator.Free(first);
+			Require(!first, "pool Free must clear its handle");
+			auto reused = allocator.Allocate<uint32_t>(4);
+			Require(*reused == address && stats.m_capacities.size() == 1,
+				"the typed pool must reuse a freed range before adding a block");
+			Require(static_cast<uint8_t*>(*second)[0] == 0x3c,
+				"pool range reuse must preserve adjacent allocations");
+			allocator.Free(second);
+			allocator.Free(reused);
+		}
+		Require(stats.m_freedBlocks == stats.m_capacities.size(),
+			"pool destruction must release every backing allocation once");
+	}
+
+	void TestPoolReleasedBlockIndex()
+	{
+		AllocatorStats stats;
+		{
+			Sailor::Memory::TPoolAllocator<MisalignedAllocator> allocator(32, 1, 0);
+			allocator.GetGlobalAllocator().m_stats = &stats;
+			auto first = allocator.Allocate(32, 1);
+			auto second = allocator.Allocate(64, 1);
+			auto third = allocator.Allocate(128, 1);
+			const uint32_t retainedIndex = third.m_blockIndex;
+			const uint32_t releasedIndex = first.m_blockIndex;
+			allocator.Free(third);
+			allocator.Free(first);
+			Require(stats.m_freedBlocks == 1 && allocator.GetOccupiedSpace() == 192,
+				"pool release must remove the block id, not that position in the search layout");
+			auto reused = allocator.Allocate(32, 1);
+			Require(reused.m_blockIndex == retainedIndex && stats.m_capacities.size() == 3,
+				"removing an excess pool block must keep the other free block searchable");
+			allocator.Free(reused);
+			auto larger = allocator.Allocate(256, 1);
+			Require(larger.m_blockIndex == releasedIndex,
+				"a pool must reuse the released block slot when a larger backing block is needed");
+			allocator.Free(larger);
+			allocator.Free(second);
+		}
+		Require(stats.m_freedBlocks == stats.m_capacities.size(),
+			"pool block release and slot reuse must free each backing allocation exactly once");
+	}
+
+	void TestMultiPoolTypedReuse()
+	{
+		Sailor::Memory::TMultiPoolAllocator<> allocator;
+		auto small = allocator.Allocate<uint32_t>(4);
+		auto large = allocator.Allocate<uint32_t>(16);
+		auto* smallAddress = *small;
+		auto* largeAddress = *large;
+		std::memset(*large, 0x5a, large.m_size);
+		allocator.Free(small);
+		auto reusedSmall = allocator.Allocate<uint32_t>(4);
+		Require(*reusedSmall == smallAddress && static_cast<uint8_t*>(*large)[0] == 0x5a,
+			"size-specific pools must independently reuse ranges without changing another pool");
+		allocator.Free(large);
+		auto reusedLarge = allocator.Allocate<uint32_t>(16);
+		Require(*reusedLarge == largeAddress, "the larger size class must retain its own allocator");
+		allocator.Free(reusedSmall);
+		allocator.Free(reusedLarge);
+		Require(!reusedSmall && !reusedLarge, "multi-pool Free must clear both size-class handles");
+	}
 }
 
 int main()
@@ -238,6 +314,9 @@ int main()
 	{
 		BlockAllocatorTests::TestMisalignedBackingBlock();
 		BlockAllocatorTests::TestReuseAndCoalescing();
+		BlockAllocatorTests::TestPoolTypedReuse();
+		BlockAllocatorTests::TestPoolReleasedBlockIndex();
+		BlockAllocatorTests::TestMultiPoolTypedReuse();
 		BlockAllocatorTests::TestReleasedBlockSlotReuse();
 		BlockAllocatorTests::TestLargeLogicalAllocations();
 		std::cout << "BlockAllocatorTests passed\n";

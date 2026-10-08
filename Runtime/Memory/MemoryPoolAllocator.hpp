@@ -1,5 +1,6 @@
 #pragma once
 #include "Memory.h"
+#include "MemoryPtr.hpp"
 #include <algorithm>
 #include "Core/SpinLock.h"
 #include "Containers/Containers.h"
@@ -163,7 +164,7 @@ namespace Sailor::Memory
 						}
 					}
 
-					m_layout.Insert({ ptr.m_offset, ptr.m_size + ptr.m_alignmentOffset }, &(*lower) - m_layout.GetData());
+					m_layout.Insert({ ptr.m_offset, ptr.m_size + ptr.m_alignmentOffset }, lower - m_layout.begin());
 				}
 				else
 				{
@@ -286,7 +287,7 @@ namespace Sailor::Memory
 					m_layout.Add(index);
 				}
 
-				if (!m_blocks[index].m_bIsOutOfSync && HeuristicToMarkBlockDead(m_blocks[index].m_blockSize, m_blocks[index].m_layout.size()))
+				if (!m_blocks[index].m_bIsOutOfSync && HeuristicToMarkBlockDead(m_blocks[index].m_blockSize, m_blocks[index].m_layout.Num()))
 				{
 					m_blocks[index].m_bIsOutOfSync = true;
 				}
@@ -294,7 +295,7 @@ namespace Sailor::Memory
 				if (m_blocks[index].m_bIsOutOfSync && m_blocks[index].IsEmpty())
 				{
 					m_blocks[index].m_bIsOutOfSync = false;
-					m_blocks[index].m_layout.clear();
+					m_blocks[index].m_layout.Clear();
 					m_blocks[index].m_notTrackedEmptySpace = 0;
 
 					if (std::find(m_layout.begin(), m_layout.end(), index) == m_layout.end())
@@ -315,7 +316,7 @@ namespace Sailor::Memory
 		{
 			m_lock.Lock();
 
-			m_blocks.clear();
+			m_blocks.Clear();
 			m_layout.Clear();
 			m_emptyBlocks.Clear();
 
@@ -365,12 +366,12 @@ namespace Sailor::Memory
 				}
 			}
 
-			MemoryBlock block = MemoryBlock((size_t)std::max((uint32_t)size, (uint32_t)(m_startBlockSize * pow(2, m_blocks.size()))), this);
+			MemoryBlock block = MemoryBlock((size_t)std::max((uint32_t)size, (uint32_t)(m_startBlockSize * pow(2, m_blocks.Num()))), this);
 			uint32_t blockIndex = 0;
 
 			if (m_emptyBlocks.Num() == 0)
 			{
-				blockIndex = (uint32_t)m_blocks.size();
+				blockIndex = (uint32_t)m_blocks.Num();
 			}
 			else
 			{
@@ -384,7 +385,7 @@ namespace Sailor::Memory
 			m_layout.Add(block.m_blockIndex);
 			m_usedDataSpace += block.GetBlockSize();
 
-			if (blockIndex == m_blocks.size())
+			if (blockIndex == m_blocks.Num())
 			{
 				m_blocks.Add(std::move(block));
 			}
@@ -401,7 +402,7 @@ namespace Sailor::Memory
 				m_emptyBlocks.Add(block.GetBlockIndex());
 
 				m_usedDataSpace -= block.m_blockSize;
-				m_layout.RemoveAt(block.m_blockIndex, m_layout.end());
+				m_layout.RemoveFirst(block.m_blockIndex);
 
 				block.Clear();
 
