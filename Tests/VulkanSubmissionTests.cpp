@@ -3902,6 +3902,38 @@ frame: []
 				!App::GetInstance() && !ImGuiApi::GetCurrentContext() && allocations.m_liveAllocations == 0,
 				"failed bootstrap must roll back without creating or retaining an ImGui context");
 
+			Tests::TempDirectory missingWorldDirectory("imgui-bootstrap");
+			const auto missingWorld = Workspace::PathToUtf8(missingWorldDirectory.Path("Missing.world"));
+			std::vector<const char*> failedArguments;
+			for (int i = 0; i < argc; ++i)
+			{
+				const std::string_view argument = argv[i];
+				if (argument != "--editor" && argument != "--new-world")
+				{
+					failedArguments.push_back(argv[i]);
+				}
+			}
+			failedArguments.insert(failedArguments.end(), { "--world", missingWorld.c_str() });
+			Require(App::Initialize(failedArguments.data(), static_cast<int32_t>(failedArguments.size())) ==
+				EAppInitializationResult::Failed && App::GetSubmodule<EngineLoop>() &&
+				ImGuiApi::GetCurrentContext() && allocations.m_liveAllocations > 0,
+				"a missing startup world must fail after constructing the actual ImGui context");
+			Require(App::Shutdown() && !App::GetInstance() && !ImGuiApi::GetCurrentContext() &&
+				allocations.m_liveAllocations == 0,
+				"failed world bootstrap must release the already constructed ImGui context and allocations");
+
+			std::string failedWorldInitialize;
+			for (const auto argument : failedArguments)
+			{
+				Tests::ProtocolWire::AppendBytesField(failedWorldInitialize, 1u, argument);
+			}
+			const auto allocationsBeforeHost = allocations.m_totalAllocations.load();
+			Require(start(failedWorldInitialize) == Protocol::EEditorEngineWebSocketHostStatus::InitializationFailed &&
+				allocations.m_totalAllocations > allocationsBeforeHost && !App::GetInstance() &&
+				!ImGuiApi::GetCurrentContext() && allocations.m_liveAllocations == 0,
+				"native host rollback must also destroy ImGui when world loading fails after context creation");
+			std::cout << "Failed world bootstrap released its ImGui context through both App and native host shutdown\n";
+
 			for (uint32_t cycle = 0; cycle < 24; ++cycle)
 			{
 				Require(start(initialize) == Protocol::EEditorEngineWebSocketHostStatus::Ok,
