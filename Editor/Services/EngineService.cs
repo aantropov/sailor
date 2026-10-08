@@ -1468,8 +1468,7 @@ namespace SailorEditor.Services
                     if (nativeShutdownPending)
                     {
                         var shutdownFailure = await ShutdownNativeSessionAsync(
-                            stopNative: false,
-                            destroyRemoteViewport: false).ConfigureAwait(false);
+                            stopNative: false).ConfigureAwait(false);
                         if (nativeShutdownPending)
                         {
                             throw new EngineLifecycleException(
@@ -1728,8 +1727,7 @@ namespace SailorEditor.Services
                 }
 
                 var shutdownFailure = await ShutdownNativeSessionAsync(
-                    stopNative: false,
-                    destroyRemoteViewport: true).ConfigureAwait(false);
+                    stopNative: false).ConfigureAwait(false);
                 if (shutdownFailure is not null)
                 {
                     failure = CombineFailures(failure, shutdownFailure);
@@ -1940,8 +1938,7 @@ namespace SailorEditor.Services
             }
 
             var shutdownFailure = await ShutdownNativeSessionAsync(
-                stopNative: !startRequested,
-                destroyRemoteViewport: false).ConfigureAwait(false);
+                stopNative: !startRequested).ConfigureAwait(false);
             if (shutdownFailure is not null)
             {
                 failure = CombineFailures(failure, shutdownFailure);
@@ -1979,9 +1976,7 @@ namespace SailorEditor.Services
             }
         }
 
-        async Task<Exception?> ShutdownNativeSessionAsync(
-            bool stopNative,
-            bool destroyRemoteViewport)
+        async Task<Exception?> ShutdownNativeSessionAsync(bool stopNative)
         {
             Exception? failure = null;
             if (stopNative)
@@ -1994,21 +1989,8 @@ namespace SailorEditor.Services
                 }
             }
 
-            if (destroyRemoteViewport)
-            {
-                try
-                {
-                    await protocolClient.DestroyRemoteViewportAsync(
-                        SceneViewportId).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    failure = failure is null
-                        ? ex
-                        : new AggregateException(failure, ex);
-                }
-            }
-
+            // Native App shutdown owns viewport cleanup. After Stop, regular
+            // viewport commands are no longer admitted by the engine thread.
             var shutdownCompleted = false;
             try
             {
