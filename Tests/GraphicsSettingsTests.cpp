@@ -185,7 +185,7 @@ graphics:
 
 	void TestFramesInFlight()
 	{
-		for (uint32_t frames : { 1u, 2u, 3u })
+		for (uint32_t frames : { 1u, 2u, 3u, 4u })
 		{
 			auto document = ProjectDocument();
 			document["graphics"]["maxFramesInFlight"] = frames;
@@ -193,7 +193,7 @@ graphics:
 			Require(parsed.IsLoaded() && parsed.m_settings.m_maxFramesInFlight == frames,
 				"project settings must retain each supported flight count");
 		}
-		for (const auto value : { "0", "4", "-1", "1.5", "invalid" })
+		for (const auto value : { "0", "5", "-1", "1.5", "invalid" })
 		{
 			auto document = ProjectDocument();
 			document["graphics"]["maxFramesInFlight"] = value;

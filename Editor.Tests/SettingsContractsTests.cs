@@ -84,6 +84,7 @@ public class SettingsContractsTests
     [InlineData(1)]
     [InlineData(2)]
     [InlineData(3)]
+    [InlineData(4)]
     public async Task FramesInFlight_RoundTripsAndRestartsOnlyWhenChanged(int frames)
     {
         var directory = Path.Combine(Path.GetTempPath(), "SailorFrameSettings-" + Guid.NewGuid().ToString("N"));
@@ -123,7 +124,7 @@ public class SettingsContractsTests
 
     [Theory]
     [InlineData(0)]
-    [InlineData(4)]
+    [InlineData(5)]
     public void FramesInFlight_RejectsUnsupportedCounts(int frames)
     {
         var source = GraphicsSettingsDefaults.Project with

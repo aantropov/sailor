@@ -344,10 +344,10 @@ public static class GraphicsSettingsValidator
                 "Default quality must be one of Ultra, High, Medium, Low, or VeryLow."));
         }
 
-        if (document.Graphics.MaxFramesInFlight is < 1 or > 3)
+        if (document.Graphics.MaxFramesInFlight is < 1 or > 4)
         {
             issues.Add(new GraphicsSettingsValidationIssue(
-                "graphics.maxFramesInFlight", "Frames in flight must be 1, 2, or 3."));
+                "graphics.maxFramesInFlight", "Frames in flight must be 1, 2, 3, or 4."));
         }
 
         foreach (var quality in Enum.GetValues<GraphicsQualityLevel>())

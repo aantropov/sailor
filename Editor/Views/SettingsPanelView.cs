@@ -706,7 +706,8 @@ public sealed class SettingsPanelView : ContentView
     [
         new(1, "1"),
         new(2, "2"),
-        new(3, "3")
+        new(3, "3"),
+        new(4, "4")
     ];
 
     static readonly PickerOption<GraphicsQualityLevel>[] QualityOptions =

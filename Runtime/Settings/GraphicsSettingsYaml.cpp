@@ -159,8 +159,8 @@ namespace
 					{
 						parsed.m_maxFramesInFlight = frames.template as<uint32_t>();
 					}
-					RequireSetting(parsed.m_maxFramesInFlight >= 1u && parsed.m_maxFramesInFlight <= 3u,
-						"maxFramesInFlight", "must be 1, 2 or 3");
+					RequireSetting(parsed.m_maxFramesInFlight >= 1u && parsed.m_maxFramesInFlight <= 4u,
+						"maxFramesInFlight", "must be 1, 2, 3 or 4");
 					path = "graphics.presets";
 					const auto presets = graphics["presets"];
 					RequireMap(presets);
