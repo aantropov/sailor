@@ -208,13 +208,19 @@ namespace Sailor::Tests
 			std::map<uint32_t, ShadowObservation> flights;
 			std::vector<uint16_t> pausedPixels;
 			std::vector<uint16_t> resumedPixels;
+			std::vector<uint16_t> editedPixels;
 			ShadowObservation paused;
 			FrameState previous;
 			uint32_t reused = 0, invalidated = 0;
-			for (uint32_t frame = 0; frame < 24; ++frame)
+			for (uint32_t frame = 0; frame < 36; ++frame)
 			{
 				if (frame == 12) animator->Play();
 				if (frame == 14) animator->Stop();
+				if (frame == 24)
+				{
+					clip->m_frames[0].m_position.x += 0.1f;
+					clip->m_frames[1].m_position.x += 0.1f;
+				}
 				const auto time = previous.GetTime() + (frame == 12 ? 500 : frame == 13 ? 0 : 16);
 				FrameState current(world.GetRawPtr(), time, {}, { 32, 24 }, frame ? &previous : nullptr);
 				engine->ProcessCpuFrame(current);
@@ -232,8 +238,9 @@ namespace Sailor::Tests
 					"the actual submitted shadow draw and readback must finish");
 				for (const auto& payload : observed.m_payloads)
 					Require(payload && payload->IsSuccessful(), "the production shadow pass must complete its payload");
+				const uint32_t pose = frame / 12;
 				Require(observed.m_bones && observed.m_bones->Num() == 1 &&
-					std::abs((*observed.m_bones)[0][3].x - (frame < 12 ? 0.0f : 0.1f)) < 1e-6f,
+					std::abs((*observed.m_bones)[0][3].x - 0.1f * pose) < 1e-6f,
 					"the real renderer must publish the current animator pose to the shadow graph");
 				const auto* pixels = static_cast<const uint16_t*>(observed.m_pixels->GetPointer());
 				const auto pixelCount = observed.m_pixels->GetSize() / sizeof(uint16_t);
@@ -244,16 +251,29 @@ namespace Sailor::Tests
 					paused = observed;
 					pausedPixels.assign(pixels, pixels + pixelCount);
 				}
-				Require(observed.m_animationRevision == paused.m_animationRevision + (frame < 12 ? 0u : 1u) &&
+				Require(observed.m_animationRevision == paused.m_animationRevision + pose && clip->m_revision == 1 &&
 					(*paused.m_bones)[0][3].x == 0.0f && observed.m_lightMatrices == paused.m_lightMatrices &&
 					*observed.m_sceneVersions == *paused.m_sceneVersions,
 					"only the animation pose may change; retained palette, caster scene and light matrices must stay stable");
 				Require(std::equal(pausedPixels.begin(), pausedPixels.end(), pixels) == (frame < 12),
 					"resuming animation must change the shadow pixels without moving the object or light");
 				if (frame == 12) resumedPixels.assign(pixels, pixels + pixelCount);
-				if (frame > 12)
+				if (frame > 12 && frame < 24)
+				{
 					Require(std::equal(resumedPixels.begin(), resumedPixels.end(), pixels),
 						"zero elapsed time and pausing again must preserve the resumed shadow pixels");
+				}
+				if (frame == 24)
+				{
+					Require(!std::equal(resumedPixels.begin(), resumedPixels.end(), pixels),
+						"in-place pose edits must change actual shadow pixels without restarting the animator");
+					editedPixels.assign(pixels, pixels + pixelCount);
+				}
+				if (frame > 24)
+				{
+					Require(std::equal(editedPixels.begin(), editedPixels.end(), pixels),
+						"an unchanged edited pose must preserve the cached shadow pixels");
+				}
 				auto found = flights.find(observed.m_flight);
 				if (found == flights.end())
 				{
@@ -282,10 +302,10 @@ namespace Sailor::Tests
 				previous = std::move(current);
 			}
 			Require(flights.size() == Renderer::GetDriver()->GetMaxFramesInFlight() &&
-				reused >= 16 && invalidated == flights.size(),
-				"both paused poses must reuse warm flights, with one invalidation per flight after resume");
-			std::cout << "Animation shadow cache: real World/PushFrame, 24 frames, " << flights.size()
-				<< " flights, paused reuse, one pose invalidation, retained snapshots and changed PCF pixels passed\n";
+				reused >= 24 && invalidated == flights.size() * 2,
+				"paused poses must reuse warm flights, with one invalidation per flight after resume and an in-place edit");
+			std::cout << "Animation shadow cache: real World/PushFrame, 36 frames, " << flights.size()
+				<< " flights, paused reuse, playback and in-place pose updates, retained snapshots and changed PCF pixels passed\n";
 		}
 		catch (...)
 		{

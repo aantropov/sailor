@@ -381,8 +381,6 @@ void AnimationECS::Tick(float deltaTime)
 			float destinationTime = 0.0f;
 			bool bSourceLoops = false;
 			bool bDestinationLoops = false;
-			AnimatorComponentData::PoseInputs inputs;
-			inputs.m_bonesCount = data.GetBonesCount();
 			const bool bUseController = !data.m_bIsControllerRefreshPending &&
 				data.m_controllerInstance.IsValid() && data.m_animationSet &&
 				data.m_controllerAnimations.Num() == data.m_controller->GetStates().Num();
@@ -417,10 +415,14 @@ void AnimationECS::Tick(float deltaTime)
 			}
 
 			const bool bSampled = source && source->m_numBones == data.GetBonesCount() &&
-				AnimationPose::ResolveFrame(*source, sourceTime, bSourceLoops, inputs.m_frame);
+				AnimationPose::Sample(source, sourceTime, bSourceLoops,
+					data.m_sampledSkeleton, data.m_frameIndex, data.m_lerp);
 			if (!bSampled)
 			{
-				if (source && source->m_numBones != data.GetBonesCount()) source.Clear();
+				if (source && source->m_numBones != data.GetBonesCount())
+				{
+					source.Clear();
+				}
 				if (!source && bUseController)
 				{
 					for (const auto& animation : data.m_controllerAnimations)
@@ -436,49 +438,49 @@ void AnimationECS::Tick(float deltaTime)
 				{
 					source = data.m_animation;
 				}
-			}
-			const bool bBlend = bSampled && destination && destination->m_numBones == data.GetBonesCount() &&
-				AnimationPose::ResolveFrame(*destination, destinationTime, bDestinationLoops, inputs.m_blendFrame);
-			if (bBlend)
-			{
-				inputs.m_blendAnimation = destination.GetRawPtr();
-				inputs.m_blendRevision = destination->m_revision;
-				inputs.m_blendAlpha = data.m_controllerInstance.GetTransitionAlpha();
-			}
-			inputs.m_animation = source ? source.GetRawPtr() : nullptr;
-			inputs.m_animationRevision = source ? source->m_revision : 0;
-			bPoseChanged = inputs != data.m_poseInputs;
-			if (bPoseChanged)
-			{
-				if (bSampled)
+				if (source && source->m_restPose.Num() == data.GetBonesCount())
 				{
-					AnimationPose::SampleFrame(*source, inputs.m_frame,
-						data.m_currentSkeleton, data.m_frameIndex, data.m_lerp);
-				}
-				else if (source && source->m_restPose.Num() == data.GetBonesCount())
-				{
-					data.m_currentSkeleton = source->m_restPose;
+					data.m_sampledSkeleton = source->m_restPose;
 				}
 				else
 				{
-					data.m_currentSkeleton.Resize(data.GetBonesCount());
-					for (auto& transform : data.m_currentSkeleton) transform = Math::Transform{};
+					data.m_sampledSkeleton.Resize(data.GetBonesCount());
+					for (auto& transform : data.m_sampledSkeleton)
+					{
+						transform = Math::Transform{};
+					}
 				}
-				if (bBlend)
+			}
+			if (bSampled && destination && destination->m_numBones == data.GetBonesCount())
+			{
+				uint32_t frame = 0;
+				float lerp = 0.0f;
+				if (AnimationPose::Sample(destination, destinationTime, bDestinationLoops,
+					data.m_blendSkeleton, frame, lerp))
 				{
-					uint32_t frame = 0;
-					float lerp = 0.0f;
-					AnimationPose::SampleFrame(*destination, inputs.m_blendFrame,
-						data.m_blendSkeleton, frame, lerp);
-					AnimationPose::BlendLocalPoses(data.m_currentSkeleton, data.m_blendSkeleton,
-						inputs.m_blendAlpha, data.m_currentSkeleton);
+					AnimationPose::BlendLocalPoses(data.m_sampledSkeleton, data.m_blendSkeleton,
+						data.m_controllerInstance.GetTransitionAlpha(), data.m_sampledSkeleton);
 				}
-				TVector<int32_t> rootBoneIndices;
-				const auto& parents = source && source->m_parentBoneIndices.Num() == data.GetBonesCount() ?
-					source->m_parentBoneIndices : rootBoneIndices;
+			}
+			TVector<int32_t> rootBoneIndices;
+			const auto& parents = source && source->m_parentBoneIndices.Num() == data.GetBonesCount() ?
+				source->m_parentBoneIndices : rootBoneIndices;
+			// Procedural clips edit samples without advancing time or the asset revision.
+			// Reuse composed matrices only when the local pose and hierarchy still match.
+			bPoseChanged = parents != data.m_poseParents ||
+				!std::equal(data.m_sampledSkeleton.begin(), data.m_sampledSkeleton.end(),
+					data.m_currentSkeleton.begin(), data.m_currentSkeleton.end(),
+					[](const Math::Transform& lhs, const Math::Transform& rhs)
+					{
+						return lhs.m_position == rhs.m_position && lhs.m_scale == rhs.m_scale &&
+							lhs.GetRotation() == rhs.GetRotation();
+					});
+			if (bPoseChanged)
+			{
+				TVector<Math::Transform>::Swap(data.m_currentSkeleton, data.m_sampledSkeleton);
+				data.m_poseParents = parents;
 				AnimationPose::ComposeLocalPose(data.m_currentSkeleton, parents,
 					data.m_globalMatrices, data.m_composeState);
-				data.m_poseInputs = inputs;
 			}
 		}
 

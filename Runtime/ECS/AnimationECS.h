@@ -46,20 +46,8 @@ namespace Sailor
 
 	protected:
 
-		struct PoseInputs
-		{
-			const Animation* m_animation = nullptr;
-			const Animation* m_blendAnimation = nullptr;
-			uint64_t m_animationRevision = 0;
-			uint64_t m_blendRevision = 0;
-			uint32_t m_bonesCount = 0;
-			float m_frame = -1.0f;
-			float m_blendFrame = -1.0f;
-			float m_blendAlpha = 0.0f;
-			bool operator==(const PoseInputs&) const = default;
-		};
-
-		PoseInputs m_poseInputs;
+		TVector<Math::Transform> m_sampledSkeleton;
+		TVector<int32_t> m_poseParents;
 		const Model* m_poseModel = nullptr;
 		uint64_t m_poseModelRevision = 0;
 		TObjectPtr<Animation> m_animation;

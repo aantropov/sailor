@@ -528,6 +528,89 @@ namespace
 		}
 	}
 
+	void TestPausedPoseEdits()
+	{
+		Fixture fixture;
+		auto clip = fixture.Clip(2, 2, 1, 2);
+		clip->m_numFrames = 1;
+		clip->m_frames.Resize(2);
+		clip->m_frames[1].m_position.x = 1;
+		clip->m_parentBoneIndices[1] = 0;
+		fixture.m_animator->SetAnimation(clip);
+		auto neighbor = fixture.m_world.Instantiate("Shared procedural pose")->AddComponent<AnimatorComponent>();
+		neighbor->SetAnimation(clip);
+		neighbor->Stop();
+		const auto initial = fixture.Tick();
+		const auto clipRevision = clip->m_revision;
+		Require(Position(initial) == 2 && Position(initial, 1) == 3 && neighbor->GetSkeletonOffset() == 2,
+			"the fixture must publish a shared two-bone pose before editing it");
+
+		clip->m_frames[0].m_position.x = 7;
+		const auto translated = fixture.Tick();
+		Require(Position(translated) == 7 && Position(translated, 2) == 7 &&
+			translated->m_animationRevision == initial->m_animationRevision + 1,
+			"an in-place translation edit must update every paused animator sharing the clip");
+		clip->m_frames[1].SetRotation(glm::angleAxis(0.4f, glm::vec3(0, 0, 1)));
+		const auto rotated = fixture.Tick();
+		const auto expectedRotation = clip->m_frames[0].Matrix() * clip->m_frames[1].Matrix();
+		Require((*rotated->m_cpuBoneMatrices)[1] == expectedRotation &&
+			(*rotated->m_cpuBoneMatrices)[3] == expectedRotation &&
+			rotated->m_animationRevision == translated->m_animationRevision + 1,
+			"a rotation-only edit must update the shared paused pose");
+		clip->m_frames[1].m_scale = glm::vec4(2, 3, 1, 1);
+		const auto edited = fixture.Tick();
+		const auto expectedChild = clip->m_frames[0].Matrix() * clip->m_frames[1].Matrix();
+		Require(Position(edited) == 7 && (*edited->m_cpuBoneMatrices)[1] == expectedChild &&
+			Position(edited, 2) == 7 && (*edited->m_cpuBoneMatrices)[3] == expectedChild,
+			"a scale-only edit must update the shared paused pose");
+		Require(clip->m_revision == clipRevision && fixture.m_animator->GetData().m_currentFrame == 0 &&
+			!fixture.m_animator->GetData().m_bIsPlaying && neighbor->GetSkeletonOffset() == 2 &&
+			edited->m_animationRevision == rotated->m_animationRevision + 1 && Position(initial) == 2,
+			"pose edits must publish once without restarting playback, reallocating bones or changing retained frames");
+		Require(fixture.Tick()->m_cpuBoneMatrices == edited->m_cpuBoneMatrices,
+			"an unchanged procedural pose must keep its published palette");
+
+		clip->m_parentBoneIndices[1] = -1;
+		const auto detached = fixture.Tick();
+		Require((*detached->m_cpuBoneMatrices)[1] == clip->m_frames[1].Matrix() &&
+			detached->m_animationRevision == edited->m_animationRevision + 1,
+			"an in-place hierarchy edit must recompose the paused pose");
+		clip->m_numFrames = 0;
+		clip->m_frames.Clear();
+		const auto rest = fixture.Tick();
+		clip->m_restPose[0].m_position.x = 9;
+		const auto restEdited = fixture.Tick();
+		Require(Position(rest) == 2 && Position(restEdited) == 9 &&
+			restEdited->m_animationRevision == rest->m_animationRevision + 1 &&
+			fixture.Tick()->m_cpuBoneMatrices == restEdited->m_cpuBoneMatrices,
+			"mutable rest poses must update once and then reuse the unchanged palette");
+	}
+
+	void TestPausedBlendPoseEdits()
+	{
+		Fixture fixture;
+		auto source = fixture.Clip(2, 2);
+		auto destination = fixture.Clip(10, 10);
+		fixture.Configure(source, destination, 1);
+		fixture.Tick();
+		Require(fixture.m_animator->SetBool("Move"_h, true), "the blend parameter must exist");
+		fixture.Tick();
+		fixture.m_animator->Play();
+		const auto halfway = fixture.Tick(0.5f);
+		fixture.m_animator->Stop();
+		Require(Position(halfway) == 6, "the fixture must stop halfway through its blend");
+		source->m_frames[0].m_position.x = source->m_frames[1].m_position.x = 4;
+		const auto sourceEdited = fixture.Tick();
+		Require(Position(sourceEdited) == 7 && sourceEdited->m_animationRevision == halfway->m_animationRevision + 1,
+			"editing the source samples must update an otherwise unchanged paused blend");
+		destination->m_frames[0].m_position.x = destination->m_frames[1].m_position.x = 12;
+		const auto destinationEdited = fixture.Tick();
+		Require(Position(destinationEdited) == 8 &&
+			destinationEdited->m_animationRevision == sourceEdited->m_animationRevision + 1 &&
+			Position(halfway) == 6 && fixture.Tick()->m_cpuBoneMatrices == destinationEdited->m_cpuBoneMatrices,
+			"editing the destination samples must update once while retaining old blended frames");
+	}
+
 	void BenchmarkPoseReuse()
 	{
 		constexpr uint32_t ticks = 500;
@@ -568,7 +651,9 @@ int main(int argc, char** argv)
 		{ "FallbackEditsAfterControllerFailure", TestFallbackEditsAfterControllerFailure },
 		{ "FallbackEditWhileControllerLoads", TestFallbackEditWhileControllerLoads },
 		{ "ModelReplacementReskinsPausedPose", TestModelReplacementReskinsPausedPose },
-		{ "SingleFrameAndClampedPoseReuse", TestSingleFrameAndClampedPoseReuse }
+		{ "SingleFrameAndClampedPoseReuse", TestSingleFrameAndClampedPoseReuse },
+		{ "PausedPoseEdits", TestPausedPoseEdits },
+		{ "PausedBlendPoseEdits", TestPausedBlendPoseEdits }
 	};
 	for (const auto& [name, test] : tests)
 	{

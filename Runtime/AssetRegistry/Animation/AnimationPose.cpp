@@ -63,6 +63,12 @@ void AnimationPose::SampleFrame(const Animation& animation, float frame,
 	{
 		outLocalPose.Resize(animation.m_numBones);
 	}
+	if (outLerp == 0.0f)
+	{
+		std::copy_n(animation.m_frames.GetData() + static_cast<size_t>(outFrameIndex) * animation.m_numBones,
+			animation.m_numBones, outLocalPose.GetData());
+		return;
+	}
 	for (uint32_t boneIndex = 0; boneIndex < animation.m_numBones; ++boneIndex)
 	{
 		const Math::Transform& from = animation.m_frames[
