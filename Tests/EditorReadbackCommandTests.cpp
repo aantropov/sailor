@@ -125,12 +125,20 @@ namespace
 				else node->SetRHIResource("src"_h, source.m_resource);
 			}
 			const glm::u8vec4 color(17 + frame * 13, 61 + frame * 7, 211 - frame * 19, 127 + frame * 11);
+			// One retained readback leaves just one reusable buffer with a single flight.
+			if (frame == 3 && Renderer::GetDriver()->GetMaxFramesInFlight() == 1u)
+			{
+				Complete(*node, pending);
+			}
 			auto capture = Record(*node, graph, source, color, 100 + frame);
 			expectedBytes += uint64_t(capture.m_extent.x) * capture.m_extent.y * 4;
 			if (frame == 2) pending = capture;
 			else
 			{
-				if (frame == 3) Complete(*node, pending);
+				if (frame == 3 && Renderer::GetDriver()->GetMaxFramesInFlight() > 1u)
+				{
+					Complete(*node, pending);
+				}
 				auto completed = Complete(*node, capture);
 				if (frame == 0) { retained = completed; first = capture; }
 			}

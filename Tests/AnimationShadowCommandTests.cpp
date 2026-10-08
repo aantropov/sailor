@@ -281,7 +281,8 @@ namespace Sailor::Tests
 				}
 				previous = std::move(current);
 			}
-			Require(flights.size() >= 2 && reused >= 16 && invalidated == flights.size(),
+			Require(flights.size() == Renderer::GetDriver()->GetMaxFramesInFlight() &&
+				reused >= 16 && invalidated == flights.size(),
 				"both paused poses must reuse warm flights, with one invalidation per flight after resume");
 			std::cout << "Animation shadow cache: real World/PushFrame, 24 frames, " << flights.size()
 				<< " flights, paused reuse, one pose invalidation, retained snapshots and changed PCF pixels passed\n";

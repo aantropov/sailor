@@ -1,6 +1,7 @@
 settingsVersion: 1
 graphics:
   defaultQuality: High
+  maxFramesInFlight: 2
   presets:
     Ultra:
       resolutionFactor: 1

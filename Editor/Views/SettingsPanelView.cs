@@ -23,6 +23,7 @@ public sealed class SettingsPanelView : ContentView
     readonly GraphicsSettingsDraftSession _graphicsDraftSession = new();
     readonly VerticalStackLayout _entriesLayout;
     Picker? _projectDefaultQualityPicker;
+    Picker? _maxFramesInFlightPicker;
     Picker? _editorQualityPicker;
     Picker? _statsModePicker;
     GraphicsSettingsSnapshot? _graphicsSnapshot;
@@ -182,6 +183,7 @@ public sealed class SettingsPanelView : ContentView
 
         _graphicsPresetEditors.Clear();
         _projectDefaultQualityPicker = null;
+        _maxFramesInFlightPicker = null;
         _editorQualityPicker = null;
         _statsModePicker = null;
 
@@ -360,6 +362,7 @@ public sealed class SettingsPanelView : ContentView
         _entriesLayout.Children.Clear();
         _graphicsPresetEditors.Clear();
         _projectDefaultQualityPicker = null;
+        _maxFramesInFlightPicker = null;
         _editorQualityPicker = null;
         _statsModePicker = null;
 
@@ -402,6 +405,9 @@ public sealed class SettingsPanelView : ContentView
             _projectDefaultQualityPicker = CreateOptionPicker(
                 QualityOptions,
                 draft.ProjectDefaultQuality);
+            _maxFramesInFlightPicker = CreateOptionPicker(
+                FramesInFlightOptions,
+                draft.MaxFramesInFlight);
             _editorQualityPicker = CreateOptionPicker(
                 EditorQualityOptions,
                 draft.SelectedQuality);
@@ -412,6 +418,10 @@ public sealed class SettingsPanelView : ContentView
                 "Project Default Quality",
                 "Preset used by standalone/game startup and by Project Default in the editor.",
                 _projectDefaultQualityPicker));
+            _entriesLayout.Children.Add(CreateGraphicsField(
+                "Frames in Flight",
+                "Maximum concurrent GPU frames. Lower values reduce queued latency; higher values can improve throughput. Applying restarts the Engine.",
+                _maxFramesInFlightPicker));
             _entriesLayout.Children.Add(CreateGraphicsField(
                 "Scene View Quality",
                 "Workspace-local editor override. Applying a change restarts the Engine.",
@@ -531,6 +541,11 @@ public sealed class SettingsPanelView : ContentView
                 statsMode.Value);
         }
 
+        if (_maxFramesInFlightPicker?.SelectedItem is PickerOption<int> frames)
+        {
+            draft.SetMaxFramesInFlight(frames.Value);
+        }
+
         foreach (var editor in _graphicsPresetEditors)
             draft.SetPreset(editor.Quality, editor.CaptureDraft());
         _graphicsDirty = draft.IsDirty;
@@ -550,7 +565,7 @@ public sealed class SettingsPanelView : ContentView
     Picker CreateOptionPicker<T>(
         IReadOnlyList<PickerOption<T>> options,
         T selectedValue)
-        where T : struct, Enum
+        where T : struct
     {
         var picker = new Picker
         {
@@ -686,6 +701,13 @@ public sealed class SettingsPanelView : ContentView
         => quality == GraphicsQualityLevel.VeryLow
             ? "Very Low"
             : quality.ToString();
+
+    static readonly PickerOption<int>[] FramesInFlightOptions =
+    [
+        new(1, "1"),
+        new(2, "2"),
+        new(3, "3")
+    ];
 
     static readonly PickerOption<GraphicsQualityLevel>[] QualityOptions =
         Enum.GetValues<GraphicsQualityLevel>()
@@ -894,7 +916,7 @@ public sealed class SettingsPanelView : ContentView
     }
 
     sealed record PickerOption<T>(T Value, string DisplayName)
-        where T : struct, Enum
+        where T : struct
     {
         public override string ToString() => DisplayName;
     }

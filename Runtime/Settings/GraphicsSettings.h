@@ -129,6 +129,7 @@ namespace Sailor::Settings
 
 		uint32_t m_version = ProjectGraphicsSettingsVersion;
 		EGraphicsQuality m_defaultQuality = EGraphicsQuality::High;
+		uint32_t m_maxFramesInFlight = 2u;
 		std::array<GraphicsQualityProfile, NumGraphicsQualityPresets> m_presets{};
 
 		const GraphicsQualityProfile& GetProfile(EGraphicsQuality quality) const noexcept;

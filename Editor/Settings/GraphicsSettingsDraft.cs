@@ -285,6 +285,7 @@ public sealed class GraphicsSettingsDraft
         SourceSnapshot = sourceSnapshot ??
             throw new ArgumentNullException(nameof(sourceSnapshot));
         ProjectDefaultQuality = sourceSnapshot.Project.Graphics.DefaultQuality;
+        MaxFramesInFlight = sourceSnapshot.Project.Graphics.MaxFramesInFlight;
         SelectedQuality = sourceSnapshot.Editor.Graphics.SelectedQuality;
         StatsMode = sourceSnapshot.Editor.Graphics.StatsMode;
         _presets = Enum.GetValues<GraphicsQualityLevel>()
@@ -296,6 +297,7 @@ public sealed class GraphicsSettingsDraft
 
     public GraphicsSettingsSnapshot SourceSnapshot { get; }
     public GraphicsQualityLevel ProjectDefaultQuality { get; private set; }
+    public int MaxFramesInFlight { get; private set; }
     public EditorQualitySelection SelectedQuality { get; private set; }
     public GraphicsStatsMode StatsMode { get; private set; }
     public bool IsDirty { get; private set; }
@@ -318,6 +320,17 @@ public sealed class GraphicsSettingsDraft
         ProjectDefaultQuality = projectDefaultQuality;
         SelectedQuality = selectedQuality;
         StatsMode = statsMode;
+        IsDirty = true;
+    }
+
+    public void SetMaxFramesInFlight(int value)
+    {
+        if (MaxFramesInFlight == value)
+        {
+            return;
+        }
+
+        MaxFramesInFlight = value;
         IsDirty = true;
     }
 
@@ -355,6 +368,7 @@ public sealed class GraphicsSettingsDraft
             Graphics = SourceSnapshot.Project.Graphics with
             {
                 DefaultQuality = ProjectDefaultQuality,
+                MaxFramesInFlight = MaxFramesInFlight,
                 Presets = presets
             }
         };

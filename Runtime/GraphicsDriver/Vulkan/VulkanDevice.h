@@ -234,6 +234,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VulkanStateViewportPtr m_pCurrentFrameViewport;
 
 		// Frame sync
+		const uint32_t m_maxFramesInFlight;
 		TVector<VulkanSemaphorePtr> m_imageAvailableSemaphores;
 		TVector<VulkanSemaphorePtr> m_renderFinishedSemaphores;
 		TVector<VulkanFencePtr> m_syncFences;

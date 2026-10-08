@@ -154,7 +154,7 @@ graphics:
 	void CheckDefaults(const GraphicsSettings& actual)
 	{
 		const GraphicsSettings defaults;
-		Require(actual.m_version == 1 && actual.m_defaultQuality == EGraphicsQuality::High,
+		Require(actual.m_version == 1 && actual.m_defaultQuality == EGraphicsQuality::High && actual.m_maxFramesInFlight == 2u,
 			"failed loading must publish built-in defaults, not partially parsed settings");
 		for (uint32_t i = 0; i < NumGraphicsQualityPresets; ++i)
 			CheckProfile(actual.m_presets[i], defaults.m_presets[i]);
@@ -181,6 +181,28 @@ graphics:
 		Require(&defaults.GetProfile(static_cast<EGraphicsQuality>(255)) == &defaults.GetProfile(EGraphicsQuality::High),
 			"an invalid quality value retains the High fallback");
 		std::cout << "GraphicsSettings five complete built-in presets passed\n";
+	}
+
+	void TestFramesInFlight()
+	{
+		for (uint32_t frames : { 1u, 2u, 3u })
+		{
+			auto document = ProjectDocument();
+			document["graphics"]["maxFramesInFlight"] = frames;
+			const auto parsed = ParseProjectGraphicsSettings(YAML::Dump(document));
+			Require(parsed.IsLoaded() && parsed.m_settings.m_maxFramesInFlight == frames,
+				"project settings must retain each supported flight count");
+		}
+		for (const auto value : { "0", "4", "-1", "1.5", "invalid" })
+		{
+			auto document = ProjectDocument();
+			document["graphics"]["maxFramesInFlight"] = value;
+			const auto parsed = ParseProjectGraphicsSettings(YAML::Dump(document));
+			Require(parsed.m_status == EGraphicsSettingsLoadStatus::Invalid &&
+				parsed.m_diagnostic.find("graphics.maxFramesInFlight") != std::string::npos,
+				"unsupported flight counts must identify the project setting");
+			CheckDefaults(parsed.m_settings);
+		}
 	}
 
 	void TestBorrowedSourceNames()
@@ -501,6 +523,7 @@ int main(int argc, char** argv)
 	try
 	{
 		TestPresets();
+		TestFramesInFlight();
 		TestBorrowedSourceNames();
 		TestReflectedSerialization();
 		TestProfileDiagnostics();

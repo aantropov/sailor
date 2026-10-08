@@ -177,10 +177,14 @@ namespace Sailor::GraphicsDriver::Vulkan
 		static void CheckSyncCounts(const VulkanDevice& device)
 		{
 			const size_t images = device.m_swapchain->GetImageViews().Num();
+			const uint32_t flights = device.GetMaxFramesInFlight();
 			if (device.m_renderFinishedSemaphores.Num() != images || device.m_syncImages.Num() != images ||
-				device.m_swapchainImagesInitialized.Num() != images || device.m_syncFences.Num() != VulkanApi::MaxFramesInFlight ||
-				device.m_imageAvailableSemaphores.Num() != VulkanApi::MaxFramesInFlight || device.m_frameDeps.Num() != VulkanApi::MaxFramesInFlight)
+				device.m_swapchainImagesInitialized.Num() != images || device.m_syncFences.Num() != flights ||
+				device.m_imageAvailableSemaphores.Num() != flights || device.m_frameDeps.Num() != flights ||
+				flights != App::GetGraphicsSettings().m_maxFramesInFlight)
+			{
 				throw std::runtime_error("synchronization storage must follow image/flight ownership");
+			}
 		}
 	};
 }
@@ -593,7 +597,7 @@ namespace
 			"drained failed commands must no longer be retained by the device");
 		TVector<VkSemaphore> imageSignals;
 		imageSignals.Resize(device->GetSwapchain()->GetImageViews().Num());
-		for (size_t i = 0; i < 3u * VulkanApi::MaxFramesInFlight; ++i)
+		for (size_t i = 0; i < 3u * device->GetMaxFramesInFlight(); ++i)
 		{
 			uint32_t flight = static_cast<uint32_t>(VulkanSubmissionTestAccess::Flight(*device));
 			bool hasImage = false;
@@ -611,7 +615,7 @@ namespace
 					device->SubmitFrameWithoutPresent({ frame.command->m_vulkan.m_commandBuffer }, {});
 			}
 			Require(submitted && device->WasLastFrameSubmitSuccessful(), "recovered frame must submit real GPU work");
-			Require(VulkanSubmissionTestAccess::Flight(*device) == (flight + 1u) % VulkanApi::MaxFramesInFlight,
+			Require(VulkanSubmissionTestAccess::Flight(*device) == (flight + 1u) % device->GetMaxFramesInFlight(),
 				"successful frames must advance exactly one flight");
 			Require(lastWait == (present ? acquire : VK_NULL_HANDLE) && lastSignal == (present ? finished : VK_NULL_HANDLE),
 				"native submission must use the flight acquire and image presentation semaphore");
@@ -5534,7 +5538,8 @@ frame: []
 
 		node->m_gpuGate = gate;
 		const auto retained = submit(false);
-		const auto pending = submit(false);
+		// A single flight cannot be reused until the gated frame completes.
+		const auto pending = device->GetMaxFramesInFlight() > 1u ? submit(false) : renderer->GetGpuTimings();
 		Require(vkGetFenceStatus(*device, *node->m_completion->m_vulkan.m_fence) == VK_NOT_READY,
 			"the delayed query must belong to genuinely pending GPU work");
 		Require(pending.m_bValid && pending.m_queryId == retained.m_queryId &&
@@ -5545,7 +5550,7 @@ frame: []
 			"repeated consumer reads must preserve query identity and expose the sample's age");
 		Require(vkSetEvent(*device, gate) == VK_SUCCESS &&
 			node->m_completion->Wait(5000000000ull) == EFenceStatus::Finished,
-			"releasing the gate must complete both occupied flights");
+			"releasing the gate must complete the occupied flights");
 		node->m_gpuGate = VK_NULL_HANDLE;
 		node->SetTag("Replacement submission"_h);
 		submit();
@@ -5738,6 +5743,7 @@ frame: []
 		try
 		{
 			Require(App::IsRendererInitialized(), "fence test requires an initialized renderer");
+			VulkanSubmissionTestAccess::CheckSyncCounts(*VulkanApi::GetInstance()->GetMainDevice());
 			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 			if (mode == "--gpu-submission-statistics") TestConcurrentSubmissionStatistics();
 			else if (mode == "--gpu-engine-loop")

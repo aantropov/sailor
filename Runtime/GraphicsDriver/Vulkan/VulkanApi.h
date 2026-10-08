@@ -138,8 +138,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 	public:
 
-		static constexpr int MaxFramesInFlight = 2;
-
 		// Reverse Z, 0.0f is the farest
 		static constexpr VkClearDepthStencilValue DefaultClearDepthStencilValue{ 0.0f, 0 };
 		static constexpr VkClearValue DefaultClearColor{ {{0.0f,0.0f,0.0f,0.0f}} };

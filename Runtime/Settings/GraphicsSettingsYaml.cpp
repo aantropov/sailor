@@ -154,6 +154,13 @@ namespace
 				{
 					path = "graphics.defaultQuality";
 					parsed.m_defaultQuality = graphics["defaultQuality"].template as<EGraphicsQuality>();
+					path = "graphics.maxFramesInFlight";
+					if (const auto frames = graphics["maxFramesInFlight"])
+					{
+						parsed.m_maxFramesInFlight = frames.template as<uint32_t>();
+					}
+					RequireSetting(parsed.m_maxFramesInFlight >= 1u && parsed.m_maxFramesInFlight <= 3u,
+						"maxFramesInFlight", "must be 1, 2 or 3");
 					path = "graphics.presets";
 					const auto presets = graphics["presets"];
 					RequireMap(presets);

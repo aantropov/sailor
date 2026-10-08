@@ -895,7 +895,8 @@ static class GraphicsSettingsEquality
         ProjectSettingsDocument right)
     {
         if (left.SettingsVersion != right.SettingsVersion ||
-            left.Graphics.DefaultQuality != right.Graphics.DefaultQuality)
+            left.Graphics.DefaultQuality != right.Graphics.DefaultQuality ||
+            left.Graphics.MaxFramesInFlight != right.Graphics.MaxFramesInFlight)
         {
             return false;
         }

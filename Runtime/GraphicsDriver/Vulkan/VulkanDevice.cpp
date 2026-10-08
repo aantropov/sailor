@@ -1,6 +1,7 @@
 struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here" when using /permissive-
 
 #include <chrono>
+#include "Sailor.h"
 #include "Platform/Thread.h"
 #include "Containers/Containers.h"
 #include <cstdlib>
@@ -84,6 +85,7 @@ VkSampleCountFlagBits CalculateMaxAllowedMSAASamples(VkSampleCountFlags counts)
 }
 
 VulkanDevice::VulkanDevice(Platform::Window* pViewport, RHI::EMsaaSamples requestMsaa)
+	: m_maxFramesInFlight(App::GetGraphicsSettings().m_maxFramesInFlight)
 {
 	CreateSurface(pViewport);
 
@@ -106,6 +108,7 @@ VulkanDevice::VulkanDevice(Platform::Window* pViewport, RHI::EMsaaSamples reques
 	SAILOR_LOG("bufferImageGranularity = %d", (int32_t)m_physicalDeviceProperties.limits.bufferImageGranularity);
 	SAILOR_LOG("m_maxAllowedMSAASamples = %d, requestedMSAASamples = %d", m_maxAllowedMsaaSamples, m_currentMsaaSamples);
 	SAILOR_LOG("m_bSupportsMultiDrawIndirect = %d", (int32_t)m_bSupportsMultiDrawIndirect);
+	SAILOR_LOG("maxFramesInFlight = %u", m_maxFramesInFlight);
 
 	// Cache samplers & states
 	m_samplers = TUniquePtr<VulkanSamplerCache>::Make(VulkanDevicePtr(this));
@@ -481,7 +484,7 @@ void VulkanDevice::CreateFrameSyncSemaphores()
 	m_swapchainImagesInitialized.Clear();
 	m_syncImages.Resize(m_swapchain->GetImageViews().Num());
 
-	for (size_t i = 0; i < VulkanApi::MaxFramesInFlight; i++)
+	for (size_t i = 0; i < m_maxFramesInFlight; i++)
 	{
 		m_imageAvailableSemaphores.Add(VulkanSemaphorePtr::Make(VulkanDevicePtr(this)));
 		m_syncFences.Add(VulkanFencePtr::Make(VulkanDevicePtr(this), VK_FENCE_CREATE_SIGNALED_BIT));
@@ -529,7 +532,7 @@ bool VulkanDevice::RecreateSwapchain(Platform::Window* pViewport)
 
 void VulkanDevice::CreateFrameDependencies()
 {
-	m_frameDeps.Resize(VulkanApi::MaxFramesInFlight);
+	m_frameDeps.Resize(m_maxFramesInFlight);
 }
 
 bool VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
@@ -849,7 +852,7 @@ bool VulkanDevice::AcquireNextImage()
 
 uint32_t VulkanDevice::GetMaxFramesInFlight() const
 {
-	return VulkanApi::MaxFramesInFlight;
+	return m_maxFramesInFlight;
 }
 
 bool VulkanDevice::BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSwapchainImage)
@@ -963,7 +966,7 @@ bool VulkanDevice::SubmitFrame(const VkSubmitInfo& submitInfo)
 	{
 		m_numSubmittedCommandBuffersAcc.fetch_add(submitInfo.commandBufferCount, std::memory_order_relaxed);
 		m_bDepthBufferInitialized = true;
-		m_currentFrame = (m_currentFrame + 1) % VulkanApi::MaxFramesInFlight;
+		m_currentFrame = (m_currentFrame + 1) % m_maxFramesInFlight;
 	}
 	else
 	{

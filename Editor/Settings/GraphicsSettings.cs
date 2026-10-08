@@ -131,6 +131,7 @@ public sealed record GraphicsQualityPresets
 public sealed record ProjectGraphicsSettings
 {
     public GraphicsQualityLevel DefaultQuality { get; init; } = GraphicsQualityLevel.High;
+    public int MaxFramesInFlight { get; init; } = 2;
     public GraphicsQualityPresets Presets { get; init; } = GraphicsSettingsDefaults.Presets;
 }
 
@@ -341,6 +342,12 @@ public static class GraphicsSettingsValidator
             issues.Add(new GraphicsSettingsValidationIssue(
                 "graphics.defaultQuality",
                 "Default quality must be one of Ultra, High, Medium, Low, or VeryLow."));
+        }
+
+        if (document.Graphics.MaxFramesInFlight is < 1 or > 3)
+        {
+            issues.Add(new GraphicsSettingsValidationIssue(
+                "graphics.maxFramesInFlight", "Frames in flight must be 1, 2, or 3."));
         }
 
         foreach (var quality in Enum.GetValues<GraphicsQualityLevel>())
@@ -749,6 +756,8 @@ public static class GraphicsSettingsYamlCodec
             Graphics = new ProjectGraphicsSettings
             {
                 DefaultQuality = defaultQuality,
+                MaxFramesInFlight = ReadOptionalInt(
+                    graphics, "maxFramesInFlight", "graphics.maxFramesInFlight", 2, issues),
                 Presets = presets
             }
         };
@@ -819,6 +828,7 @@ public static class GraphicsSettingsYamlCodec
         SetScalar(root, "settingsVersion", document.SettingsVersion);
         var graphics = GetWritableMapping(root, "graphics");
         SetScalar(graphics, "defaultQuality", document.Graphics.DefaultQuality);
+        SetScalar(graphics, "maxFramesInFlight", document.Graphics.MaxFramesInFlight);
         var presets = GetWritableMapping(graphics, "presets");
         foreach (var quality in QualityLevels)
         {
