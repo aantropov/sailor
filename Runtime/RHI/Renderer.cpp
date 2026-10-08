@@ -52,7 +52,6 @@ struct Renderer::FrameSubmission
 	const uint64_t m_materialRevision;
 	uint64_t m_frameGraphResourceGeneration = 0;
 	bool m_bHasSwapchainImage = false;
-	bool m_bUseDriverDepthBuffer = false;
 	bool m_bResourcesSucceeded = false;
 	RHIFrameGraphPtr m_frameGraph;
 	RHISceneViewPtr m_sceneView;
@@ -450,14 +449,6 @@ bool Renderer::EnsureFrameGraph()
 	m_bFrameGraphOutdated = false;
 	if (m_frameGraph)
 	{
-		m_bUseDriverDepthBuffer =
-			!m_frameGraph->GetRHI()->GetRenderTarget("DepthBuffer"_h);
-		if (m_bUseDriverDepthBuffer && !App::HasEditor())
-		{
-			SAILOR_LOG(
-				"Renderer::EnsureFrameGraph: %s does not declare DepthBuffer; using the driver depth buffer for legacy project compatibility.",
-				frameGraphAssetPath);
-		}
 		auto graph = m_frameGraph->GetRHI();
 		auto readback = Framegraph::EditorReadbackNode::Find(*graph);
 #if defined(__APPLE__)
@@ -470,10 +461,6 @@ bool Renderer::EnsureFrameGraph()
 		}
 #endif
 		m_bHasEditorReadback = readback.IsValid();
-	}
-	else
-	{
-		m_bUseDriverDepthBuffer = false;
 	}
 	return m_frameGraph.IsValid();
 }
@@ -531,7 +518,6 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		m_nextSubmissionId.fetch_add(1ull, std::memory_order_relaxed));
 	submission->m_frameGraph = std::move(rhiFrameGraph);
 	submission->m_frameGraphResourceGeneration = m_frameGraphResourceGeneration;
-	submission->m_bUseDriverDepthBuffer = m_bUseDriverDepthBuffer;
 
 	// Acquire does not read the scene view, so Main can capture it while Render waits.
 	auto acquire = Tasks::CreateTaskWithResult<bool>("Acquire render submission flight"_h,
@@ -754,43 +740,27 @@ void Renderer::RecordAndSubmitFrame(FrameSubmission& submission, const Sailor::F
 		if (!App::HasEditor())
 		{
 			rhiFrameGraph->SetRenderTarget("BackBuffer"_h, m_driverInstance->GetBackBuffer());
-			if (submission.m_bUseDriverDepthBuffer)
-			{
-				if (auto depthBuffer = m_driverInstance->GetDepthBuffer())
-				{
-					rhiFrameGraph->SetRenderTarget("DepthBuffer"_h, depthBuffer);
-				}
-				else
-				{
-					SAILOR_LOG_ERROR(
-						"Renderer::PushFrame: the legacy frame graph requires a driver DepthBuffer, but none is available.");
-					bFrameSubmitsSucceeded = false;
-				}
-			}
 		}
 
-		if (bFrameSubmitsSucceeded)
+		RHISemaphorePtr frameGraphChainSemaphore = chainSemaphore;
+		const bool bFrameGraphSucceeded = rhiFrameGraph->Process(
+			rhiSceneView,
+			transferCommandLists,
+			primaryCommandLists,
+			chainSemaphore,
+			frameGraphChainSemaphore);
+		chainSemaphore = frameGraphChainSemaphore;
+		if (!bFrameGraphSucceeded)
 		{
-			RHISemaphorePtr frameGraphChainSemaphore = chainSemaphore;
-			const bool bFrameGraphSucceeded = rhiFrameGraph->Process(
-				rhiSceneView,
-				transferCommandLists,
-				primaryCommandLists,
-				chainSemaphore,
-				frameGraphChainSemaphore);
-			chainSemaphore = frameGraphChainSemaphore;
-			if (!bFrameGraphSucceeded)
-			{
-				SAILOR_LOG_ERROR("Renderer::PushFrame: FrameGraph command buffer submission failed.");
-				bFrameSubmitsSucceeded = false;
-			}
-			else
-			{
-				bFrameGraphProcessed = true;
-				drawCallStats = rhiFrameGraph->GetDrawCallStats();
-				globalIlluminationStats =
-					rhiFrameGraph->GetGlobalIlluminationRenderStats();
-			}
+			SAILOR_LOG_ERROR("Renderer::PushFrame: FrameGraph command buffer submission failed.");
+			bFrameSubmitsSucceeded = false;
+		}
+		else
+		{
+			bFrameGraphProcessed = true;
+			drawCallStats = rhiFrameGraph->GetDrawCallStats();
+			globalIlluminationStats =
+				rhiFrameGraph->GetGlobalIlluminationRenderStats();
 		}
 	}
 
