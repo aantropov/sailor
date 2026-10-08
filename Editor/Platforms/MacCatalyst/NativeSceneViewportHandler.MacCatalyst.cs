@@ -202,6 +202,106 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             GameController
         }
 
+        sealed class ViewportTextInput : UITextField
+        {
+            readonly NativeSceneViewportPlatformView viewport;
+            NSObject? textChangedObserver;
+
+            public ViewportTextInput(NativeSceneViewportPlatformView viewport)
+            {
+                this.viewport = viewport;
+                Hidden = true;
+                AutocapitalizationType = UITextAutocapitalizationType.None;
+                AutocorrectionType = UITextAutocorrectionType.No;
+                SpellCheckingType = UITextSpellCheckingType.No;
+                SmartDashesType = UITextSmartDashesType.No;
+                SmartQuotesType = UITextSmartQuotesType.No;
+                SmartInsertDeleteType = UITextSmartInsertDeleteType.No;
+                ShouldReturn = _ => false;
+                EditingDidEnd += OnEditingEnded;
+            }
+
+            public void ConnectInput()
+            {
+                textChangedObserver ??= UITextField.Notifications.ObserveTextFieldTextDidChange(
+                    this, (_, _) => PublishCommittedText());
+            }
+
+            public void DisconnectInput()
+            {
+                textChangedObserver?.Dispose();
+                textChangedObserver = null;
+                Text = string.Empty;
+                ResignFirstResponder();
+            }
+
+            public override void PressesBegan(NSSet<UIPress> presses, UIPressesEvent evt)
+            {
+                var wasComposing = MarkedTextRange != null;
+                base.PressesBegan(presses, evt);
+                viewport.PublishPresses(presses, true, wasComposing || MarkedTextRange != null);
+            }
+
+            public override void PressesEnded(NSSet<UIPress> presses, UIPressesEvent evt)
+            {
+                base.PressesEnded(presses, evt);
+                viewport.PublishPresses(presses, false);
+            }
+
+            public override void PressesCancelled(NSSet<UIPress> presses, UIPressesEvent evt)
+            {
+                base.PressesCancelled(presses, evt);
+                viewport.PublishPresses(presses, false);
+            }
+
+            public override bool CanPerform(Selector action, NSObject? sender)
+            {
+                // The engine handles the paste shortcut; do not insert it twice.
+                if (action.Name == "paste:")
+                {
+                    return false;
+                }
+
+                return base.CanPerform(action, sender);
+            }
+
+            void PublishCommittedText()
+            {
+                // UIKit owns composition. The engine receives only the committed
+                // text, not intermediate dead-key or IME candidates.
+                var committedText = Text;
+                if (!viewport.isAttachedToWindow || viewport.isDisposed ||
+                    !IsFirstResponder || MarkedTextRange != null || string.IsNullOrEmpty(committedText))
+                {
+                    return;
+                }
+
+                Text = string.Empty;
+                viewport.Publish(new NativeSceneViewportInputEvent(
+                    NativeSceneViewportInputKind.Text,
+                    Text: committedText));
+            }
+
+            void OnEditingEnded(object? sender, EventArgs args)
+            {
+                Text = string.Empty;
+                viewport.ReleaseActivePointerState();
+                viewport.PublishFocus(false);
+            }
+
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing)
+                {
+                    DisconnectInput();
+                    EditingDidEnd -= OnEditingEnded;
+                    ShouldReturn = null;
+                }
+
+                base.Dispose(disposing);
+            }
+        }
+
         sealed class SecondaryPointerDragGestureRecognizer : UIGestureRecognizer
         {
             readonly Action<UIGestureRecognizerState, CGPoint> publish;
@@ -275,13 +375,10 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
 
         static readonly object inputOwnershipGate = new();
         static NativeSceneViewportPlatformView? mouseInputOwner;
-        static NativeSceneViewportPlatformView? keyboardInputOwner;
 
         readonly WeakReference<NativeSceneViewportHandler> owner;
-        GCKeyboardInput? keyboardInput;
+        readonly ViewportTextInput textInput;
         readonly Dictionary<nint, GCMouseInput> mouseInputs = new();
-        NSObject? keyboardDidConnectToken;
-        NSObject? keyboardDidDisconnectToken;
         NSObject? mouseDidConnectToken;
         NSObject? mouseDidDisconnectToken;
         readonly UIHoverGestureRecognizer hoverGesture;
@@ -302,12 +399,15 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
         CGPoint lastPointerSample;
 
         bool HasMouseInputs => mouseInputs.Count != 0;
+        bool HasInputFocus => textInput.IsFirstResponder;
 
         public NativeSceneViewportPlatformView(NativeSceneViewportHandler handler)
         {
             owner = new WeakReference<NativeSceneViewportHandler>(handler);
             UserInteractionEnabled = true;
             MultipleTouchEnabled = true;
+            textInput = new ViewportTextInput(this);
+            AddSubview(textInput);
 
             hoverGesture = new UIHoverGestureRecognizer(this, new Selector("handleViewportHover:"));
             AddGestureRecognizer(hoverGesture);
@@ -321,8 +421,6 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             };
             AddGestureRecognizer(secondaryPointerDragGesture);
         }
-
-        public override bool CanBecomeFirstResponder => true;
 
         public override void LayoutSubviews()
         {
@@ -340,25 +438,12 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 return;
             }
 
-            if (!IsFirstResponder && !BecomeFirstResponder())
+            if (!HasInputFocus && !textInput.BecomeFirstResponder())
             {
                 return;
             }
 
-            AttachKeyboardInput();
             PublishFocus(true);
-        }
-
-        public override bool ResignFirstResponder()
-        {
-            var resigned = base.ResignFirstResponder();
-            if (resigned)
-            {
-                ReleaseActivePointerState();
-                PublishFocus(false);
-            }
-
-            return resigned;
         }
 
         public override void TouchesBegan(NSSet touches, UIEvent? evt)
@@ -419,24 +504,6 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             base.TouchesCancelled(touches, evt);
         }
 
-        public override void PressesBegan(NSSet<UIPress> presses, UIPressesEvent evt)
-        {
-            BecomeFirstResponder();
-            AttachKeyboardInput();
-            PublishFocus(true);
-            PublishPresses(presses, true);
-        }
-
-        public override void PressesEnded(NSSet<UIPress> presses, UIPressesEvent evt)
-        {
-            PublishPresses(presses, false);
-        }
-
-        public override void PressesCancelled(NSSet<UIPress> presses, UIPressesEvent evt)
-        {
-            PublishPresses(presses, false);
-        }
-
         public override void WillMoveToWindow(UIWindow? window)
         {
             base.WillMoveToWindow(window);
@@ -447,8 +514,8 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             }
 
             isAttachedToWindow = true;
+            textInput.ConnectInput();
             AttachInputObservers();
-            AttachKeyboardInput();
             AttachMouseInput();
         }
 
@@ -456,27 +523,21 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
         {
             isAttachedToWindow = false;
             hasActiveHover = false;
+            textInput.DisconnectInput();
             ReleaseActivePointerState();
             ReleaseMouseInput();
-            ReleaseKeyboardInput();
             ReleaseInputObservers();
             PublishFocus(false);
         }
 
         void AttachInputObservers()
         {
-            keyboardDidConnectToken ??= GCKeyboard.Notifications.ObserveDidConnect((_, _) => AttachKeyboardInput());
-            keyboardDidDisconnectToken ??= GCKeyboard.Notifications.ObserveDidDisconnect((_, _) => AttachKeyboardInput());
             mouseDidConnectToken ??= GCMouse.Notifications.ObserveDidConnect((_, _) => AttachMouseInput());
             mouseDidDisconnectToken ??= GCMouse.Notifications.ObserveDidDisconnect((_, _) => AttachMouseInput());
         }
 
         void ReleaseInputObservers()
         {
-            keyboardDidConnectToken?.Dispose();
-            keyboardDidConnectToken = null;
-            keyboardDidDisconnectToken?.Dispose();
-            keyboardDidDisconnectToken = null;
             mouseDidConnectToken?.Dispose();
             mouseDidConnectToken = null;
             mouseDidDisconnectToken?.Dispose();
@@ -489,6 +550,8 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             {
                 isDisposed = true;
                 DisconnectInput();
+                textInput.RemoveFromSuperview();
+                textInput.Dispose();
                 RemoveGestureRecognizer(hoverGesture);
                 hoverGesture.Dispose();
                 RemoveGestureRecognizer(secondaryPointerDragGesture);
@@ -647,7 +710,7 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             if (pressed)
             {
                 FocusInput();
-                if (!IsFirstResponder)
+                if (!HasInputFocus)
                 {
                     return false;
                 }
@@ -990,10 +1053,10 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
 
             if (pressed)
             {
-                if (!IsFirstResponder)
+                if (!HasInputFocus)
                 {
                     FocusInput();
-                    if (!IsFirstResponder)
+                    if (!HasInputFocus)
                     {
                         return;
                     }
@@ -1033,9 +1096,9 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                     !hasActiveHover &&
                     activeMouseModifiers == NativeSceneViewportInputModifier.None &&
                     Interlocked.Read(ref pointerActivityRevision) == queuedPointerActivityRevision &&
-                    IsFirstResponder)
+                    HasInputFocus)
                 {
-                    ResignFirstResponder();
+                    textInput.ResignFirstResponder();
                 }
             });
         }
@@ -1149,112 +1212,13 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 Captured: false);
         }
 
-        void AttachKeyboardInput()
+        void PublishPresses(NSSet<UIPress> presses, bool pressed, bool isComposing = false)
         {
-            if (!isAttachedToWindow || isDisposed)
+            if (!isAttachedToWindow || isDisposed || !HasInputFocus)
             {
                 return;
             }
 
-            lock (inputOwnershipGate)
-            {
-                if (!isAttachedToWindow || isDisposed)
-                {
-                    return;
-                }
-
-                var input = GCKeyboard.CoalescedKeyboard?.KeyboardInput;
-                if (ReferenceEquals(input, keyboardInput) &&
-                    ReferenceEquals(keyboardInputOwner, this))
-                {
-                    return;
-                }
-
-                if (ReferenceEquals(keyboardInputOwner, this))
-                {
-                    DetachKeyboardInputForReplacement();
-                    keyboardInputOwner = null;
-                }
-                else
-                {
-                    keyboardInput = null;
-                    ClearKeyboardModifiers();
-                }
-
-                if (input == null)
-                {
-                    return;
-                }
-
-                if (keyboardInputOwner != null &&
-                    !ReferenceEquals(keyboardInputOwner, this))
-                {
-                    keyboardInputOwner.DetachKeyboardInputForReplacement();
-                }
-
-                keyboardInputOwner = this;
-                keyboardInput = input;
-                keyboardInput.KeyChangedHandler = HandleKeyboardKeyChanged;
-            }
-        }
-
-        void ReleaseKeyboardInput()
-        {
-            lock (inputOwnershipGate)
-            {
-                if (ReferenceEquals(keyboardInputOwner, this))
-                {
-                    DetachKeyboardInputForReplacement();
-                    keyboardInputOwner = null;
-                }
-                else
-                {
-                    keyboardInput = null;
-                    ClearKeyboardModifiers();
-                }
-            }
-        }
-
-        void DetachKeyboardInputForReplacement()
-        {
-            if (keyboardInput != null)
-            {
-                keyboardInput.KeyChangedHandler = null;
-            }
-
-            keyboardInput = null;
-            ClearKeyboardModifiers();
-        }
-
-        void HandleKeyboardKeyChanged(GCKeyboardInput keyboard, GCControllerButtonInput key, nint keyCode, bool pressed)
-        {
-            if (!IsFirstResponder)
-            {
-                return;
-            }
-
-            var mappedKey = MapGameControllerKeyCode(keyCode);
-            if (mappedKey == 0)
-            {
-                return;
-            }
-            UpdateKeyboardModifier(mappedKey, pressed);
-
-            var point = hasPointerSample ? lastPointerSample : CGPoint.Empty;
-            var scale = ContentScaleFactor > 0 ? (double)ContentScaleFactor : UIScreen.MainScreen.Scale;
-            Publish(new NativeSceneViewportInputEvent(
-                NativeSceneViewportInputKind.Key,
-                PointerX: (float)(point.X * scale),
-                PointerY: (float)(point.Y * scale),
-                KeyCode: mappedKey,
-                Modifiers: activeMouseModifiers | ActiveKeyboardModifiers,
-                Pressed: pressed,
-                Focused: true,
-                Captured: HasMouseCapture(activeMouseModifiers)));
-        }
-
-        void PublishPresses(NSSet<UIPress> presses, bool pressed)
-        {
             foreach (var item in presses)
             {
                 if (item is not UIPress press)
@@ -1268,6 +1232,10 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                     continue;
                 }
                 UpdateKeyboardModifier(keyCode, pressed);
+                if (isComposing && keyCode is not (0xA0 or 0xA1 or 0xA2 or 0xA3 or 0xA4 or 0xA5 or 0x5B or 0x5C))
+                {
+                    continue;
+                }
 
                 Publish(new NativeSceneViewportInputEvent(
                     NativeSceneViewportInputKind.Key,
@@ -1402,94 +1370,63 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 return 0;
             }
 
-            try
+            // Physical keys use HID usages; text and the active keyboard layout
+            // are handled separately by UIKit's text responder.
+            var hid = (uint)key.KeyCode;
+            return hid switch
             {
-                var hid = Convert.ToUInt32(key.KeyCode);
-                switch (hid)
-                {
-                    case 0x29:
-                        return 0x1B;
-                    case 0x3E:
-                        return 0x74;
-                    case 0x3F:
-                        return 0x75;
-                    case 0xE0:
-                        return 0xA2;
-                    case 0xE4:
-                        return 0xA3;
-                    case 0xE1:
-                        return 0xA0;
-                    case 0xE5:
-                        return 0xA1;
-                    case 0xE2:
-                        return 0xA4;
-                    case 0xE6:
-                        return 0xA5;
-                    case 0xE3:
-                        return 0x5B;
-                    case 0xE7:
-                        return 0x5C;
-                }
-            }
-            catch (InvalidCastException)
-            {
-            }
-
-            var text = key?.CharactersIgnoringModifiers;
-            if (string.IsNullOrEmpty(text))
-            {
-                return 0;
-            }
-
-            var ch = text[0];
-            if (ch >= 'a' && ch <= 'z')
-            {
-                return (uint)char.ToUpperInvariant(ch);
-            }
-            if ((ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9'))
-            {
-                return ch;
-            }
-
-            return ch switch
-            {
-                ' ' => 0x20,
-                '\t' => 0x09,
-                '\r' => 0x0D,
-                '\u001B' => 0x1B,
-                _ => 0
-            };
-        }
-
-        static uint MapGameControllerKeyCode(nint keyCode)
-        {
-            if (keyCode >= GCKeyCode.KeyA && keyCode <= GCKeyCode.KeyZ)
-            {
-                return (uint)('A' + (int)(keyCode - GCKeyCode.KeyA));
-            }
-
-            if (keyCode >= GCKeyCode.One && keyCode <= GCKeyCode.Nine)
-            {
-                return (uint)('1' + (int)(keyCode - GCKeyCode.One));
-            }
-
-            return keyCode switch
-            {
-                var value when value == GCKeyCode.Zero => '0',
-                var value when value == GCKeyCode.Spacebar => 0x20,
-                var value when value == GCKeyCode.Tab => 0x09,
-                var value when value == GCKeyCode.ReturnOrEnter => 0x0D,
-                var value when value == GCKeyCode.Escape => 0x1B,
-                var value when value == GCKeyCode.LeftShift => 0xA0,
-                var value when value == GCKeyCode.RightShift => 0xA1,
-                var value when value == GCKeyCode.LeftControl => 0xA2,
-                var value when value == GCKeyCode.RightControl => 0xA3,
-                var value when value == GCKeyCode.LeftAlt => 0xA4,
-                var value when value == GCKeyCode.RightAlt => 0xA5,
-                var value when value == GCKeyCode.LeftGui => 0x5B,
-                var value when value == GCKeyCode.RightGui => 0x5C,
-                var value when value == GCKeyCode.F5 => 0x74,
-                var value when value == GCKeyCode.F6 => 0x75,
+                >= 0x04 and <= 0x1D => 'A' + hid - 0x04,
+                >= 0x1E and <= 0x26 => '1' + hid - 0x1E,
+                >= 0x3A and <= 0x45 => 0x70 + hid - 0x3A,
+                >= 0x59 and <= 0x61 => 0x61 + hid - 0x59,
+                0x27 => '0',
+                0x28 or 0x58 => 0x0D,
+                0x29 => 0x1B,
+                0x2A => 0x08,
+                0x2B => 0x09,
+                0x2C => 0x20,
+                0x2D => 0xBD,
+                0x2E => 0xBB,
+                0x2F => 0xDB,
+                0x30 => 0xDD,
+                0x31 => 0xDC,
+                0x33 => 0xBA,
+                0x34 => 0xDE,
+                0x35 => 0xC0,
+                0x36 => 0xBC,
+                0x37 => 0xBE,
+                0x38 => 0xBF,
+                0x39 => 0x14,
+                0x46 => 0x2C,
+                0x47 => 0x91,
+                0x48 => 0x13,
+                0x49 => 0x2D,
+                0x4A => 0x24,
+                0x4B => 0x21,
+                0x4C => 0x2E,
+                0x4D => 0x23,
+                0x4E => 0x22,
+                0x4F => 0x27,
+                0x50 => 0x25,
+                0x51 => 0x28,
+                0x52 => 0x26,
+                0x53 => 0x90,
+                0x54 => 0x6F,
+                0x55 => 0x6A,
+                0x56 => 0x6D,
+                0x57 => 0x6B,
+                0x62 => 0x60,
+                0x63 => 0x6E,
+                0x64 => 0xE2,
+                0x65 => 0x5D,
+                0xE0 => 0xA2,
+                0xE1 => 0xA0,
+                0xE2 => 0xA4,
+                0xE3 => 0x5B,
+                0xE4 => 0xA3,
+                0xE5 => 0xA1,
+                0xE6 => 0xA5,
+                0xE7 => 0x5C,
                 _ => 0
             };
         }
