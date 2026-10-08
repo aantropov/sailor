@@ -319,44 +319,114 @@ namespace
 		Require(source.m_bRollbackExclusive, "bootstrap rollback must retain exclusive lifecycle ownership");
 	}
 
-	void TestBootstrapHandsRollbackToShutdown(const std::string& token)
+	void TestBootstrapHandsRollbackToShutdown(const std::string& token, Sailor::EAppInitializationResult result)
 	{
+		using namespace std::chrono_literals;
 		using Status = EEditorEngineWebSocketHostStatus;
+		using DispatchState = Sailor::Protocol::TEditorEngineProtocolLifecycleGate::EEditorDispatchState;
 		struct TBootstrapSource
 		{
 			Sailor::Protocol::TEditorEngineProtocolLifecycleGate m_gate;
-			uint32_t m_numShutdowns = 0u;
+			Sailor::EAppInitializationResult m_result;
+			std::promise<void> m_initializationEntered;
+			std::promise<void> m_releaseInitialization;
+			std::shared_future<void> m_resume = m_releaseInitialization.get_future().share();
+			std::promise<void> m_stopEntered;
+			std::atomic<uint32_t> m_numStops{0u};
+			std::atomic<uint32_t> m_numShutdowns{0u};
+			std::atomic<bool> m_bIsInitializing{false};
+			std::atomic<bool> m_bStoppedDuringInitialization{false};
+			std::thread::id m_stopThread;
+			std::thread::id m_shutdownThread;
 		} source;
+		source.m_result = result;
 		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
 		dependencies.m_context = &source;
 		dependencies.m_lifecycleGate = &source.m_gate;
 		dependencies.m_initialize = [](void* context, const char**, int32_t)
 			{
 				auto& state = *static_cast<TBootstrapSource*>(context);
-				std::string error;
-				Require(state.m_gate.TryBeginShutdown(error), "shutdown must be admitted while bootstrap owns construction");
-				return Sailor::EAppInitializationResult::Failed;
+				state.m_bIsInitializing = true;
+				state.m_initializationEntered.set_value();
+				state.m_resume.wait();
+				state.m_bIsInitializing = false;
+				return state.m_result;
 			};
-		dependencies.m_stop = [](void*) {};
+		dependencies.m_stop = [](void* context)
+			{
+				auto& state = *static_cast<TBootstrapSource*>(context);
+				if (state.m_bIsInitializing)
+				{
+					state.m_bStoppedDuringInitialization = true;
+				}
+				if (++state.m_numStops == 1u)
+				{
+					state.m_stopEntered.set_value();
+				}
+			};
 		dependencies.m_shutdown = [](void* context)
 			{
-				++static_cast<TBootstrapSource*>(context)->m_numShutdowns;
-				return true;
+				auto& state = *static_cast<TBootstrapSource*>(context);
+				state.m_shutdownThread = std::this_thread::get_id();
+				return ++state.m_numShutdowns > 1u;
 			};
+		const auto request = MakeRequest(1u, 10u);
+		const uint16_t port = ReserveLocalHostPort();
+		auto start = [&]()
+			{
+				return Sailor::Protocol::StartEditorEngineLocalHost(
+					reinterpret_cast<const uint8_t*>(request.data()), static_cast<uint32_t>(request.size()),
+					port, token.data(), static_cast<uint32_t>(token.size()), dependencies);
+			};
+		std::future<Status> bootstrap;
+		std::future<bool> shutdown;
+		std::future<bool> stopObserved;
+		std::atomic<DispatchState> observation{DispatchState::Queued};
+		bool bRecovered = false;
+		Sailor::Tests::ScopeExit releaseInitialization([&]() { source.m_releaseInitialization.set_value(); });
 		Sailor::Tests::ScopeExit cleanup([&]()
 			{
-				source.m_gate.CompleteShutdown(false);
-				Sailor::Protocol::StopEditorEngineLocalHost(true, dependencies);
+				releaseInitialization.Run();
+				if (bootstrap.valid())
+				{
+					bootstrap.wait();
+				}
+				if (shutdown.valid())
+				{
+					shutdown.wait();
+				}
+				if (stopObserved.valid())
+				{
+					stopObserved.wait();
+				}
+				bRecovered = Sailor::Protocol::StopEditorEngineLocalHost(true, dependencies);
 			});
-		const auto request = MakeRequest(1u, 10u);
-		const auto status = Sailor::Protocol::StartEditorEngineLocalHost(
-			reinterpret_cast<const uint8_t*>(request.data()), static_cast<uint32_t>(request.size()),
-			ReserveLocalHostPort(), token.data(), static_cast<uint32_t>(token.size()), dependencies);
-		source.m_gate.WaitForInitializationDrain();
-		Require(status == Status::InitializationFailed && source.m_numShutdowns == 0u,
-			"bootstrap must leave cleanup to the shutdown owner that superseded initialization");
+		bootstrap = std::async(std::launch::async, start);
+		Require(source.m_initializationEntered.get_future().wait_for(1s) == std::future_status::ready,
+			"bootstrap must reach initialization before starting the shutdown race");
+		// Observe the existing cancellation notification without taking ownership
+		// of shutdown or completing any lifecycle transition from the test.
+		stopObserved = std::async(std::launch::async, [&]() { return source.m_gate.WaitForEditorDispatch(observation); });
+		shutdown = std::async(std::launch::async, [&]()
+			{
+				source.m_stopThread = std::this_thread::get_id();
+				return Sailor::Protocol::StopEditorEngineLocalHost(true, dependencies);
+			});
+		Require(stopObserved.wait_for(1s) == std::future_status::ready && !stopObserved.get(),
+			"native Stop must claim shutdown while initialization is still blocked");
+		const bool bEnteredStopEarly = source.m_stopEntered.get_future().wait_for(30ms) == std::future_status::ready;
+		Require(!bEnteredStopEarly && source.m_numShutdowns == 0u,
+			"native Stop must not enter App stop or shutdown during initialization");
+		releaseInitialization.Run();
+		const auto status = bootstrap.get();
+		const bool bStopped = shutdown.get();
+		Require(status == Status::InitializationFailed && !bStopped && source.m_numShutdowns == 1u &&
+			source.m_shutdownThread == source.m_stopThread && !source.m_bStoppedDuringInitialization,
+			"bootstrap must leave the single teardown attempt to the concurrent native Stop owner");
+		Require(start() == Status::AlreadyRunning, "failed concurrent shutdown must retain the closed session");
 		cleanup.Run();
-		Require(source.m_numShutdowns == 1u, "the retained host must be cleaned exactly once");
+		Require(bRecovered && source.m_numStops == 2u && source.m_numShutdowns == 2u,
+			"an explicit native Stop retry must complete the retained session");
 	}
 
 	void TestBootstrapPreservesAnExistingServer(uint16_t port, const std::string& token)
@@ -965,7 +1035,8 @@ int main(const int argc, const char* const argv[])
 				"0123456789abcdef0123456789abcdef";
 			TestBootstrapReservesBeforePublishingServer(authorizationToken);
 			TestBootstrapRollbackAndRetry(authorizationToken);
-			TestBootstrapHandsRollbackToShutdown(authorizationToken);
+			TestBootstrapHandsRollbackToShutdown(authorizationToken, Sailor::EAppInitializationResult::Ready);
+			TestBootstrapHandsRollbackToShutdown(authorizationToken, Sailor::EAppInitializationResult::Failed);
 			TestInvalidServerArguments(authorizationToken);
 			TestFailedLocalHostInitialization(authorizationToken);
 			{
