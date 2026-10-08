@@ -95,6 +95,7 @@ using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
 namespace Sailor::Tests { int RunPathTracerCommandTests(int argc, const char** argv); }
+namespace Sailor::Tests { int RunAudioCommandTests(int argc, const char** argv); }
 namespace Sailor::Tests { int RunSkyGpu(int argc, const char** argv, bool bTestStars); }
 namespace Sailor::Tests { int RunLandscapeGpu(int argc, const char** argv); }
 namespace Sailor::Tests { int RunRenderContractsGpu(int argc, const char** argv, bool bTestPathTracer = false); }
@@ -5795,6 +5796,10 @@ int main(int argc, const char** argv)
 	for (int i = 1; i < argc; ++i)
 	{
 		const std::string_view mode(argv[i]);
+		if (mode == "--gpu-audio")
+		{
+			return Tests::RunAudioCommandTests(argc, argv);
+		}
 		if (mode == "--gpu-cloud-noise" || mode == "--gpu-cloud-noise-msaa2" || mode == "--gpu-sky-stars")
 			return Tests::RunSkyGpu(argc, argv, mode == "--gpu-sky-stars");
 		if (mode == "--gpu-msaa-cache") return RunAttachmentGpu(argc, argv, true);

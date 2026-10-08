@@ -2,6 +2,7 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Audio/AudioImporter.h"
 #include "Audio/AudioSystem.h"
+#include "Components/AudioListenerComponent.h"
 #include "Components/AudioSourceComponent.h"
 #include "ECS/AudioECS.h"
 #include "ECS/TransformECS.h"
@@ -371,15 +372,18 @@ namespace
 			"a changed clip revision must retry without another Play request");
 	}
 
-	void TestEcsAutoplayAndClear(const std::filesystem::path& workspace, AudioSystem& audio)
+	void TestEcsAutoplayAndClear(const std::filesystem::path& workspace, AudioSystem& audio,
+		uint32_t count, bool bPendingCreation)
 	{
 		const auto path = workspace / "Content/AudioManySources.wav";
 		WriteWave(path);
 		auto clip = LoadClip(path);
 		const size_t before = audio.GetNumVoices();
 		AudioWorld world;
+		HoldAudioQueue hold;
+		auto listener = world.Instantiate("Audio listener")->AddComponent<AudioListenerComponent>();
 		TVector<TObjectPtr<AudioSourceComponent>> sources;
-		for (uint32_t i = 0; i < 16; ++i)
+		for (uint32_t i = 0; i < count; ++i)
 		{
 			auto owner = world.Instantiate("Audio clear owner");
 			auto source = owner->AddComponent<AudioSourceComponent>();
@@ -389,19 +393,42 @@ namespace
 			sources.Add(source);
 		}
 		world.TickAudio();
-		audio.Flush();
+		if (!bPendingCreation)
+		{
+			hold.Release();
+			audio.Flush();
+			Require(audio.GetActiveListener() != InvalidAudioListenerId,
+				"the world listener must reach the backend before clear");
+		}
 		Require(audio.GetNumVoices() == before + sources.Num(), "each ECS source must create one voice");
+		TVector<AudioVoiceId> voices;
+		for (size_t i = 0; i < sources.Num(); ++i)
+		{
+			const auto voice = world.GetECS<AudioECS>()->GetComponentData(i).GetVoiceId();
+			voices.Add(voice);
+			AudioVoiceSettings settings;
+			if (bPendingCreation)
+			{
+				Require(!audio.GetVoiceSettings(voice, settings), "held voices must not be initialized yet");
+			}
+			else
+			{
+				Require(sources[i]->IsPlaying() == (i % 2 == 0) && audio.GetVoiceSettings(voice, settings) &&
+					settings == CustomSettings(), "autoplay and backend settings must stay independent for each source");
+			}
+		}
+		world.Clear();
+		world.Clear();
+		hold.Release();
+		audio.Flush();
+		Require(audio.GetNumVoices() == before && audio.GetActiveListener() == InvalidAudioListenerId && !listener,
+			"bulk clear must release all backend voices and the listener");
 		for (size_t i = 0; i < sources.Num(); ++i)
 		{
 			AudioVoiceSettings settings;
-			Require(sources[i]->IsPlaying() == (i % 2 == 0) && audio.GetVoiceSettings(
-				world.GetECS<AudioECS>()->GetComponentData(i).GetVoiceId(), settings) && settings == CustomSettings(),
-				"autoplay selection and backend settings must stay independent for each source");
+			Require(!sources[i] && !audio.GetVoiceSettings(voices[i], settings) && !audio.PlayVoice(voices[i]),
+				"bulk clear must invalidate every source and retire its backend voice");
 		}
-		world.Clear();
-		audio.Flush();
-		Require(audio.GetNumVoices() == before, "bulk clear must release all registered voices");
-		for (const auto& source : sources) Require(!source, "bulk clear must invalidate every source handle");
 		auto replacement = world.Instantiate("Audio after clear")->AddComponent<AudioSourceComponent>();
 		replacement->SetClip(clip);
 		world.TickAudio();
@@ -409,6 +436,11 @@ namespace
 		AudioVoiceSettings settings;
 		Require(replacement->IsPlaying() && audio.GetVoiceSettings(world.Voice(), settings) &&
 			settings == AudioVoiceSettings{}, "a reused ECS slot must initialize new default settings and autoplay");
+		world.Clear();
+		audio.Flush();
+		Require(!replacement && audio.GetNumVoices() == before, "clear must also retire the reused slot's voice");
+		std::cout << "Audio World::Clear: " << count << (bPendingCreation ? " queued" : " initialized")
+			<< " voices and listener retired; slot reuse passed\n";
 	}
 }
 
@@ -433,7 +465,13 @@ namespace Sailor::Tests
 		}
 		run("Pending commands", [&]() { TestPendingCommands(workspace, *audio); });
 		run("ECS explicit retry", [&]() { TestEcsRetry(workspace, *audio); });
-		run("ECS autoplay and clear", [&]() { TestEcsAutoplayAndClear(workspace, *audio); });
+		for (const auto count : { 32u, 64u })
+		{
+			for (const bool bPendingCreation : { false, true })
+			{
+				run("ECS autoplay and clear", [&]() { TestEcsAutoplayAndClear(workspace, *audio, count, bPendingCreation); });
+			}
+		}
 		if (!failures.empty()) throw std::runtime_error(failures);
 		std::cout << "Audio backend creation and ECS reload tests passed\n";
 	}

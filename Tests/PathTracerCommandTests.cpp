@@ -1341,6 +1341,41 @@ namespace Sailor::Tests
 		return result;
 	}
 
+	int RunAudioCommandTests(int argc, const char** argv)
+	{
+		TempDirectory workspace("audio-command");
+		int result = 1;
+		try
+		{
+			std::string enginePath = std::filesystem::current_path().string();
+			for (int i = 1; i + 1 < argc; ++i)
+			{
+				if (std::string_view(argv[i]) == "--workspace")
+				{
+					enginePath = argv[i + 1];
+				}
+			}
+			WriteScene(workspace, enginePath, 1);
+			const auto root = workspace.Get().string();
+			std::vector<const char*> arguments(argv, argv + argc);
+			arguments.insert(arguments.end(), { "--workspace", root.c_str(), "--editor", "--port", "0", "--world", "", "--null-audio" });
+			Require(App::Initialize(arguments.data(), static_cast<int32_t>(arguments.size())) == EAppInitializationResult::Ready,
+				"the audio fixture must initialize the native application");
+			RunAudioCommandTests(workspace.Get());
+			result = 0;
+		}
+		catch (const std::exception& error)
+		{
+			std::cerr << error.what() << '\n';
+		}
+		App::Stop();
+		if (!App::Shutdown())
+		{
+			result = 1;
+		}
+		return result;
+	}
+
 	int RunLandscapeGpu(int argc, const char** argv)
 	{
 		TempDirectory workspace("landscape-upload");
