@@ -43,64 +43,6 @@ namespace
 	}
 
 	constexpr float c_gravity = 9.81f;
-	constexpr float c_twoPi = 6.28318530718f;
-
-	float AddOceanWave(
-		const glm::vec2& position,
-		glm::vec2 direction,
-		float amplitude,
-		float waveLength,
-		float speed,
-		float phaseOffset,
-		float time)
-	{
-		direction = glm::normalize(direction);
-		const float frequency = c_twoPi / std::max(waveLength, 0.01f);
-		const float angularVelocity = std::sqrt(c_gravity * frequency) * speed;
-		return amplitude * std::sin(
-			frequency * glm::dot(direction, position) -
-			angularVelocity * time + phaseOffset);
-	}
-
-	float SampleOceanHeight(
-		const glm::vec2& position,
-		const BuoyancyComponent& buoyancy,
-		float time)
-	{
-		const glm::vec2 wind = glm::normalize(glm::vec2(0.94f, 0.34f));
-		const glm::vec2 acrossWind(-wind.y, wind.x);
-		glm::vec2 warpedPosition = position;
-		warpedPosition += wind * std::sin(glm::dot(position, acrossWind) *
-			0.075f + time * 0.08f) * 1.15f;
-		warpedPosition += acrossWind * std::sin(glm::dot(position, wind) *
-			0.052f - time * 0.055f) * 0.72f;
-		const float waveGroup = 0.76f + 0.24f * std::sin(glm::dot(position,
-			glm::normalize(glm::vec2(0.31f, 0.95f))) * 0.115f +
-			time * 0.12f);
-		const float amplitude = buoyancy.GetWaveAmplitude();
-		const float waveLength = buoyancy.GetWaveLength();
-		const float speed = buoyancy.GetWaveSpeed();
-
-		float height = buoyancy.GetWaterHeight();
-		height += AddOceanWave(warpedPosition, wind,
-			amplitude * 0.72f * waveGroup, waveLength * 1.37f,
-			speed * 0.84f, 0.37f, time);
-		height += AddOceanWave(warpedPosition,
-			glm::normalize(wind + acrossWind * 0.31f), amplitude * 0.38f,
-			waveLength * 0.83f, speed * 0.98f, 2.11f, time);
-		height += AddOceanWave(warpedPosition,
-			glm::normalize(wind - acrossWind * 0.43f), amplitude * 0.27f,
-			waveLength * 0.59f, speed * 1.09f, 4.73f, time);
-		height += AddOceanWave(position,
-			glm::normalize(wind + acrossWind * 0.72f), amplitude * 0.16f,
-			waveLength * 0.41f, speed * 1.22f, 1.29f, time);
-		height += AddOceanWave(position,
-			glm::normalize(wind - acrossWind * 0.81f), amplitude * 0.10f,
-			waveLength * 0.27f, speed * 1.38f, 5.62f, time);
-		height += AddOceanWave(position, acrossWind, amplitude * 0.055f,
-			waveLength * 0.18f, speed * 1.57f, 3.44f, time);
-		return height;
-	}
 }
 
 PhysicsECS::PhysicsECS() = default;
@@ -319,9 +261,7 @@ void PhysicsECS::SyncAuthoredTransforms(float fixedDeltaTime)
 	}
 }
 
-void PhysicsECS::ApplyBuoyancyForces(
-	float sampleTime,
-	float fixedDeltaTime)
+void PhysicsECS::ApplyBuoyancyForces()
 {
 	constexpr glm::vec2 sampleOffsets[] =
 	{
@@ -371,23 +311,12 @@ void PhysicsECS::ApplyBuoyancyForces(
 				offset.y * halfExtents.y);
 			const glm::vec3 worldPoint = pose.m_position +
 				pose.m_rotation * localPoint;
-			const glm::vec2 waterPosition(worldPoint.x, worldPoint.z);
-			const float waterHeight = SampleOceanHeight(
-				waterPosition,
-				*buoyancy,
-				sampleTime);
-			const float submersion = waterHeight - worldPoint.y;
+			const float submersion = buoyancy->GetWaterHeight() - worldPoint.y;
 			if (submersion <= 0.0f)
 			{
 				continue;
 			}
 
-			const float previousWaterHeight = SampleOceanHeight(
-				waterPosition,
-				*buoyancy,
-				sampleTime - fixedDeltaTime);
-			const float waterVerticalVelocity =
-				(waterHeight - previousWaterHeight) / fixedDeltaTime;
 			const glm::vec3 leverArm = worldPoint - pose.m_position;
 			const glm::vec3 pointVelocity = pose.m_linearVelocity +
 				glm::cross(pose.m_angularVelocity, leverArm);
@@ -395,8 +324,7 @@ void PhysicsECS::ApplyBuoyancyForces(
 				buoyancy->GetEquilibriumDepth(), 0.0f, 2.5f);
 			float lift = massPerSample * c_gravity *
 				buoyancy->GetBuoyancyScale() * immersion;
-			lift += massPerSample * buoyancy->GetVerticalDamping() *
-				(waterVerticalVelocity - pointVelocity.y) *
+			lift -= massPerSample * buoyancy->GetVerticalDamping() * pointVelocity.y *
 				std::min(immersion, 1.0f);
 			lift = std::clamp(lift, 0.0f,
 				massPerSample * c_gravity * 3.0f);
@@ -518,9 +446,7 @@ void PhysicsECS::Tick(float deltaTime)
 					}
 				}
 
-				const float sampleTime = GetWorld()->GetTime() -
-					static_cast<float>(numSteps - step - 1) * m_fixedDeltaTime;
-				ApplyBuoyancyForces(sampleTime, m_fixedDeltaTime);
+				ApplyBuoyancyForces();
 				bStepSucceeded &= m_physicsWorld->Step(m_fixedDeltaTime);
 				for (auto& data : m_components)
 				{

@@ -1032,10 +1032,10 @@ namespace
 		Require(
 			buoyancyType.Name() == "Sailor::BuoyancyComponent" &&
 				!buoyancyType.Properties()["halfExtents"].empty() &&
-				buoyancyType.Properties()["waveAmplitude"] == "float",
-			"buoyancy should expose Editor-compatible hull and wave fields: " +
+				buoyancyType.Properties()["waterHeight"] == "float",
+			"buoyancy should expose Editor-compatible hull and flat-water fields: " +
 				buoyancyType.Properties()["halfExtents"] + ", " +
-				buoyancyType.Properties()["waveAmplitude"]);
+				buoyancyType.Properties()["waterHeight"]);
 	}
 
 	void TestInitialVelocityAuthoringStaysSeparateFromRuntimeCommands()
@@ -1638,6 +1638,70 @@ namespace
 			"off-center force should create linear motion and torque");
 	}
 
+	void TestFlatWaterBuoyancy()
+	{
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
+		scheduler.Initialize();
+		glm::vec3 singleStepPosition{};
+		for (const uint32_t stepsPerTick : { 1u, 2u })
+		{
+			PhysicsComponentTestWorld world(TUniquePtr<Physics::PhysicsWorld>::Make(scheduler), scheduler);
+			TVector<TObjectPtr<RigidBodyComponent>> bodies;
+			TVector<TObjectPtr<BuoyancyComponent>> floaters;
+			for (const glm::vec3 position : { glm::vec3(0.0f, 4.0f, 0.0f), glm::vec3(31.0f, 4.0f, 47.0f) })
+			{
+				auto owner = world.Instantiate("Flat water body");
+				owner->GetTransformComponent().SetPosition(position);
+				owner->AddComponent<CollisionShapeComponent>();
+				auto body = owner->AddComponent<RigidBodyComponent>();
+				body->SetSleepingAllowed(false);
+				body->SetInitialLinearVelocity(glm::vec3(1.0f, 0.0f, 0.0f));
+				bodies.Add(body);
+				auto buoyancy = owner->AddComponent<BuoyancyComponent>();
+				buoyancy->SetWaterHeight(3.0f);
+				floaters.Add(buoyancy);
+			}
+			const auto pose = [&](size_t index)
+			{
+				return world.GetECS<PhysicsECS>()->GetComponentData(bodies[index]->GetComponentIndex()).m_currentPose;
+			};
+			for (uint32_t step = 0; step < 720; step += stepsPerTick)
+			{
+				world.TickPhysics(c_fixedDeltaTime * stepsPerTick);
+				if (step + stepsPerTick == 60)
+				{
+					if (stepsPerTick == 1)
+					{
+						singleStepPosition = pose(0).m_position;
+					}
+					else
+					{
+						Require(IsNear(pose(0).m_position, singleStepPosition, 0.001f),
+							"buoyancy must apply on each fixed substep independently of the frame rate");
+					}
+				}
+			}
+			for (size_t index = 0; index < bodies.Num(); ++index)
+			{
+				const auto& buoyancy = floaters[index];
+				const float equilibrium = buoyancy->GetWaterHeight() - buoyancy->GetFloatationPlane() -
+					buoyancy->GetEquilibriumDepth() / buoyancy->GetBuoyancyScale();
+				Require(IsNear(pose(index).m_position.y, equilibrium, 0.002f) &&
+					glm::length(pose(index).m_linearVelocity) < 0.002f &&
+					glm::length(pose(index).m_angularVelocity) < 0.002f,
+					"flat-water lift and drag must settle bodies at the same authored waterline without implicit waves");
+			}
+			for (auto& buoyancy : floaters)
+			{
+				buoyancy->SetWaterHeight(-10.0f);
+			}
+			world.TickPhysics(c_fixedDeltaTime * stepsPerTick);
+			Require(pose(0).m_linearVelocity.y < -0.1f && pose(1).m_linearVelocity.y < -0.1f,
+				"lowering the authored water surface must remove lift and let dry bodies fall");
+		}
+	}
+
 	void TestStaticTriangleMeshSupportsDynamicBodies()
 	{
 		Physics::PhysicsWorld world;
@@ -1712,6 +1776,7 @@ int main()
 		{ "BulkPhysicsWorldClearAndReuse", TestBulkPhysicsWorldClearAndReuse },
 		{ "WorldClearReleasesPhysicsAuthoringSlots", TestWorldClearReleasesPhysicsAuthoringSlots },
 		{ "ForceAtPositionAppliesLinearAndAngularImpulse", TestForceAtPositionAppliesLinearAndAngularImpulse },
+		{ "FlatWaterBuoyancy", TestFlatWaterBuoyancy },
 		{ "StaticTriangleMeshSupportsDynamicBodies", TestStaticTriangleMeshSupportsDynamicBodies },
 	};
 

@@ -97,7 +97,7 @@ namespace Sailor
 			size_t index,
 			Physics::RigidBodyDesc& outDesc);
 		void SyncAuthoredTransforms(float fixedDeltaTime);
-		void ApplyBuoyancyForces(float sampleTime, float fixedDeltaTime);
+		void ApplyBuoyancyForces();
 		void ApplyDynamicTransforms(float interpolationAlpha);
 
 		TUniquePtr<Physics::PhysicsWorld> m_physicsWorld{};
