@@ -137,6 +137,36 @@ def stage_engine_library(config: str) -> None:
     print(f"Staged engine library for editor build: {destination}")
 
 
+def export_mac_editor(config: str, framework: str, runtime: str | None, output: Path, publish: bool) -> None:
+    build_dir = REPO_ROOT / "Binaries" / "Editor" / config / framework
+    if runtime:
+        build_dir /= runtime
+    app = build_dir / "SailorEditor.app"
+    output = output.resolve()
+    if output.is_relative_to(app.resolve()):
+        raise ValueError("The output directory must not be inside SailorEditor.app")
+
+    output.mkdir(parents=True, exist_ok=True)
+    artifacts = [app]
+    symbols = build_dir / "SailorEditor.app.dSYM"
+    if symbols.exists():
+        artifacts.append(symbols)
+    if publish:
+        artifacts.extend((build_dir / "publish").glob("*.pkg"))
+
+    for source in artifacts:
+        destination = output / source.name
+        if source.resolve() == destination.resolve():
+            continue
+        if source.is_dir():
+            if destination.exists():
+                shutil.rmtree(destination)
+            shutil.copytree(source, destination, symlinks=True)
+        else:
+            shutil.copy2(source, destination)
+        print(f"Exported editor artifact: {destination}")
+
+
 def main() -> int:
     host_os = detect_os()
     parser = argparse.ArgumentParser(description="Build SailorEditor cross-platform.")
@@ -145,7 +175,7 @@ def main() -> int:
     parser.add_argument("--publish", action="store_true", help="Run 'dotnet publish' instead of 'dotnet build'")
     parser.add_argument("--runtime", default=default_runtime(host_os), help="Optional .NET runtime identifier, for example maccatalyst-arm64")
     parser.add_argument("--build-engine", action="store_true", help="Build SailorLib first using build_engine.py")
-    parser.add_argument("--output", type=Path, default=None, help="Optional output directory")
+    parser.add_argument("--output", type=Path, default=None, help="Optional output directory; Mac Catalyst exports the signed app and package here")
     parser.add_argument("--self-contained", action="store_true", help="Publish self-contained app when supported")
     args = parser.parse_args()
 
@@ -159,17 +189,21 @@ def main() -> int:
 
     dotnet = detect_dotnet()
     env = prepare_env(dotnet)
+    export_bundle = host_os == "mac" and "-maccatalyst" in args.framework
 
     command = [dotnet, "publish" if args.publish else "build", str(EDITOR_PROJECT), "-f", args.framework, "-c", args.config]
     if args.runtime:
         command += ["-r", args.runtime]
-    if args.output:
+    if args.output and not export_bundle:
         command += ["-o", str(args.output.resolve())]
     if args.self_contained and args.publish:
         command += ["--self-contained", "true"]
 
     run(command, env=env)
     build_mcp_bridge(dotnet, args.config, env)
+    if args.output and export_bundle:
+        # Keep SDK bundle paths unchanged, then export the complete signed app.
+        export_mac_editor(args.config, args.framework, args.runtime, args.output, args.publish)
 
     print("\nDone.")
     print(f"Framework: {args.framework}")
