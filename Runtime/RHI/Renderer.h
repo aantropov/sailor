@@ -37,8 +37,6 @@ namespace Sailor::RHI
 		// TODO: Move to RHI::Constants?
 		static constexpr uint32_t GPUCullingGroupSize = 256;
 
-		static constexpr uint32_t MaxFramesInQueue = 2;
-
 			SAILOR_API Renderer(Platform::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
 			SAILOR_API ~Renderer() override;
 			SAILOR_API bool IsInitialized() const { return m_bIsInitialized; }
@@ -98,7 +96,7 @@ namespace Sailor::RHI
 
 		std::atomic<bool> m_bFrameGraphOutdated = false;
 		std::atomic<bool> m_bForceStop = false;
-		std::atomic<uint32_t> m_numPendingFrames = 0u;
+		std::atomic<bool> m_bIsFrameQueued = false;
 
 		RHI::Stats m_stats{};
 

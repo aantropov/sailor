@@ -505,7 +505,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 	if (m_bForceStop ||
 		(!App::HasEditor() && m_driverInstance->ShouldFixLostDevice(m_pViewport)) ||
-		m_numPendingFrames.load(std::memory_order_acquire) >= MaxFramesInQueue)
+		m_bIsFrameQueued.load(std::memory_order_acquire))
 	{
 		return false;
 	}
@@ -544,14 +544,16 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 				current->m_sceneView->CompleteSubmissionResources(false);
 				ReturnSceneView(current->m_sceneView);
 			}
-			m_numPendingFrames.fetch_sub(1u, std::memory_order_release);
 		}, EThreadType::Render);
 	auto prepare = Tasks::CreateTask("Prepare render submission flight"_h,
 		[this, submission = std::move(submission), render]() mutable
 		{
 			auto current = std::move(submission);
 			auto record = std::move(render);
-			if (AcquireSubmission(*current))
+			const bool bAcquired = AcquireSubmission(*current);
+			// Let Main capture the next frame while this flight is prepared and recorded.
+			m_bIsFrameQueued.store(false, std::memory_order_release);
+			if (bAcquired)
 			{
 				PrepareSceneView(*current);
 				auto tasks = current->m_frameGraph->Prepare(current->m_sceneView);
@@ -571,7 +573,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		prepare->Join(m_previousRenderFrame);
 	}
 	m_previousRenderFrame = render;
-	m_numPendingFrames.fetch_add(1u, std::memory_order_relaxed);
+	m_bIsFrameQueued.store(true, std::memory_order_relaxed);
 	prepare->Run();
 	return true;
 }

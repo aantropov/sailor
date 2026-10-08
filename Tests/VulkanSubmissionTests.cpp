@@ -5247,8 +5247,10 @@ frame: []
 		const uint64_t previousWorldFrame = world->GetCurrentFrame();
 		FrameState nextFrame(world.GetRawPtr(), frame.GetTime() + 16, {}, { 32, 24 }, &frame);
 		engine->ProcessCpuFrame(nextFrame);
+		const bool bQueuedAhead = renderer->PushFrame(nextFrame);
 		bNextFrameProcessed.store(world->GetCurrentFrame() > previousWorldFrame);
 		releaseGpu.join();
+		Require(!bQueuedAhead, "a pending GPU acquisition must not accumulate another captured frame");
 		Require(bCapturedWhileWaiting, "CPU scene capture must progress while acquisition waits for its GPU fence");
 		Require(bAdvancedWhileWaiting, "the next world tick must finish while the previous GPU flight is still pending");
 		scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
@@ -5266,7 +5268,7 @@ frame: []
 				*static_cast<const uint32_t*>(readbacks[i]->GetPointer()) == 2200u + i,
 				"renderer flight reuse must retain each original completion and GPU payload");
 		}
-		std::cout << "Renderer pending GPU flight: next world tick overlaps acquisition, resources retained until fence, one reset on reuse, all payloads passed\n";
+		std::cout << "Renderer pending GPU flight: next world tick overlaps acquisition, no extra queued capture, resources retained until fence, one reset on reuse, all payloads passed\n";
 	}
 
 	enum class RendererFailure { None, Upload, MainSubmit, Present, GraphRefresh, GraphUpload };
