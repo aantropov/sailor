@@ -366,7 +366,8 @@ namespace Sailor::Memory
 				}
 			}
 
-			MemoryBlock block = MemoryBlock((size_t)std::max((uint32_t)size, (uint32_t)(m_startBlockSize * pow(2, m_blocks.Num()))), this);
+			const size_t blockSize = (std::max)(size + alignment - 1, m_startBlockSize << m_blocks.Num());
+			MemoryBlock block(blockSize, this);
 			uint32_t blockIndex = 0;
 
 			if (m_emptyBlocks.Num() == 0)

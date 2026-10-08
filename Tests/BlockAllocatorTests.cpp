@@ -113,11 +113,12 @@ namespace BlockAllocatorTests
 		}
 	}
 
+	template<typename TAllocator = TBlockAllocator<MisalignedAllocator>>
 	void TestMisalignedBackingBlock()
 	{
 		AllocatorStats stats;
 		{
-			TBlockAllocator<MisalignedAllocator> allocator(64, 1, (std::numeric_limits<size_t>::max)());
+			TAllocator allocator(64, 1, (std::numeric_limits<size_t>::max)());
 			allocator.GetGlobalAllocator().m_stats = &stats;
 			auto first = allocator.Allocate(64, 64);
 			Require(stats.m_capacities.size() == 1 && stats.m_capacities.front() >= 127,
@@ -233,6 +234,21 @@ namespace BlockAllocatorTests
 			"logical backing allocations must be released normally without reserving CPU gigabytes");
 	}
 
+	void TestPoolWideCapacity()
+	{
+		constexpr size_t capacity = (size_t{ 1 } << 32) + 4096;
+		AllocatorStats stats;
+		{
+			Sailor::Memory::TPoolAllocator<LogicalAllocator, LogicalPtr> allocator(capacity, 64, 0);
+			allocator.GetGlobalAllocator().m_stats = &stats;
+			auto data = allocator.Allocate(16, 64);
+			Require(stats.m_capacities.front() == capacity && allocator.GetOccupiedSpace() == capacity,
+				"the configured pool capacity must not be truncated to uint32");
+			allocator.Free(data);
+		}
+		Require(stats.m_freedBlocks == 1, "the large logical pool must release its backing owner");
+	}
+
 	void TestPoolTypedReuse()
 	{
 		AllocatorStats stats;
@@ -313,6 +329,8 @@ int main()
 	try
 	{
 		BlockAllocatorTests::TestMisalignedBackingBlock();
+		BlockAllocatorTests::TestPoolWideCapacity();
+		BlockAllocatorTests::TestMisalignedBackingBlock<Sailor::Memory::TPoolAllocator<BlockAllocatorTests::MisalignedAllocator>>();
 		BlockAllocatorTests::TestReuseAndCoalescing();
 		BlockAllocatorTests::TestPoolTypedReuse();
 		BlockAllocatorTests::TestPoolReleasedBlockIndex();
