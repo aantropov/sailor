@@ -4,6 +4,7 @@
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "FrameGraph/RenderSceneNode.h"
 #include "GraphicsDriver/Vulkan/VulkanFramebuffer.h"
+#include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
 #include "GraphicsDriver/Vulkan/VulkanImage.h"
 #include "GraphicsDriver/Vulkan/VulkanImageView.h"
 #include "RHI/Buffer.h"
@@ -462,9 +463,17 @@ namespace
 		vertices->AddAttribute(0u, 0u, EFormat::R32G32_SFLOAT, 0u);
 		const RenderState state(false, false, 0.0f, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0u, false);
 		auto material = driver->CreateMaterial(vertices, EPrimitiveTopology::TriangleList, state, shaders[0]);
+		auto sibling = driver->CreateMaterial(vertices, EPrimitiveTopology::TriangleList, state, shaders[0]);
 		auto emptyMaterial = driver->CreateMaterial(vertices, EPrimitiveTopology::TriangleList, state, shaders[1]);
-		if (!material || !emptyMaterial) return "RenderScene materials could not be created";
+		if (!material || !sibling || !emptyMaterial)
+		{
+			return "RenderScene materials could not be created";
+		}
 		const auto layout = material->m_vulkan.m_pipelines[0]->m_layout;
+		if (layout != sibling->m_vulkan.m_pipelines[0]->m_layout || material->GetBindings() == sibling->GetBindings())
+		{
+			return "materials using the same shaders must share their pipeline layout, not their parameter bindings";
+		}
 		if (layout->m_descriptionSetLayouts.Num() != 5u ||
 			!emptyMaterial->m_vulkan.m_pipelines[0]->m_layout->m_descriptionSetLayouts.IsEmpty())
 			return "compiled shader interfaces must have five and zero descriptor sets";
@@ -560,6 +569,19 @@ namespace
 			return "view repair changed request identity/revision or invalidated retained A";
 		if (lights->GetDescriptorRevision() != lightsRevision || !lights->GetShaderBindings().IsEmpty())
 			return "RenderScene changed the shared lighting bindings";
+		TVector<RHIShaderBindingSetPtr> projectedBindings;
+		for (uint32_t i = 0u; i < 4u; ++i)
+		{
+			projectedBindings.Add(driver->CreateShaderBindings());
+		}
+		projectedBindings.Add(bindingsB);
+		auto* nativeDriver = driver.DynamicCast<VulkanGraphicsDriver>();
+		const auto firstSets = nativeDriver->GetCompatibleDescriptorSets(layout, projectedBindings);
+		const auto siblingSets = nativeDriver->GetCompatibleDescriptorSets(sibling->m_vulkan.m_pipelines[0]->m_layout, projectedBindings);
+		if (firstSets.Num() != 5u || firstSets != siblingSets || firstSets[4] == nativeB)
+		{
+			return "equivalent materials did not reuse the same projected descriptor sets";
+		}
 
 		// A fresh rejected set avoids C's now-successful compatible-set cache entry.
 		auto mixedTexture = PrivateTextureView(textureC);
@@ -570,7 +592,10 @@ namespace
 		const std::array<RHIShaderBindingSetPtr, 3> orderedBindings{ bindingsA, mixedBad, bindingsB };
 		const std::array<RHIMeshPtr, 3> meshes{
 			CreateQuad(vertices, -1.0f, -0.25f), CreateQuad(vertices, -0.25f, 0.25f), CreateQuad(vertices, 0.25f, 1.0f) };
-		for (uint32_t i = 0u; i < 3u; ++i) AddInstances(draws[3], material, meshes[i], orderedBindings[i], i + 2u);
+		for (uint32_t i = 0u; i < 3u; ++i)
+		{
+			AddInstances(draws[3], i == 2u ? sibling : material, meshes[i], orderedBindings[i], i + 2u);
+		}
 		draws[3].m_resources->m_packet.Finalize(true);
 		const auto& groups = draws[3].m_resources->m_packet.GetGroups();
 		if (groups.Num() != 9u || GetPackedDrawRunEnd(groups, 0u) != 2u ||
@@ -749,6 +774,8 @@ void GraphicsBindingResultTestComponent::Tick(float)
 			"Real single-sample RenderScene Process: same-command-buffer A/rejected B/same-request C, all 8x8 pixels and exact recorded counts; ordered 2/3/4 mixed runs record 2 runs/6 candidates; zero-descriptor draw passes; actual ImGui owner preserves callback and later list/index/vertex offsets");
 		AddJournalEvent("SceneFlightUploads",
 			"Two/three flights, contiguous/paged stationary payloads and dynamic rewrites: exact recorded upload bytes/ranges, all 66 GPU records, unchanged-page identity, and an older recorded flight submitted after its successor");
+		AddJournalEvent("GraphicsPipelineLayoutReuse",
+			"Independent materials share their compiled layout and projected descriptor sets; mixed-material draws pass all 8x8 pixel readbacks");
 		MarkPassed();
 		return;
 	}

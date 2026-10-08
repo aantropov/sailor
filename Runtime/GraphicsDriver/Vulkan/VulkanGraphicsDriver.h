@@ -360,6 +360,32 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		TVector<uint32_t> CollectPublishedVariableDescriptorCounts(const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindingSets) const;
 
+		struct GraphicsPipelineLayoutKey
+		{
+			// Reflection stages determine descriptor types; executable stages determine push constants.
+			std::array<VulkanShaderStagePtr, 4> m_shaders;
+			TVector<uint32_t> m_variableDescriptorCounts;
+
+			bool operator==(const GraphicsPipelineLayoutKey& rhs) const
+			{
+				return m_shaders == rhs.m_shaders && m_variableDescriptorCounts == rhs.m_variableDescriptorCounts;
+			}
+
+			size_t GetHash() const
+			{
+				size_t hash = 0;
+				for (const auto& shader : m_shaders)
+				{
+					HashCombine(hash, shader);
+				}
+				for (const uint32_t count : m_variableDescriptorCounts)
+				{
+					HashCombine(hash, count);
+				}
+				return hash;
+			}
+		};
+
 		class ComputePipelineCacheKey
 		{
 			RHI::RHIShaderPtr m_shader{};
@@ -434,6 +460,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TConcurrentMap<size_t, RHI::RHITexturePtr> m_cachedMsaaRenderTargets{};
 
 		TConcurrentMap<ComputePipelineCacheKey, VulkanComputePipelinePtr> m_cachedComputePipelines{};
+		TConcurrentMap<GraphicsPipelineLayoutKey, VulkanPipelineLayoutPtr> m_cachedGraphicsPipelineLayouts;
 		TConcurrentMap<CachedDescriptorSet, TPair<VulkanDescriptorSetPtr, uint32_t>> m_cachedDescriptorSets{ 24 };
 		// Binding updates call UpdateDescriptorSet while holding this lock.
 		// Sailor SpinLock is not recursive and would deadlock on that nested acquisition.

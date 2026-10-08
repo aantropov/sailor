@@ -29,6 +29,7 @@ namespace
 	public:
 		using DescriptorCacheKey = CachedDescriptorSet;
 		using ComputeCacheKey = ComputePipelineCacheKey;
+		using GraphicsLayoutKey = GraphicsPipelineLayoutKey;
 	};
 
 	class VulkanDescriptorSetOwnershipProbe final : public VulkanDescriptorSet
@@ -253,6 +254,38 @@ namespace
 		const Key emptyCounts(shader, &empty);
 		Require(absentCounts == emptyCounts && absentCounts.GetHash() == emptyCounts.GetHash(),
 			"absent and empty descriptor capacities describe the same layout");
+	}
+
+	void TestGraphicsLayoutKeyTracksShaderGenerationsAndDescriptorCapacity()
+	{
+		using Key = VulkanGraphicsDriverProbe::GraphicsLayoutKey;
+		std::array<VulkanShaderStagePtr, 4> stages;
+		for (auto& stage : stages)
+		{
+			stage = VulkanShaderStagePtr::Make();
+		}
+		TVector<uint32_t> counts{ 1u, 32u };
+		const Key original{ stages, counts };
+		const Key same{ stages, counts };
+		TMap<Key, uint32_t> cache;
+		cache[original] = 7u;
+		Require(original == same && original.GetHash() == same.GetHash() && cache[same] == 7u,
+			"materials with the same shader generations and descriptor capacities must share one layout key");
+		counts[1] = 64u;
+		const Key larger{ stages, counts };
+		Require(!(original == larger), "variable descriptor capacity changes require a different layout");
+		cache[larger] = 8u;
+		for (size_t i = 0u; i < stages.size(); ++i)
+		{
+			auto replacement = stages;
+			replacement[i] = VulkanShaderStagePtr::Make();
+			const Key reloaded{ replacement, original.m_variableDescriptorCounts };
+			Require(!(original == reloaded),
+				"reloading either reflection or executable shader stage must invalidate layout reuse");
+			cache[reloaded] = static_cast<uint32_t>(i);
+		}
+		Require(cache.Num() == 6u && cache[original] == 7u && cache[larger] == 8u,
+			"captured shader generations and capacities must remain stable cache keys");
 	}
 
 	void TestStagingAllocationIdentityKeepsEveryRange()
@@ -726,6 +759,8 @@ int main()
 			TestPushConstantUpdatesClipPaddingAndPreservePartialWrites },
 		{ "ComputePipelineKeyTracksShaderAndDescriptorCapacity",
 			TestComputePipelineKeyTracksShaderAndDescriptorCapacity },
+		{ "GraphicsLayoutKeyTracksShaderGenerationsAndDescriptorCapacity",
+			TestGraphicsLayoutKeyTracksShaderGenerationsAndDescriptorCapacity },
 		{ "StagingAllocationIdentityKeepsEveryRange",
 			TestStagingAllocationIdentityKeepsEveryRange },
 		{ "SsboElementAlignmentPreservesStd430Stride",

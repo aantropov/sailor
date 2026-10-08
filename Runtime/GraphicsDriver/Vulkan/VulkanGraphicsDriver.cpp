@@ -175,6 +175,7 @@ bool VulkanGraphicsDriver::BeginConditionalDestroy()
 	m_cachedMsaaRenderTargets.Clear();
 	m_temporaryRenderTargets.Clear();
 	m_cachedComputePipelines.Clear();
+	m_cachedGraphicsPipelineLayouts.Clear();
 	m_cachedDescriptorSets.Clear();
 	m_backBuffer.Clear();
 	m_depthStencilBuffer.Clear();
@@ -2272,8 +2273,6 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 
 	auto device = m_vkInstance->GetMainDevice();
 
-	TVector<VulkanDescriptorSetLayoutPtr> descriptorSetLayouts;
-	TVector<RHI::ShaderLayoutBinding> bindings;
 	TVector<RHI::RHIShaderBindingSetPtr> shaderBindingSets{ shaderBindigs };
 	if (auto textureImporter = App::GetSubmodule<TextureImporter>())
 	{
@@ -2292,10 +2291,6 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 	TVector<uint32_t> optionalVariableDescriptorCount =
 		this->CollectOptionalVariableDescriptorCount(vulkanShaders, shaderBindingSets);
 
-	// We need debug shaders to get full names from reflection
-	VulkanApi::CreateDescriptorSetLayouts(device, vulkanShaders,
-		descriptorSetLayouts, bindings, &optionalVariableDescriptorCount);
-
 #ifdef _DEBUG
 	const bool bIsDebug = true;
 #else
@@ -2307,22 +2302,40 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 
 	RHI::RHIMaterialPtr res = RHI::RHIMaterialPtr::Make(renderState, vertex, fragment);
 
-	TVector<VkPushConstantRange> pushConstants;
-
-	if (!VulkanPipelineLayout::BuildPushConstantRanges(
-		{ vertex->m_vulkan.m_shader, fragment->m_vulkan.m_shader },
-		device->GetMaxPushConstantsSize(), pushConstants))
+	const GraphicsPipelineLayoutKey layoutKey{
+		{ vulkanShaders[0], vulkanShaders[1], vertex->m_vulkan.m_shader, fragment->m_vulkan.m_shader },
+		optionalVariableDescriptorCount
+	};
+	auto& cachedLayout = m_cachedGraphicsPipelineLayouts.At_Lock(layoutKey);
+	if (!cachedLayout)
 	{
-		SAILOR_LOG_ERROR("Cannot create graphics pipeline: push constants exceed the device limit or have an invalid range.");
-		return nullptr;
+		TVector<VulkanDescriptorSetLayoutPtr> descriptorSetLayouts;
+		TVector<RHI::ShaderLayoutBinding> bindings;
+		TVector<VkPushConstantRange> pushConstants;
+		// Debug reflection retains the binding names used by the RHI.
+		VulkanApi::CreateDescriptorSetLayouts(device, vulkanShaders,
+			descriptorSetLayouts, bindings, &optionalVariableDescriptorCount);
+		if (!VulkanPipelineLayout::BuildPushConstantRanges(
+			{ vertex->m_vulkan.m_shader, fragment->m_vulkan.m_shader },
+			device->GetMaxPushConstantsSize(), pushConstants))
+		{
+			m_cachedGraphicsPipelineLayouts.Unlock(layoutKey);
+			SAILOR_LOG_ERROR("Cannot create graphics pipeline: push constants exceed the device limit or have an invalid range.");
+			return nullptr;
+		}
+		cachedLayout = VulkanPipelineLayoutPtr::Make(device,
+			std::move(descriptorSetLayouts), std::move(bindings), std::move(pushConstants), 0);
+		// Resource creation can run on multiple threads. Publish only the compiled layout.
+		cachedLayout->Compile();
+		if (static_cast<VkPipelineLayout>(*cachedLayout) == VK_NULL_HANDLE)
+		{
+			cachedLayout.Clear();
+			m_cachedGraphicsPipelineLayouts.Unlock(layoutKey);
+			return nullptr;
+		}
 	}
-
-	// TODO: Rearrange descriptorSetLayouts to support vector of descriptor sets
-	auto pipelineLayout = VulkanPipelineLayoutPtr::Make(device,
-		descriptorSetLayouts,
-		bindings,
-		pushConstants,
-		0);
+	auto pipelineLayout = cachedLayout;
+	m_cachedGraphicsPipelineLayouts.Unlock(layoutKey);
 
 	auto colorAttachments = TVector<VkFormat>(shader->GetColorAttachments());
 	auto depthStencilFormat = (VkFormat)shader->GetDepthStencilAttachment();
@@ -4251,6 +4264,21 @@ void VulkanGraphicsDriver::CollectGarbage_RenderThread()
 	}
 
 	m_cachedDescriptorSets.UnlockAll();
+
+	m_cachedGraphicsPipelineLayouts.LockAll();
+	TVector<GraphicsPipelineLayoutKey> unusedLayouts;
+	for (const auto& entry : m_cachedGraphicsPipelineLayouts)
+	{
+		if (!entry.m_second || !entry.m_second.IsShared())
+		{
+			unusedLayouts.Add(entry.m_first);
+		}
+	}
+	for (const auto& key : unusedLayouts)
+	{
+		m_cachedGraphicsPipelineLayouts.ForcelyRemove(key);
+	}
+	m_cachedGraphicsPipelineLayouts.UnlockAll();
 }
 
 bool VulkanGraphicsDriver::StartGpuTracking()
