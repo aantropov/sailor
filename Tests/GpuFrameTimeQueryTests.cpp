@@ -56,8 +56,9 @@ namespace
 			"a stale full-width end timestamp must not become an enormous unsigned duration");
 		Require(
 			RHI::TryResolveGpuFrameTimeMilliseconds(
-				0xfffffff0u, 0x10u, 32u, 1.0f, milliseconds),
-			"limited-width timestamp counters should still support a valid wrap");
+				0xfffffff0u, 0x10u, 32u, 1.0f, milliseconds) &&
+			IsNear(milliseconds, 0.000032f, 0.000000001f),
+			"a 32-tick counter wrap at one nanosecond per tick must resolve to 0.000032 ms");
 		RHI::TGpuFrameTimeQueryRing<2u> ring;
 		const uint32_t first = ring.Acquire();
 		Require(first == 0u && ring.MarkIssued(first),

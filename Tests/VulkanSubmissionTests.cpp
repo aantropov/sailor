@@ -66,6 +66,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -5382,6 +5383,110 @@ frame: []
 		std::cout << "Renderer acquisition refusal: held material revision, early capture close and cleared view return passed\n";
 	}
 
+	void TestRendererTimingPublication()
+	{
+		auto* renderer = App::GetSubmodule<Renderer>();
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		auto* engine = App::GetSubmodule<EngineLoop>();
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto world = engine->GetWorld();
+		renderer->WaitIdle();
+		Require(renderer->EnsureFrameGraph(), "timing publication requires the real renderer graph");
+		auto graph = renderer->GetFrameGraph()->GetRHI();
+		const auto originalNodes = graph->GetGraph();
+		const auto originalMode = App::GetRenderStatsMode();
+		const bool bWasOutdated = VulkanSubmissionTestAccess::ExchangeSwapchainOutdated(*device, true);
+		auto node = TRefPtr<SubmissionLifecycleNode>::Make();
+		node->SetTag("Measured submission"_h);
+		node->m_material = TRefPtr<SubmissionHistoryMaterial>::Make();
+		node->m_material->SetBindings(RHIShaderBindingSetPtr::Make());
+		node->m_bReleased.store(true);
+		node->m_readback = Renderer::GetDriver()->CreateBuffer(sizeof(uint32_t), EBufferUsageBit::BufferTransferDst_Bit,
+			EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
+		VkEvent gate = VK_NULL_HANDLE;
+		const VkEventCreateInfo eventInfo{ VK_STRUCTURE_TYPE_EVENT_CREATE_INFO };
+		Require(vkCreateEvent(*device, &eventInfo, nullptr, &gate) == VK_SUCCESS, "timing publication requires a GPU gate");
+		Tests::ScopeExit cleanup([&]()
+			{
+				vkSetEvent(*device, gate);
+				renderer->WaitIdle();
+				node->m_gpuGate = VK_NULL_HANDLE;
+				graph->GetGraph() = originalNodes;
+				App::SetRenderStatsMode(originalMode);
+				VulkanSubmissionTestAccess::ExchangeSwapchainOutdated(*device, bWasOutdated);
+				renderer->RemoveSceneView(world.GetRawPtr());
+				vkDestroyEvent(*device, gate, nullptr);
+			});
+		graph->GetGraph().Clear();
+		graph->GetGraph().Add(node);
+		App::SetRenderStatsMode(Settings::ERenderStatsMode::RenderStatsAndQueries);
+		const auto submit = [&](bool bWaitForGpu = true)
+		{
+			FrameState frame(world.GetRawPtr(), ++node->m_payload * 16, {}, { 32, 24 });
+			engine->ProcessCpuFrame(frame);
+			frame.GetDrawImGuiTask()->Wait();
+			Require(renderer->PushFrame(frame), "timed renderer frame must acquire a native flight");
+			scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+			scheduler->ProcessTasksOnMainThread();
+			Require(node->m_token->IsSuccessful(), "timed renderer frame must submit real GPU work");
+			if (bWaitForGpu)
+			{
+				Require(node->m_completion->Wait(5000000000ull) == EFenceStatus::Finished &&
+					*static_cast<const uint32_t*>(node->m_readback->GetPointer()) == node->m_payload,
+					"completed timing samples must correspond to the submitted GPU payload");
+			}
+			return renderer->GetGpuTimings();
+		};
+		Require(!submit().m_bValid, "the first completed GPU query must remain unpublished until Renderer polls it");
+		const auto ready = submit();
+		const auto originalName = node->GetGpuTimingName(0);
+		Require(ready.m_bValid && ready.m_queryId != 0 && ready.m_gpuWorkMilliseconds > 0 && ready.m_timings.Num() == 2,
+			"Renderer must publish both native queue scopes, not only the query-ring result");
+		for (const auto& timing : ready.m_timings)
+		{
+			Require(timing.m_name == originalName && std::isfinite(timing.m_durationMilliseconds) &&
+				timing.m_durationMilliseconds >= 0, "published scopes must retain their label and finite GPU duration");
+		}
+		Require(ready.m_timings[0].m_queue != ready.m_timings[1].m_queue,
+			"the same node's graphics and compute/upload scopes must not be combined");
+
+		node->m_gpuGate = gate;
+		const auto retained = submit(false);
+		const auto pending = submit(false);
+		Require(vkGetFenceStatus(*device, *node->m_completion->m_vulkan.m_fence) == VK_NOT_READY,
+			"the delayed query must belong to genuinely pending GPU work");
+		Require(pending.m_bValid && pending.m_queryId == retained.m_queryId &&
+			pending.m_recordedAt == retained.m_recordedAt && pending.m_gpuWorkMilliseconds == retained.m_gpuWorkMilliseconds,
+			"a pending poll must retain the last completed measurement without presenting it as fresh");
+		Require(renderer->GetGpuTimings().m_queryId == pending.m_queryId &&
+			pending.GetAgeMilliseconds(std::chrono::steady_clock::now()) > 0,
+			"repeated consumer reads must preserve query identity and expose the sample's age");
+		Require(vkSetEvent(*device, gate) == VK_SUCCESS &&
+			node->m_completion->Wait(5000000000ull) == EFenceStatus::Finished,
+			"releasing the gate must complete both occupied flights");
+		node->m_gpuGate = VK_NULL_HANDLE;
+		node->SetTag("Replacement submission"_h);
+		submit();
+		const auto replacement = submit();
+		Require(replacement.m_bValid && replacement.m_queryId > pending.m_queryId && replacement.m_timings.Num() == 2,
+			"Renderer must publish the replacement node after its own native query completes");
+		for (const auto& timing : replacement.m_timings)
+		{
+			Require(timing.m_name == node->GetGpuTimingName(0) && timing.m_name != originalName,
+				"a node absent from the completed frame must disappear from the published timings");
+		}
+		App::SetRenderStatsMode(Settings::ERenderStatsMode::None);
+		const auto disabled = renderer->GetGpuTimings();
+		Require(!disabled.m_bValid && disabled.m_timings.IsEmpty(), "disabling profiling must immediately hide old pass timings");
+		submit();
+		App::SetRenderStatsMode(Settings::ERenderStatsMode::RenderStatsAndQueries);
+		Require(!submit().m_bValid, "queries from before profiling was restarted must not repopulate the new generation");
+		const auto restarted = submit();
+		Require(restarted.m_bValid && restarted.m_generation > replacement.m_generation && restarted.m_timings.Num() == 2,
+			"profiling must recover with a fresh native sample after a generation change");
+		std::cout << "Renderer timing publication: native queues, delayed flights, retired scopes and profiling restart passed\n";
+	}
+
 	class SkyPublicationNode : public Framegraph::SkyNode
 	{
 	public:
@@ -5559,6 +5664,7 @@ frame: []
 				TestRendererSubmissionOwnership();
 				TestRendererPendingFlightReuse();
 				TestRendererSubmissionOutcomes();
+				TestRendererTimingPublication();
 				TestSingleActiveWorld();
 				Tests::RunAnimationShadowCommandTests();
 				Tests::RunWorldLifecycleCommandTests();
