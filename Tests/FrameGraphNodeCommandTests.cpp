@@ -5912,6 +5912,7 @@ frame:
 		auto liveBindings = TSharedPtr<uint32_t>::Make(0u);
 		TVector<RHIMaterialPtr> retiredSources;
 		RHIRenderSubmissionContextPtr heldContext;
+		auto reusedContext = RHIRenderSubmissionContextPtr::Make();
 		RHICommandListPtr heldUpload, heldDraw;
 		std::array<RHIBufferPtr, 3> heldPixels;
 		const RHIShaderBindingSet* heldBindings = nullptr;
@@ -5938,7 +5939,7 @@ frame:
 			auto source = driver->CreateMaterial(mesh->m_vertexDescription, EPrimitiveTopology::TriangleList, state, shader, bindings);
 			RHISceneViewSnapshot snapshot;
 			snapshot.m_frame = frame;
-			snapshot.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
+			snapshot.m_submissionContext = frame == 1 ? RHIRenderSubmissionContextPtr::Make() : reusedContext;
 			snapshot.m_camera = TUniquePtr<CameraData>::Make();
 			snapshot.m_frameBindings = driver->CreateShaderBindings();
 			snapshot.m_rhiLightsData = driver->CreateShaderBindings();
@@ -5971,6 +5972,12 @@ frame:
 			record.m_renderFlags = 1;
 			auto scene = RHIScenePtr::Make();
 			scene->AddInstance(record);
+			const uint32_t instanceCount = frame < 3 ? 1u : 2u;
+			if (instanceCount == 2)
+			{
+				record.m_producerKey += 100;
+				scene->AddInstance(record);
+			}
 			snapshot.m_sceneVersions = TSharedPtr<const TVector<RHISceneVersionPtr>>::Make(
 				TVector<RHISceneVersionPtr>{ scene->PublishVersion() });
 			for (uint32_t cascade = 0; cascade < 3; ++cascade)
@@ -5999,7 +6006,64 @@ frame:
 			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 			commands->BeginCommandList(upload, true);
 			commands->BeginCommandList(draw, true);
+#if defined(__APPLE__)
+			const bool bRetryStorage = frame == 1 || frame == 3;
+			if (bRetryStorage)
+			{
+				auto view = node->GetResources(snapshot)->m_activeShadowViews[0];
+				const auto previousSet = view->m_perInstanceData;
+				const auto previousNative = previousSet ? previousSet->m_vulkan.m_descriptorSet : VulkanDescriptorSetPtr{};
+				const auto previousRevision = previousSet ? previousSet->GetDescriptorRevision() : 0u;
+				const auto previousBytes = view->m_sizePerInstanceData;
+				const auto previousIndices = view->m_sizeInstanceIndices;
+				Require(bool(previousSet) == (frame == 3) && view->m_packet.GetNumStorageInstances() == instanceCount &&
+					view->m_packet.GetNumDrawInstances() == instanceCount && previousIndices < sizeof(uint32_t) * instanceCount,
+					"the fixture must exercise cold publication and real same-view storage growth");
+				const auto failure = Tests::RefuseSecondVulkanDescriptorAllocation([&]()
+					{
+						node->Process(graph, upload, draw, snapshot);
+					});
+				Require(failure.m_bFirstStorageWritten && failure.m_failedLayout,
+					"the first SSBO must reach Vulkan before the second descriptor allocation is refused");
+				Require(view->m_perInstanceData == previousSet && view->m_sizePerInstanceData == previousBytes &&
+					view->m_sizeInstanceIndices == previousIndices && view->m_packet.m_metrics.m_instanceUploadBytes == 0 &&
+					(!previousSet || (previousSet->m_vulkan.m_descriptorSet == previousNative && previousSet->GetDescriptorRevision() == previousRevision)),
+					"second-SSBO refusal must preserve the published pair, capacities and revision without uploading a partial payload");
+				Require(!snapshot.m_shadowMapsToUpdate[0].m_payloadCompletionToken->IsSuccessful() &&
+					node->GetDrawCallStats().m_numInstances == 2 * instanceCount,
+					"only the incomplete cascade must fail; the other two cascades must draw");
+				auto empty = ReadColor(draw, snapshot.m_shadowMapsToUpdate[0].m_shadowMap);
+				CompleteCommands(upload, draw);
+				const auto values = static_cast<const glm::vec4*>(empty->GetPointer());
+				Require(std::all_of(values, values + Side * Side, [](glm::vec4 value) { return value == glm::vec4(0); }),
+					"the refused cascade must contain only clear pixels, not draws from absent or undersized storage");
+				auto retry = node->Prepare(graph, snapshot);
+				retry->Run();
+				retry->Wait();
+				Require(node->GetResources(snapshot)->m_activeShadowViews[0] == view,
+					"publication retry must use the same shadow view");
+				upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				commands->BeginCommandList(upload, true);
+				commands->BeginCommandList(draw, true);
+			}
+#endif
 			node->Process(graph, upload, draw, snapshot);
+			Require(node->GetDrawCallStats().m_numInstances == 3 * instanceCount,
+				"all three cascades must draw the full packet after publication");
+#if defined(__APPLE__)
+			if (bRetryStorage)
+			{
+				const auto view = node->GetResources(snapshot)->m_activeShadowViews[0];
+				const auto bindings = view->m_perInstanceData;
+				Require(bindings && bindings->HasBinding("data"_h) && bindings->HasBinding("indices"_h) &&
+					view->m_sizePerInstanceData == sizeof(ShadowPrepassNode::PerInstanceData) * instanceCount &&
+					view->m_sizeInstanceIndices == sizeof(uint32_t) * instanceCount &&
+					view->m_packet.m_metrics.m_instanceUploadBytes == view->m_sizePerInstanceData &&
+					snapshot.m_shadowMapsToUpdate[0].m_payloadCompletionToken->IsSuccessful(),
+					"same-view retry must publish and upload both SSBOs");
+			}
+#endif
 			std::array<RHIBufferPtr, 3> pixels;
 			for (uint32_t cascade = 0; cascade < 3; ++cascade)
 				pixels[cascade] = ReadColor(draw, snapshot.m_shadowMapsToUpdate[cascade].m_shadowMap);
@@ -6026,6 +6090,7 @@ frame:
 			Require(*liveBindings <= 7, "source binding resources must settle while one recorded submission remains held");
 		}
 		retiredSources.Clear();
+		reusedContext.Clear();
 		RHISceneViewSnapshot idle;
 		idle.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
 		for (uint32_t frame = 25; frame <= 30; ++frame)
@@ -6051,6 +6116,9 @@ frame:
 		Require(*liveBindings == 0, "retired source bindings must release after the held submission finishes");
 		std::cout << "Custom shadow cache paged=" << paged
 			<< ": 24 generations, three-cascade reuse, bounded bindings, empty-frame eviction and retained pixels passed\n";
+#if defined(__APPLE__)
+		std::cout << "Shadow storage paged=" << paged << ": second-SSBO cold/growth refusal and same-packet pixel recovery passed\n";
+#endif
 	}
 
 	void DrawDepthPattern(RHICommandListPtr command, RHIFrameGraphPtr graph, RHIRenderTargetPtr depth, ShaderSetPtr shader, uint32_t frame)

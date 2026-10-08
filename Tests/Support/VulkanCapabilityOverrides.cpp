@@ -7,10 +7,28 @@ namespace
 {
 	thread_local std::vector<Sailor::Tests::VulkanBufferWrite>* g_bufferWrites = nullptr;
 	thread_local std::vector<Sailor::Tests::VulkanComputeInputEvent>* g_computeInputs = nullptr;
+	thread_local Sailor::Tests::VulkanDescriptorAllocationFailure* g_descriptorFailure = nullptr;
 }
 
 namespace Sailor::Tests
 {
+	VulkanDescriptorAllocationFailure RefuseSecondVulkanDescriptorAllocation(const std::function<void()>& record)
+	{
+		VulkanDescriptorAllocationFailure failure;
+		auto previous = std::exchange(g_descriptorFailure, &failure);
+		try
+		{
+			record();
+		}
+		catch (...)
+		{
+			g_descriptorFailure = previous;
+			throw;
+		}
+		g_descriptorFailure = previous;
+		return failure;
+	}
+
 	std::vector<VulkanComputeInputEvent> CaptureVulkanComputeInputs(const std::function<void()>& record)
 	{
 		std::vector<VulkanComputeInputEvent> events;
@@ -321,6 +339,38 @@ namespace
 		vkCmdDispatch(command, x, y, z);
 	}
 
+	VKAPI_ATTR VkResult VKAPI_CALL AllocateDescriptorSets(VkDevice device, const VkDescriptorSetAllocateInfo* info,
+		VkDescriptorSet* sets)
+	{
+		if (g_descriptorFailure && ++g_descriptorFailure->m_numAllocations == 2)
+		{
+			g_descriptorFailure->m_failedLayout = info->pSetLayouts[0];
+			for (uint32_t i = 0; i < info->descriptorSetCount; ++i)
+			{
+				sets[i] = VK_NULL_HANDLE;
+			}
+			// Pool exhaustion retries internally; host OOM reaches the caller directly.
+			return VK_ERROR_OUT_OF_HOST_MEMORY;
+		}
+		const auto result = vkAllocateDescriptorSets(device, info, sets);
+		if (g_descriptorFailure && g_descriptorFailure->m_numAllocations == 1 && result == VK_SUCCESS)
+		{
+			g_descriptorFailure->m_firstSet = sets[0];
+		}
+		return result;
+	}
+
+	VKAPI_ATTR void VKAPI_CALL UpdateDescriptorSets(VkDevice device, uint32_t writeCount, const VkWriteDescriptorSet* writes,
+		uint32_t copyCount, const VkCopyDescriptorSet* copies)
+	{
+		vkUpdateDescriptorSets(device, writeCount, writes, copyCount, copies);
+		if (g_descriptorFailure && g_descriptorFailure->m_numAllocations == 1 && writeCount == 1)
+		{
+			g_descriptorFailure->m_bFirstStorageWritten = writes[0].dstSet == g_descriptorFailure->m_firstSet &&
+				writes[0].dstBinding == 0 && writes[0].descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		}
+	}
+
 	// dyld interposes other images, leaving this library's calls to Vulkan intact.
 	__attribute__((used, section("__DATA,__interpose,interposing")))
 	const struct { const void* replacement; const void* original; } interpose[] = {
@@ -346,6 +396,8 @@ namespace
 		{ reinterpret_cast<const void*>(&CopyBuffer), reinterpret_cast<const void*>(&vkCmdCopyBuffer) },
 		{ reinterpret_cast<const void*>(&PipelineBarrier), reinterpret_cast<const void*>(&vkCmdPipelineBarrier) },
 		{ reinterpret_cast<const void*>(&Dispatch), reinterpret_cast<const void*>(&vkCmdDispatch) },
+		{ reinterpret_cast<const void*>(&AllocateDescriptorSets), reinterpret_cast<const void*>(&vkAllocateDescriptorSets) },
+		{ reinterpret_cast<const void*>(&UpdateDescriptorSets), reinterpret_cast<const void*>(&vkUpdateDescriptorSets) },
 		{ reinterpret_cast<const void*>(&UpdateBuffer), reinterpret_cast<const void*>(&vkCmdUpdateBuffer) }
 	};
 }

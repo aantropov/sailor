@@ -30,6 +30,16 @@ namespace Sailor::Tests
 
 	std::vector<VulkanComputeInputEvent> CaptureVulkanComputeInputs(const std::function<void()>& record);
 
+	struct VulkanDescriptorAllocationFailure
+	{
+		uint32_t m_numAllocations = 0;
+		VkDescriptorSet m_firstSet = VK_NULL_HANDLE;
+		VkDescriptorSetLayout m_failedLayout = VK_NULL_HANDLE;
+		bool m_bFirstStorageWritten = false;
+	};
+
+	VulkanDescriptorAllocationFailure RefuseSecondVulkanDescriptorAllocation(const std::function<void()>& record);
+
 	enum class MissingVulkanFeature
 	{
 		None, Anisotropy, FirstInstance, IndependentBlend, RuntimeArray,
