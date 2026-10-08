@@ -363,9 +363,17 @@ IGraphicsDriverCommands* Renderer::GetDriverCommands()
 
 void Renderer::FixLostDevice()
 {
-	if (!m_bIsInitialized || !m_driverInstance)
+	if (!m_bIsInitialized || !m_driverInstance ||
+		!m_driverInstance->ShouldFixLostDevice(m_pViewport))
 	{
 		return;
+	}
+
+	// Preparation can still hold the render task after image acquisition.
+	// Submit that frame before replacing the swapchain and its semaphores.
+	if (m_previousRenderFrame)
+	{
+		m_previousRenderFrame->Wait();
 	}
 
 	if (m_driverInstance->FixLostDevice(m_pViewport))

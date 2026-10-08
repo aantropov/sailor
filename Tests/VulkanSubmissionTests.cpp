@@ -5001,7 +5001,7 @@ frame: []
 		std::cout << "Material layout cache: concurrent creation, readiness and shared RHI identity passed\n";
 	}
 
-	void TestRendererSubmissionOwnership()
+	void TestRendererSubmissionOwnership(bool bResizeWhilePreparing = false)
 	{
 		auto* renderer = App::GetSubmodule<Renderer>();
 		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
@@ -5027,6 +5027,12 @@ frame: []
 		FrameState frame(world.GetRawPtr(), 16, {}, { 32, 24 });
 		engine->ProcessCpuFrame(frame);
 		frame.GetDrawImGuiTask()->Wait();
+		if (bResizeWhilePreparing)
+		{
+			// Exercise recovery without an acquired WSI image, so a failing
+			// ordering check cannot leave the GPU waiting for a replaced semaphore.
+			VulkanSubmissionTestAccess::ExchangeSwapchainOutdated(*VulkanApi::GetInstance()->GetMainDevice(), true);
+		}
 		Require(renderer->PushFrame(frame), "real PushFrame must accept the observed submission");
 		node->m_bStarted.wait(false);
 		Require(!node->m_previousMotion, "a graph without MotionBlur must not prepare temporal scene data");
@@ -5035,8 +5041,21 @@ frame: []
 		auto borrowed = renderer->GetOrAddSceneView(world.GetRawPtr());
 		Require(borrowed->m_snapshots.IsEmpty() || &borrowed->m_snapshots[0] != node->m_snapshot,
 			"an active preparation snapshot must not return to the scene-view cache");
-		node->m_bReleased.store(true);
-		node->m_bReleased.notify_one();
+		if (bResizeWhilePreparing)
+		{
+			std::jthread releasePreparation([&]()
+				{
+					std::this_thread::sleep_for(std::chrono::milliseconds(100));
+					node->m_bReleased.store(true);
+					node->m_bReleased.notify_one();
+				});
+			renderer->FixLostDevice();
+		}
+		else
+		{
+			node->m_bReleased.store(true);
+			node->m_bReleased.notify_one();
+		}
 		scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 		scheduler->ProcessTasksOnMainThread();
 		Require(node->m_bPrepared && node->m_bCapturedVersionMatches && node->m_numProcessed == 1,
@@ -5049,7 +5068,8 @@ frame: []
 		Require(!recycled->m_snapshots.IsEmpty() && &recycled->m_snapshots[0] == node->m_snapshot &&
 			!recycled->m_submissionContext,
 			"completion must clear and return the original view after its borrowers finish");
-		std::cout << "Renderer submission: held preparation, captured material revision, one record, native completion and scene-view return passed\n";
+		std::cout << "Renderer submission: resize=" << bResizeWhilePreparing <<
+			", held preparation, captured material revision, one record, native completion and scene-view return passed\n";
 	}
 
 	void TestRendererPendingFlightReuse()
@@ -5703,6 +5723,7 @@ frame: []
 			{
 				TestConcurrentMaterialLayouts();
 				TestRendererSubmissionOwnership();
+				TestRendererSubmissionOwnership(true);
 				TestRendererPendingFlightReuse();
 				TestRendererSubmissionOutcomes();
 				TestRendererTimingPublication();
