@@ -44,9 +44,9 @@ def default_target_framework(host_os: str) -> str:
     if host_os == "mac":
         return "net10.0-maccatalyst"
     if host_os == "windows":
-        return "net9.0-windows10.0.19041.0"
+        return "net10.0-windows10.0.19041.0"
     if host_os == "linux":
-        return "net9.0-android"
+        return "net10.0-android"
     raise RuntimeError("Unsupported host OS")
 
 
