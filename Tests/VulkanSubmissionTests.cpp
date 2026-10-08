@@ -27,6 +27,7 @@
 #include "FrameGraph/ParticlesNode.h"
 #include "FrameGraph/ClearNode.h"
 #include "FrameGraph/DepthHighZNode.h"
+#include "FrameGraph/GlobalIlluminationResolveNode.h"
 #include "FrameGraph/RenderSceneNode.h"
 #include "FrameGraph/EditorReadbackNode.h"
 #include "FrameGraph/CopyTextureToRamNode.h"
@@ -2201,6 +2202,45 @@ namespace
 		std::cout << "MSAA depth consumers: refused Clear/HiZ preserve pixels, command recording and pyramid publication passed\n";
 	}
 
+	void TestGiResolveDisabled()
+	{
+		auto& driver = *Renderer::GetDriver().DynamicCast<VulkanGraphicsDriver>();
+		auto graph = RHIFrameGraphPtr::Make();
+		auto node = TRefPtr<Framegraph::GlobalIlluminationResolveNode>::Make();
+		node->SetRHIResource("depthSampler"_h,
+			driver.CreateRenderTarget(glm::ivec2(16), 1, ETextureFormat::R32_SFLOAT));
+		node->SetRHIResource("probeCellIndices"_h,
+			driver.CreateRenderTarget(glm::ivec2(8), 1, ETextureFormat::R32G32B32A32_SFLOAT));
+		for (auto mode : { EGlobalIlluminationMode::NoGI, EGlobalIlluminationMode::Baked, EGlobalIlluminationMode::Runtime })
+		{
+			for (bool enabled : { false, true })
+			{
+				for (auto view : { ESceneViewRenderMode::Lit, ESceneViewRenderMode::GlobalIlluminationOnly,
+					ESceneViewRenderMode::GlobalIlluminationProbes, ESceneViewRenderMode::GlobalIlluminationVisibility })
+				{
+					RHISceneViewSnapshot scene;
+					scene.m_globalIlluminationMode = mode;
+					scene.m_bGlobalIlluminationEnabled = enabled;
+					scene.m_renderMode = view;
+					auto command = driver.CreateCommandList(false, ECommandListQueue::Graphics);
+					driver.BeginCommandList(command, true);
+					node->Process(graph, {}, command, scene);
+					// With no lighting bindings, an active resolve clears its output.
+					// Disabled lighting must skip even this fallback GPU work.
+					const bool active = (enabled && mode != EGlobalIlluminationMode::NoGI) ||
+						view == ESceneViewRenderMode::GlobalIlluminationProbes ||
+						view == ESceneViewRenderMode::GlobalIlluminationVisibility;
+					Require((command->GetNumRecordedCommands() != 0) == active,
+						"GI resolve must skip disabled lighting while retaining enabled and probe-debug work");
+					driver.RestoreImageBarriers(command);
+					driver.EndCommandList(command);
+					Require(driver.SubmitCommandList_Immediate(command), "GI resolve gating must leave a valid command list");
+				}
+			}
+		}
+		std::cout << "GI resolve: NoGI/quality disabled record no GPU work; enabled and probe debug retain fallback clears\n";
+	}
+
 	void TestSurfacePending()
 	{
 		auto device = VulkanApi::GetInstance()->GetMainDevice();
@@ -2616,6 +2656,7 @@ frame: []
 						TestMsaaCacheRefusal();
 						TestMsaaPassRefusal();
 						TestMsaaDepthConsumers();
+						TestGiResolveDisabled();
 						auto device = VulkanApi::GetInstance()->GetMainDevice();
 						auto& driver = *Renderer::GetDriver();
 						const glm::ivec2 extent(43, 27);

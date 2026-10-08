@@ -26,6 +26,14 @@ void GlobalIlluminationResolveNode::Process(
 	SAILOR_PROFILE_FUNCTION();
 	ResetDrawCallStats();
 
+	const bool bDebugProbes = sceneView.m_renderMode >= ESceneViewRenderMode::GlobalIlluminationProbes &&
+		sceneView.m_renderMode <= ESceneViewRenderMode::GlobalIlluminationSubdivisions;
+	if (!bDebugProbes && (!sceneView.m_bGlobalIlluminationEnabled ||
+		sceneView.m_globalIlluminationMode == EGlobalIlluminationMode::NoGI))
+	{
+		return;
+	}
+
 	auto& driver = App::GetSubmodule<Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<Renderer>()->GetDriverCommands();
 
