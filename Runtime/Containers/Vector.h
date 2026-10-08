@@ -635,9 +635,10 @@ namespace Sailor
 			std::stable_sort(begin(), end());
 		}
 
-		void Sort(const TCompare<TElementType>& compare)
+		template<typename TPredicate>
+		void Sort(const TPredicate& compare)
 		{
-			// For now use std
+			// Keep the predicate type so hot comparisons can be inlined.
 			std::stable_sort(begin(), end(), compare);
 		}
 

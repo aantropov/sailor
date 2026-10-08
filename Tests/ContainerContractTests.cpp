@@ -162,6 +162,42 @@ namespace
 		}
 	}
 
+	void TestVectorStableSort()
+	{
+		struct Item
+		{
+			int m_key;
+			int m_index;
+		};
+		TVector<Item> values{ { 2, 0 }, { 1, 1 }, { 2, 2 }, { 0, 3 }, { 1, 4 } };
+		const int direction = -1;
+		values.Sort([direction](const Item& lhs, const Item& rhs)
+			{
+				return direction * lhs.m_key < direction * rhs.m_key;
+			});
+		const int descending[]{ 0, 2, 1, 4, 3 };
+		for (size_t i = 0; i < values.Num(); ++i)
+		{
+			Require(values[i].m_index == descending[i], "a captured comparator must preserve equal-key insertion order");
+		}
+
+		const TCompare<Item> compare = [](const Item& lhs, const Item& rhs)
+			{
+				return lhs.m_key < rhs.m_key;
+			};
+		values.Sort(compare);
+		const int ascending[]{ 3, 1, 4, 0, 2 };
+		for (size_t i = 0; i < values.Num(); ++i)
+		{
+			Require(values[i].m_index == ascending[i], "existing stored comparators must retain stable sort behavior");
+		}
+		values.Clear();
+		values.Sort(compare);
+		values.Add({ 1, 5 });
+		values.Sort(compare);
+		Require(values.Num() == 1 && values[0].m_index == 5, "empty and single-element sorting must preserve contents");
+	}
+
 	void TestCancellableStableSort()
 	{
 		using Entry = std::pair<int, std::string>;
@@ -765,6 +801,7 @@ int main()
 		TestVectorEraseRanges<MoveOnly>();
 		TestVectorEraseRanges<CopyOnly>();
 		TestVectorConstructionAndAssignment();
+		TestVectorStableSort();
 		TestCancellableStableSort();
 		TestContainerAlignment();
 		TestVectorInsertionAndRemoveFirst<int>();
