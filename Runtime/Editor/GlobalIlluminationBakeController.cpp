@@ -223,10 +223,15 @@ namespace
 		for (uint32_t i = 0; i < savedPrefabs.Num(); ++i)
 		{
 			const auto& prefab = savedPrefabs[i];
-			if (!prefab->IsLinkedInstanceRecord()) continue;
+			if (!prefab->IsLinkedInstanceRecord())
+			{
+				continue;
+			}
 			YAML::Node record = savedSnapshot["prefabs"][i];
 			for (const char* field : { "gameObjects", "components" })
+			{
 				record[field] = PrefabInstance::NormalizeReferences(record[field], prefab->GetLinkedInstanceIds());
+			}
 		}
 
 		if (!AreWorldDocumentsEquivalentForProbeBake(
@@ -475,7 +480,10 @@ bool GlobalIlluminationBakeController::Start(
 						const bool bPreparingGeometry = progress.m_stage ==
 							Raytracing::PathTracer::EScenePreparationStage::Geometry;
 #if defined(SAILOR_GI_BAKE_TEST_HOOKS)
-						if (!bPreparingGeometry && s_preparationObserver) s_preparationObserver();
+						if (!bPreparingGeometry && s_preparationObserver)
+						{
+							s_preparationObserver();
+						}
 #endif
 						const float stageFraction = progress.m_total > 0u ?
 							static_cast<float>(progress.m_completed) /
@@ -592,7 +600,10 @@ bool GlobalIlluminationBakeController::Start(
 				state->m_status.m_stage = "Saving one baked state atomically";
 				state->m_lock.Unlock();
 #if defined(SAILOR_GI_BAKE_TEST_HOOKS)
-				if (s_savingObserver) s_savingObserver();
+				if (s_savingObserver)
+				{
+					s_savingObserver();
+				}
 #endif
 				std::string saveDiagnostic;
 				if (!GIProbesBinary::SaveAtomic(
@@ -689,6 +700,9 @@ void GlobalIlluminationBakeController::Wait()
 	}
 	m_task.Clear();
 #if defined(SAILOR_GI_BAKE_TEST_HOOKS)
-	if (s_waitObserver) s_waitObserver();
+	if (s_waitObserver)
+	{
+		s_waitObserver();
+	}
 #endif
 }

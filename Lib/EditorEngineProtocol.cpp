@@ -289,7 +289,10 @@ namespace
 			gate.WaitForShutdownDrain();
 			gate.WaitForStartDrainAndJoin();
 			DispatchRequest(request, response, dependencies);
-			if (response.success()) completion.MarkSucceeded();
+			if (response.success())
+			{
+				completion.MarkSucceeded();
+			}
 			return;
 		}
 
@@ -385,7 +388,10 @@ bool Sailor::Protocol::SetMacViewportHost(uint64_t viewportId, uintptr_t layer)
 {
 	auto& gate = GetEditorEngineProtocolLifecycleGate();
 	std::string error;
-	if (!gate.TryAcquireOperation(error, false)) return false;
+	if (!gate.TryAcquireOperation(error, false))
+	{
+		return false;
+	}
 	const TProtocolLifecycleCompletion completion(gate, EProtocolLifecycleCompletion::Operation);
 	return EditorRuntime::SetEditorRemoteViewportMacHostHandle(viewportId,
 		static_cast<uint32_t>(EditorRemote::MacNativeHostHandleKind::CAMetalLayer), layer);

@@ -233,8 +233,14 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			break;
 
 		case ProtocolRequest::kShutdown:
-			if (ShutdownEngine(dependencies)) SetEmptyResult(response);
-			else SetError(response, "Engine shutdown could not drain GPU work. Retry shutdown before initializing another session.");
+			if (ShutdownEngine(dependencies))
+			{
+				SetEmptyResult(response);
+			}
+			else
+			{
+				SetError(response, "Engine shutdown could not drain GPU work. Retry shutdown before initializing another session.");
+			}
 			break;
 
 		case ProtocolRequest::kRequestAssetReload:

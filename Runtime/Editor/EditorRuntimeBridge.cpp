@@ -112,8 +112,14 @@ namespace
 	TResult ExecuteOnViewportOwner(TResult fallback, TOperation operation)
 	{
 		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
-		if (!scheduler) return fallback;
-		if (scheduler->IsEditorThread()) return operation();
+		if (!scheduler)
+		{
+			return fallback;
+		}
+		if (scheduler->IsEditorThread())
+		{
+			return operation();
+		}
 		auto task = Tasks::CreateTask<TResult>("Editor viewport command"_h, std::move(operation), EThreadType::Editor);
 		task->Run();
 		task->Wait();
@@ -184,10 +190,10 @@ namespace
 		{
 		}
 
-			void Pump()
-			{
-				auto result = m_binding.PumpFrame();
-				if (!result.IsOk() && result.m_code != ResultCode::Retryable)
+		void Pump()
+		{
+			auto result = m_binding.PumpFrame();
+			if (!result.IsOk() && result.m_code != ResultCode::Retryable)
 			{
 				if (m_lastPumpFailure.m_code != result.m_code ||
 					m_lastPumpFailure.m_nativeCode != result.m_nativeCode ||
@@ -218,15 +224,24 @@ namespace
 			}
 			if (bWasVisible != (m_bIsCreated && m_bIsVisible))
 			{
-				if (bWasVisible) --g_numVisibleRemoteViewports;
-				else ++g_numVisibleRemoteViewports;
+				if (bWasVisible)
+				{
+					--g_numVisibleRemoteViewports;
+				}
+				else
+				{
+					++g_numVisibleRemoteViewports;
+				}
 			}
 			return m_bIsCreated;
 		}
 
 		void Destroy()
 		{
-			if (m_bIsCreated.exchange(false) && m_bIsVisible) --g_numVisibleRemoteViewports;
+			if (m_bIsCreated.exchange(false) && m_bIsVisible)
+			{
+				--g_numVisibleRemoteViewports;
+			}
 			m_binding.Destroy();
 		}
 
@@ -236,8 +251,14 @@ namespace
 			{
 				if (m_bIsCreated)
 				{
-					if (value) ++g_numVisibleRemoteViewports;
-					else --g_numVisibleRemoteViewports;
+					if (value)
+					{
+						++g_numVisibleRemoteViewports;
+					}
+					else
+					{
+						--g_numVisibleRemoteViewports;
+					}
 				}
 				m_bIsVisible = value;
 				m_binding.SetVisible(value);
@@ -249,7 +270,10 @@ namespace
 			if (m_bIsFocused != value)
 			{
 				m_bIsFocused = value;
-				if (m_bIsCreated) m_binding.SetFocused(value);
+				if (m_bIsCreated)
+				{
+					m_binding.SetFocused(value);
+				}
 			}
 		}
 	};
@@ -325,9 +349,15 @@ namespace
 	bool ApplyRemoteViewportUpdate(const TSharedPtr<RemoteViewportBinding>& binding, const RemoteViewportUpdate& update)
 	{
 		binding->SetVisible(update.m_bIsVisible);
-		if (binding->m_bIsFocused && !update.m_bIsFocused) RequestEditorInputReset(binding);
+		if (binding->m_bIsFocused && !update.m_bIsFocused)
+		{
+			RequestEditorInputReset(binding);
+		}
 		binding->SetFocused(update.m_bIsFocused);
-		if (!BindRemoteViewportHost(binding)) return false;
+		if (!BindRemoteViewportHost(binding))
+		{
+			return false;
+		}
 #if defined(__APPLE__)
 		if (GetAppliedEditorRenderArea() != glm::ivec2(update.m_extent))
 		{
@@ -335,13 +365,19 @@ namespace
 			return false;
 		}
 #endif
-		if (!binding->m_bIsCreated && !binding->Create()) return false;
+		if (!binding->m_bIsCreated && !binding->Create())
+		{
+			return false;
+		}
 		const auto& descriptor = binding->m_binding.GetRuntimeSession().GetDescriptor();
 		if (descriptor.m_width != update.m_extent.x || descriptor.m_height != update.m_extent.y)
 		{
 			// New-generation input must enter the queue after this reset.
 			RequestEditorInputReset(binding);
-			if (!binding->m_binding.Resize(update.m_extent.x, update.m_extent.y).IsOk()) return false;
+			if (!binding->m_binding.Resize(update.m_extent.x, update.m_extent.y).IsOk())
+			{
+				return false;
+			}
 		}
 		binding->m_lastRect.left = update.m_position.x;
 		binding->m_lastRect.top = update.m_position.y;
@@ -377,7 +413,10 @@ namespace
 		const auto cursor = raw.GetCursorPos();
 		for (uint32_t i = 0; i < desired.size(); ++i)
 		{
-			if (state[i] == desired[i]) continue;
+			if (state[i] == desired[i])
+			{
+				continue;
+			}
 			GlobalInput::ApplyEvent({ Platform::InputEvent::Type::MouseButton,
 				static_cast<float>(cursor.x), static_cast<float>(cursor.y), 0, static_cast<int32_t>(i), desired[i] });
 		}
@@ -396,11 +435,18 @@ namespace
 			if (!bIsPressed)
 			{
 				for (const auto key : physicalKeys[i])
+				{
 					if (state.IsKeyDown(key))
+					{
 						Win32::GlobalInput::ApplyEvent({ Platform::InputEvent::Type::Key, 0.0f, 0.0f, key, -1, false });
+					}
+				}
 			}
 			const bool bIsDown = state.IsKeyDown(keyCodes[i]) || (i == 3 && state.IsKeyDown(VK_RWIN));
-			if (bIsDown == bIsPressed) continue;
+			if (bIsDown == bIsPressed)
+			{
+				continue;
+			}
 			Win32::GlobalInput::ApplyEvent({ Platform::InputEvent::Type::Key, 0.0f, 0.0f, keyCodes[i], -1, bIsPressed });
 		}
 	}
@@ -414,13 +460,18 @@ namespace
 			(input.m_kind == InputKind::Capture && !input.m_captured))
 		{
 			ResetEditorInputStateOnEngineThread();
-			if (input.m_kind == InputKind::Focus) GlobalInput::ApplyEvent({ Type::Focus });
+			if (input.m_kind == InputKind::Focus)
+			{
+				GlobalInput::ApplyEvent({ Type::Focus });
+			}
 			return;
 		}
 
 		if (input.m_kind == InputKind::PointerMove || input.m_kind == InputKind::PointerButton ||
 			input.m_kind == InputKind::PointerWheel)
+		{
 			GlobalInput::ApplyEvent({ Type::MousePos, input.m_pointerX, input.m_pointerY });
+		}
 
 		switch (input.m_kind)
 		{
@@ -485,7 +536,10 @@ bool Sailor::EditorRuntime::TryAcquireEditorReadbackFrameSource(EditorRemote::Ma
 	outSource = {};
 	const auto* renderer = App::GetSubmodule<RHI::Renderer>();
 	const auto frame = renderer ? renderer->GetEditorReadback() : ReadbackFramePtr{};
-	if (!frame) return false;
+	if (!frame)
+	{
+		return false;
+	}
 
 	outSource.m_kind = EditorRemote::MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata;
 	outSource.m_sourceObject = reinterpret_cast<uintptr_t>(frame->m_buffer.GetRawPtr());
@@ -592,21 +646,33 @@ void Sailor::EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread()
 		const bool bOwnsInput = g_activeEditorInput && g_activeEditorInput->m_binding == event.m_binding;
 		if (event.m_bIsReset)
 		{
-			if (bOwnsInput) ResetEditorInputStateOnEngineThread();
+			if (bOwnsInput)
+			{
+				ResetEditorInputStateOnEngineThread();
+			}
 			continue;
 		}
-		if (!IsEditorInputCurrent(event)) continue;
+		if (!IsEditorInputCurrent(event))
+		{
+			continue;
+		}
 
 		const auto& input = event.m_packet;
 		const bool bReleasesInput = (input.m_kind == InputKind::Focus && !input.m_focused) ||
 			(input.m_kind == InputKind::Capture && !input.m_captured);
-		if (bReleasesInput && !bOwnsInput) continue;
+		if (bReleasesInput && !bOwnsInput)
+		{
+			continue;
+		}
 		if (!bOwnsInput)
 		{
 			const bool bTakesInput = (input.m_kind == InputKind::Focus && input.m_focused) ||
 				(input.m_kind == InputKind::Capture && input.m_captured) ||
 				(input.m_kind == InputKind::PointerButton && input.m_pressed);
-			if (g_activeEditorInput && !bTakesInput) continue;
+			if (g_activeEditorInput && !bTakesInput)
+			{
+				continue;
+			}
 			ResetEditorInputStateOnEngineThread();
 		}
 		g_activeEditorInput = event;
@@ -617,7 +683,10 @@ void Sailor::EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread()
 void Sailor::EditorRuntime::UpdateRuntimeGIWorkAllowanceOnEngineThread()
 {
 	auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
-	if (!scheduler || !scheduler->IsMainThread()) return;
+	if (!scheduler || !scheduler->IsMainThread())
+	{
+		return;
+	}
 
 	auto* editor = App::GetSubmodule<Editor>();
 	auto* world = editor ? editor->GetWorld() : nullptr;
@@ -646,8 +715,15 @@ void Sailor::EditorRuntime::ResetForAppLifecycle()
 #endif
 		return true;
 	};
-	if (App::GetSubmodule<Tasks::Scheduler>()) ExecuteOnViewportOwner<bool>(false, clearBindings);
-	else clearBindings(); // Before Scheduler initialization there are no viewport producers.
+	if (App::GetSubmodule<Tasks::Scheduler>())
+	{
+		ExecuteOnViewportOwner<bool>(false, clearBindings);
+	}
+	else
+	{
+		// Before Scheduler initialization there are no viewport producers.
+		clearBindings();
+	}
 	g_viewportPumpTask.Clear();
 
 	Win32::GlobalInput::Reset();
@@ -674,8 +750,14 @@ bool Sailor::EditorRuntime::HasAppliedEditorRenderArea()
 void Sailor::EditorRuntime::PumpEditorRemoteViewportsOnEngineThread()
 {
 	auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
-	if (!scheduler || !scheduler->IsMainThread()) return;
-	if (g_viewportPumpTask && !g_viewportPumpTask->IsFinished()) return;
+	if (!scheduler || !scheduler->IsMainThread())
+	{
+		return;
+	}
+	if (g_viewportPumpTask && !g_viewportPumpTask->IsFinished())
+	{
+		return;
+	}
 
 #if !defined(_WIN32)
 	MacRendererFrameSource frameSource;
@@ -694,27 +776,51 @@ void Sailor::EditorRuntime::PumpEditorRemoteViewportsOnEngineThread()
 			{
 				const auto& binding = *entry.m_second;
 #if defined(_WIN32)
-				if (binding->m_bIsPumpScheduled.exchange(true)) continue;
+				if (binding->m_bIsPumpScheduled.exchange(true))
+				{
+					continue;
+				}
 				{
 					std::lock_guard bindingLock(binding->m_mutex);
-					if (auto update = TakePendingRemoteViewportUpdate(binding)) ApplyRemoteViewportUpdate(binding, *update);
+					if (auto update = TakePendingRemoteViewportUpdate(binding))
+					{
+						ApplyRemoteViewportUpdate(binding, *update);
+					}
 				}
 				Tasks::CreateTask("Pump Windows editor remote viewport"_h,
 					[binding]()
 					{
 						std::lock_guard bindingLock(binding->m_mutex);
-						if (binding->m_bIsCreated && binding->m_bIsVisible) binding->Pump();
+						if (binding->m_bIsCreated && binding->m_bIsVisible)
+						{
+							binding->Pump();
+						}
 						binding->m_bIsPumpScheduled = false;
 					}, EThreadType::Render)->Run();
 #else
-				if (auto update = TakePendingRemoteViewportUpdate(binding)) ApplyRemoteViewportUpdate(binding, *update);
-				else if (!BindRemoteViewportHost(binding)) continue;
-				if (!binding->m_bIsCreated || !binding->m_bIsVisible) continue;
+				if (auto update = TakePendingRemoteViewportUpdate(binding))
+				{
+					ApplyRemoteViewportUpdate(binding, *update);
+				}
+				else if (!BindRemoteViewportHost(binding))
+				{
+					continue;
+				}
+				if (!binding->m_bIsCreated || !binding->m_bIsVisible)
+				{
+					continue;
+				}
 
 				const auto& descriptor = binding->m_binding.GetRuntimeSession().GetDescriptor();
 				const glm::ivec2 extent(descriptor.m_width, descriptor.m_height);
-				if (extent != GetAppliedEditorRenderArea()) continue;
-				if (bHasReadback && (!frameSource.m_readback || frameSource.m_readback->m_extent != extent)) continue;
+				if (extent != GetAppliedEditorRenderArea())
+				{
+					continue;
+				}
+				if (bHasReadback && (!frameSource.m_readback || frameSource.m_readback->m_extent != extent))
+				{
+					continue;
+				}
 				binding->m_rendererFrameSourceProvider.SetFrameSource(frameSource);
 				binding->Pump();
 #endif
@@ -962,7 +1068,10 @@ bool EditorRuntime::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t win
 
 #if defined(_WIN32)
 		std::unique_lock bindingLock(binding->m_mutex, std::try_to_lock);
-		if (!bindingLock.owns_lock()) return false;
+		if (!bindingLock.owns_lock())
+		{
+			return false;
+		}
 #endif
 		const auto pending = TakePendingRemoteViewportUpdate(binding);
 		return pending && ApplyRemoteViewportUpdate(binding, *pending) && *pending == requested;
@@ -1170,7 +1279,10 @@ bool EditorRuntime::RetryEditorRemoteViewport(uint64_t viewportId)
 		}
 #endif
 
-		if (!BindRemoteViewportHost(binding)) return false;
+		if (!BindRemoteViewportHost(binding))
+		{
+			return false;
+		}
 		if (!binding->m_bIsCreated ||
 			binding->m_binding.GetRuntimeSession().GetState() == Sailor::EditorRemote::SessionState::Recovering ||
 			binding->m_binding.GetRuntimeSession().GetState() == Sailor::EditorRemote::SessionState::Lost)
@@ -1200,7 +1312,10 @@ bool EditorRuntime::SetEditorRemoteViewportMacHostHandle(uint64_t viewportId, ui
 		hostHandle = { Sailor::EditorRemote::MacNativeHostHandleKind::CAMetalLayer,
 			static_cast<uintptr_t>(hostHandleValue) };
 	}
-	if (!App::GetSubmodule<Tasks::Scheduler>()) return false;
+	if (!App::GetSubmodule<Tasks::Scheduler>())
+	{
+		return false;
+	}
 	// Retain on UI, then hand off without waiting for native GPU operations.
 	Tasks::CreateTask("Set editor viewport host"_h,
 		[viewportId, hostHandle = std::move(hostHandle)]() mutable
@@ -1209,7 +1324,10 @@ bool EditorRuntime::SetEditorRemoteViewportMacHostHandle(uint64_t viewportId, ui
 			{
 				g_pendingRemoteViewportHostHandles[viewportId] = std::move(hostHandle);
 			}
-			else g_pendingRemoteViewportHostHandles.Remove(viewportId);
+			else
+			{
+				g_pendingRemoteViewportHostHandles.Remove(viewportId);
+			}
 		}, EThreadType::Editor)->Run();
 	return true;
 #else

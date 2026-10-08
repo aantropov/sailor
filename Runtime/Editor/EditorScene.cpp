@@ -237,24 +237,36 @@ namespace
 bool Editor::UpdateObject(const InstanceId& instanceId, const std::string& strYamlNode)
 {
 	SAILOR_PROFILE_FUNCTION();
-	if (!m_world) return false;
+	if (!m_world)
+	{
+		return false;
+	}
 
 	auto gameObject = m_world->GetObjectByInstanceId(instanceId.GameObjectId()).DynamicCast<GameObject>();
-	if (!gameObject) return false;
+	if (!gameObject)
+	{
+		return false;
+	}
 
 	const YAML::Node data = YAML::Load(strYamlNode);
 	if (instanceId.ComponentId())
 	{
 		ReflectedData reflected;
 		reflected.Deserialize(data);
-		if (!reflected.IsValid()) return false;
+		if (!reflected.IsValid())
+		{
+			return false;
+		}
 
 		const auto components = gameObject->GetComponents();
 		for (auto component : components)
 		{
 			if (component->GetInstanceId().ComponentId() == instanceId.ComponentId())
 			{
-				if (component->GetTypeInfo().Name() != reflected.GetTypeInfo().Name()) return false;
+				if (component->GetTypeInfo().Name() != reflected.GetTypeInfo().Name())
+				{
+					return false;
+				}
 				m_world->ApplyComponentReflection(component, reflected, true);
 				return true;
 			}
