@@ -30,6 +30,7 @@
     <Compile Include="../Support/NativeEditorHost.cs" Link="Support/NativeEditorHost.cs" />
     <Compile Include="../../Editor/Services/EngineService.cs" Link="Services/EngineService.cs" />
     <Compile Include="../../Editor/Services/AssetsService.cs" Link="Services/AssetsService.cs" />
+    <Compile Include="../../Editor/Services/SelectionService.cs" Link="Services/SelectionService.cs" />
     <Compile Include="../../Editor/Services/AssetCacheIndexStore.cs" Link="Services/AssetCacheIndexStore.cs" />
     <Compile Include="../../Editor/ViewModels/AssetFile.cs" Link="ViewModels/AssetFile.cs" />
     <Compile Include="../../Editor/ViewModels/AssetFolder.cs" Link="ViewModels/AssetFolder.cs" />

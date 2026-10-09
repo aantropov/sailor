@@ -29,10 +29,13 @@ The asset-reimport scenario is shared with `Editor.Contracts.Tests`: that target
 calls the protocol directly; this one calls `EngineService`. It checks generated
 material repair, authored values and FileIds, unchanged normal loads, full-reload
 notifications and rejection after Stop. Service tests run serially because
-they share the queued UI dispatcher. Asset refresh tests compile the actual
-`AssetsService`, `AssetFile` and `ProjectContentStore`, checking queued refresh
-across workspace switch/close and normal folder restoration without a native host.
-Specialized inspectors, selection and menu interaction remain outside this target.
+they share the queued UI dispatcher. The native test also uses the actual
+`AssetsService` and `SelectionService`: reload replaces the selected asset's
+tree entry, but must not cancel a newer selection waiting for inspector resources.
+xUnit's async-void context observes completion of the real reload handler.
+Asset refresh tests check workspace switch/close and normal folder restoration
+through `AssetFile` and `ProjectContentStore` without a native host. Specialized
+inspectors and visible menu interaction remain outside this target.
 
 For ThreadSanitizer, build `build-audit-tsan` and use its `Binaries/Release`,
 `Tests/Release` and `Lib/Release` directories with `TSAN_OPTIONS=halt_on_error=1`.

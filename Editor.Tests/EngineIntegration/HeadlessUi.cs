@@ -38,7 +38,19 @@ namespace Editor.Tests.EngineIntegration
 
         public static void Drain()
         {
-            while (pending.TryDequeue(out var action)) action();
+            while (DispatchNext())
+            {
+            }
+        }
+
+        public static bool DispatchNext()
+        {
+            if (!pending.TryDequeue(out var action))
+            {
+                return false;
+            }
+            action();
+            return true;
         }
     }
 
@@ -76,21 +88,23 @@ namespace SailorEditor.Services
         public bool TryPopulateWorld(string yaml, long epoch) => throw new NotSupportedException();
         public object CreatePrefabFromSubHierarchy(SailorEditor.ViewModels.GameObject root,
             out List<SailorEngine.InstanceId> externalReferences) => throw new NotSupportedException();
-    }
-
-    sealed class SelectionService
-    {
-        public SailorEditor.Workflow.SelectionSnapshot Snapshot => throw new NotSupportedException();
-        public object SelectedItem => throw new NotSupportedException();
-        public void SelectObject(object item, bool force = false) => throw new NotSupportedException();
-        public void ClearSelection() => throw new NotSupportedException();
+        public bool TryGetGameObject(SailorEngine.InstanceId id,
+            out SailorEditor.ViewModels.GameObject gameObject) => throw new NotSupportedException();
+        public bool TryGetComponent(SailorEngine.InstanceId id,
+            out SailorEditor.ViewModels.Component component) => throw new NotSupportedException();
+        public SailorEditor.ViewModels.GameObject FindOwner(SailorEditor.ViewModels.Component component)
+            => throw new NotSupportedException();
     }
 }
 
 namespace SailorEditor.ViewModels
 {
-    // Refresh uses the real AssetFile; inspector and scene surfaces stay outside this target.
-    public sealed class ModelFile : AssetFile;
+    // Refresh and selection use the real AssetFile; specialized inspectors and scene objects are not exercised.
+    public sealed class ModelFile : AssetFile
+    {
+        public Task<bool> LoadDependentResources(CancellationToken token)
+            => base.LoadDependentResources().WaitAsync(token);
+    }
     public sealed class TextureFile : AssetFile;
     public sealed class MaterialFile : AssetFile;
     public sealed class ShaderFile : AssetFile;
@@ -105,9 +119,14 @@ namespace SailorEditor.ViewModels
     public sealed class FrameGraphFile : AssetFile;
     public sealed class LandscapeVegetationFile : AssetFile;
     public sealed class GIProbesFile : AssetFile;
-    public sealed class GameObject
+    public sealed class GameObject : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
     {
         public string Name => throw new NotSupportedException();
+        public SailorEngine.InstanceId InstanceId => throw new NotSupportedException();
+    }
+    public sealed class Component : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
+    {
+        public SailorEngine.InstanceId InstanceId => throw new NotSupportedException();
     }
 }
 

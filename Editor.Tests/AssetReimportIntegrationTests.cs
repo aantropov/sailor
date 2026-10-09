@@ -5,7 +5,12 @@ using SailorEditor.Workspace;
 using YamlDotNet.RepresentationModel;
 using Xunit.Abstractions;
 #if MACCATALYST
+using SailorEditor;
+using SailorEditor.Content;
 using SailorEditor.Services;
+using SailorEditor.ViewModels;
+using SailorEngine;
+using Xunit.Sdk;
 #endif
 
 namespace Editor.Tests;
@@ -167,26 +172,93 @@ public sealed class AssetReimportIntegrationTests(ITestOutputHelper log)
             Assert.Equal(repairedTime, File.GetLastWriteTimeUtc(materialPath));
 
 #if MACCATALYST
-            // A full reload publishes the completion consumed by AssetsService to refresh its tree.
+            MainThread.Drain();
+            MauiProgram.SetService(service);
+            using var assets = new AssetsService();
+            MauiProgram.SetService(assets);
+            var selection = new SelectionService();
+            MauiProgram.SetService(selection);
+            await assets.EnsureFolderLoadedAsync(ProjectContentFolderIds.ContentRootId);
+            var selected = Assert.IsType<ModelFile>(await assets.ResolveAssetAsync(new FileId(ModelId)));
+            Assert.True(assets.CanReimportAsset(selected));
+            Assert.True(await assets.ReimportAssetAsync(selected));
+            await selection.SelectObjectAsync(selected);
+            Assert.Same(selected, selection.SelectedItem);
+
+            var pendingAsset = new PendingInspectorAsset
+            {
+                FileId = new FileId(materialId),
+                Asset = new FileInfo(materialPath),
+                AssetInfo = new FileInfo(materialInfoPath)
+            };
+            await pendingAsset.EnsureMetadataLoadedAsync();
+            Assert.Empty(pendingAsset.LoadError);
             var completions = new List<AssetReloadCompletion>();
             service.OnAssetReloadCompleted += completions.Add;
-            using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
+            foreach (var changeSelection in new[] { false, true })
             {
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                completions.Clear();
+                MainThread.QueueInvocations = true;
+                var context = new AsyncTestSyncContext(SynchronizationContext.Current);
                 var reload = service.RequestAssetReloadAsync(timeout.Token);
-                while (!reload.IsCompleted || completions.Count == 0)
+                while (completions.Count == 0)
+                {
+                    // Stop dispatching after the real completion starts its queued tree refresh.
+                    var previousContext = SynchronizationContext.Current;
+                    try
+                    {
+                        SynchronizationContext.SetSynchronizationContext(context);
+                        MainThread.DispatchNext();
+                    }
+                    finally
+                    {
+                        SynchronizationContext.SetSynchronizationContext(previousContext);
+                    }
+                    await Task.Delay(10, timeout.Token);
+                }
+                var refresh = context.WaitForCompletionAsync();
+                Assert.False(refresh.IsCompleted);
+                var pendingSelection = changeSelection ? selection.SelectObjectAsync(pendingAsset) : Task.CompletedTask;
+                if (changeSelection)
+                {
+                    Assert.Equal(materialId, selection.Snapshot.SelectedId);
+                    Assert.Same(selected, selection.SelectedItem);
+                    Assert.False(pendingSelection.IsCompleted);
+                }
+                MainThread.QueueInvocations = false;
+                while (!refresh.IsCompleted)
                 {
                     MainThread.Drain();
                     await Task.Delay(10, timeout.Token);
                 }
-                Assert.True(await reload);
+                Assert.Null(await refresh);
+                Assert.True(await reload.WaitAsync(timeout.Token));
+                var state = await client.GetAssetReloadStateAsync();
+                Assert.True(state.Available);
+                Assert.Equal(new AssetReloadCompletion(state.CompletedGeneration, true), Assert.Single(completions));
+                var refreshed = Assert.IsType<ModelFile>(await assets.ResolveAssetAsync(new FileId(ModelId)));
+                Assert.NotSame(selected, refreshed);
+                if (changeSelection)
+                {
+                    Assert.Equal(materialId, selection.Snapshot.SelectedId);
+                    Assert.False(pendingSelection.IsCompleted);
+                    pendingAsset.Ready.SetResult();
+                    await pendingSelection.WaitAsync(timeout.Token);
+                    Assert.Same(pendingAsset, selection.SelectedItem);
+                }
+                else
+                {
+                    Assert.Same(refreshed, selection.SelectedItem);
+                }
+                selected = refreshed;
             }
-            var state = await client.GetAssetReloadStateAsync();
-            Assert.True(state.Available);
-            Assert.Equal(new AssetReloadCompletion(state.CompletedGeneration, true), Assert.Single(completions));
+            service.OnAssetReloadCompleted -= completions.Add;
             await service.StopAsync();
             Assert.Equal(EngineLifecycleState.Stopped, service.State);
             var stoppedContent = ReadContent(content);
-            Assert.False(await reimport());
+            Assert.False(assets.CanReimportAsset(selected));
+            Assert.False(await assets.ReimportAssetAsync(selected));
             AssertContentUnchanged(stoppedContent, content);
 #endif
             await client.DisposeAsync();
@@ -196,11 +268,21 @@ public sealed class AssetReimportIntegrationTests(ITestOutputHelper log)
         finally
         {
 #if MACCATALYST
+            MainThread.QueueInvocations = false;
             MainThread.Drain();
+            MauiProgram.ClearServices();
 #endif
             Directory.Delete(workspace, recursive: true);
         }
     }
+
+#if MACCATALYST
+    sealed class PendingInspectorAsset : AssetFile
+    {
+        public TaskCompletionSource Ready { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public override Task PrepareInspectorResources() => Ready.Task;
+    }
+#endif
 
     static YamlMappingNode ReadYaml(string path)
     {
