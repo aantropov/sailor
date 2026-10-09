@@ -1997,6 +1997,10 @@ namespace
 		if (completedEventually)
 		{
 			presenter.join();
+			// Drain GPU ownership after measuring the worker, before the test process exits.
+			id<MTLCommandBuffer> completion = [(id<MTLCommandQueue>)state->m_binding->m_commandQueueObject commandBuffer];
+			[completion commit];
+			[completion waitUntilCompleted];
 			state->m_binding.Clear();
 		}
 		else
