@@ -58,8 +58,14 @@ namespace Sailor::Tests::ProtocolWire
 	{
 		std::string payload;
 		AppendVarintField(payload, 1u, version);
-		if (requestId != 0u) AppendVarintField(payload, 2u, requestId);
-		if (commandField != 0u) AppendBytesField(payload, commandField, commandPayload);
+		if (requestId != 0u)
+		{
+			AppendVarintField(payload, 2u, requestId);
+		}
+		if (commandField != 0u)
+		{
+			AppendBytesField(payload, commandField, commandPayload);
+		}
 		return payload;
 	}
 
@@ -92,11 +98,6 @@ namespace Sailor::Tests::ProtocolWire
 		return false;
 	}
 
-	inline bool ReadVarint(const uint8_t* data, size_t size, size_t& offset, uint64_t& outValue)
-	{
-		return ReadVarint(std::string_view(reinterpret_cast<const char*>(data), size), offset, outValue);
-	}
-
 	inline bool ReadBytes(
 		std::string_view payload,
 		size_t& offset,
@@ -117,7 +118,10 @@ namespace Sailor::Tests::ProtocolWire
 	inline bool ReadNestedScalar(std::string_view payload, uint64_t& outValue)
 	{
 		outValue = 0u;
-		if (payload.empty()) return true;
+		if (payload.empty())
+		{
+			return true;
+		}
 
 		size_t offset = 0u;
 		uint64_t key = 0u;
