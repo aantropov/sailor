@@ -146,6 +146,7 @@ namespace Sailor::RHI
 		size_t m_mainRevision = 0u;
 		size_t m_depthRevision = 0u;
 		size_t m_shadowRevision = 0u;
+		bool m_bHasLods = false;
 	};
 
 	using RHISceneProxyResourcePtr = TRefPtr<const RHISceneProxyResource>;

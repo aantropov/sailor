@@ -1708,6 +1708,27 @@ renderTargets:
 		movedSnapshot.PrepareLods(glm::mat4(1.0f), projection);
 		Require(movedSnapshot.ResolveMesh(movedSnapshot.m_proxies[0], 0u) == baseOnlyMesh,
 			"meshes without an LOD chain must remain drawable with LOD enabled");
+
+		// A shadow-only LOD chain still needs preparation when the main geometry has none.
+		auto shadowOnlySource = baseOnlyResource->m_proxy;
+		shadowOnlySource.m_lodPolicy = resource->m_proxy.m_lodPolicy;
+		auto shadowOnlyCaster = TSharedPtr<RHI::RHIShadowCasterProxy>::Make();
+		RHI::RHIShadowMeshProxy shadowOnlyMesh;
+		shadowOnlyMesh.m_mesh = baseMesh;
+		shadowOnlyCaster->m_meshes.Add(shadowOnlyMesh);
+		shadowOnlySource.m_shadowCaster = std::move(shadowOnlyCaster);
+		auto shadowOnlyResource = RHI::RHISceneProxyResourcePtr::Make(std::move(shadowOnlySource));
+		auto shadowOnlyRecord = farRecord;
+		shadowOnlyRecord.m_topology = shadowOnlyResource;
+		movedSnapshot.ResetForReuse();
+		movedSnapshot.m_proxies.Emplace(RHI::RenderInstanceHandle{}, shadowOnlyRecord, *shadowOnlyResource);
+		movedSnapshot.m_shadowMapsToUpdate.Resize(1u);
+		auto& shadowOnlyPass = movedSnapshot.m_shadowMapsToUpdate[0];
+		shadowOnlyPass.m_meshList.Emplace(RHI::RenderInstanceHandle{}, shadowOnlyRecord, *shadowOnlyResource);
+		movedSnapshot.PrepareLods(glm::mat4(1.0f), projection);
+		Require(movedSnapshot.ResolveMesh(movedSnapshot.m_proxies[0], 0u) == baseOnlyMesh &&
+			movedSnapshot.ResolveMesh(shadowOnlyPass.m_meshList[0], 0u) == lod2,
+			"shadow-only LOD chains must not be skipped when the main meshes have no LODs");
 	}
 	void TestCustomShadowMaterialKey()
 	{

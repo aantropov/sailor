@@ -160,6 +160,8 @@ namespace
 	void CalculateProxyResourceRevisions(RHISceneProxyResource& resource)
 	{
 		const auto& proxy = resource.m_proxy;
+		// LOD chains are complete before this immutable topology is published.
+		resource.m_bHasLods = false;
 		size_t geometryRevision = Fnv1aOffsetBasis;
 		HashCombine(
 			geometryRevision,
@@ -180,6 +182,7 @@ namespace
 		}
 		for (const auto& mesh : proxy.m_meshes)
 		{
+			resource.m_bHasLods |= mesh && mesh->GetNumLods() > 1u;
 			HashCombine(geometryRevision, mesh);
 		}
 		for (const auto& matrix : proxy.m_meshModelMatrices)
@@ -199,6 +202,7 @@ namespace
 				std::hash<float>{}(group.m_maxShadowDistance));
 			for (const auto& mesh : group.m_meshes)
 			{
+				resource.m_bHasLods |= mesh && mesh->GetNumLods() > 1u;
 				HashCombine(geometryRevision, mesh);
 			}
 			for (const auto& matrix : group.m_meshTransforms)
@@ -311,6 +315,7 @@ namespace
 		{
 			for (const auto& shadowMesh : proxy.m_shadowCaster->m_meshes)
 			{
+				resource.m_bHasLods |= shadowMesh.m_mesh && shadowMesh.m_mesh->GetNumLods() > 1u;
 				HashMatrix(shadowRevision, shadowMesh.m_localMatrix);
 				HashCombine(
 					shadowRevision,
@@ -878,45 +883,12 @@ void RHISceneViewSnapshot::PrepareLods(const glm::mat4& viewMatrix, const glm::m
 		uint32_t m_instanced = RHIVisibleSceneProxy::InvalidIndex;
 	};
 	TMap<const void*, LodOffsets> preparedInstances;
-	TMap<const RHISceneProxyResource*, bool> topologyHasLods;
 	const glm::vec3 cameraPosition(m_cameraTransform.m_position);
 	auto prepare = [&](const RHIVisibleSceneProxy& proxy)
 		{
 			LodOffsets offsets;
 			const auto* source = proxy.GetSource();
-			if (!source->m_lodPolicy.m_bEnabled)
-			{
-				return offsets;
-			}
-			bool* hasLods = nullptr;
-			if (!topologyHasLods.Find(proxy.m_resource, hasLods))
-			{
-				bool bHasLods = false;
-				for (const auto& mesh : source->m_meshes)
-				{
-					bHasLods |= mesh && mesh->GetNumLods() > 1u;
-				}
-				if (source->m_shadowCaster)
-				{
-					for (const auto& mesh : source->m_shadowCaster->m_meshes)
-					{
-						bHasLods |= mesh.m_mesh && mesh.m_mesh->GetNumLods() > 1u;
-					}
-				}
-				for (const auto& group : source->m_instancedGroups)
-				{
-					for (const auto& mesh : group.m_meshes)
-					{
-						bHasLods |= mesh && mesh->GetNumLods() > 1u;
-					}
-				}
-				topologyHasLods.Insert(proxy.m_resource, bHasLods);
-				if (!bHasLods)
-				{
-					return offsets;
-				}
-			}
-			else if (!*hasLods)
+			if (!source->m_lodPolicy.m_bEnabled || !proxy.m_resource->m_bHasLods)
 			{
 				return offsets;
 			}
