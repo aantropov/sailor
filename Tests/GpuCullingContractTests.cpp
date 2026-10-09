@@ -1984,10 +1984,10 @@ renderTargets:
 					"mixed depth/stencil layouts must retain attachment writes and sampling of the read-only aspect");
 			}
 			Require(VulkanCommandBuffer::GetAccessFlags(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, queue.m_flags) ==
-				(queue.m_graphics ? VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT : 0u) &&
+				(queue.m_graphics ? VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT : 0u) &&
 				VulkanCommandBuffer::GetPipelineStage(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, queue.m_flags) ==
 				(queue.m_graphics ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT),
-				"compute and transfer queues must not advertise color attachment operations");
+				"color attachment loads, blending and writes must synchronize only on graphics queues");
 			Require(VulkanCommandBuffer::GetAccessFlags(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, queue.m_flags) == VK_ACCESS_TRANSFER_READ_BIT &&
 				VulkanCommandBuffer::GetAccessFlags(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, queue.m_flags) == VK_ACCESS_TRANSFER_WRITE_BIT &&
 				VulkanCommandBuffer::GetPipelineStage(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, queue.m_flags) == VK_PIPELINE_STAGE_TRANSFER_BIT &&
