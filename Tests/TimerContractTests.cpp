@@ -47,6 +47,7 @@ namespace
 	void TestElapsedAndAccumulation()
 	{
 		Timer timer;
+		const auto start = std::chrono::steady_clock::now();
 		timer.Start();
 		std::this_thread::sleep_for(10ms);
 		const int64_t running = timer.ResultMs();
@@ -54,6 +55,10 @@ namespace
 			"running results should include the elapsed active interval");
 		timer.Stop();
 		const int64_t first = timer.ResultMs();
+		const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::steady_clock::now() - start).count();
+		Require(first <= elapsed + 1,
+			"elapsed duration must fit the enclosing monotonic interval, independent of calendar time");
 		Require(first >= running && timer.ResultAccumulatedMs() == first,
 			"the first completed interval should equal the accumulated result");
 
