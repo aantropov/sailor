@@ -550,6 +550,7 @@ namespace Sailor
 		virtual void Deserialize(const YAML::Node& inData);
 
 		const TypeInfo& GetTypeInfo() const { return *m_typeInfo; }
+		const std::string& GetTypeName() const { return m_typeInfo ? m_typeInfo->Name() : m_unresolvedTypeName; }
 		const TMap<std::string, YAML::Node>& GetProperties() const { return m_properties; }
 		TMap<std::string, YAML::Node> GetOverrideProperties() const;
 		bool IsValid() const { return m_typeInfo != nullptr; }
@@ -562,6 +563,7 @@ namespace Sailor
 
 		// TODO: Rethink the approach with raw pointer
 		const TypeInfo* m_typeInfo{};
+		std::string m_unresolvedTypeName;
 
 		// We store all properties already serialized to YAML to simplify the coding
 		// Ideally we need to introduce Proxies, that store the properties, without 

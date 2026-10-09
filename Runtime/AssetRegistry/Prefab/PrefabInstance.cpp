@@ -49,7 +49,7 @@ namespace
 		ReflectedData& outMerged,
 		std::string& outDiagnostic)
 	{
-		if (!base.IsValid() || !delta.IsValid() || base.GetTypeInfo() != delta.GetTypeInfo())
+		if (base.GetTypeName().empty() || delta.GetTypeName().empty() || base.GetTypeName() != delta.GetTypeName())
 		{
 			outDiagnostic = "the component override type does not match the source component";
 			return false;
@@ -78,7 +78,7 @@ namespace
 			return false;
 		}
 
-		return outMerged.IsValid();
+		return !outMerged.GetTypeName().empty();
 	}
 }
 
@@ -554,8 +554,8 @@ bool WorldPrefab::BuildLinkedOverrides(
 			const ReflectedData* expandedReflection = expanded.FindComponent(expectedLiveComponentId);
 
 			if (!expandedReflection ||
-				expandedReflection->GetTypeInfo() !=
-					sourceReflection.GetTypeInfo())
+				expandedReflection->GetTypeName() !=
+					sourceReflection.GetTypeName())
 			{
 				// The source added or replaced this component after the linked
 				// scene record was saved. Source values are authoritative.
@@ -592,13 +592,13 @@ bool WorldPrefab::BuildLinkedOverrides(
 			{
 				YAML::Node reflectedOverride;
 				reflectedOverride["typename"] =
-					sourceReflection.GetTypeInfo().Name();
+					sourceReflection.GetTypeName();
 				reflectedOverride["overrideProperties"] =
 					std::move(overrideProperties);
 
 				ReflectedData componentOverride;
 				componentOverride.Deserialize(reflectedOverride);
-				if (!componentOverride.IsValid())
+				if (componentOverride.GetTypeName().empty())
 				{
 					outDiagnostic = "cannot create a reflected component override";
 					return false;
@@ -814,12 +814,12 @@ bool WorldPrefab::BuildUpdatedLinkedOverrides(
 				sourceComponentId.ComponentId(),
 				liveInstanceId);
 			const ReflectedData* expandedReflection = expandedGameObject ? expanded.FindComponent(expectedLiveComponentId) : nullptr;
-			if (expandedReflection && expandedReflection->GetTypeInfo() != sourceReflection.GetTypeInfo())
+			if (expandedReflection && expandedReflection->GetTypeName() != sourceReflection.GetTypeName())
 			{
 				expandedReflection = nullptr;
 			}
 			const ReflectedData* baselineReflection = baselineGameObject ? baseline.FindComponent(sourceComponentId) : nullptr;
-			if (baselineReflection && baselineReflection->GetTypeInfo() != sourceReflection.GetTypeInfo())
+			if (baselineReflection && baselineReflection->GetTypeName() != sourceReflection.GetTypeName())
 			{
 				baselineReflection = nullptr;
 			}
@@ -832,9 +832,9 @@ bool WorldPrefab::BuildUpdatedLinkedOverrides(
 				const ReflectedData& candidate =
 					effectiveBaseline->m_componentOverrides[
 						sourceComponentId];
-				if (candidate.IsValid() &&
-					candidate.GetTypeInfo() ==
-						sourceReflection.GetTypeInfo())
+				if (!candidate.GetTypeName().empty() &&
+					candidate.GetTypeName() ==
+						sourceReflection.GetTypeName())
 				{
 					priorComponentOverride = &candidate;
 				}
@@ -899,13 +899,13 @@ bool WorldPrefab::BuildUpdatedLinkedOverrides(
 			{
 				YAML::Node reflectedOverride;
 				reflectedOverride["typename"] =
-					sourceReflection.GetTypeInfo().Name();
+					sourceReflection.GetTypeName();
 				reflectedOverride["overrideProperties"] =
 					std::move(overrideProperties);
 
 				ReflectedData componentOverride;
 				componentOverride.Deserialize(reflectedOverride);
-				if (!componentOverride.IsValid())
+				if (componentOverride.GetTypeName().empty())
 				{
 					outDiagnostic =
 						"cannot create an updated reflected component override";

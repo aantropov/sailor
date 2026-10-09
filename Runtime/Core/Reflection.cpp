@@ -527,11 +527,9 @@ void TypeInfo::Deserialize(const YAML::Node& inData)
 
 YAML::Node ReflectedData::Serialize() const
 {
-	assert(m_typeInfo);
-
 	YAML::Node res{};
 
-	::Serialize(res, "typename", m_typeInfo->Name());
+	::Serialize(res, "typename", GetTypeName());
 	::Serialize(res, "overrideProperties", m_properties);
 
 	return res;
@@ -545,11 +543,12 @@ void ReflectedData::Deserialize(const YAML::Node& inData)
 	::Deserialize(inData, "overrideProperties", m_properties);
 
 	m_typeInfo = Reflection::TryGetTypeByName(typeName);
+	m_unresolvedTypeName = m_typeInfo ? std::string{} : std::move(typeName);
 }
 
 bool ReflectedData::operator==(const ReflectedData& rhs) const
 {
-	if (m_typeInfo != rhs.m_typeInfo ||
+	if (GetTypeName() != rhs.GetTypeName() ||
 		m_properties.Num() != rhs.m_properties.Num())
 	{
 		return false;
@@ -571,6 +570,10 @@ bool ReflectedData::operator==(const ReflectedData& rhs) const
 
 TMap<std::string, YAML::Node> ReflectedData::GetOverrideProperties() const
 {
+	if (!m_typeInfo)
+	{
+		return m_properties;
+	}
 	const auto& cdo = Reflection::GetCDO(m_typeInfo->Name());
 	return DiffTo(cdo).m_properties;
 }
@@ -579,9 +582,10 @@ ReflectedData ReflectedData::DiffTo(const ReflectedData& rhs) const
 {
 	ReflectedData res;
 
-	check(rhs.GetTypeInfo() == GetTypeInfo());
+	check(rhs.GetTypeName() == GetTypeName());
 
-	res.m_typeInfo = &rhs.GetTypeInfo();
+	res.m_typeInfo = rhs.m_typeInfo;
+	res.m_unresolvedTypeName = rhs.m_unresolvedTypeName;
 
 	for (const auto& prop : GetProperties())
 	{
@@ -674,7 +678,7 @@ bool Utils::TryGetComponentInstanceId(
 	outInstanceId = InstanceId::Invalid;
 	outDiagnostic.clear();
 
-	if (!reflection.IsValid())
+	if (reflection.GetTypeName().empty())
 	{
 		outDiagnostic = "the reflected component is invalid";
 		return false;

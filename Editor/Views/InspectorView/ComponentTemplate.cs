@@ -78,7 +78,9 @@ public partial class ComponentTemplate : DataTemplate
 
                 var nameLabel = new Label { Text = "DisplayName", VerticalOptions = LayoutOptions.Center, HorizontalTextAlignment = TextAlignment.Start, FontAttributes = FontAttributes.Bold };
                 nameLabel.Behaviors.Add(new DisplayNameBehavior());
-                nameLabel.Text = FormatComponentTypeName(component.Typename.Name);
+                nameLabel.Text = component.IsUndefined
+                    ? $"{component.Typename.Name} (Undefined)"
+                    : FormatComponentTypeName(component.Typename.Name);
 
                 var dragGesture = new DragGestureRecognizer();
                 dragGesture.DragStarting += (dragSender, dragArgs) =>
@@ -144,6 +146,11 @@ public partial class ComponentTemplate : DataTemplate
                     }
                 };
 
+                if (component.IsUndefined)
+                {
+                    contextItems = [contextItems[^1]];
+                }
+
                 var flyout = contextMenuService.CreateFlyout(contextItems);
                 FlyoutBase.SetContextFlyout(props, flyout);
                 FlyoutBase.SetContextFlyout(
@@ -163,6 +170,19 @@ public partial class ComponentTemplate : DataTemplate
 
                 if (isCompact)
                 {
+                    return;
+                }
+
+                if (component.IsUndefined)
+                {
+                    var values = new Label
+                    {
+                        Text = SerializationUtils.CreateSerializerBuilder().Build()
+                            .Serialize(component.PreservedReadOnlyProperties).TrimEnd(),
+                        LineBreakMode = LineBreakMode.WordWrap
+                    };
+                    Templates.AddGridRow(props, values, GridLength.Auto);
+                    Grid.SetColumnSpan(values, props.ColumnDefinitions.Count);
                     return;
                 }
 

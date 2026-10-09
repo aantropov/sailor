@@ -1156,7 +1156,8 @@ namespace SailorEditor.Services
             var clone = new Component
             {
                 DisplayName = component.DisplayName,
-                Typename = component.Typename
+                Typename = component.Typename,
+                IsUndefined = component.IsUndefined
             };
 
             foreach (var property in component.OverrideProperties)

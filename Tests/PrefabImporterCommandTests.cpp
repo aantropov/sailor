@@ -498,11 +498,17 @@ namespace
 		auto configure = [&]() { return target->ConfigureLinkedInstance(source, ids, InstanceId::Invalid, {}, {}, diagnostic); };
 		source->Deserialize(valid);
 		Require(configure() && target->IsReady(), "standalone linked configuration must validate a valid source");
+		auto undefined = YAML::Clone(valid);
+		undefined["components"][0]["typename"] = "UnknownPrefabComponent";
+		source->Deserialize(undefined);
+		Require(configure() && target->IsReady() &&
+			target->Serialize()["components"][0]["typename"].as<std::string>() == "UnknownPrefabComponent",
+			"linked scenes must preserve components whose workspace module is unavailable");
 		for (uint32_t failure = 0; failure < 4; ++failure)
 		{
 			auto invalid = YAML::Clone(valid);
 			if (failure == 0) invalid["gameObjects"][0]["parentIndex"] = 0;
-			if (failure == 1) invalid["components"][0]["typename"] = "UnknownPrefabComponent";
+			if (failure == 1) invalid["components"][0]["typename"] = "";
 			if (failure == 2) invalid["components"][0]["overrideProperties"].remove("instanceId");
 			if (failure == 3) invalid["gameObjects"][1]["instanceId"] = valid["gameObjects"][0]["instanceId"].as<InstanceId>();
 			source->Deserialize(invalid);

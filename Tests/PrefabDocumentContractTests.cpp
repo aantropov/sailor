@@ -22,6 +22,44 @@ using namespace Sailor::Tests;
 
 namespace
 {
+	void TestUndefinedComponentsPreserveSceneData()
+	{
+		PrefabTestWorld world;
+		Tests::ScopeExit cleanup([&]() { world.Clear(); });
+		YAML::Node knownProperties;
+		knownProperties["m_value"] = 12.0f;
+		YAML::Node unknownProperties;
+		unknownProperties["settings"]["enabled"] = false;
+		unknownProperties["settings"]["values"] = TVector<float>{ 3.5f, 8.0f };
+		unknownProperties["target"]["instanceId"] = "2222222222222222_10010010010010010000";
+		YAML::Node components;
+		components.push_back(MakeReflectedComponent("2222222222222222_10010010010010010000", knownProperties));
+		components.push_back(MakeReflectedComponent("3333333333333333_10010010010010010000",
+			unknownProperties, true, "UnavailableModule::SceneComponent"));
+		const auto document = MakeComponentPrefabNode(components);
+		auto prefab = DeserializePrefab(world, document);
+		std::string diagnostic;
+		Require(prefab->ValidateForInstantiation(diagnostic), "Missing code must not invalidate scene data: " + diagnostic);
+		auto root = world.Instantiate(prefab);
+		Require(root && root->GetComponents().Num() == 2 && root->GetComponent<PrefabRollbackTestComponent>()->m_value == 12,
+			"A missing workspace type must not prevent known components from loading");
+		auto saved = PrefabDocumentTestAsset::Capture(world, root);
+		Require(Utils::AreYamlNodesEqual(saved->Serialize()["components"][1], document["components"][1]),
+			"Saving an undefined component must preserve its original typename, identity and nested values");
+		auto duplicate = world.Instantiate(saved, EPrefabInstanceIdPolicy::GenerateNew);
+		Require(duplicate && duplicate->GetInstanceId() != root->GetInstanceId(), "Undefined components must support duplication");
+		const auto copy = duplicate->GetComponent(1)->GetReflectedData().Serialize();
+		Require(copy["overrideProperties"]["target"]["instanceId"].as<InstanceId>() == duplicate->GetComponent(0)->GetInstanceId() &&
+			copy["overrideProperties"]["instanceId"].as<InstanceId>() == duplicate->GetComponent(1)->GetInstanceId(),
+			"Duplicating undefined data must remap internal references and preserve component identity");
+		Require(Utils::AreYamlNodesEqual(saved->Serialize()["components"][1], document["components"][1]),
+			"Duplicating undefined data must not change the source prefab");
+		auto restored = world.Instantiate(DeserializePrefab(world, saved->Serialize()));
+		Require(restored && restored->GetComponents().Num() == 2,
+			"A world snapshot containing undefined components must remain loadable after saving");
+		Require(world.GetPendingDependencyCount() == 0, "Undefined components must not wait forever for unavailable code");
+	}
+
 	void TestPrefabReferenceContextDoesNotCopyWorld()
 	{
 		for (uint32_t unrelatedCount : { 32u, 4096u })
@@ -2836,6 +2874,7 @@ namespace
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "UndefinedComponentsPreserveSceneData", TestUndefinedComponentsPreserveSceneData },
 		{ "EditorModelInstanceCreatesHierarchyOrFlatRenderer", TestEditorModelInstanceCreatesHierarchyOrFlatRenderer },
 		{ "PreferredEditorInstanceIdsArePreserved", TestPreferredEditorInstanceIdsArePreserved },
 		{ "GameObjectMobilityHierarchyAndPersistence", TestGameObjectMobilityHierarchyAndPersistence },

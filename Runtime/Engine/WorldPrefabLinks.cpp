@@ -465,7 +465,9 @@ bool World::LinkPrefabInstance(
 			for (const auto& liveComponent : liveGameObject->GetComponents())
 			{
 				if (liveComponent->GetInstanceId() == expectedLiveComponentId &&
-					liveComponent->GetTypeInfo() == sourceReflection.GetTypeInfo())
+					(sourceReflection.IsValid()
+						? liveComponent->GetTypeInfo() == sourceReflection.GetTypeInfo()
+						: liveComponent->GetReflectedData().GetTypeName() == sourceReflection.GetTypeName()))
 				{
 					bFoundComponent = true;
 					break;

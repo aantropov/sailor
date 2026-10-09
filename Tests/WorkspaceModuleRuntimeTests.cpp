@@ -487,6 +487,8 @@ namespace
 		reflected.Deserialize(serialized);
 		Require(!reflected.IsValid(),
 			"unknown reflected type should deserialize as an invalid value instead of crashing");
+		Require(reflected.Serialize()["typename"].as<std::string>() == "MissingWorkspace::UnknownComponent",
+			"unknown type names must survive serialization for a later workspace rebuild");
 	}
 
 	void TestWorldInstantiationGuards()

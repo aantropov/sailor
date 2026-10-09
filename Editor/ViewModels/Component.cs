@@ -161,7 +161,12 @@ public partial class Component : ObservableObject, ICloneable, IInspectorEditabl
 
     public object Clone() => new Component();
 
-    public InstanceId InstanceId { get => OverrideProperties["instanceId"] as Observable<InstanceId>; }
+    public InstanceId InstanceId => IsUndefined
+        ? new InstanceId((string)PreservedReadOnlyProperties["instanceId"]!)
+        : OverrideProperties["instanceId"] as Observable<InstanceId>;
+
+    [YamlIgnore]
+    public bool IsUndefined { get; init; }
 
     [YamlIgnore]
     protected bool isInited = false;
@@ -212,7 +217,18 @@ public class ComponentYamlConverter : IYamlTypeConverter
 
         var catalog = MauiProgram.GetService<EngineService>().EngineTypes;
         if (!catalog.TryGetComponent(document.Typename, out var componentType))
-            throw new YamlException($"Unknown component type '{document.Typename}'.");
+        {
+            var unknown = new Component
+            {
+                Typename = new ComponentType { Name = document.Typename },
+                IsUndefined = true
+            };
+            foreach (var property in document.OverrideProperties)
+            {
+                unknown.PreservedReadOnlyProperties[property.Key] = property.Value;
+            }
+            return unknown;
+        }
 
         var component = new Component { Typename = componentType };
         var values = new ReflectedValueCodec(catalog);

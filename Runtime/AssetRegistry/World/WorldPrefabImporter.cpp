@@ -239,8 +239,8 @@ void WorldPrefab::Deserialize(const YAML::Node& inData)
 		{
 			const auto* sourceComponent = source.FindComponent(overrideEntry.m_first);
 			if (sourceComponent &&
-				overrideEntry.m_second->IsValid() &&
-				overrideEntry.m_second->GetTypeInfo() == sourceComponent->GetTypeInfo())
+				!overrideEntry.m_second->GetTypeName().empty() &&
+				overrideEntry.m_second->GetTypeName() == sourceComponent->GetTypeName())
 			{
 				filteredComponentOverrides[
 					overrideEntry.m_first] =
@@ -692,7 +692,7 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 					sourceComponentId.ComponentId(),
 					liveInstanceId);
 				const auto* liveReflection = expanded.FindComponent(liveComponentId);
-				if (!liveReflection || liveReflection->GetTypeInfo() != sourceReflection.GetTypeInfo())
+				if (!liveReflection || liveReflection->GetTypeName() != sourceReflection.GetTypeName())
 				{
 					continue;
 				}
@@ -709,7 +709,7 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 									normalizedReflection);
 							},
 						diagnostic) ||
-					!baselineReflection.IsValid())
+					baselineReflection.GetTypeName().empty())
 				{
 					if (diagnostic.empty())
 					{

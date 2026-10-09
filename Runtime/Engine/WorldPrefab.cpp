@@ -1,6 +1,8 @@
 #include "Engine/World.h"
 #include "Engine/GameObject.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
+#include "AssetRegistry/Prefab/PrefabInstance.h"
+#include "Components/UnknownComponent.h"
 #include "Core/LogMacros.h"
 #include "Core/Reflection.h"
 #include "ECS/TransformECS.h"
@@ -432,12 +434,22 @@ GameObjectPtr World::Instantiate(
 				return {};
 			}
 
-			ComponentPtr newComponent = Reflection::CreateObject<Component>(reflection.GetTypeInfo(), GetAllocator());
+			ComponentPtr newComponent;
+			if (reflection.IsValid())
+			{
+				newComponent = Reflection::CreateObject<Component>(reflection.GetTypeInfo(), GetAllocator());
+			}
+			else
+			{
+				newComponent = TObjectPtr<UnknownComponent>::Make(GetAllocator());
+				SAILOR_LOG("Component '%s' is undefined. Its data is preserved; compile the workspace to restore it.",
+					reflection.GetTypeName().c_str());
+			}
 			if (!newComponent)
 			{
 				SAILOR_LOG_ERROR(
 					"Cannot instantiate reflected component type '%s' from prefab '%s'.",
-					reflection.GetTypeInfo().Name().c_str(),
+					reflection.GetTypeName().c_str(),
 					prefab->GetFileId().ToString().c_str());
 				return {};
 			}
@@ -498,6 +510,14 @@ GameObjectPtr World::Instantiate(
 			check(componentIndex < prefab->m_components.Num());
 
 			const ReflectedData& reflection = prefab->m_components[componentIndex];
+
+			if (!reflection.IsValid())
+			{
+				ReflectedData remapped;
+				remapped.Deserialize(PrefabInstance::NormalizeReferences(reflection.Serialize(), sourceToInstanceIds));
+				newComp->ApplyReflection(remapped);
+				continue;
+			}
 
 			bool bResolved = false;
 			std::string resolveDiagnostic;

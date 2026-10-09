@@ -218,10 +218,10 @@ bool Prefab::ValidateForInstantiation(std::string& outDiagnostic) const
 	for (uint32_t componentIndex = 0; componentIndex < m_components.Num(); ++componentIndex)
 	{
 		const ReflectedData& reflection = m_components[componentIndex];
-		if (!reflection.IsValid())
+		if (reflection.GetTypeName().empty())
 		{
 			outDiagnostic = "reflected component " + std::to_string(componentIndex) +
-				" has an unknown type; load or rebuild the workspace logic module";
+				" has no type name";
 			return false;
 		}
 

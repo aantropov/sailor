@@ -630,6 +630,11 @@ bool Editor::ResetComponentToDefaults(const InstanceId& instanceId)
 			continue;
 		}
 
+		if (!component->GetReflectedData().IsValid())
+		{
+			return false;
+		}
+
 		const ReflectedData& defaults = Reflection::GetCDO(component->GetTypeInfo().Name());
 		m_world->ApplyComponentReflection(component, defaults, true);
 		return true;
