@@ -65,6 +65,8 @@ namespace Sailor::Tests
 		std::atomic<uint32_t> instanceCreateCalls{ 0 };
 		std::atomic<uint32_t> instanceDestroyCalls{ 0 };
 		std::atomic<uint32_t> surfaceDestroyCalls{ 0 };
+		std::atomic<uint32_t> swapchainImageLimit{ 0 };
+		std::atomic<int32_t> acquiredImageIndex{ -1 };
 		std::atomic<uint32_t> samplerCreateCalls{ 0 };
 		std::atomic<uint32_t> bufferCreateCalls{ 0 };
 		std::atomic<uint32_t> bufferDestroyCalls{ 0 };

@@ -236,6 +236,33 @@ namespace
 		vkDestroySurfaceKHR(instance, surface, allocator);
 	}
 
+	VKAPI_ATTR VkResult VKAPI_CALL GetSurfaceCapabilities(VkPhysicalDevice device, VkSurfaceKHR surface,
+		VkSurfaceCapabilitiesKHR* capabilities)
+	{
+		const auto result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, capabilities);
+		const uint32_t limit = GetVulkanCapabilityOverrides().swapchainImageLimit;
+		// Restrict the surface to a supported count; creation, acquisition and presentation stay native.
+		if (result == VK_SUCCESS && limit != 0 && limit >= capabilities->minImageCount &&
+			(capabilities->maxImageCount == 0 || limit < capabilities->maxImageCount))
+		{
+			capabilities->maxImageCount = limit;
+		}
+		return result;
+	}
+
+	VKAPI_ATTR VkResult VKAPI_CALL AcquireNextImage(VkDevice device, VkSwapchainKHR swapchain,
+		uint64_t timeout, VkSemaphore semaphore, VkFence fence, uint32_t* imageIndex)
+	{
+		const int32_t index = GetVulkanCapabilityOverrides().acquiredImageIndex;
+		if (index >= 0)
+		{
+			// The image-table fixture never submits or presents these modeled acquisitions.
+			*imageIndex = static_cast<uint32_t>(index);
+			return VK_SUCCESS;
+		}
+		return vkAcquireNextImageKHR(device, swapchain, timeout, semaphore, fence, imageIndex);
+	}
+
 	VKAPI_ATTR VkResult VKAPI_CALL CreateSampler(VkDevice device, const VkSamplerCreateInfo* info,
 		const VkAllocationCallbacks* allocator, VkSampler* sampler)
 	{
@@ -385,6 +412,8 @@ namespace
 		{ reinterpret_cast<const void*>(&CreateInstance), reinterpret_cast<const void*>(&vkCreateInstance) },
 		{ reinterpret_cast<const void*>(&DestroyInstance), reinterpret_cast<const void*>(&vkDestroyInstance) },
 		{ reinterpret_cast<const void*>(&DestroySurface), reinterpret_cast<const void*>(&vkDestroySurfaceKHR) },
+		{ reinterpret_cast<const void*>(&GetSurfaceCapabilities), reinterpret_cast<const void*>(&vkGetPhysicalDeviceSurfaceCapabilitiesKHR) },
+		{ reinterpret_cast<const void*>(&AcquireNextImage), reinterpret_cast<const void*>(&vkAcquireNextImageKHR) },
 		{ reinterpret_cast<const void*>(&CreateSampler), reinterpret_cast<const void*>(&vkCreateSampler) },
 		{ reinterpret_cast<const void*>(&CreateBuffer), reinterpret_cast<const void*>(&vkCreateBuffer) },
 		{ reinterpret_cast<const void*>(&DestroyBuffer), reinterpret_cast<const void*>(&vkDestroyBuffer) },

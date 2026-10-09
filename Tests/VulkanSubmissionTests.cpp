@@ -188,6 +188,44 @@ namespace Sailor::GraphicsDriver::Vulkan
 				throw std::runtime_error("synchronization storage must follow image/flight ownership");
 			}
 		}
+#if defined(__APPLE__)
+		static void CheckSyncGenerations(VulkanDevice& device)
+		{
+			// Model counts beyond this surface's limit without presenting these placeholder views.
+			auto& acquiredImage = Tests::GetVulkanCapabilityOverrides().acquiredImageIndex;
+			const auto previousAcquisition = device.m_acquiredImageFlight;
+			auto& views = device.m_swapchain->GetImageViews();
+			auto nativeViews = std::move(views);
+			Tests::ScopeExit restore([&]()
+				{
+					acquiredImage = -1;
+					device.m_acquiredImageFlight = previousAcquisition;
+					views = std::move(nativeViews);
+					device.CreateFrameSyncSemaphores();
+				});
+			for (const uint32_t images : { 3u, 4u, 2u })
+			{
+				views.Resize(images);
+				device.CreateFrameSyncSemaphores();
+				CheckSyncCounts(device);
+				for (uint32_t image = 0; image < images; ++image)
+				{
+					if (device.m_syncImages[image])
+					{
+						throw std::runtime_error("recreated image tables must not retain previous-generation fence aliases");
+					}
+					acquiredImage = static_cast<int32_t>(image);
+					uint32_t flight = 0;
+					bool hasImage = false;
+					if (!device.BeginRenderSubmission(flight, hasImage) || !hasImage ||
+						device.m_syncImages[image] != device.m_syncFences[flight])
+					{
+						throw std::runtime_error("every acquired index, including the last image, must receive its flight fence");
+					}
+				}
+			}
+		}
+#endif
 	};
 }
 
@@ -5945,12 +5983,27 @@ frame: []
 
 	int RunGpu(int argc, const char** argv, bool present, bool lost, bool upload = false, bool accepted = false)
 	{
+#if defined(__APPLE__)
+		auto& capabilityOverrides = Tests::GetVulkanCapabilityOverrides();
+		Tests::ScopeExit restoreImageLimit([&]() { capabilityOverrides.swapchainImageLimit = 0; });
+#endif
 		App::Initialize(argv, argc);
 		int result = 1;
 		try
 		{
 			Require(App::IsRendererInitialized(), "GPU test requires an initialized renderer");
 			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+#if defined(__APPLE__)
+			if (present && !lost)
+			{
+				OnRender([]()
+					{
+						auto device = VulkanApi::GetInstance()->GetMainDevice();
+						Require(device->WaitIdle() == VK_SUCCESS, "image-generation fixture must start without in-flight work");
+						VulkanSubmissionTestAccess::CheckSyncGenerations(*device);
+					});
+			}
+#endif
 			for (VkResult error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
 			{
 				if (upload)
@@ -5978,6 +6031,14 @@ frame: []
 								"recovery refusal must retain the old flight and dependencies");
 						});
 				}
+#if defined(__APPLE__)
+				const auto oldImageCount = VulkanApi::GetInstance()->GetMainDevice()->GetSwapchain()->GetImageViews().Num();
+				const uint32_t requestedImages = error == VK_ERROR_OUT_OF_HOST_MEMORY ? 2u : 3u;
+				if (present && !lost)
+				{
+					capabilityOverrides.swapchainImageLimit = requestedImages;
+				}
+#endif
 				const bool recovered = Renderer::GetDriver()->FixLostDevice(App::GetMainWindow().GetRawPtr());
 				Require(recovered != lost, "only swapchain failure can be recovered without replacing VkDevice");
 				if (lost)
@@ -5990,6 +6051,15 @@ frame: []
 						});
 					break;
 				}
+#if defined(__APPLE__)
+				if (present)
+				{
+					const auto imageCount = VulkanApi::GetInstance()->GetMainDevice()->GetSwapchain()->GetImageViews().Num();
+					Require(imageCount == requestedImages && imageCount != oldImageCount,
+						"recovery must change the actual Vulkan swapchain image count before verifying ownership and readback");
+					std::cout << "Swapchain image count changed " << oldImageCount << " -> " << imageCount << '\n';
+				}
+#endif
 				OnRender([&]() { TestRecoveredFrames(present, failed); });
 				std::cout << "Recovered error " << error << " with verified GPU frame readbacks\n";
 			}
