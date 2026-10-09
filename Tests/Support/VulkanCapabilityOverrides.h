@@ -16,6 +16,7 @@ namespace Sailor::Tests
 
 	// Observe the calling thread's real transfer commands; Vulkan still executes them.
 	std::vector<VulkanBufferWrite> CaptureVulkanBufferWrites(const std::function<void()>& record);
+	std::vector<VkImageMemoryBarrier> CaptureVulkanImageBarriers(const std::function<void()>& record);
 
 	struct VulkanComputeInputEvent
 	{

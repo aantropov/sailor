@@ -1,4 +1,5 @@
 #include "VulkanCapabilityOverrides.h"
+#include "ScopeExit.h"
 #include <vulkan/vulkan.h>
 #include <cstring>
 #include <utility>
@@ -6,12 +7,22 @@
 namespace
 {
 	thread_local std::vector<Sailor::Tests::VulkanBufferWrite>* g_bufferWrites = nullptr;
+	thread_local std::vector<VkImageMemoryBarrier>* g_imageBarriers = nullptr;
 	thread_local std::vector<Sailor::Tests::VulkanComputeInputEvent>* g_computeInputs = nullptr;
 	thread_local Sailor::Tests::VulkanDescriptorAllocationFailure* g_descriptorFailure = nullptr;
 }
 
 namespace Sailor::Tests
 {
+	std::vector<VkImageMemoryBarrier> CaptureVulkanImageBarriers(const std::function<void()>& record)
+	{
+		std::vector<VkImageMemoryBarrier> barriers;
+		auto* previous = std::exchange(g_imageBarriers, &barriers);
+		ScopeExit restore([previous]() { g_imageBarriers = previous; });
+		record();
+		return barriers;
+	}
+
 	VulkanDescriptorAllocationFailure RefuseSecondVulkanDescriptorAllocation(const std::function<void()>& record)
 	{
 		VulkanDescriptorAllocationFailure failure;
@@ -347,6 +358,10 @@ namespace
 		const VkMemoryBarrier* memory, uint32_t bufferCount, const VkBufferMemoryBarrier* buffers,
 		uint32_t imageCount, const VkImageMemoryBarrier* images)
 	{
+		if (g_imageBarriers && imageCount > 0)
+		{
+			g_imageBarriers->insert(g_imageBarriers->end(), images, images + imageCount);
+		}
 		if (g_computeInputs)
 		{
 			for (uint32_t i = 0; i < memoryCount; ++i)

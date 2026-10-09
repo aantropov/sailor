@@ -2762,6 +2762,9 @@ frame: []
 		const auto usage = ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferSrc_Bit |
 			ETextureUsageBit::TextureTransferDst_Bit;
 		uint32_t cases = 0, pixelsRead = 0;
+#if defined(__APPLE__)
+		uint32_t initialBarrierChecks = 0;
+#endif
 		for (auto type : { ETextureType::Texture1D, ETextureType::Texture2D, ETextureType::Texture3D, ETextureType::Cubemap })
 		{
 			if (cubemap && type != ETextureType::Cubemap) continue;
@@ -2797,8 +2800,28 @@ frame: []
 					{
 						FenceDispatchOverride completion(*device);
 						SubmitOverride submission(VulkanSubmissionTestAccess::UploadQueue(*device), VK_SUCCESS);
+#if defined(__APPLE__)
+						const auto barriers = Tests::CaptureVulkanImageBarriers([&]() { accepted = create(); });
+#else
 						accepted = create();
+#endif
 						Require(accepted.IsValid(), "the unchanged image request must retry successfully");
+#if defined(__APPLE__)
+						if (!upload)
+						{
+							Require(barriers.size() == 1, "empty image initialization must record exactly one native image barrier");
+							const auto& barrier = barriers.front();
+							Require(barrier.image == *accepted->m_vulkan.m_image &&
+								barrier.oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && barrier.newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL &&
+								barrier.srcAccessMask == 0 && barrier.dstAccessMask == VK_ACCESS_SHADER_READ_BIT &&
+								barrier.srcQueueFamilyIndex == VK_QUEUE_FAMILY_IGNORED && barrier.dstQueueFamilyIndex == VK_QUEUE_FAMILY_IGNORED &&
+								barrier.subresourceRange.aspectMask == VK_IMAGE_ASPECT_COLOR_BIT &&
+								barrier.subresourceRange.baseMipLevel == 0 && barrier.subresourceRange.levelCount == levels &&
+								barrier.subresourceRange.baseArrayLayer == 0 && barrier.subresourceRange.layerCount == layers,
+								"empty image initialization must transition every native mip and layer for shader reads");
+							++initialBarrierChecks;
+						}
+#endif
 						observedFences[0] = lastSubmittedFence;
 						fenceResults[0] = VK_NOT_READY;
 						driver.TrackResources_ThreadSafe();
@@ -2840,6 +2863,9 @@ frame: []
 		}
 		std::cout << "Asynchronous image factories: cubemap=" << cubemap << ", " << cases
 			<< " refused/retried cases, " << pixelsRead << " complete mip/face/volume pixels passed\n";
+#if defined(__APPLE__)
+		std::cout << "Native empty-image initial barrier checks: " << initialBarrierChecks << '\n';
+#endif
 		{
 			SubmitOverride loss(VulkanSubmissionTestAccess::UploadQueue(*device), VK_ERROR_DEVICE_LOST);
 			const auto before = nativeSubmitAttempts;
