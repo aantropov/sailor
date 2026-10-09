@@ -4353,6 +4353,7 @@ frame: []
 			const int port = ix::getFreePort();
 			Require(ix::uninitNetSystem() && port > 0 && port <= 65535, "workspace fixture must reserve a local port");
 			constexpr std::string_view token = "0123456789abcdef0123456789abcdef";
+			const auto iniPath = std::filesystem::weakly_canonical(workspace.Path("Cache/imgui.ini"));
 			for (auto& probe : probes)
 			{
 				Require(SailorProtocolStartLocalHost(reinterpret_cast<const uint8_t*>(initializeRequest.data()),
@@ -4367,7 +4368,12 @@ frame: []
 				}
 				auto* context = ImGuiApi::GetCurrentContext();
 				ImGui::SetCurrentContext(context);
-				ImGui::GetIO().IniFilename = nullptr;
+				Require(ImGui::GetIO().IniFilename && Workspace::PathFromUtf8(ImGui::GetIO().IniFilename) == iniPath,
+					"ImGui settings must belong to the workspace cache, not the process working directory");
+				if (&probe == &probes.front())
+				{
+					ImGui::LoadIniSettingsFromMemory("[Window][Workspace settings]\nPos=37,59\nSize=240,180\nCollapsed=0\n");
+				}
 				{
 					Platform::DynamicLibrary module(modulePath);
 					auto configure = reinterpret_cast<void (*)(Tests::ImGuiWorkspaceProbe*)>(module.GetSymbol("ConfigureImGuiWorkspaceProbe"));
@@ -4397,6 +4403,10 @@ frame: []
 				probe.m_bIsCallbackReleased.notify_all();
 				Require(SailorProtocolStopLocalHost(false) != 0 && App::GetInstance(),
 					"stopping the engine loop must retain its App until explicit shutdown");
+				const auto* settings = ImGui::FindWindowSettingsByID(ImHashStr("Workspace settings"));
+				Require(settings && settings->Pos.x == 37 && settings->Pos.y == 59 &&
+					settings->Size.x == 240 && settings->Size.y == 180,
+					"each new ImGui context must restore the layout saved by the previous workspace session");
 				{
 					auto device = VulkanApi::GetInstance()->GetMainDevice();
 					QueueWaitOverride refusal(device->GetGraphicsQueue(), VK_ERROR_OUT_OF_HOST_MEMORY);
@@ -4416,6 +4426,7 @@ frame: []
 						"partial backend setup must exercise an actual refused font upload before teardown");
 				}
 				Require(SailorProtocolStopLocalHost(true) != 0 && !App::GetInstance(), "shutdown retry must complete");
+				Require(std::filesystem::is_regular_file(iniPath), "context shutdown must save its layout in the workspace cache");
 				std::cout << "ImGui workspace: frames=" << probe.m_frames << ", callbacks=" << probe.m_callbacksFinished
 					<< ", copied=" << probe.m_copiedCallbacks << ", borrowed=" << probe.m_borrowedCallbacks
 					<< ", module unloaded=" << probe.m_bWasModuleUnloaded << ", allocations=" << allocations.m_liveAllocations << '\n';

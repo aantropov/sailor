@@ -8,6 +8,7 @@
 #include "Memory/SharedPtr.hpp"
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 #include <unordered_map>
 
@@ -49,6 +50,7 @@ namespace Sailor
 	protected:
 
 		ImGuiContext* m_pContext = nullptr;
+		std::string m_iniFilename;
 
 		// Keep the final owner on the CPU thread: ImGui allocation accounting is
 		// context-owned too. RHI tasks only release their shared references.

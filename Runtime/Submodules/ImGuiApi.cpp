@@ -158,10 +158,12 @@ void ImGuiApi::HandleInput(const Platform::InputEvent& event)
 }
 
 ImGuiApi::ImGuiApi(void* hWnd)
+	: m_iniFilename(AssetRegistry::GetCacheFolder() + "imgui.ini")
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	m_pContext = ImGui::CreateContext();
+	ImGui::GetIO().IniFilename = m_iniFilename.c_str();
 	ImGuizmo::SetImGuiContext(m_pContext);
 #if defined(_WIN32)
 	ImGui_ImplWin32_Init(hWnd);
