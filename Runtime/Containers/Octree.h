@@ -30,7 +30,7 @@ namespace Sailor
 			TBounds() = default;
 			TBounds(const glm::ivec3& pos, const glm::ivec3& extents) : m_position(pos), m_extents(extents) {}
 
-			bool operator==(const TBounds& rhs) const { return m_position == rhs.m_position || m_extents == rhs.m_extents; }
+			bool operator==(const TBounds& rhs) const { return m_position == rhs.m_position && m_extents == rhs.m_extents; }
 
 			glm::ivec3 m_position{};
 			glm::ivec3 m_extents{};

@@ -757,6 +757,16 @@ namespace
 
 	void TestOctreeCopyMoveAndReverseIndex()
 	{
+		struct OctreeProbe : TOctree<int>
+		{
+			using TOctree<int>::TBounds;
+		};
+		const OctreeProbe::TBounds bounds(glm::ivec3(0), glm::ivec3(1));
+		Require(bounds == OctreeProbe::TBounds(glm::ivec3(0), glm::ivec3(1)) &&
+			!(bounds == OctreeProbe::TBounds(glm::ivec3(2), glm::ivec3(1))) &&
+			!(bounds == OctreeProbe::TBounds(glm::ivec3(0), glm::ivec3(2))),
+			"octree bounds equality must compare both position and extents");
+
 		TOctree<int> original(glm::ivec3(0), 128, 4);
 		for (int i = 0; i < 16; ++i)
 		{
