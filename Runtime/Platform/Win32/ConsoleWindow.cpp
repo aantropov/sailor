@@ -60,6 +60,7 @@ void ConsoleWindow::CloseWindow()
 }
 
 #ifdef _WIN32
+#include <io.h>
 #include <windows.h>
 
 BOOL WINAPI ConsoleWindow::HandleControl(DWORD signal)
@@ -131,7 +132,8 @@ void ConsoleWindow::OpenWindow(const wchar_t* Title)
 void ConsoleWindow::Write(std::wstring_view text)
 {
 	DWORD written;
-	WriteConsoleW(GetStdHandle(STD_OUTPUT_HANDLE), text.data(), static_cast<DWORD>(text.size()), &written, nullptr);
+	const auto output = reinterpret_cast<HANDLE>(_get_osfhandle(_fileno(m_stdout_file)));
+	WriteConsoleW(output, text.data(), static_cast<DWORD>(text.size()), &written, nullptr);
 }
 
 void ConsoleWindow::Update()
@@ -141,7 +143,8 @@ void ConsoleWindow::Update()
 	if (std::find(m_buffer, m_buffer + m_bufferSize, L'\r') != m_buffer + m_bufferSize) return;
 
 	DWORD numEvents;
-	const auto input = GetStdHandle(STD_INPUT_HANDLE);
+	// Inherited standard handles can remain redirected after AllocConsole.
+	const auto input = reinterpret_cast<HANDLE>(_get_osfhandle(_fileno(m_stdin_file)));
 	if (!GetNumberOfConsoleInputEvents(input, &numEvents)) return;
 
 	for (uint32_t i = 0; i < numEvents; ++i)
@@ -158,7 +161,7 @@ void ConsoleWindow::Update()
 			if (c == L'\b')
 			{
 				CONSOLE_SCREEN_BUFFER_INFO info;
-				const auto output = GetStdHandle(STD_OUTPUT_HANDLE);
+				const auto output = reinterpret_cast<HANDLE>(_get_osfhandle(_fileno(m_stdout_file)));
 				if (!GetConsoleScreenBufferInfo(output, &info)) continue;
 				if (info.dwCursorPosition.X == 0)
 				{

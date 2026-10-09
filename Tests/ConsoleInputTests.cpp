@@ -237,7 +237,8 @@ namespace
 					console.Update();
 					const auto length = console.Read(line.data(), static_cast<uint32_t>(line.size()));
 					Require(std::string_view(line.data(), length) == "\xd0\x9a\xc3\xa9",
-						"native input must preserve Unicode and apply Backspace independently of the code page");
+						"native input must preserve Unicode and apply Backspace independently of the code page; received " +
+						std::to_string(length) + " bytes at CP" + std::to_string(codePage));
 					std::array<wchar_t, 3> echo{};
 					DWORD read = 0;
 					Require(ReadConsoleOutputCharacterW(output, echo.data(), static_cast<DWORD>(echo.size()), { 0, 0 }, &read) &&
