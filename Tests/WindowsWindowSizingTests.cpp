@@ -221,25 +221,32 @@ namespace
 			Require(PeekMessage(&hostMessage, hostWindow, WM_APP + 18, WM_APP + 18, PM_REMOVE) &&
 				hostMessage.hwnd == hostWindow && hostMessage.message == WM_APP + 18,
 				"the engine pump must leave unrelated host messages for the host loop");
-			// PostQuitMessage is generated after all queued work, including native
-			// helper windows. Drain as the host would, leaving WM_QUIT for Sailor.
+			// PeekMessage can dispatch sent callbacks that enqueue new helper-window
+			// work. Pump both owners until the virtual WM_QUIT becomes available.
 			uint32_t hostMessages = 0;
 			bool bHostObservedQuit = false;
-			bool bHostRemovedQuit = false;
-			while (survivor.IsRunning() && PeekMessage(&hostMessage, nullptr, 0, 0, PM_NOREMOVE))
+			const auto deadline = GetTickCount64() + 2000;
+			while (survivor.IsRunning() && GetTickCount64() < deadline)
 			{
-				if (hostMessage.message == WM_QUIT)
+				Window::ProcessWin32Msgs();
+				while (survivor.IsRunning() && GetTickCount64() < deadline &&
+					PeekMessage(&hostMessage, nullptr, 0, 0, PM_REMOVE))
 				{
-					bHostObservedQuit = true;
-					break;
+					if (hostMessage.message == WM_QUIT)
+					{
+						bHostObservedQuit = true;
+						PostQuitMessage(static_cast<int>(hostMessage.wParam));
+						break;
+					}
+					++hostMessages;
+					TranslateMessage(&hostMessage);
+					DispatchMessage(&hostMessage);
 				}
-				const bool bRemoved = PeekMessage(&hostMessage, nullptr, 0, 0, PM_REMOVE) != FALSE;
-				bHostRemovedQuit |= bRemoved && hostMessage.message == WM_QUIT;
-				++hostMessages;
-				TranslateMessage(&hostMessage);
-				DispatchMessage(&hostMessage);
+				if (survivor.IsRunning())
+				{
+					Sleep(1);
+				}
 			}
-			Window::ProcessWin32Msgs();
 			const bool bStopped = !survivor.IsRunning();
 			if (!bStopped)
 			{
@@ -248,7 +255,7 @@ namespace
 				const bool bPending = PeekMessage(&pending, nullptr, 0, 0, PM_NOREMOVE) != FALSE;
 				std::cerr << "[INFO] Quit failure: iteration=" << iteration
 					<< ", sent=" << bUseSentMessage << ", hostMessages=" << hostMessages
-					<< ", observedQuit=" << bHostObservedQuit << ", removedQuit=" << bHostRemovedQuit
+					<< ", observedQuit=" << bHostObservedQuit
 					<< ", queue=" << queueStatus << ", pending=" << bPending
 					<< ", message=" << pending.message << ", hwnd=" << pending.hwnd
 					<< ", survivor=" << survivor.GetHWND() << '\n';
