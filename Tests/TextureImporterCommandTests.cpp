@@ -239,6 +239,43 @@ namespace
 		decode.CheckWorker(requests);
 	}
 
+	void TestSourceChangedBeforePublication(const std::filesystem::path& workspace)
+	{
+		TextureFixture fixture(workspace, "SourceChangedBeforePublication");
+		fixture.KeepCpu(true);
+		auto* importer = App::GetSubmodule<TextureImporter>();
+		TexturePtr texture;
+		Require(importer->LoadTexture_Immediate(fixture.m_id, texture), "publication fixture must load");
+		const auto image = texture->GetRHI();
+		const auto slot = static_cast<uint32_t>(importer->GetTextureIndex(fixture.m_id));
+		const auto bindings = importer->GetTextureSamplersSnapshot({ slot });
+		DecodeProbe decode(fixture.m_id, true);
+		importer->OnUpdateAssetInfo(fixture.m_info, true);
+		auto first = importer->GetLoadPromise(fixture.m_id);
+		decode.WaitDecoded(1);
+		importer->OnUpdateAssetInfo(fixture.m_info, true);
+		auto latest = importer->GetLoadPromise(fixture.m_id);
+		if (App::GetSubmodule<Tasks::Scheduler>()->GetNumThreads(EThreadType::Worker) > 1)
+		{
+			decode.WaitDecoded(2);
+		}
+		fixture.Write(0, 255);
+		decode.Release();
+		latest->Wait();
+		const auto unchanged = importer->GetTextureSamplersSnapshot({ slot });
+		Require(!first->GetResult() && !latest->GetResult() && texture->GetRHI() == image &&
+			texture->GetDecodedData()[0] == 255 && unchanged.m_descriptorRevision == bindings.m_descriptorRevision &&
+			unchanged.m_slots[0].m_contentRevision == bindings.m_slots[0].m_contentRevision,
+			"a source change while publication is queued must retain the last good pixels and descriptors");
+		importer->OnUpdateAssetInfo(fixture.m_info, true);
+		auto retry = importer->GetLoadPromise(fixture.m_id);
+		retry->Wait();
+		Require(retry->GetResult() == texture && texture->GetDecodedData()[2] == 255 &&
+			importer->GetTextureIndex(fixture.m_id) == slot,
+			"the changed source must remain reloadable in the same sampler slot");
+		decode.CheckWorker(3);
+	}
+
 	void TestEnrichmentAndReload(const std::filesystem::path& workspace)
 	{
 		TextureFixture fixture(workspace, "CpuAndReload");
@@ -704,6 +741,7 @@ namespace Sailor::Tests
 		run("CPU source changed during decode", [&]() { TestCpuOnlySourceChangesDuringDecode(workspace); });
 		run("Reload ordering", [&]() { TestReloadOrdering(workspace, false); });
 		run("Missing source ordering", [&]() { TestReloadOrdering(workspace, true); });
+		run("Source changed before publication", [&]() { TestSourceChangedBeforePublication(workspace); });
 		run("Enrichment and reload", [&]() { TestEnrichmentAndReload(workspace); });
 		run("Cold failure retry", [&]() { TestColdFailureRetry(workspace); });
 		run("Native upload failure", [&]() { TestNativeUploadFailure(workspace); });

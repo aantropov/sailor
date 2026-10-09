@@ -911,11 +911,25 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::CreateTextureTask(
 				data->m_height, data->m_mipLevels);
 			return data;
 		}, EThreadType::Worker);
-	auto publish = decode->Then<TexturePtr>(
+	auto ready = decode->Then<TSharedPtr<Data>>(
+		[source](TSharedPtr<Data> data)
+		{
+			if (!data->m_bDecoded || data->m_pixels.IsEmpty() || !HasCurrentTextureSources(source))
+			{
+				data.Clear();
+			}
+			return data;
+		}, "Check texture sources"_h, EThreadType::Worker);
+	// Decodes may overlap; check freshness after the preceding publication without doing file I/O on RHI.
+	if (previous)
+	{
+		ready->Join(previous);
+	}
+	auto publish = ready->Then<TexturePtr>(
 		[this, texture, source, format, filtration, clamping, reduction, usage,
 			bCpuOnly, bKeepCpu, bHotReload](TSharedPtr<Data> data) mutable
 		{
-			if (!data->m_bDecoded || data->m_pixels.IsEmpty() || !HasCurrentTextureSources(source))
+			if (!data)
 			{
 				SAILOR_LOG_ERROR("Cannot load texture '%s': decoding failed or the source changed.",
 					source.m_filepath.c_str());
@@ -979,11 +993,6 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::CreateTextureTask(
 			}
 			return texture;
 		}, "Publish texture"_h, EThreadType::RHI);
-	// Decodes may overlap, but one texture's publications follow request order.
-	if (previous)
-	{
-		publish->Join(previous);
-	}
 	return publish->ToTaskWithResult();
 }
 
