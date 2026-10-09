@@ -9,6 +9,7 @@ using YamlDotNet.Core;
 using YamlDotNet.Core.Events;
 using SailorEditor.Helpers;
 using SailorEditor.Content;
+using SailorEditor.Workflow;
 
 namespace SailorEditor.Services
 {
@@ -71,22 +72,19 @@ namespace SailorEditor.Services
             try
             {
                 var selectionService = MauiProgram.GetService<SelectionService>();
-                var selectedAssetId = (selectionService.SelectedItem as AssetFile)?.FileId;
+                var selection = selectionService.Snapshot;
+                var workspaceEpoch = WorkspaceEpoch;
                 await RefreshAsync();
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
-                    if (selectedAssetId is null || selectedAssetId.IsEmpty())
+                    // Reload must not replace a newer selection or cross a workspace change.
+                    if (workspaceEpoch != WorkspaceEpoch || selection != selectionService.Snapshot ||
+                        selection.Kind != SelectionTargetKind.Asset || selection.SelectedId is null)
                     {
                         return;
                     }
 
-                    if (Assets.TryGetValue(selectedAssetId, out var refreshedAsset))
-                    {
-                        selectionService.SelectObject(refreshedAsset, force: true);
-                        return;
-                    }
-
-                    selectionService.ClearSelection();
+                    RestoreSelectedAsset(selectionService, new FileId(selection.SelectedId));
                 });
             }
             catch (Exception exception)
