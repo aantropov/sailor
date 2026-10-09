@@ -315,6 +315,14 @@ void VulkanApi::Initialize(Platform::Window* viewport, RHI::EMsaaSamples msaaSam
 		extensions.Add(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
 	}
 
+#ifndef _SHIPPING
+	// Debug markers require this instance extension even without validation layers.
+	if (hasInstanceExtension(VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
+	{
+		extensions.Add(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+	}
+#endif
+
 #if defined(__APPLE__)
 	bool bEnablePortabilityEnumeration = false;
 	if (hasInstanceExtension(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME))
@@ -350,9 +358,6 @@ void VulkanApi::Initialize(Platform::Window* viewport, RHI::EMsaaSamples msaaSam
 		{
 			SAILOR_LOG("Requesting Vulkan validation: %s (using the layer's settings).", validationLayers[0]);
 			extensions.Add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-#ifndef _SHIPPING
-			extensions.Add(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
-#endif
 
 			createInfo.ppEnabledLayerNames = validationLayers.GetData();
 			createInfo.enabledLayerCount = (uint32_t)validationLayers.Num();
