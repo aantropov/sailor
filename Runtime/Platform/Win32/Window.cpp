@@ -683,27 +683,38 @@ void Sailor::Win32::Window::ProcessWin32Msgs()
 
 	// Both PeekMessage and DispatchMessage can destroy a Window through a callback.
 	// Keep native handles across dispatch, not pointers into the mutable registry.
+	MSG msg;
+	bool bQuit = false;
 	for (const HWND hWnd : windows)
 	{
-		MSG msg;
 		while (PeekMessage(&msg, hWnd, 0, 0, PM_REMOVE))
 		{
 			if (msg.message == WM_QUIT)
 			{
-				const std::lock_guard<std::mutex> lock(g_windowsMutex);
-				for (auto* window : g_windows)
-				{
-					if (windows.Contains(window->m_hWnd))
-					{
-						window->SetRunning(false);
-					}
-				}
-				return;
+				bQuit = true;
+				break;
 			}
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
+		if (bQuit)
+		{
+			break;
+		}
 		::SendMessage(hWnd, c_updateMouseCaptureMessage, 0, 0);
+	}
+
+	// WM_QUIT belongs to the thread, not any HWND. Leave other host messages queued.
+	if (bQuit || (!windows.IsEmpty() && PeekMessage(&msg, nullptr, WM_QUIT, WM_QUIT, PM_REMOVE)))
+	{
+		const std::lock_guard<std::mutex> lock(g_windowsMutex);
+		for (auto* window : g_windows)
+		{
+			if (::GetWindowThreadProcessId(window->m_hWnd, nullptr) == threadId)
+			{
+				window->SetRunning(false);
+			}
+		}
 	}
 }
 

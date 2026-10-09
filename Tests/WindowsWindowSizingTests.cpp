@@ -154,6 +154,10 @@ namespace
 	void CheckMessagePumpRetirement()
 	{
 		using namespace Sailor::Win32;
+		const HWND hostWindow = CreateWindowExW(0, L"STATIC", L"Host message queue", 0,
+			0, 0, 0, 0, HWND_MESSAGE, nullptr, GetModuleHandleW(nullptr), nullptr);
+		Require(hostWindow != nullptr, "the host must have its own message-only window");
+		Sailor::Tests::ScopeExit closeHost([&]() { DestroyWindow(hostWindow); });
 		for (uint32_t iteration = 0; iteration < 6; ++iteration)
 		{
 			const bool bUseSentMessage = iteration % 2 != 0;
@@ -210,9 +214,14 @@ namespace
 				"removing one window must not skip the next window's queued input");
 			GlobalInput::Reset();
 			survivor.SetRunning(true);
+			Require(PostMessage(hostWindow, WM_APP + 18, 0, 0), "the host's unrelated message must be queued");
 			PostQuitMessage(0);
 			Window::ProcessWin32Msgs();
 			Require(!survivor.IsRunning(), "thread quit must stop the surviving native window");
+			MSG hostMessage{};
+			Require(PeekMessage(&hostMessage, hostWindow, WM_APP + 18, WM_APP + 18, PM_REMOVE) &&
+				hostMessage.hwnd == hostWindow && hostMessage.message == WM_APP + 18,
+				"the engine pump must leave unrelated host messages for the host loop");
 		}
 	}
 
