@@ -20,7 +20,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <condition_variable>
 #include <future>
 #include <fstream>
@@ -52,15 +51,14 @@ namespace
 	using Sailor::Protocol::EditorEngineProtocolVersion;
 
 	using namespace Sailor::Tests::ProtocolWire;
-	using TDecodedResponse = TProtocolResponseWire;
+	namespace Proto = sailor::editor::v1;
+	using TDecodedResponse = Proto::ProtocolResponse;
 
 	constexpr uint32_t c_boolResultField = 11;
 	constexpr uint32_t c_int32ResultField = 12;
 	constexpr uint32_t c_uint64ResultField = 14;
 	constexpr uint32_t c_instanceIdResultField = 18;
 	constexpr uint32_t c_viewportEventBatchResultField = 19;
-	constexpr uint32_t c_viewportToolStateResultField = 21;
-	constexpr uint32_t c_animatorStateResultField = 22;
 	constexpr uint32_t c_editorRenderModeResultField = 23;
 	constexpr uint32_t c_emptyResultField = 10;
 	constexpr uint32_t c_initializeCommandField = 10;
@@ -96,496 +94,15 @@ namespace
 	{
 		Require(data != nullptr && size > 0, "protocol response must not be empty");
 		TDecodedResponse response;
-		Require(ParseResponse(std::string_view(reinterpret_cast<const char*>(data), size), response),
-			"response must contain valid protobuf envelope fields");
+		Require(response.ParseFromArray(data, static_cast<int>(size)), "response must decode with the generated schema");
 		return response;
 	}
 
-	uint64_t ReadResult(const TDecodedResponse& response)
+	uint64_t ReadResult(const TProtocolResponseWire& response)
 	{
 		uint64_t value = 0;
 		Require(ReadNestedScalar(response.m_resultPayload, value), "result must contain a valid scalar payload");
 		return value;
-	}
-
-	bool SkipField(
-		const uint8_t* data,
-		size_t size,
-		size_t& offset,
-		uint32_t wireType)
-	{
-		if (wireType == 0)
-		{
-			uint64_t ignored = 0;
-			return ReadVarint(data, size, offset, ignored);
-		}
-		if (wireType == 2)
-		{
-			uint64_t length = 0;
-			if (!ReadVarint(data, size, offset, length) ||
-				length > size - offset)
-			{
-				return false;
-			}
-			offset += static_cast<size_t>(length);
-			return true;
-		}
-		if (wireType == 5)
-		{
-			if (size - offset < sizeof(uint32_t))
-			{
-				return false;
-			}
-			offset += sizeof(uint32_t);
-			return true;
-		}
-		return false;
-	}
-
-	bool TryReadLengthDelimited(
-		const uint8_t* data,
-		size_t size,
-		size_t& offset,
-		const uint8_t*& outData,
-		size_t& outSize)
-	{
-		std::string_view value;
-		if (!ReadBytes(std::string_view(reinterpret_cast<const char*>(data), size), offset, value))
-		{
-			return false;
-		}
-		outData = reinterpret_cast<const uint8_t*>(value.data());
-		outSize = value.size();
-		return true;
-	}
-
-	bool TryDecodeViewportSelection(
-		const uint8_t* data,
-		size_t size,
-		std::string& outSelectedInstanceId)
-	{
-		size_t offset = 0;
-		while (offset < size)
-		{
-			uint64_t key = 0;
-			if (!ReadVarint(data, size, offset, key))
-			{
-				return false;
-			}
-
-			const uint32_t fieldNumber = static_cast<uint32_t>(key >> 3u);
-			const uint32_t wireType = static_cast<uint32_t>(key & 0x7u);
-			if (fieldNumber != 1u)
-			{
-				if (!SkipField(data, size, offset, wireType))
-				{
-					return false;
-				}
-				continue;
-			}
-			if (wireType != 2u)
-			{
-				return false;
-			}
-
-			const uint8_t* value = nullptr;
-			size_t valueSize = 0;
-			if (!TryReadLengthDelimited(
-					data,
-					size,
-					offset,
-					value,
-					valueSize))
-			{
-				return false;
-			}
-			outSelectedInstanceId.assign(
-				reinterpret_cast<const char*>(value),
-				valueSize);
-		}
-		return true;
-	}
-
-	bool TryReadFixed32(
-		const uint8_t* data,
-		size_t size,
-		size_t& offset,
-		uint32_t& outValue)
-	{
-		if (size - offset < sizeof(uint32_t))
-		{
-			return false;
-		}
-
-		outValue =
-			static_cast<uint32_t>(data[offset]) |
-			(static_cast<uint32_t>(data[offset + 1]) << 8u) |
-			(static_cast<uint32_t>(data[offset + 2]) << 16u) |
-			(static_cast<uint32_t>(data[offset + 3]) << 24u);
-		offset += sizeof(uint32_t);
-		return true;
-	}
-
-	bool TryDecodeViewportAssetDrop(
-		const uint8_t* data,
-		size_t size,
-		std::string& outFileId,
-		float& outNormalizedX,
-		float& outNormalizedY)
-	{
-		bool bHasFileId = false;
-		bool bHasNormalizedX = false;
-		bool bHasNormalizedY = false;
-		size_t offset = 0;
-		while (offset < size)
-		{
-			uint64_t key = 0;
-			if (!ReadVarint(data, size, offset, key))
-			{
-				return false;
-			}
-
-			const uint32_t fieldNumber =
-				static_cast<uint32_t>(key >> 3u);
-			const uint32_t wireType =
-				static_cast<uint32_t>(key & 0x7u);
-			if (fieldNumber == 1u)
-			{
-				const uint8_t* value = nullptr;
-				size_t valueSize = 0;
-				if (wireType != 2u ||
-					!TryReadLengthDelimited(
-						data,
-						size,
-						offset,
-						value,
-						valueSize))
-				{
-					return false;
-				}
-				outFileId.assign(
-					reinterpret_cast<const char*>(value),
-					valueSize);
-				bHasFileId = true;
-				continue;
-			}
-
-			if (fieldNumber == 2u || fieldNumber == 3u)
-			{
-				uint32_t bits = 0;
-				if (wireType != 5u ||
-					!TryReadFixed32(data, size, offset, bits))
-				{
-					return false;
-				}
-
-				float value = 0.0f;
-				std::memcpy(&value, &bits, sizeof(value));
-				if (fieldNumber == 2u)
-				{
-					outNormalizedX = value;
-					bHasNormalizedX = true;
-				}
-				else
-				{
-					outNormalizedY = value;
-					bHasNormalizedY = true;
-				}
-				continue;
-			}
-
-			if (!SkipField(data, size, offset, wireType))
-			{
-				return false;
-			}
-		}
-
-		return bHasFileId &&
-			bHasNormalizedX &&
-			bHasNormalizedY;
-	}
-
-	bool TryDecodeViewportToolShortcut(
-		const uint8_t* data,
-		size_t size,
-		uint32_t& outKeyCode)
-	{
-		bool bHasKeyCode = false;
-		size_t offset = 0;
-		while (offset < size)
-		{
-			uint64_t key = 0;
-			if (!ReadVarint(data, size, offset, key))
-			{
-				return false;
-			}
-
-			const uint32_t fieldNumber =
-				static_cast<uint32_t>(key >> 3u);
-			const uint32_t wireType =
-				static_cast<uint32_t>(key & 0x7u);
-			if (fieldNumber == 1u)
-			{
-				uint64_t keyCode = 0;
-				if (wireType != 0u ||
-					!ReadVarint(data, size, offset, keyCode) ||
-					keyCode >
-						static_cast<uint64_t>(
-							std::numeric_limits<uint32_t>::max()))
-				{
-					return false;
-				}
-
-				outKeyCode = static_cast<uint32_t>(keyCode);
-				bHasKeyCode = true;
-				continue;
-			}
-
-			if (!SkipField(data, size, offset, wireType))
-			{
-				return false;
-			}
-		}
-
-		return bHasKeyCode;
-	}
-
-	struct TDecodedViewportTransform
-	{
-		std::string m_instanceId;
-		uint64_t m_operation = 0;
-		uint64_t m_space = 0;
-		std::array<glm::vec4, 6> m_vectors{};
-	};
-
-	bool TryDecodeVector4(const uint8_t* data, size_t size, glm::vec4& value)
-	{
-		size_t offset = 0;
-		while (offset < size)
-		{
-			uint64_t key;
-			if (!ReadVarint(data, size, offset, key)) return false;
-			const auto field = key >> 3u;
-			const auto wire = key & 7u;
-			if (field >= 1 && field <= 4 && wire == 5)
-			{
-				uint32_t bits;
-				if (!TryReadFixed32(data, size, offset, bits)) return false;
-				std::memcpy(&value[static_cast<int>(field - 1)], &bits, sizeof(float));
-			}
-			else if (!SkipField(data, size, offset, static_cast<uint32_t>(wire))) return false;
-		}
-		return true;
-	}
-
-	bool TryDecodeViewportTransform(const uint8_t* data, size_t size, TDecodedViewportTransform& value)
-	{
-		size_t offset = 0;
-		while (offset < size)
-		{
-			uint64_t key;
-			if (!ReadVarint(data, size, offset, key)) return false;
-			const auto field = key >> 3u;
-			const auto wire = key & 7u;
-			if ((field == 2 || field == 3) && wire == 0)
-			{
-				if (!ReadVarint(data, size, offset, field == 2 ? value.m_operation : value.m_space)) return false;
-			}
-			else if ((field == 1 || (field >= 4 && field <= 9)) && wire == 2)
-			{
-				const uint8_t* bytes;
-				size_t length;
-				if (!TryReadLengthDelimited(data, size, offset, bytes, length)) return false;
-				if (field == 1) value.m_instanceId.assign(reinterpret_cast<const char*>(bytes), length);
-				else if (!TryDecodeVector4(bytes, length, value.m_vectors[field - 4])) return false;
-			}
-			else if (!SkipField(data, size, offset, static_cast<uint32_t>(wire))) return false;
-		}
-		return true;
-	}
-
-	struct TDecodedViewportEvent
-	{
-		uint64_t m_revision = 0;
-		uint64_t m_managedMutationRevision = 0;
-		bool m_hasSelection = false;
-		std::string m_selectedInstanceId{};
-		bool m_hasAssetDrop = false;
-		std::string m_assetFileId{};
-		float m_normalizedX = 0.0f;
-		float m_normalizedY = 0.0f;
-		bool m_hasToolShortcut = false;
-		uint32_t m_toolShortcutKeyCode = 0;
-		bool m_bHasTransform = false;
-		TDecodedViewportTransform m_transform;
-	};
-
-	bool TryDecodeViewportEvent(
-		const uint8_t* data,
-		size_t size,
-		TDecodedViewportEvent& outEvent)
-	{
-		size_t offset = 0;
-		while (offset < size)
-		{
-			uint64_t key = 0;
-			if (!ReadVarint(data, size, offset, key))
-			{
-				return false;
-			}
-
-			const uint32_t fieldNumber = static_cast<uint32_t>(key >> 3u);
-			const uint32_t wireType = static_cast<uint32_t>(key & 0x7u);
-			if (fieldNumber == 1u || fieldNumber == 2u)
-			{
-				uint64_t value = 0;
-				if (wireType != 0u ||
-					!ReadVarint(data, size, offset, value))
-				{
-					return false;
-				}
-				if (fieldNumber == 1u)
-				{
-					outEvent.m_revision = value;
-				}
-				else
-				{
-					outEvent.m_managedMutationRevision = value;
-				}
-				continue;
-			}
-			if (fieldNumber == 10u)
-			{
-				const uint8_t* selection = nullptr;
-				size_t selectionSize = 0;
-				if (wireType != 2u ||
-					!TryReadLengthDelimited(
-						data,
-						size,
-						offset,
-						selection,
-						selectionSize) ||
-					!TryDecodeViewportSelection(
-						selection,
-						selectionSize,
-						outEvent.m_selectedInstanceId))
-				{
-					return false;
-				}
-				outEvent.m_hasSelection = true;
-				continue;
-			}
-			if (fieldNumber == 11u)
-			{
-				const uint8_t* transform;
-				size_t length;
-				if (wireType != 2u || !TryReadLengthDelimited(data, size, offset, transform, length) ||
-					!TryDecodeViewportTransform(transform, length, outEvent.m_transform)) return false;
-				outEvent.m_bHasTransform = true;
-				continue;
-			}
-			if (fieldNumber == 12u)
-			{
-				const uint8_t* assetDrop = nullptr;
-				size_t assetDropSize = 0;
-				if (wireType != 2u ||
-					!TryReadLengthDelimited(
-						data,
-						size,
-						offset,
-						assetDrop,
-						assetDropSize) ||
-					!TryDecodeViewportAssetDrop(
-						assetDrop,
-						assetDropSize,
-						outEvent.m_assetFileId,
-						outEvent.m_normalizedX,
-						outEvent.m_normalizedY))
-				{
-					return false;
-				}
-				outEvent.m_hasAssetDrop = true;
-				continue;
-			}
-			if (fieldNumber == 13u)
-			{
-				const uint8_t* toolShortcut = nullptr;
-				size_t toolShortcutSize = 0;
-				if (wireType != 2u ||
-					!TryReadLengthDelimited(
-						data,
-						size,
-						offset,
-						toolShortcut,
-						toolShortcutSize) ||
-					!TryDecodeViewportToolShortcut(
-						toolShortcut,
-						toolShortcutSize,
-						outEvent.m_toolShortcutKeyCode))
-				{
-					return false;
-				}
-				outEvent.m_hasToolShortcut = true;
-				continue;
-			}
-			if (!SkipField(data, size, offset, wireType))
-			{
-				return false;
-			}
-		}
-		return true;
-	}
-
-	bool TryDecodeViewportEventBatch(
-		const std::string& payload,
-		uint32_t& outNumEvents,
-		TDecodedViewportEvent& outEvent)
-	{
-		outNumEvents = 0;
-		const auto* data =
-			reinterpret_cast<const uint8_t*>(payload.data());
-		const size_t size = payload.size();
-		size_t offset = 0;
-		while (offset < size)
-		{
-			uint64_t key = 0;
-			if (!ReadVarint(data, size, offset, key))
-			{
-				return false;
-			}
-
-			const uint32_t fieldNumber = static_cast<uint32_t>(key >> 3u);
-			const uint32_t wireType = static_cast<uint32_t>(key & 0x7u);
-			if (fieldNumber != 1u)
-			{
-				if (!SkipField(data, size, offset, wireType))
-				{
-					return false;
-				}
-				continue;
-			}
-
-			const uint8_t* eventData = nullptr;
-			size_t eventSize = 0;
-			TDecodedViewportEvent event;
-			if (wireType != 2u ||
-				!TryReadLengthDelimited(
-					data,
-					size,
-					offset,
-					eventData,
-					eventSize) ||
-				!TryDecodeViewportEvent(eventData, eventSize, event))
-			{
-				return false;
-			}
-			if (outNumEvents == 0)
-			{
-				outEvent = std::move(event);
-			}
-			++outNumEvents;
-		}
-		return true;
 	}
 
 	class TProtocolBuffer final
@@ -685,7 +202,7 @@ namespace
 			{ "\xb2\x01\x00"sv, 22 }, { "\xba\x01\x00"sv, 23 }, { "\xc2\x01\x00"sv, 24 },
 			{ "\xca\x01\x00"sv, 25 }, { "\xa2\x06\x00"sv, 100 }
 		};
-		TDecodedResponse response;
+		TProtocolResponseWire response;
 		for (const auto& [bytes, field] : results)
 		{
 			Require(ParseResponse(bytes, response) && response.m_resultField == field && response.m_resultPayload.empty(),
@@ -730,16 +247,16 @@ namespace
 		TProtocolBuffer buffer;
 		const auto response = RequireProtocolResponse(MakeVersionedRequest(1u, 151,
 			sailor::editor::v1::ProtocolRequest::kCaptureRemoteViewportFrameEvidence, viewport), buffer, dependencies);
-		Require(!response.m_bSuccess && response.m_requestId == 151 && response.m_resultField == 0,
+		Require(!response.success() && response.request_id() == 151 && response.result_case() == 0,
 			"capture without a viewport must return a correlated request failure, not empty successful evidence");
 #if defined(__APPLE__)
-		Require(response.m_error == "Viewport does not exist.", "capture command must reach the native viewport handler");
+		Require(response.error() == "Viewport does not exist.", "capture command must reach the native viewport handler");
 #else
-		Require(response.m_error == "Viewport pixel evidence is only available on macOS.", "other platforms must report unsupported capture");
+		Require(response.error() == "Viewport pixel evidence is only available on macOS.", "other platforms must report unsupported capture");
 #endif
 		TProtocolBuffer diagnostics;
 		Require(RequireProtocolResponse(MakeVersionedRequest(1u, 152,
-			sailor::editor::v1::ProtocolRequest::kGetRemoteViewportDiagnostics, viewport), diagnostics, dependencies).m_bSuccess,
+			sailor::editor::v1::ProtocolRequest::kGetRemoteViewportDiagnostics, viewport), diagnostics, dependencies).success(),
 			"ordinary diagnostics must remain a separate read-only query after capture failure");
 	}
 
@@ -853,12 +370,12 @@ namespace
 					c_getExitCodeCommandField),
 				buffer);
 			Require(
-				response.m_protocolVersion ==
+				response.protocol_version() ==
 					EditorEngineProtocolVersion &&
-				response.m_requestId == 17 &&
-				!response.m_bSuccess &&
-				response.m_error.find("version") != std::string::npos &&
-				response.m_resultField == 0,
+				response.request_id() == 17 &&
+				!response.success() &&
+				response.error().find("version") != std::string::npos &&
+				response.result_case() == 0,
 				"version mismatch must return a correlated protocol error");
 		}
 
@@ -871,11 +388,11 @@ namespace
 					c_getExitCodeCommandField),
 				buffer);
 			Require(
-				response.m_protocolVersion == EditorEngineProtocolVersion &&
-				response.m_requestId == 0 &&
-				!response.m_bSuccess &&
-				response.m_error.find("request_id") != std::string::npos &&
-				response.m_resultField == 0,
+				response.protocol_version() == EditorEngineProtocolVersion &&
+				response.request_id() == 0 &&
+				!response.success() &&
+				response.error().find("request_id") != std::string::npos &&
+				response.result_case() == 0,
 				"zero request id must return a protocol error");
 		}
 
@@ -885,10 +402,10 @@ namespace
 				MakeVersionedRequest(EditorEngineProtocolVersion, 23),
 				buffer);
 			Require(
-				response.m_requestId == 23 &&
-				!response.m_bSuccess &&
-				response.m_error.find("command") != std::string::npos &&
-				response.m_resultField == 0,
+				response.request_id() == 23 &&
+				!response.success() &&
+				response.error().find("command") != std::string::npos &&
+				response.result_case() == 0,
 				"missing command must return a correlated protocol error");
 		}
 	}
@@ -918,9 +435,9 @@ namespace
 			buffer,
 			dependencies);
 		Require(
-			!response.m_bSuccess &&
-				response.m_error.find("value is not set") != std::string::npos &&
-				response.m_resultField == 0,
+			!response.success() &&
+				response.error().find("value is not set") != std::string::npos &&
+				response.result_case() == 0,
 			"animator parameter mutations must carry exactly one typed value");
 	}
 
@@ -963,8 +480,8 @@ namespace
 			MakeVersionedRequest(EditorEngineProtocolVersion, 28,
 				sailor::editor::v1::ProtocolRequest::kGetAnimatorState, stateRequest),
 			buffer, dependencies);
-		Require(!response.m_bSuccess && response.m_requestId == 28 && response.m_resultField == 0 &&
-			response.m_error == "Animator component was not found.",
+		Require(!response.success() && response.request_id() == 28 && response.result_case() == 0 &&
+			response.error() == "Animator component was not found.",
 			"an unavailable animator must preserve the protocol error without a stale state result");
 	}
 
@@ -997,13 +514,13 @@ namespace
 				buffer,
 				dependencies);
 			Require(
-				response.m_protocolVersion ==
+				response.protocol_version() ==
 					EditorEngineProtocolVersion &&
-				response.m_requestId == 26 &&
-				response.m_bSuccess &&
-				response.m_resultField == c_instanceIdResultField &&
-				ReadResult(response) == 0 &&
-				response.m_bSupportsStrictInstanceIds,
+				response.request_id() == 26 &&
+				response.success() &&
+				response.result_case() == c_instanceIdResultField &&
+				!response.instance_id_result().succeeded() &&
+				response.supports_strict_instance_ids(),
 				"a capable host must dispatch strict restoration through protocol v1");
 		}
 	}
@@ -1081,10 +598,10 @@ namespace
 			buffer,
 			dependencies);
 		Require(
-			response.m_requestId == 28 &&
-			!response.m_bSuccess &&
-			response.m_resultField == 0 &&
-			response.m_error.find("stats mode") != std::string::npos,
+			response.request_id() == 28 &&
+			!response.success() &&
+			response.result_case() == 0 &&
+			response.error().find("stats mode") != std::string::npos,
 			"an invalid Editor stats mode must fail without mutating runtime state");
 	}
 
@@ -1172,9 +689,9 @@ namespace
 			setBuffer,
 			dependencies);
 		Require(
-			setResponse.m_bSuccess &&
-			setResponse.m_resultField == c_boolResultField &&
-			ReadResult(setResponse) != 0,
+			setResponse.success() &&
+			setResponse.result_case() == c_boolResultField &&
+			setResponse.bool_result().value(),
 			"a valid Editor render mode must update runtime state");
 
 		TProtocolBuffer getBuffer;
@@ -1185,12 +702,10 @@ namespace
 				c_getEditorRenderModeCommandField),
 			getBuffer,
 			dependencies);
-		uint64_t currentMode = 0;
 		Require(
-			getResponse.m_bSuccess &&
-			getResponse.m_resultField == c_editorRenderModeResultField &&
-			ReadNestedScalar(getResponse.m_resultPayload, currentMode) &&
-			currentMode ==
+			getResponse.success() &&
+			getResponse.result_case() == c_editorRenderModeResultField &&
+			getResponse.editor_render_mode_result().mode() ==
 				sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_VISIBILITY,
 			"the typed render-mode query must return Engine truth");
 
@@ -1206,9 +721,9 @@ namespace
 			invalidBuffer,
 			dependencies);
 		Require(
-			!invalidResponse.m_bSuccess &&
-			invalidResponse.m_resultField == 0 &&
-			invalidResponse.m_error.find("render mode") != std::string::npos,
+			!invalidResponse.success() &&
+			invalidResponse.result_case() == 0 &&
+			invalidResponse.error().find("render mode") != std::string::npos,
 			"an invalid Editor render mode must be rejected");
 
 		std::string litRequest;
@@ -1226,7 +741,7 @@ namespace
 			resetBuffer,
 			dependencies);
 		Require(
-			resetResponse.m_bSuccess && ReadResult(resetResponse) != 0,
+			resetResponse.success() && resetResponse.has_bool_result() && resetResponse.bool_result().value(),
 			"the render-mode fixture must restore Lit mode");
 	}
 
@@ -1260,17 +775,15 @@ namespace
 		TProtocolBuffer admitted;
 		const auto response = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 143,
 			ProtocolRequest::kRequestModelFingerprintFieldNumber, fileId), admitted, dependencies);
-		Require(response.m_bSuccess && response.m_requestId == 143 &&
-			response.m_resultField == c_boolResultField && ReadResult(response) == 0,
+		Require(response.success() && response.request_id() == 143 &&
+			response.result_case() == c_boolResultField && !response.bool_result().value(),
 			"an unavailable importer must refuse generation rather than report a ready image");
 		TProtocolBuffer queried;
 		const auto status = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 144,
 			ProtocolRequest::kGetModelFingerprintStatusFieldNumber, fileId), queried, dependencies);
-		uint64_t value = 0;
-		Require(status.m_bSuccess && status.m_requestId == 144 &&
-			status.m_resultField == ProtocolResponse::kModelFingerprintStatusResultFieldNumber &&
-			ReadNestedScalar(status.m_resultPayload, value) &&
-			value == MODEL_FINGERPRINT_STATUS_UNAVAILABLE,
+		Require(status.success() && status.request_id() == 144 &&
+			status.result_case() == ProtocolResponse::kModelFingerprintStatusResultFieldNumber &&
+			status.model_fingerprint_status_result().status() == MODEL_FINGERPRINT_STATUS_UNAVAILABLE,
 			"status queries must distinguish an absent request/importer from pending or ready output");
 	}
 
@@ -1295,9 +808,9 @@ namespace
 			TProtocolBuffer buffer;
 			const auto response = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 145,
 				c_renderPathTracedImageCommandField, render), buffer, dependencies);
-			Require(response.m_protocolVersion == EditorEngineProtocolVersion && response.m_requestId == 145 &&
-				!response.m_bSuccess && response.m_resultField == 0 &&
-				response.m_error == "Path-traced image export is not supported by the editor.",
+			Require(response.protocol_version() == EditorEngineProtocolVersion && response.request_id() == 145 &&
+				!response.success() && response.result_case() == 0 &&
+				response.error() == "Path-traced image export is not supported by the editor.",
 				"unsupported export must return an explicit protocol error, not a failed render result");
 			Require(std::filesystem::is_empty(output.Get()), "unsupported export must not create output files or directories");
 		}
@@ -1318,10 +831,10 @@ namespace
 				fileIdRequest),
 			buffer);
 		Require(
-			response.m_requestId == 29 &&
-			!response.m_bSuccess &&
-			response.m_error.find("NUL") != std::string::npos &&
-			response.m_resultField == 0,
+			response.request_id() == 29 &&
+			!response.success() &&
+			response.error().find("NUL") != std::string::npos &&
+			response.result_case() == 0,
 			"embedded NUL in a protobuf string must be rejected before App adaptation");
 	}
 
@@ -1352,11 +865,11 @@ namespace
 			buffer,
 			dependencies);
 		Require(
-			response.m_requestId == 30 &&
-			response.m_bSuccess &&
-			response.m_bSupportsStrictInstanceIds &&
-			response.m_error.empty() &&
-			response.m_resultField == c_uint64ResultField,
+			response.request_id() == 30 &&
+			response.success() &&
+			response.supports_strict_instance_ids() &&
+			response.error().empty() &&
+			response.result_case() == c_uint64ResultField,
 			"valid UTF-8 protobuf strings must pass native string validation");
 	}
 
@@ -1370,12 +883,12 @@ namespace
 				c_getExitCodeCommandField),
 			buffer);
 		Require(
-			response.m_protocolVersion == EditorEngineProtocolVersion &&
-			response.m_requestId == 31 &&
-			response.m_bSuccess &&
-			response.m_error.empty() &&
-			response.m_resultField == c_int32ResultField &&
-			ReadResult(response) == 0,
+			response.protocol_version() == EditorEngineProtocolVersion &&
+			response.request_id() == 31 &&
+			response.success() &&
+			response.error().empty() &&
+			response.result_case() == c_int32ResultField &&
+			response.int32_result().value() == 0,
 			"get-exit-code must round-trip through the exported C ABI");
 	}
 
@@ -1443,39 +956,39 @@ namespace
 
 		const auto response = DecodeResponse(buffer.GetData(), buffer.GetSize());
 		Require(
-			response.m_protocolVersion == EditorEngineProtocolVersion &&
-			response.m_requestId == 41 &&
-			response.m_bSuccess &&
-			response.m_error.empty() &&
-			response.m_resultField == c_viewportEventBatchResultField,
+			response.protocol_version() == EditorEngineProtocolVersion &&
+			response.request_id() == 41 &&
+			response.success() &&
+			response.error().empty() &&
+			response.result_case() == c_viewportEventBatchResultField,
 			"viewport event response must report protocol success");
 
-		uint32_t numEvents = 0;
-		TDecodedViewportEvent event;
-		Require(
-			TryDecodeViewportEventBatch(
-				response.m_resultPayload,
-				numEvents,
-				event) &&
-			numEvents == 1,
+		const auto& batch = response.viewport_event_batch_result();
+		Require(batch.events_size() == 1,
 			"a bounded pull must leave the next event in the queue");
+		const auto& event = batch.events(0);
 		Require(
-			event.m_revision == 42 &&
-			event.m_managedMutationRevision == 9 &&
-			event.m_hasSelection &&
-			event.m_selectedInstanceId == "Duck-123",
+			event.revision() == 42 &&
+			event.managed_mutation_revision() == 9 &&
+			event.has_selection() &&
+			event.selection().selected_instance_id() == "Duck-123",
 			"the first typed selection event must preserve its identity and revisions");
 		Require(source.m_nextEvent == 1, "the source must respect the requested capacity");
 
-		TProtocolBuffer nextBuffer;
-		const auto next = RequireProtocolResponse(request, nextBuffer, dependencies);
+		Proto::ProtocolResponse next;
+		{
+			TProtocolBuffer nextBuffer;
+			next = RequireProtocolResponse(request, nextBuffer, dependencies);
+		}
 		source.m_events.Clear();
-		Require(TryDecodeViewportEventBatch(next.m_resultPayload, numEvents, event) && numEvents == 1 &&
-			event.m_revision == 43 && event.m_managedMutationRevision == 10 && event.m_hasSelection &&
-			event.m_selectedInstanceId.empty(), "selection clear must follow selection and own its wire payload");
+		const auto& nextBatch = next.viewport_event_batch_result();
+		Require(next.success() && next.has_viewport_event_batch_result() && nextBatch.events_size() == 1 &&
+			nextBatch.events(0).revision() == 43 && nextBatch.events(0).managed_mutation_revision() == 10 &&
+			nextBatch.events(0).has_selection() && nextBatch.events(0).selection().selected_instance_id().empty(),
+			"selection clear must follow selection and retain its data after releasing the source and wire buffer");
 		TProtocolBuffer emptyBuffer;
 		const auto empty = RequireProtocolResponse(request, emptyBuffer, dependencies);
-		Require(TryDecodeViewportEventBatch(empty.m_resultPayload, numEvents, event) && numEvents == 0,
+		Require(empty.success() && empty.has_viewport_event_batch_result() && empty.viewport_event_batch_result().events_size() == 0,
 			"draining the queue must not duplicate the last event");
 	}
 
@@ -1507,14 +1020,24 @@ namespace
 				TProtocolBuffer buffer;
 				const auto response = RequireProtocolResponse(
 					MakeVersionedRequest(EditorEngineProtocolVersion, 44, c_pullEditorViewportEventsCommandField, count), buffer, dependencies);
-				uint32_t numEvents;
-				TDecodedViewportEvent event;
-				Require(response.m_bSuccess && TryDecodeViewportEventBatch(response.m_resultPayload, numEvents, event) &&
-					numEvents == 1 && event.m_bHasTransform && event.m_revision == 51 && event.m_managedMutationRevision == 12,
+				const auto& batch = response.viewport_event_batch_result();
+				Require(response.success() && response.has_viewport_event_batch_result() && batch.events_size() == 1,
+					"the transform pull must contain exactly one event");
+				const auto& event = batch.events(0);
+				Require(event.has_transform() && event.revision() == 51 && event.managed_mutation_revision() == 12,
 					"transform event must retain its kind, order and mutation revisions");
-				Require(event.m_transform.m_instanceId == id.ToString() && event.m_transform.m_vectors == expected &&
-					event.m_transform.m_operation == static_cast<uint64_t>(operation) + 1 &&
-					event.m_transform.m_space == static_cast<uint64_t>(space) + 1,
+				const auto& transform = event.transform();
+				const std::array vectors{ &transform.before_position(), &transform.before_rotation(), &transform.before_scale(),
+					&transform.after_position(), &transform.after_rotation(), &transform.after_scale() };
+				for (size_t i = 0; i < vectors.size(); ++i)
+				{
+					const auto& value = *vectors[i];
+					Require(glm::vec4(value.x(), value.y(), value.z(), value.w()) == expected[i],
+						"transform vectors must retain all before/after XYZW values");
+				}
+				Require(transform.instance_id() == id.ToString() &&
+					transform.operation() == static_cast<uint32_t>(operation) + 1 &&
+					transform.space() == static_cast<uint32_t>(space) + 1,
 					"transform wire fields must retain identity, tool state and before/after XYZW values");
 			}
 		}
@@ -1555,27 +1078,22 @@ namespace
 			buffer,
 			dependencies);
 		Require(
-			response.m_bSuccess &&
-				response.m_resultField ==
+			response.success() &&
+				response.result_case() ==
 					c_viewportEventBatchResultField,
 			"viewport asset-drop response must report protocol success");
 
-		uint32_t numEvents = 0;
-		TDecodedViewportEvent event;
-		Require(
-			TryDecodeViewportEventBatch(
-				response.m_resultPayload,
-				numEvents,
-				event) &&
-				numEvents == 1,
+		const auto& batch = response.viewport_event_batch_result();
+		Require(batch.events_size() == 1,
 			"only the accepted asset-drop event must reach the protocol");
+		const auto& event = batch.events(0);
 		Require(
-			event.m_revision == 1 &&
-				event.m_managedMutationRevision == 10 &&
-				event.m_hasAssetDrop &&
-				event.m_assetFileId == fileId &&
-				std::abs(event.m_normalizedX - 0.25f) < 0.0001f &&
-				std::abs(event.m_normalizedY - 0.75f) < 0.0001f,
+			event.revision() == 1 &&
+			event.managed_mutation_revision() == 10 &&
+			event.has_asset_drop() &&
+			event.asset_drop().file_id() == fileId &&
+			std::abs(event.asset_drop().normalized_x() - 0.25f) < 0.0001f &&
+			std::abs(event.asset_drop().normalized_y() - 0.75f) < 0.0001f,
 			"valid asset-drop data must survive native typed conversion");
 	}
 
@@ -1608,25 +1126,20 @@ namespace
 			buffer,
 			dependencies);
 		Require(
-			response.m_bSuccess &&
-				response.m_resultField ==
+			response.success() &&
+				response.result_case() ==
 					c_viewportEventBatchResultField,
 			"viewport tool-shortcut response must report protocol success");
 
-		uint32_t numEvents = 0;
-		TDecodedViewportEvent event;
-		Require(
-			TryDecodeViewportEventBatch(
-				response.m_resultPayload,
-				numEvents,
-				event) &&
-				numEvents == 1,
+		const auto& batch = response.viewport_event_batch_result();
+		Require(batch.events_size() == 1,
 			"only the accepted tool shortcut must reach the protocol");
+		const auto& event = batch.events(0);
 		Require(
-			event.m_revision == 1 &&
-				event.m_managedMutationRevision == 11 &&
-				event.m_hasToolShortcut &&
-				event.m_toolShortcutKeyCode == 'W',
+			event.revision() == 1 &&
+			event.managed_mutation_revision() == 11 &&
+			event.has_tool_shortcut() &&
+			event.tool_shortcut().key_code() == 'W',
 			"valid viewport shortcuts must survive native typed conversion");
 	}
 
@@ -1882,18 +1395,18 @@ namespace
 			}
 			Require(bThrew == (attempt == 2u), "throwing shutdown must reach the native transport boundary");
 			Require(attempts == attempt, "Shutdown must execute each explicit retry exactly once");
-			Require(response.m_bSuccess == (attempt == 3u), "Shutdown must report native completion, not just dispatch");
+			Require(response.success() == (attempt == 3u), "Shutdown must report native completion, not just dispatch");
 			std::string error;
 			if (attempt < 3u)
 			{
-				Require(bThrew || (!response.m_error.empty() && response.m_resultField != c_emptyResultField),
+				Require(bThrew || (!response.error().empty() && response.result_case() != c_emptyResultField),
 					"failed Shutdown must carry an error instead of an empty success result");
 				Require(!gate.TryBeginInitialization(error) && !gate.TryBeginStart(error) &&
 					!gate.TryAcquireOperation(error, true), "failed Shutdown must keep the old session closed");
 			}
 			else
 			{
-				Require(response.m_resultField == c_emptyResultField && gate.TryBeginInitialization(error),
+				Require(response.result_case() == c_emptyResultField && gate.TryBeginInitialization(error),
 					"successful Shutdown retry must allow a fresh session");
 				gate.CompleteInitialization(true);
 			}
@@ -1921,7 +1434,7 @@ namespace
 			TProtocolBuffer buffer;
 			const auto response = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 1u,
 				c_initializeCommandField, arguments), buffer, dependencies);
-			Require(!response.m_bSuccess && !response.m_error.empty(),
+			Require(!response.success() && !response.error().empty(),
 				"Initialize must report the real App failure, not successful dispatch");
 			Require(Sailor::App::GetInstance() && Sailor::App::GetExitCode() != 0 &&
 				Sailor::App::Initialize() == Sailor::EAppInitializationResult::Failed,
@@ -1932,7 +1445,7 @@ namespace
 				"failed initialization must not admit commands or another App before rollback");
 			TProtocolBuffer shutdownBuffer;
 			Require(RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 2u,
-				c_shutdownCommandField), shutdownBuffer, dependencies).m_bSuccess && !Sailor::App::GetInstance(),
+				c_shutdownCommandField), shutdownBuffer, dependencies).success() && !Sailor::App::GetInstance(),
 				"shutdown must release a partially initialized App and allow the next attempt");
 		}
 	}
@@ -1955,7 +1468,7 @@ namespace
 			c_initializeCommandField), buffer, dependencies);
 		gate.WaitForInitializationDrain();
 		gate.CompleteShutdown();
-		Require(!response.m_bSuccess && !response.m_error.empty(),
+		Require(!response.success() && !response.error().empty(),
 			"initialization superseded by shutdown must not acknowledge a ready session");
 	}
 
@@ -1971,7 +1484,7 @@ namespace
 			{
 				TProtocolBuffer buffer;
 				Require(RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 1u,
-					c_stopCommandField), buffer, dependencies).m_bSuccess, "Stop must acknowledge its request");
+					c_stopCommandField), buffer, dependencies).success(), "Stop must acknowledge its request");
 			};
 
 		std::string error;
@@ -2036,14 +1549,14 @@ namespace
 			{
 				TProtocolBuffer buffer;
 				return RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 1u,
-					c_stopCommandField), buffer, stopDependencies).m_bSuccess;
+					c_stopCommandField), buffer, stopDependencies).success();
 			});
 		const bool bStopEntered = source.m_stopEntered.get_future().wait_for(1s) == std::future_status::ready;
 		auto shutdown = std::async(std::launch::async, [&]()
 			{
 				TProtocolBuffer buffer;
 				return RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 2u,
-					c_shutdownCommandField), buffer, shutdownDependencies).m_bSuccess;
+					c_shutdownCommandField), buffer, shutdownDependencies).success();
 			});
 		const bool bShutdownEntered = source.m_shutdownEntered.get_future().wait_for(1s) == std::future_status::ready;
 		const bool bShutdownWaited = shutdown.wait_for(20ms) == std::future_status::timeout;
@@ -2120,7 +1633,7 @@ namespace
 			c_startCommandField), buffer, dependencies);
 		std::future<void> drain;
 		Sailor::Tests::ScopeExit releaseStart([&]() { source.m_releaseStart.set_value(); });
-		Require(start.m_bSuccess && source.m_startEntered.get_future().wait_for(1s) == std::future_status::ready,
+		Require(start.success() && source.m_startEntered.get_future().wait_for(1s) == std::future_status::ready,
 			"local-host drain fixture must enter the admitted Start worker");
 		std::string error;
 		Require(source.m_gate.TryAcquireOperation(error, false), "the active session must admit its existing operation");
@@ -2251,8 +1764,8 @@ namespace
 		const auto startResponse =
 			InvokeStartPromptly(51, dependencies, source);
 		Require(
-			startResponse.m_bSuccess &&
-				startResponse.m_resultField == c_emptyResultField,
+			startResponse.success() &&
+				startResponse.result_case() == c_emptyResultField,
 			"Start must acknowledge an admitted async worker");
 
 		{
@@ -2280,9 +1793,9 @@ namespace
 			livenessBuffer,
 			dependencies);
 		Require(
-			livenessResponse.m_bSuccess &&
-				livenessResponse.m_resultField == c_boolResultField &&
-				ReadResult(livenessResponse) != 0,
+			livenessResponse.success() &&
+				livenessResponse.result_case() == c_boolResultField &&
+				livenessResponse.bool_result().value(),
 			"lifecycle probe must report the admitted Start worker as running");
 
 		TProtocolBuffer duplicateBuffer;
@@ -2294,7 +1807,7 @@ namespace
 			duplicateBuffer,
 			dependencies);
 		Require(
-			!duplicateResponse.m_bSuccess,
+			!duplicateResponse.success(),
 			"an active async Start must still reject duplicate starts");
 
 		TProtocolBuffer stopBuffer;
@@ -2306,8 +1819,8 @@ namespace
 			stopBuffer,
 			dependencies);
 		Require(
-			stopResponse.m_bSuccess &&
-				stopResponse.m_resultField == c_emptyResultField,
+			stopResponse.success() &&
+				stopResponse.result_case() == c_emptyResultField,
 			"Stop must acknowledge after releasing and joining the Start worker");
 		{
 			const std::lock_guard<std::mutex> lock(source.m_mutex);
@@ -2325,9 +1838,9 @@ namespace
 			stoppedLivenessBuffer,
 			dependencies);
 		Require(
-			stoppedLivenessResponse.m_bSuccess &&
-				stoppedLivenessResponse.m_resultField == c_boolResultField &&
-				ReadResult(stoppedLivenessResponse) == 0,
+			stoppedLivenessResponse.success() &&
+				stoppedLivenessResponse.result_case() == c_boolResultField &&
+				!stoppedLivenessResponse.bool_result().value(),
 			"lifecycle probe must report a joined Start worker as stopped");
 	}
 
@@ -2343,7 +1856,7 @@ namespace
 		const auto startResponse =
 			InvokeStartPromptly(56, dependencies, source);
 		Require(
-			startResponse.m_bSuccess,
+			startResponse.success(),
 			"immediate Stop test must receive the Start acknowledgement");
 
 		// Do not wait for BlockingStart to enter. Stop must publish its request
@@ -2357,7 +1870,7 @@ namespace
 			stopBuffer,
 			dependencies);
 		Require(
-			stopResponse.m_bSuccess,
+			stopResponse.success(),
 			"immediate Stop must release and join the admitted Start worker");
 		{
 			const std::lock_guard<std::mutex> lock(source.m_mutex);
@@ -2383,7 +1896,7 @@ namespace
 		const auto startResponse =
 			InvokeStartPromptly(54, dependencies, source);
 		Require(
-			startResponse.m_bSuccess,
+			startResponse.success(),
 			"Shutdown ordering test must admit Start");
 		{
 			std::unique_lock<std::mutex> lock(source.m_mutex);
@@ -2407,8 +1920,8 @@ namespace
 			shutdownBuffer,
 			dependencies);
 		Require(
-			shutdownResponse.m_bSuccess &&
-				shutdownResponse.m_resultField == c_emptyResultField,
+			shutdownResponse.success() &&
+				shutdownResponse.result_case() == c_emptyResultField,
 			"Shutdown must complete after draining async lifecycle work");
 		{
 			const std::lock_guard<std::mutex> lock(source.m_mutex);
@@ -2653,12 +2166,12 @@ namespace
 		Require(bShutdownCompletedBeforeCleanup,
 			"Shutdown must finish before test cleanup releases the Editor worker");
 		Require(
-			shutdownResponse.m_bSuccess &&
-				shutdownResponse.m_resultField == c_emptyResultField,
+			shutdownResponse.success() &&
+				shutdownResponse.result_case() == c_emptyResultField,
 			"Shutdown must bypass the Editor worker and drain it safely");
 		Require(
-			commandResponse.m_bSuccess &&
-				commandResponse.m_resultField == c_boolResultField,
+			commandResponse.success() &&
+				commandResponse.result_case() == c_boolResultField,
 			"the editor command must complete its regular operation response");
 		{
 			const std::lock_guard<std::mutex> lock(source.m_mutex);
@@ -2789,9 +2302,9 @@ namespace
 			"native shutdown must cancel queued requests without interrupting an executing Editor command");
 		Require(numShutdownsBeforeRelease == (bQueued ? 1u : 0u) && bStopped && source.m_numShutdowns == 1u,
 			"native teardown must wait only for commands that started executing");
-		Require(response.m_bSuccess != bQueued && source.m_numCalls == (bQueued ? 0u : 1u),
+		Require(response.success() != bQueued && source.m_numCalls == (bQueued ? 0u : 1u),
 			"a cancelled task must not enter the scene callback when its worker later resumes");
-		Require(bQueued ? !response.m_error.empty() : source.m_capacity == 7u,
+		Require(bQueued ? !response.error().empty() : source.m_capacity == 7u,
 			"cancellation must report failure; completed work must receive the original request payload");
 	}
 }
