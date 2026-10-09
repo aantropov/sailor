@@ -117,7 +117,10 @@ namespace
 		const auto worldPath = workspace / "Content" / "CpuLoad.world";
 		const auto document = PrefabDocument();
 		Write(prefabPath, document);
-		Write(worldPath, WorldDocument(document));
+		auto worldDocument = WorldDocument(document);
+		worldDocument["globalIllumination"] = YAML::Load(
+			"{mode: Runtime, runtimeProbes: {minProbeSpacing: 1.5, maxRayDistance: 100}}");
+		Write(worldPath, worldDocument);
 		const FileId prefabId = registry->GetOrLoadFile(prefabPath.string());
 		const FileId worldId = registry->GetOrLoadFile(worldPath.string());
 		scheduler->WaitIdle({ EThreadType::Worker, EThreadType::Render, EThreadType::RHI });
@@ -166,6 +169,10 @@ namespace
 		Require(prefabConsumer->GetResult() && worldConsumer->GetResult() &&
 			prefabTask->GetResult() == prefab && worldTask->GetResult() == world,
 			"dependent consumers must see complete parsed data and the original asset identity");
+		Require(world->GetGISettings().m_mode == EGlobalIlluminationMode::Runtime &&
+			world->GetGISettings().m_runtimeProbes.m_minProbeSpacing == 1.5f &&
+			world->GetGISettings().m_runtimeProbes.m_sunAngleThresholdDegrees == 30.0f,
+			"world loading must preserve authored GI settings and default omitted probe fields");
 		prefabs->CollectGarbage();
 		worlds->CollectGarbage();
 		PrefabPtr cachedPrefab;

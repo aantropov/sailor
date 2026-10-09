@@ -2471,6 +2471,56 @@ namespace
 			"unknown world composition modes must fail atomically");
 	}
 
+	void TestWorldRuntimeProbeDefaults()
+	{
+		const RuntimeGIProbesSettings defaults;
+		const auto fields = defaults.Serialize();
+		for (const auto& field : fields)
+		{
+			YAML::Node root;
+			root["globalIllumination"]["mode"] = "Runtime";
+			root["globalIllumination"]["runtimeProbes"] = YAML::Clone(fields);
+			root["globalIllumination"]["runtimeProbes"].remove(field.first.as<std::string>());
+			GISettings parsed;
+			std::string diagnostic;
+			Require(parsed.Deserialize(root, diagnostic) && diagnostic.empty() &&
+				parsed.m_mode == EGlobalIlluminationMode::Runtime && parsed.m_runtimeProbes == defaults,
+				"omitting a runtime probe setting must retain its default without rejecting the world");
+		}
+
+		GISettings parsed;
+		std::string diagnostic;
+		auto root = YAML::Load(R"yaml(
+globalIllumination:
+  mode: Runtime
+  runtimeProbes:
+    version: 1
+    includeSky: false
+    minProbeSpacing: 1.5
+    normalBias: 0.04
+    maxRayDistance: 100
+)yaml");
+		auto expected = defaults;
+		expected.m_bIncludeSky = false;
+		expected.m_minProbeSpacing = 1.5f;
+		expected.m_normalBias = 0.04f;
+		expected.m_maxRayDistance = 100.0f;
+		Require(parsed.Deserialize(root, diagnostic) && parsed.m_runtimeProbes == expected,
+			"partial runtime settings must preserve authored values and default the omitted fields");
+
+		root["globalIllumination"]["runtimeProbes"] = YAML::Node(YAML::NodeType::Map);
+		Require(parsed.Deserialize(root, diagnostic) && parsed.m_runtimeProbes == defaults,
+			"an empty runtime probe map must reset previously loaded values to defaults");
+		root["globalIllumination"].remove("runtimeProbes");
+		Require(parsed.Deserialize(root, diagnostic) && parsed.m_runtimeProbes == defaults,
+			"an omitted runtime probe map must use defaults");
+
+		root["globalIllumination"]["runtimeProbes"]["minProbeSpacing"] = "not a number";
+		Require(!parsed.Deserialize(root, diagnostic) && !diagnostic.empty() &&
+			parsed.m_runtimeProbes == defaults,
+			"an invalid authored value must remain distinguishable from an omitted setting");
+	}
+
 	void TestProbeBakeSavedWorldComparisonIgnoresEditorOnlyPrefabs()
 	{
 		const YAML::Node saved = YAML::Load(R"yaml(
@@ -8861,6 +8911,7 @@ int main(int argc, char** argv)
 			"ReceiverPlaneProbeRejection",
 			TestReceiverPlaneProbeRejection);
 		RunTest("WorldBindingRoundTripAndModes", TestWorldBindingRoundTripAndModes);
+		RunTest("WorldRuntimeProbeDefaults", TestWorldRuntimeProbeDefaults);
 		RunTest("RuntimeGISunAngleThreshold", TestRuntimeGISunAngleThreshold);
 		RunTest(
 			"ProbeBakeSavedWorldComparisonIgnoresEditorOnlyPrefabs",

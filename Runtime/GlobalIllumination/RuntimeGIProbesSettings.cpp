@@ -25,16 +25,22 @@ YAML::Node RuntimeGIProbesSettings::Serialize() const
 
 bool RuntimeGIProbesSettings::Deserialize(const YAML::Node& inData)
 {
-	return DESERIALIZE_PROPERTY(inData, m_version) &&
-		::Deserialize(inData, "includeSky", m_bIncludeSky) &&
-		::Deserialize(inData, "includeEmissive", m_bIncludeEmissive) &&
-		::Deserialize(inData, "includeDirectLighting", m_bIncludeDirectLighting) &&
-		DESERIALIZE_PROPERTY(inData, m_bounceCount) &&
-		DESERIALIZE_PROPERTY(inData, m_minProbeSpacing) &&
-		DESERIALIZE_PROPERTY(inData, m_normalBias) &&
-		DESERIALIZE_PROPERTY(inData, m_viewBias) &&
-		DESERIALIZE_PROPERTY(inData, m_maxRayDistance) &&
-		DESERIALIZE_PROPERTY(inData, m_sunAngleThresholdDegrees);
+	*this = {};
+	const auto deserialize = [&inData](std::string_view name, auto& value)
+	{
+		return !inData[name] || ::Deserialize(inData, name, value);
+	};
+	return inData.IsMap() &&
+		deserialize("version", m_version) &&
+		deserialize("includeSky", m_bIncludeSky) &&
+		deserialize("includeEmissive", m_bIncludeEmissive) &&
+		deserialize("includeDirectLighting", m_bIncludeDirectLighting) &&
+		deserialize("bounceCount", m_bounceCount) &&
+		deserialize("minProbeSpacing", m_minProbeSpacing) &&
+		deserialize("normalBias", m_normalBias) &&
+		deserialize("viewBias", m_viewBias) &&
+		deserialize("maxRayDistance", m_maxRayDistance) &&
+		deserialize("sunAngleThresholdDegrees", m_sunAngleThresholdDegrees);
 }
 
 GIProbesBakeSettings Sailor::ResolveRuntimeGIProbesBakeSettings(
