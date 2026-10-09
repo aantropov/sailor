@@ -1,12 +1,15 @@
 #include "Platform/Win32/Window.h"
 #include "Platform/Win32/Input.h"
+#include "Support/ScopeExit.h"
 #include <windows.h>
 #include <algorithm>
 #include <iostream>
+#include <new>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <thread>
+#include <utility>
 
 namespace
 {
@@ -122,6 +125,97 @@ namespace
 		}
 	}
 
+	struct PumpRetirement
+	{
+		Sailor::Win32::Window* m_window = nullptr;
+		WNDPROC m_previousProc = nullptr;
+		DWORD m_callbackThread = 0;
+		bool m_bIsPageProtected = false;
+	};
+
+	constexpr UINT RetireWindowMessage = WM_APP + 17;
+
+	LRESULT CALLBACK RetiringWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+	{
+		auto& retirement = *reinterpret_cast<PumpRetirement*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+		if (message == RetireWindowMessage)
+		{
+			retirement.m_callbackThread = GetCurrentThreadId();
+			auto* window = std::exchange(retirement.m_window, nullptr);
+			window->~Window();
+			// Any later access by the message pump must fail, not depend on heap reuse.
+			DWORD previousProtection = 0;
+			retirement.m_bIsPageProtected = VirtualProtect(window, sizeof(*window), PAGE_NOACCESS, &previousProtection) != FALSE;
+			return 0;
+		}
+		return CallWindowProc(retirement.m_previousProc, hwnd, message, wParam, lParam);
+	}
+
+	void CheckMessagePumpRetirement()
+	{
+		using namespace Sailor::Win32;
+		for (uint32_t iteration = 0; iteration < 6; ++iteration)
+		{
+			const bool bUseSentMessage = iteration % 2 != 0;
+			GlobalInput::ProcessPendingEvents(false);
+			GlobalInput::Reset();
+			void* storage = VirtualAlloc(nullptr, sizeof(Window), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+			Require(storage != nullptr, "the retiring window must have separately protected storage");
+			PumpRetirement retirement{ new (storage) Window() };
+			Sailor::Tests::ScopeExit release([&]()
+			{
+				if (retirement.m_window)
+				{
+					retirement.m_window->~Window();
+				}
+				VirtualFree(storage, 0, MEM_RELEASE);
+			});
+			Require(retirement.m_window->Create("Retiring window", "SailorPumpRetirement", 160, 120),
+				"the retiring native window must be created");
+			retirement.m_window->Show(false);
+			const auto retiredHandle = retirement.m_window->GetHWND();
+			SetWindowLongPtr(retiredHandle, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&retirement));
+			retirement.m_previousProc = reinterpret_cast<WNDPROC>(SetWindowLongPtr(
+				retiredHandle, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(RetiringWindowProc)));
+			Require(retirement.m_previousProc != nullptr, "the retirement callback must replace the native window procedure");
+
+			Window survivor;
+			Require(survivor.Create("Surviving window", "SailorPumpSurvivor", 160, 120),
+				"a second native window must survive registry removal");
+			survivor.Show(false);
+			if (!bUseSentMessage)
+			{
+				Require(PostMessage(retiredHandle, RetireWindowMessage, 0, 0), "the retirement message must be queued");
+			}
+			Require(PostMessage(survivor.GetHWND(), WM_KEYDOWN, 'P', 1), "the surviving window's input must be queued");
+			bool bMessageSent = true;
+			std::thread engineThread([&]()
+			{
+				Window::ProcessWin32Msgs();
+				if (bUseSentMessage)
+				{
+					bMessageSent = SendNotifyMessage(retiredHandle, RetireWindowMessage, 0, 0) != FALSE;
+				}
+			});
+			engineThread.join();
+			Require(bMessageSent && retirement.m_window != nullptr && retirement.m_callbackThread == 0,
+				"the engine thread must not dispatch windows owned by the UI thread");
+
+			Window::ProcessWin32Msgs();
+			Require(retirement.m_window == nullptr && retirement.m_bIsPageProtected &&
+				retirement.m_callbackThread == GetCurrentThreadId() && !IsWindow(retiredHandle),
+				"owner-thread dispatch must survive destruction and protected release of its current Window");
+			GlobalInput::ProcessPendingEvents(true);
+			Require(GlobalInput::GetInputState().IsKeyDown('P'),
+				"removing one window must not skip the next window's queued input");
+			GlobalInput::Reset();
+			survivor.SetRunning(true);
+			PostQuitMessage(0);
+			Window::ProcessWin32Msgs();
+			Require(!survivor.IsRunning(), "thread quit must stop the surviving native window");
+		}
+	}
+
 	SIZE GetMaximumClientExtent(HWND window)
 	{
 		const UINT dpi = GetDpiForWindow(window);
@@ -197,6 +291,9 @@ int main()
 		std::cout << "[PASS] Native input delivery and focus release on a separate frame owner\n";
 		CheckModifierSides(window);
 		std::cout << "[PASS] Left/right native modifiers and aggregate release\n";
+		window.Destroy();
+		CheckMessagePumpRetirement();
+		std::cout << "[PASS] Owner-thread pump, reentrant window retirement and registry reuse\n";
 	}
 	catch (const std::exception& error)
 	{

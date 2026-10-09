@@ -46,6 +46,7 @@ Utils::WindowSizeAndPosition Utils::GetWindowSizeAndPosition(HWND hwnd)
 namespace
 {
 	constexpr UINT c_destroyWindowMessage = WM_APP + 0x351;
+	constexpr UINT c_updateMouseCaptureMessage = WM_APP + 0x352;
 	constexpr std::wstring_view c_editorAssetDropPrefix =
 		L"SailorEditor.Asset:";
 	constexpr size_t c_unbracedFileIdLength = 36;
@@ -666,33 +667,43 @@ void Sailor::Win32::Window::ProcessWin32Msgs()
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	MSG msg;
-	for (int i = 0; ; i++)
+	const DWORD threadId = ::GetCurrentThreadId();
+	TVector<HWND, Memory::TInlineAllocator<>> windows;
 	{
-		Window* pWindow = nullptr;
-		HWND hWnd = nullptr;
+		const std::lock_guard<std::mutex> lock(g_windowsMutex);
+		windows.Reserve(g_windows.Num());
+		for (const auto* window : g_windows)
 		{
-			const std::lock_guard<std::mutex> lock(g_windowsMutex);
-			if (i >= g_windows.Num())
+			if (::GetWindowThreadProcessId(window->m_hWnd, nullptr) == threadId)
 			{
-				break;
+				windows.Add(window->m_hWnd);
 			}
-			pWindow = g_windows[i];
-			hWnd = pWindow->m_hWnd;
 		}
-		if (::GetWindowThreadProcessId(hWnd, nullptr) != ::GetCurrentThreadId()) continue;
+	}
 
+	// Both PeekMessage and DispatchMessage can destroy a Window through a callback.
+	// Keep native handles across dispatch, not pointers into the mutable registry.
+	for (const HWND hWnd : windows)
+	{
+		MSG msg;
 		while (PeekMessage(&msg, hWnd, 0, 0, PM_REMOVE))
 		{
 			if (msg.message == WM_QUIT)
 			{
-				pWindow->SetRunning(false);
-				break;
+				const std::lock_guard<std::mutex> lock(g_windowsMutex);
+				for (auto* window : g_windows)
+				{
+					if (windows.Contains(window->m_hWnd))
+					{
+						window->SetRunning(false);
+					}
+				}
+				return;
 			}
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
-		pWindow->UpdateMouseCapture();
+		::SendMessage(hWnd, c_updateMouseCaptureMessage, 0, 0);
 	}
 }
 
@@ -1172,6 +1183,9 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 	}
 	case c_destroyWindowMessage:
 		pWindow->Destroy();
+		return TRUE;
+	case c_updateMouseCaptureMessage:
+		pWindow->UpdateMouseCapture();
 		return TRUE;
 
 	case WM_NCDESTROY:
