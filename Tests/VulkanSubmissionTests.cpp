@@ -1,5 +1,7 @@
 #include "Sailor.h"
 #include "Components/SkyComponent.h"
+#include "Components/CameraComponent.h"
+#include "FrameGraph/DebugDrawNode.h"
 #include "FrameGraph/SkyNode.h"
 #include "FrameGraph/MotionBlurNode.h"
 #include "Engine/Frame.h"
@@ -47,6 +49,8 @@
 #include "GraphicsDriver/Vulkan/VulkanSwapchain.h"
 #include "RHI/Buffer.h"
 #include "RHI/CommandList.h"
+#include "RHI/DebugContext.h"
+#include "Memory/WeakPtr.hpp"
 #include "RHI/Fence.h"
 #include "RHI/Material.h"
 #include "RHI/Mesh.h"
@@ -5466,6 +5470,135 @@ frame: []
 		PFN_vkQueuePresentKHR m_presentFrame = nullptr;
 	};
 
+	class DebugRecordingGate final : public Framegraph::RHINodeDefault
+	{
+	public:
+		Tasks::TaskPtr<> Prepare(RHIFrameGraphPtr, RHISceneViewSnapshot& snapshot) override
+		{
+			const auto recording = snapshot.m_debugDrawSecondaryCmdList;
+			Require(recording.IsValid(), "each camera must carry its actual debug recording task");
+			recording->Join(m_release);
+			m_recordings.Add(recording);
+			m_numPrepared.fetch_add(1);
+			// Only the real debug task may delay this frame, not another node task.
+			return {};
+		}
+
+		void Process(RHIFrameGraphPtr, RHICommandListPtr, RHICommandListPtr, const RHISceneViewSnapshot&) override
+		{
+			++m_numProcessed;
+		}
+
+		Tasks::TaskPtr<> m_release;
+		TVector<Tasks::TaskPtr<RHICommandListPtr>> m_recordings;
+		std::atomic<uint32_t> m_numPrepared{ 0 }, m_numProcessed{ 0 };
+	};
+
+	enum class DebugRecordingExit { World, RejectedFrame, Renderer };
+
+	void TestDebugRecordingLifetime(bool bDebugPass, DebugRecordingExit exit)
+	{
+		auto* renderer = App::GetSubmodule<Renderer>();
+		auto* engine = App::GetSubmodule<EngineLoop>();
+		renderer->WaitIdle();
+		Require(engine->GetWorlds().IsEmpty() && renderer->EnsureFrameGraph(),
+			"debug lifetime checks require an idle renderer and no previous world");
+		auto world = engine->CreateEmptyWorld("Delayed debug recording", EngineLoop::DefaultWorldMask);
+		world->Instantiate("Second camera")->AddComponent<CameraComponent>();
+		const TWeakPtr<World> retiredWorld(world);
+		const auto worldAddress = world.GetRawPtr();
+		auto graph = renderer->GetFrameGraph()->GetRHI();
+		const auto originalNodes = graph->GetGraph();
+		auto gate = TRefPtr<DebugRecordingGate>::Make();
+		gate->m_release = Tasks::CreateTask("Release held debug recording"_h, []() {}, EThreadType::Worker);
+		TUniquePtr<RendererQueueOverride> dispatch;
+		bool bReleased = false;
+		Tests::ScopeExit cleanup([&]()
+			{
+				if (!bReleased)
+				{
+					gate->m_release->Run();
+				}
+				renderer->WaitIdle();
+				OnRender([&]() { dispatch.Clear(); });
+				graph->GetGraph() = originalNodes;
+				engine->ExitWorld(worldAddress);
+				engine->ProcessPendingWorldExits();
+			});
+		graph->GetGraph().Clear();
+		graph->GetGraph().Add(gate);
+		if (bDebugPass)
+		{
+			// Missing attachments skip consumption, but must not skip recording completion.
+			graph->GetGraph().Add(TRefPtr<Framegraph::DebugDrawNode>::Make());
+		}
+		world->GetDebugContext()->DrawLine(glm::vec3(-1, 0, -3), glm::vec3(1, 0, -3), glm::vec4(1), 1.0f);
+		FrameState frame(worldAddress, 16, {}, { 32, 24 });
+		engine->ProcessCpuFrame(frame);
+		frame.GetDrawImGuiTask()->Wait();
+		Require(world->GetDebugContext()->GetDrawSnapshot().m_numVertices != 0,
+			"the delayed tasks must retain live debug geometry, not empty snapshots");
+		Require(renderer->PushFrame(frame), "the debug frame must enter the real renderer");
+		OnRender([&]()
+			{
+				Require(renderer->GetFrameGraph()->GetRHI() == graph, "the debug fixture graph must remain installed");
+				Require(gate->m_numPrepared == 2, std::format("debug fixture must prepare two cameras, got {}", gate->m_numPrepared.load()));
+			});
+		Require(gate->m_recordings.Num() == 2 && !gate->m_recordings[0]->IsStarted() && !gate->m_recordings[1]->IsStarted(),
+			"both actual RHI recordings must remain behind the controlled dependency");
+		if (exit == DebugRecordingExit::RejectedFrame)
+		{
+			OnRender([&]()
+				{
+					dispatch = TUniquePtr<RendererQueueOverride>::Make(*VulkanApi::GetInstance()->GetMainDevice(),
+						RendererFailure::MainSubmit, VK_NULL_HANDLE, nullptr);
+				});
+		}
+		Require(engine->ExitWorld(worldAddress), "world exit must be accepted while its debug work is pending");
+		world.Clear();
+		std::atomic<bool> bFinishing{ false }, bFinished{ false };
+		bool bWaitedForRecording = false;
+		std::jthread release([&]()
+			{
+				bFinishing.wait(false);
+				std::this_thread::sleep_for(std::chrono::milliseconds(100));
+				bWaitedForRecording = !bFinished.load() && retiredWorld.TryLock().IsValid() && gate->m_numProcessed == 0;
+				gate->m_release->Run();
+			});
+		bFinishing.store(true);
+		bFinishing.notify_one();
+		bool bRendererDestroyed = true;
+		if (exit == DebugRecordingExit::Renderer)
+		{
+			bRendererDestroyed = renderer->BeginConditionalDestroy();
+		}
+		engine->ProcessPendingWorldExits();
+		bFinished.store(true);
+		release.join();
+		bReleased = true;
+		Require(bWaitedForRecording && bRendererDestroyed && !retiredWorld.TryLock(),
+			"world exit and renderer teardown must wait for held debug recording before destroying the world");
+		Require(gate->m_numProcessed == (exit == DebugRecordingExit::Renderer ? 0u : 2u),
+			"renderer stop must skip graph execution; normal and refused submissions must process both cameras");
+		for (const auto& recording : gate->m_recordings)
+		{
+			Require(recording->IsFinished() && recording->GetResult() && recording->GetResult()->m_vulkan.m_commandBuffer->IsRecorded(),
+				"world destruction must leave completed native command lists for every camera");
+		}
+		if (exit == DebugRecordingExit::RejectedFrame)
+		{
+			OnRender([&]()
+				{
+					Require(rendererRefusals == 1, "the held frame must exercise a real native submit refusal");
+					dispatch.Clear();
+				});
+			Require(Renderer::GetDriver()->FixLostDevice(App::GetMainWindow().GetRawPtr()),
+				"the next lifetime case requires recovered native frame synchronization");
+		}
+		std::cout << "Debug recording lifetime: pass=" << bDebugPass << " exit=" << static_cast<uint32_t>(exit)
+			<< ", two retained RHI recordings, live geometry and world destruction passed\n";
+	}
+
 	void TestRendererSubmissionOutcomes()
 	{
 		auto* renderer = App::GetSubmodule<Renderer>();
@@ -6025,7 +6158,7 @@ frame: []
 		std::vector<const char*> arguments(argv, argv + argc);
 		const bool editorReadback = mode.starts_with("--gpu-editor-readback") || mode.starts_with("--gpu-metal-");
 		if (editorReadback) arguments.insert(arguments.end(), { "--editor", "--port", "0" });
-		if (mode == "--gpu-imgui-fonts" || mode == "--gpu-engine-loop" || mode == "--gpu-input-owner" ||
+		if (mode == "--gpu-imgui-fonts" || mode == "--gpu-engine-loop" || mode == "--gpu-debug-lifetime" || mode == "--gpu-input-owner" ||
 			mode == "--gpu-editor-messages" || mode == "--gpu-editor-events" || mode == "--gpu-input-sessions")
 			arguments.insert(arguments.end(), { "--editor", "--port", "0", "--world", "", "--new-world" });
 		App::Initialize(arguments.data(), static_cast<int>(arguments.size()));
@@ -6048,6 +6181,18 @@ frame: []
 				TestSingleActiveWorld();
 				Tests::RunAnimationShadowCommandTests();
 				Tests::RunWorldLifecycleCommandTests();
+			}
+			else if (mode == "--gpu-debug-lifetime")
+			{
+				auto* engine = App::GetSubmodule<EngineLoop>();
+				engine->ExitWorld(engine->GetWorld().GetRawPtr());
+				engine->ProcessPendingWorldExits();
+				for (bool bDebugPass : { false, true })
+				{
+					TestDebugRecordingLifetime(bDebugPass, DebugRecordingExit::World);
+					TestDebugRecordingLifetime(bDebugPass, DebugRecordingExit::RejectedFrame);
+				}
+				TestDebugRecordingLifetime(true, DebugRecordingExit::Renderer);
 			}
 			else if (mode == "--gpu-input-owner") TestInputOwner();
 			else if (mode == "--gpu-input-sessions") TestRemoteInputSessions();
@@ -6390,6 +6535,7 @@ int main(int argc, const char** argv)
 			mode == "--gpu-texture-capture" ||
 			mode == "--gpu-timing-names" ||
 			mode == "--gpu-engine-loop" ||
+			mode == "--gpu-debug-lifetime" ||
 			mode == "--gpu-input-owner" ||
 			mode == "--gpu-input-sessions" ||
 			mode == "--gpu-editor-messages" ||
