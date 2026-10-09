@@ -19,6 +19,12 @@ using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 using namespace Sailor::Framegraph::Experimental;
 
+std::span<const StringHash> ParticlesNode::GetMsaaOutputs() const
+{
+	static const StringHash outputs[] = { "color"_h };
+	return outputs;
+}
+
 bool ParticlesNode::InitializeBuffers(const TVector<PerInstanceData>& instances)
 {
 	auto& driver = Renderer::GetDriver();

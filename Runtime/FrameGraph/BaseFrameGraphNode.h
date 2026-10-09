@@ -4,6 +4,7 @@
 #include "Engine/Object.h"
 #include "RHI/Types.h"
 #include "RHI/Renderer.h"
+#include <span>
 
 namespace Sailor::Framegraph
 {
@@ -32,6 +33,13 @@ namespace Sailor::Framegraph
 		SAILOR_API bool TryGetString(StringHash name, std::string& value) const;
 		// The view borrows node storage; do not retain it across parameter changes.
 		SAILOR_API bool TryGetString(StringHash name, std::string_view& value) const;
+
+		// Fixed color-output names eligible for MSAA. The first is the primary
+		// attachment; its explicit Surface sample count governs the whole pass.
+		SAILOR_API virtual std::span<const StringHash> GetMsaaOutputs() const
+		{
+			return {};
+		}
 
 		// Called in graph order before scheduling the returned recording tasks.
 		SAILOR_API virtual Sailor::Tasks::TaskPtr<void, void> Prepare(RHI::RHIFrameGraphPtr frameGraph, RHI::RHISceneViewSnapshot& sceneView) { return Sailor::Tasks::TaskPtr<void, void>(); }

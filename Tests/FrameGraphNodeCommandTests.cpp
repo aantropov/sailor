@@ -1260,6 +1260,19 @@ frame:
 		std::cout << "FrameGraph static MSAA binding: import-time attachments, aliases and independent instances passed\n";
 	}
 
+	class DeclaredOutputsNode final : public BaseFrameGraphNode
+	{
+	public:
+		std::span<const StringHash> GetMsaaOutputs() const override
+		{
+			static const StringHash outputs[] = { "albedo"_h, "velocity"_h };
+			return outputs;
+		}
+
+		void Process(RHIFrameGraphPtr, RHICommandListPtr, RHICommandListPtr, const RHISceneViewSnapshot&) override {}
+		void Clear() override {}
+	};
+
 	void TestGraphMsaaTargets()
 	{
 		auto& driver = Renderer::GetDriver();
@@ -1386,6 +1399,28 @@ frame:
 		Require(graph->ResolveResource(unused) == unused, "withdrawing the last Surface owner must remove its alias");
 		graph->Clear();
 		std::cout << "FrameGraph mixed sample ownership: primary policy, secondary promotion, reuse, consumer removal and alias withdrawal passed\n";
+
+		auto declaredOutputs = TRefPtr<DeclaredOutputsNode>::Make();
+		declaredOutputs->SetRHIResource("albedo"_h, firstOutput);
+		declaredOutputs->SetRHIResource_Unresolved("velocity"_h, "External"_h);
+		graph->SetRenderTarget("External"_h, secondOutput);
+		graph->GetGraph().Add(declaredOutputs);
+		prepare();
+		const auto primary = declaredOutputs->GetTargetAttachment("albedo"_h, graph.GetRawPtr());
+		const auto secondary = declaredOutputs->GetTargetAttachment("velocity"_h, graph.GetRawPtr());
+		Require(primary != secondary && primary->GetMsaaSamples() == App::GetSubmodule<Renderer>()->GetMsaaSamples() &&
+			secondary->GetMsaaSamples() == primary->GetMsaaSamples(),
+			"a node's declared outputs must prepare MSAA without a built-in node type or attachment name");
+		Require(declaredOutputs->GetResolvedAttachment("albedo"_h, graph.GetRawPtr()) == firstOutput &&
+			declaredOutputs->GetResolvedAttachment("velocity"_h, graph.GetRawPtr()) == secondOutput,
+			"declared outputs must preserve their original resolve images");
+		graph->SetRenderTarget("External"_h, unused);
+		prepare();
+		Require(declaredOutputs->GetTargetAttachment("albedo"_h, graph.GetRawPtr()) == primary &&
+			declaredOutputs->GetTargetAttachment("velocity"_h, graph.GetRawPtr()) != secondary &&
+			declaredOutputs->GetResolvedAttachment("velocity"_h, graph.GetRawPtr()) == unused,
+			"only the replaced external declaration must change its prepared output");
+		std::cout << "FrameGraph declared MSAA outputs: custom node/names, native targets, resolves and external replacement passed\n";
 	}
 
 	RHIBufferPtr ReadColor(RHICommandListPtr command, RHITexturePtr texture);

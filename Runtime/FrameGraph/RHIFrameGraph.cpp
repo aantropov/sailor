@@ -11,8 +11,6 @@
 #include "RHI/Cubemap.h"
 #include "RHI/CommandList.h"
 #include "FrameGraph/LightCullingNode.h"
-#include "FrameGraph/RenderSceneNode.h"
-#include "FrameGraph/ParticlesNode.h"
 #include "FrameGraph/EnvironmentNode.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "Settings/GraphicsSettings.h"
@@ -573,10 +571,14 @@ bool RHIFrameGraph::PrepareRenderTargets()
 
 	const auto collectTargets = [&](FrameGraphNodePtr node, TVector<RHIRenderTargetPtr>& sources)
 	{
-		auto color = node->GetRHIResource("color"_h, this);
-		const auto colorSurface = color.DynamicCast<RHISurface>();
-		if (!color || (colorSurface && !colorSurface->NeedsResolve())) return;
-		for (const auto name : { "color"_h, "motionVectors"_h })
+		const auto outputs = node->GetMsaaOutputs();
+		auto primary = node->GetRHIResource(outputs.front(), this);
+		const auto primarySurface = primary.DynamicCast<RHISurface>();
+		if (!primary || (primarySurface && !primarySurface->NeedsResolve()))
+		{
+			return;
+		}
+		for (const auto name : outputs)
 		{
 			auto resource = node->GetRHIResource(name, this);
 			auto surface = resource.DynamicCast<RHISurface>();
@@ -611,10 +613,14 @@ bool RHIFrameGraph::PrepareRenderTargets()
 					m_boundSurfaces.Add(surface);
 				}
 			}
-			const bool bUsesMsaaTargets = node.DynamicCast<RenderSceneNode>() || node.DynamicCast<Experimental::ParticlesNode>();
-			if (!bUsesMsaaTargets || samples == EMsaaSamples::Samples_1) continue;
-			if (node->m_unresolvedResourceParams.ContainsKey("color"_h) ||
-				node->m_unresolvedResourceParams.ContainsKey("motionVectors"_h))
+			const auto outputs = node->GetMsaaOutputs();
+			if (outputs.empty() || samples == EMsaaSamples::Samples_1)
+			{
+				continue;
+			}
+			const bool bHasExternalOutput = std::any_of(outputs.begin(), outputs.end(),
+				[&](StringHash name) { return node->m_unresolvedResourceParams.ContainsKey(name); });
+			if (bHasExternalOutput)
 			{
 				m_externalRenderPasses.Add(node);
 			}

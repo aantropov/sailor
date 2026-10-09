@@ -49,6 +49,8 @@ namespace Sailor::Framegraph
 
 		SAILOR_API static StringHash GetName() { return "RenderScene"_h; }
 
+		SAILOR_API std::span<const StringHash> GetMsaaOutputs() const override;
+
 		SAILOR_API virtual Sailor::Tasks::TaskPtr<void, void> Prepare(RHI::RHIFrameGraphPtr frameGraph, RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandLists, const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override;
