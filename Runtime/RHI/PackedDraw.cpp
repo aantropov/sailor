@@ -84,8 +84,15 @@ void RHIPackedDrawSceneChanges::Gather(const RHIPackedDrawSceneState& current,
 		-> const RHISceneVersion*
 	{
 		if (scenes)
+		{
 			for (const auto& scene : *scenes)
-				if (scene && scene->m_sceneIdentity == identity) return scene.GetRawPtr();
+			{
+				if (scene && scene->m_sceneIdentity == identity)
+				{
+					return scene.GetRawPtr();
+				}
+			}
+		}
 		return nullptr;
 	};
 	auto getPage = [](const RHISceneVersion* scene, size_t pageIndex) -> const RHISceneRecordPage*
@@ -95,10 +102,16 @@ void RHIPackedDrawSceneChanges::Gather(const RHIPackedDrawSceneState& current,
 	};
 	auto getResource = [&](const RHISceneRecordSlot* slot) -> const RHISceneProxyResource*
 	{
-		if (!slot || !slot->m_bActive || slot->m_record.m_mobility != mobility) return nullptr;
+		if (!slot || !slot->m_bActive || slot->m_record.m_mobility != mobility)
+		{
+			return nullptr;
+		}
 		const auto* resource = dynamic_cast<const RHISceneProxyResource*>(slot->m_record.m_topology.GetRawPtr());
 		if (resource && bShadowCastersOnly &&
-			((slot->m_record.m_renderFlags & 1u) == 0u || !resource->m_proxy.m_shadowCaster)) return nullptr;
+			((slot->m_record.m_renderFlags & 1u) == 0u || !resource->m_proxy.m_shadowCaster))
+		{
+			return nullptr;
+		}
 		return resource;
 	};
 	auto getMotionRecord = [](const RHISceneVersion* scene, RenderInstanceHandle handle,
@@ -120,7 +133,10 @@ void RHIPackedDrawSceneChanges::Gather(const RHIPackedDrawSceneState& current,
 			const auto* nextPage = getPage(next, pageIndex);
 			const auto* oldPage = getPage(old, pageIndex);
 			if (!bRefreshMaterials && nextPage == oldPage &&
-				getPage(nextMotion, pageIndex) == getPage(oldMotion, pageIndex)) continue;
+				getPage(nextMotion, pageIndex) == getPage(oldMotion, pageIndex))
+			{
+				continue;
+			}
 			for (uint32_t index = 0u; index < RHISceneRecordPage::NumRecords; ++index)
 			{
 				++m_numComparedRecords;
@@ -133,8 +149,13 @@ void RHIPackedDrawSceneChanges::Gather(const RHIPackedDrawSceneState& current,
 					nextSlot->m_generation == oldSlot->m_generation &&
 					nextSlot->m_record.m_producerKey == oldSlot->m_record.m_producerKey;
 				if (oldResource && !bSameRange)
+				{
 					m_removed.Emplace(RenderInstanceHandle{ slotIndex, oldSlot->m_generation }, oldSlot->m_record, *oldResource);
-				if (!nextResource) continue;
+				}
+				if (!nextResource)
+				{
+					continue;
+				}
 				const RenderInstanceHandle handle{ slotIndex, nextSlot->m_generation };
 				const auto& record = nextSlot->m_record;
 				bool bChanged = bRefreshMaterials || !bSameRange;
@@ -151,17 +172,36 @@ void RHIPackedDrawSceneChanges::Gather(const RHIPackedDrawSceneState& current,
 					const auto* oldMotionRecord = getMotionRecord(oldMotion, handle, oldRecord);
 					bChanged |= (nextMotionRecord != nullptr) != (oldMotionRecord != nullptr);
 					if (nextMotionRecord && oldMotionRecord)
+					{
 						bChanged |= nextMotionRecord->m_worldMatrix != oldMotionRecord->m_worldMatrix ||
 							nextMotionRecord->m_skeletonOffset != oldMotionRecord->m_skeletonOffset;
+					}
 				}
-				if (bChanged) m_updated.Emplace(handle, record, *nextResource);
-	}
-}
+				if (bChanged)
+				{
+					m_updated.Emplace(handle, record, *nextResource);
+				}
+			}
+		}
 	};
 	if (current.m_sceneVersions)
+	{
 		for (const auto& scene : *current.m_sceneVersions)
-			if (scene) visitScene(scene.GetRawPtr(), previous ? findScene(previous->m_sceneVersions, scene->m_sceneIdentity) : nullptr);
+		{
+			if (scene)
+			{
+				visitScene(scene.GetRawPtr(), previous ? findScene(previous->m_sceneVersions, scene->m_sceneIdentity) : nullptr);
+			}
+		}
+	}
 	if (previous && previous->m_sceneVersions)
+	{
 		for (const auto& scene : *previous->m_sceneVersions)
-			if (scene && !findScene(current.m_sceneVersions, scene->m_sceneIdentity)) visitScene(nullptr, scene.GetRawPtr());
+		{
+			if (scene && !findScene(current.m_sceneVersions, scene->m_sceneIdentity))
+			{
+				visitScene(nullptr, scene.GetRawPtr());
+			}
+		}
+	}
 }
