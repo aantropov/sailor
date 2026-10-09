@@ -385,7 +385,9 @@ namespace
 
 	void TestMirroredTriangleMeshMatchesBakedGeometry()
 	{
-		for (const glm::vec3 scale : { glm::vec3(2.0f, 1.25f, 1.5f),
+		for (const glm::vec3 scale : { glm::vec3(1.0f),
+			glm::vec3(-1.0f, 1.0f, 1.0f), glm::vec3(-1.0f, 1.0f, -1.0f),
+			glm::vec3(2.0f, 1.25f, 1.5f),
 			glm::vec3(-2.0f, 1.25f, 1.5f), glm::vec3(-2.0f, 1.25f, -1.5f),
 			glm::vec3(2.0f, -1.25f, 1.5f) })
 		{
@@ -434,6 +436,14 @@ namespace
 				IsNear(scaledHit.m_normal, normal, 0.001f) &&
 				IsNear(scaledHit.m_normal, bakedHit.m_normal, 0.001f),
 				"mirroring must preserve outward winding and match explicitly transformed geometry");
+			Require(scaledWorld.Raycast(surface - normal * 4.0f, normal, 8.0f, scaledHit) &&
+				bakedWorld.Raycast(surface - normal * 4.0f, normal, 8.0f, bakedHit),
+				"triangle raycasts must retain back-face hits for scaled and baked geometry");
+			Require(IsNear(scaledHit.m_position, surface, 0.001f) &&
+				IsNear(scaledHit.m_position, bakedHit.m_position, 0.001f) &&
+				IsNear(scaledHit.m_normal, normal, 0.001f) &&
+				IsNear(scaledHit.m_normal, bakedHit.m_normal, 0.001f),
+				"back-face hits must report the surface's outward normal, not reverse its winding");
 
 			auto sphere = MakeSphere(InstanceId::GenerateNewInstanceId(),
 				Physics::ERigidBodyMotionType::Dynamic, surface + normal * 2.0f, 0.25f);
