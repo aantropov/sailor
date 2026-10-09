@@ -8,12 +8,22 @@ namespace
 {
 	thread_local std::vector<Sailor::Tests::VulkanBufferWrite>* g_bufferWrites = nullptr;
 	thread_local std::vector<VkImageMemoryBarrier>* g_imageBarriers = nullptr;
+	thread_local std::vector<Sailor::Tests::VulkanBufferCreation>* g_bufferCreations = nullptr;
 	thread_local std::vector<Sailor::Tests::VulkanComputeInputEvent>* g_computeInputs = nullptr;
 	thread_local Sailor::Tests::VulkanDescriptorAllocationFailure* g_descriptorFailure = nullptr;
 }
 
 namespace Sailor::Tests
 {
+	std::vector<VulkanBufferCreation> CaptureVulkanBufferCreations(const std::function<void()>& create)
+	{
+		std::vector<VulkanBufferCreation> buffers;
+		auto* previous = std::exchange(g_bufferCreations, &buffers);
+		ScopeExit restore([previous]() { g_bufferCreations = previous; });
+		create();
+		return buffers;
+	}
+
 	std::vector<VkImageMemoryBarrier> CaptureVulkanImageBarriers(const std::function<void()>& record)
 	{
 		std::vector<VkImageMemoryBarrier> barriers;
@@ -285,7 +295,14 @@ namespace
 		const VkAllocationCallbacks* allocator, VkBuffer* buffer)
 	{
 		const auto result = vkCreateBuffer(device, info, allocator, buffer);
-		if (result == VK_SUCCESS) ++GetVulkanCapabilityOverrides().bufferCreateCalls;
+		if (result == VK_SUCCESS)
+		{
+			++GetVulkanCapabilityOverrides().bufferCreateCalls;
+			if (g_bufferCreations)
+			{
+				g_bufferCreations->push_back({ *buffer, info->size, info->usage, info->sharingMode });
+			}
+		}
 		return result;
 	}
 

@@ -18,6 +18,16 @@ namespace Sailor::Tests
 	std::vector<VulkanBufferWrite> CaptureVulkanBufferWrites(const std::function<void()>& record);
 	std::vector<VkImageMemoryBarrier> CaptureVulkanImageBarriers(const std::function<void()>& record);
 
+	struct VulkanBufferCreation
+	{
+		VkBuffer m_buffer;
+		VkDeviceSize m_size;
+		VkBufferUsageFlags m_usage;
+		VkSharingMode m_sharingMode;
+	};
+
+	std::vector<VulkanBufferCreation> CaptureVulkanBufferCreations(const std::function<void()>& create);
+
 	struct VulkanComputeInputEvent
 	{
 		enum class Kind { Copy, Barrier, Dispatch };

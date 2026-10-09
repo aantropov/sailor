@@ -1979,6 +1979,91 @@ namespace
 		}
 	}
 
+	void TestBufferUploadAllocations()
+	{
+		enum class UploadPath { Rhi, Exclusive, Immediate };
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		constexpr EMemoryPropertyFlags HostMemory = EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent;
+		constexpr EMemoryPropertyFlags DeviceMemory = EMemoryPropertyBit::DeviceLocal;
+		constexpr EBufferUsageFlags Usage = EBufferUsageBit::StorageBuffer_Bit | EBufferUsageBit::BufferTransferSrc_Bit;
+		std::array<uint32_t, 257> expected;
+		for (uint32_t i = 0u; i < expected.size(); ++i)
+		{
+			expected[i] = 0x53ae0000u ^ (i * 2654435761u);
+		}
+		for (const auto path : { UploadPath::Rhi, UploadPath::Exclusive, UploadPath::Immediate })
+		{
+			for (const auto properties : { HostMemory, DeviceMemory })
+			{
+				if (path == UploadPath::Immediate && properties == HostMemory)
+				{
+					continue;
+				}
+				auto command = driver->CreateCommandList(false, ECommandListQueue::Transfer);
+				commands->BeginCommandList(command, true);
+				auto source = expected;
+				RHIBufferPtr buffer;
+				VulkanBufferPtr native;
+				const auto create = [&]()
+					{
+						if (path == UploadPath::Exclusive)
+						{
+							native = VulkanApi::CreateBuffer(command->m_vulkan.m_commandBuffer, device,
+								source.data(), sizeof(source), Usage, properties, VK_SHARING_MODE_EXCLUSIVE);
+						}
+						else
+						{
+							buffer = path == UploadPath::Immediate ?
+								driver->CreateBuffer_Immediate(source.data(), sizeof(source), Usage) :
+								driver->CreateBuffer(command, source.data(), sizeof(source), Usage, properties);
+							Require(buffer && buffer->GetSize() == sizeof(source) && buffer->GetUsage() == Usage &&
+								buffer->GetMemoryProperty() == properties, "buffer upload changed its RHI properties");
+							native = buffer->m_vulkan.m_buffer->Get().m_ptr.m_buffer;
+						}
+					};
+#if defined(__APPLE__)
+				auto created = Tests::CaptureVulkanBufferCreations(create);
+				// Staging allocations are transfer-only, not destination storage buffers.
+				std::erase_if(created, [](const auto& entry) { return !(entry.m_usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT); });
+				Require(created.size() == 1u && created[0].m_buffer == static_cast<VkBuffer>(*native) &&
+					created[0].m_size == sizeof(expected) && created[0].m_usage == (Usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT),
+					"each upload must create exactly one destination with the requested size and usage");
+				const auto& queues = device->GetQueueFamilies();
+				const bool bOneFamily = queues.m_graphicsFamily == queues.m_transferFamily &&
+					queues.m_graphicsFamily == queues.m_computeFamily;
+				Require(created[0].m_sharingMode == (path == UploadPath::Exclusive || bOneFamily ?
+					VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT), "buffer upload changed its native sharing mode");
+#else
+				create();
+#endif
+				Require(native->GetMemoryDevice()->GetMemoryPropertyFlags() == properties &&
+					native->m_usage == (Usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT) && native->m_size == sizeof(expected) &&
+					native->m_sharingMode == (path == UploadPath::Exclusive ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT) &&
+					(properties != HostMemory || native->GetMemoryDevice()->GetPointer()),
+					"buffer upload changed its native memory properties, size, usage, sharing mode or mapping");
+				source.fill(0xdeadbeefu);
+				auto readback = driver->CreateBuffer(sizeof(expected), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+				std::memset(readback->GetPointer(), 0, sizeof(expected));
+				auto& recording = command->m_vulkan.m_commandBuffer;
+				recording->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+				recording->CopyBuffer(native->GetBufferMemoryPtr(), *readback->m_vulkan.m_buffer->Get(), sizeof(expected));
+				recording->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
+				commands->EndCommandList(command);
+				buffer.Clear();
+				native.Clear();
+				Require(driver->SubmitCommandList_Immediate(command), "buffer upload and readback must finish");
+				Require(std::equal(expected.begin(), expected.end(), static_cast<const uint32_t*>(readback->GetPointer())),
+					"buffer upload must preserve all words after source mutation and caller release");
+			}
+		}
+		std::cout << "Buffer uploads: five RHI, Exclusive and Immediate cases preserved properties and 257 words\n";
+#if defined(__APPLE__)
+		std::cout << "Native destination buffer creation count: exactly one per upload\n";
+#endif
+	}
+
 	void TestImmediateBufferCreation(bool lost = false)
 	{
 		auto device = VulkanApi::GetInstance()->GetMainDevice();
@@ -6261,6 +6346,7 @@ frame: []
 					else if (mode == "--gpu-immediate-buffer-create") TestImmediateBufferCreation();
 					else if (mode == "--gpu-immediate-buffers")
 					{
+						TestBufferUploadAllocations();
 						TestImmediateBufferCreation();
 						TestImmediateBufferCopy(false);
 						TestParticleBufferPublication();
