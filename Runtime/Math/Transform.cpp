@@ -44,7 +44,10 @@ namespace Sailor::Math
 
 void Transform::SetRotation(const glm::quat& rotation)
 {
-	if (rotation != m_rotation) m_rotation = SanitizeRotation(rotation);
+	if (rotation != m_rotation)
+	{
+		m_rotation = SanitizeRotation(rotation);
+	}
 }
 
 vec3 Transform::GetReciprocalScale() const
