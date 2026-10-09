@@ -221,7 +221,18 @@ namespace
 			Require(PeekMessage(&hostMessage, hostWindow, WM_APP + 18, WM_APP + 18, PM_REMOVE) &&
 				hostMessage.hwnd == hostWindow && hostMessage.message == WM_APP + 18,
 				"the engine pump must leave unrelated host messages for the host loop");
-			// PostQuitMessage waits for the host to drain its own queued work.
+			// PostQuitMessage is generated after all queued work, including native
+			// helper windows. Drain as the host would, leaving WM_QUIT for Sailor.
+			while (survivor.IsRunning() && PeekMessage(&hostMessage, nullptr, 0, 0, PM_NOREMOVE))
+			{
+				if (hostMessage.message == WM_QUIT)
+				{
+					break;
+				}
+				PeekMessage(&hostMessage, nullptr, 0, 0, PM_REMOVE);
+				TranslateMessage(&hostMessage);
+				DispatchMessage(&hostMessage);
+			}
 			Window::ProcessWin32Msgs();
 			Require(!survivor.IsRunning(), "thread quit must stop the surviving native window after the host drains its messages");
 		}
