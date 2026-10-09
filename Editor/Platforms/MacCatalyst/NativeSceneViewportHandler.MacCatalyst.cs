@@ -375,10 +375,14 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
 
         static readonly object inputOwnershipGate = new();
         static NativeSceneViewportPlatformView? mouseInputOwner;
+        static NativeSceneViewportPlatformView? keyboardInputOwner;
 
         readonly WeakReference<NativeSceneViewportHandler> owner;
         readonly ViewportTextInput textInput;
+        GCKeyboardInput? keyboardInput;
         readonly Dictionary<nint, GCMouseInput> mouseInputs = new();
+        NSObject? keyboardDidConnectToken;
+        NSObject? keyboardDidDisconnectToken;
         NSObject? mouseDidConnectToken;
         NSObject? mouseDidDisconnectToken;
         readonly UIHoverGestureRecognizer hoverGesture;
@@ -443,6 +447,7 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 return;
             }
 
+            AttachKeyboardInput();
             PublishFocus(true);
         }
 
@@ -526,18 +531,27 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             textInput.DisconnectInput();
             ReleaseActivePointerState();
             ReleaseMouseInput();
+            ReleaseKeyboardInput();
             ReleaseInputObservers();
             PublishFocus(false);
         }
 
         void AttachInputObservers()
         {
+            keyboardDidConnectToken ??= GCKeyboard.Notifications.ObserveDidConnect(
+                (_, _) => DispatchQueue.MainQueue.DispatchAsync(AttachKeyboardInput));
+            keyboardDidDisconnectToken ??= GCKeyboard.Notifications.ObserveDidDisconnect(
+                (_, _) => DispatchQueue.MainQueue.DispatchAsync(AttachKeyboardInput));
             mouseDidConnectToken ??= GCMouse.Notifications.ObserveDidConnect((_, _) => AttachMouseInput());
             mouseDidDisconnectToken ??= GCMouse.Notifications.ObserveDidDisconnect((_, _) => AttachMouseInput());
         }
 
         void ReleaseInputObservers()
         {
+            keyboardDidConnectToken?.Dispose();
+            keyboardDidConnectToken = null;
+            keyboardDidDisconnectToken?.Dispose();
+            keyboardDidDisconnectToken = null;
             mouseDidConnectToken?.Dispose();
             mouseDidConnectToken = null;
             mouseDidDisconnectToken?.Dispose();
@@ -1212,9 +1226,69 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 Captured: false);
         }
 
-        void PublishPresses(NSSet<UIPress> presses, bool pressed, bool isComposing = false)
+        void AttachKeyboardInput()
         {
             if (!isAttachedToWindow || isDisposed || !HasInputFocus)
+            {
+                return;
+            }
+
+            var keyboard = GCKeyboard.CoalescedKeyboard;
+            var input = keyboard?.KeyboardInput;
+            if (ReferenceEquals(input, keyboardInput) && ReferenceEquals(keyboardInputOwner, this))
+            {
+                return;
+            }
+
+            keyboardInputOwner?.ReleaseKeyboardInput();
+            if (input == null)
+            {
+                return;
+            }
+
+            // UITextField consumes some physical presses while handling text.
+            // Keep held keys separate from UIKit's committed-text notifications.
+            keyboard!.HandlerQueue = DispatchQueue.MainQueue;
+            keyboardInputOwner = this;
+            keyboardInput = input;
+            input.KeyChangedHandler = HandleKeyboardKeyChanged;
+        }
+
+        void ReleaseKeyboardInput()
+        {
+            if (ReferenceEquals(keyboardInputOwner, this))
+            {
+                keyboardInput!.KeyChangedHandler = null;
+                keyboardInputOwner = null;
+            }
+            keyboardInput = null;
+            ClearKeyboardModifiers();
+        }
+
+        void HandleKeyboardKeyChanged(GCKeyboardInput keyboard, GCControllerButtonInput key, nint keyCode, bool pressed)
+        {
+            if (!HasInputFocus || !ReferenceEquals(keyboard, keyboardInput))
+            {
+                return;
+            }
+
+            var mappedKey = MapKeyCode((uint)keyCode);
+            if (mappedKey == 0)
+            {
+                return;
+            }
+
+            UpdateKeyboardModifier(mappedKey, pressed);
+            Publish(new NativeSceneViewportInputEvent(
+                NativeSceneViewportInputKind.Key,
+                KeyCode: mappedKey,
+                Modifiers: activeMouseModifiers | ActiveKeyboardModifiers,
+                Pressed: pressed));
+        }
+
+        void PublishPresses(NSSet<UIPress> presses, bool pressed, bool isComposing = false)
+        {
+            if (!isAttachedToWindow || isDisposed || !HasInputFocus || keyboardInput != null)
             {
                 return;
             }
@@ -1226,7 +1300,7 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                     continue;
                 }
 
-                var keyCode = MapKeyCode(press.Key);
+                var keyCode = press.Key is { } key ? MapKeyCode((uint)key.KeyCode) : 0;
                 if (keyCode == 0)
                 {
                     continue;
@@ -1257,7 +1331,7 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             isInputFocused = focused;
             if (!focused)
             {
-                ClearKeyboardModifiers();
+                ReleaseKeyboardInput();
             }
             Publish(new NativeSceneViewportInputEvent(NativeSceneViewportInputKind.Focus, Focused: focused));
         }
@@ -1363,16 +1437,10 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             }
         }
 
-        static uint MapKeyCode(UIKey? key)
+        static uint MapKeyCode(uint hid)
         {
-            if (key == null)
-            {
-                return 0;
-            }
-
             // Physical keys use HID usages; text and the active keyboard layout
             // are handled separately by UIKit's text responder.
-            var hid = (uint)key.KeyCode;
             return hid switch
             {
                 >= 0x04 and <= 0x1D => 'A' + hid - 0x04,
