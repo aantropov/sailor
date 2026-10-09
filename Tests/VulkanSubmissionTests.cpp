@@ -16,6 +16,7 @@
 #include "Platform/DynamicLibrary.h"
 #include "Workspace/WorkspacePathEncoding.h"
 #include "EditorEngineProtocolInternal.h"
+#include "EditorEngineProtocolLifecycle.h"
 #include "EditorEngineWebSocketServer.h"
 #include "Support/EditorProtocolWire.h"
 #include <ixwebsocket/IXGetFreePort.h>
@@ -71,6 +72,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <chrono>
 #include <stdexcept>
 #include <string_view>
@@ -3857,6 +3859,83 @@ frame: []
 		}
 	};
 
+	void CheckAppBootstrapStop(const std::string& initialize, uint16_t port, EAppInitializationResult expectedResult)
+	{
+		using Gate = Protocol::TEditorEngineProtocolLifecycleGate;
+		struct Bootstrap
+		{
+			Gate m_gate;
+			Protocol::EditorEngineProtocolDependencies m_dependencies;
+			std::future<bool> m_shutdown;
+			EAppInitializationResult m_result = EAppInitializationResult::Failed;
+			std::atomic<uint32_t> m_stopCalls{ 0 }, m_shutdownCalls{ 0 };
+			std::atomic<bool> m_bIsInitializing{ true }, m_bWasStoppedEarly{ false };
+			bool m_bWasAppRetained = false;
+		} state;
+		auto& dependencies = state.m_dependencies;
+		dependencies.m_context = &state;
+		dependencies.m_lifecycleGate = &state.m_gate;
+		dependencies.m_initialize = [](void* context, const char** arguments, int32_t count)
+		{
+			auto& state = *static_cast<Bootstrap*>(context);
+			state.m_result = App::Initialize(arguments, count);
+			state.m_shutdown = std::async(std::launch::async, [&state]()
+			{
+				return Protocol::StopEditorEngineLocalHost(true, state.m_dependencies);
+			});
+			// Hold the acknowledgement after real App construction until Stop closes admission.
+			std::atomic<Gate::EEditorDispatchState> observation{ Gate::EEditorDispatchState::Queued };
+			state.m_gate.WaitForEditorDispatch(observation);
+			const bool bWaitsForInitialization = state.m_shutdown.wait_for(std::chrono::milliseconds(30)) !=
+				std::future_status::ready;
+			state.m_bWasAppRetained = bWaitsForInitialization && App::IsRendererInitialized() && App::GetSubmodule<EngineLoop>() &&
+				App::GetSubmodule<Tasks::Scheduler>() && ImGuiApi::GetCurrentContext() &&
+				state.m_stopCalls == 0 && state.m_shutdownCalls == 0;
+			state.m_bIsInitializing = false;
+			return state.m_result;
+		};
+		dependencies.m_stop = [](void* context)
+		{
+			auto& state = *static_cast<Bootstrap*>(context);
+			++state.m_stopCalls;
+			if (state.m_bIsInitializing)
+			{
+				state.m_bWasStoppedEarly = true;
+			}
+			App::Stop();
+		};
+		dependencies.m_shutdown = [](void* context)
+		{
+			auto& state = *static_cast<Bootstrap*>(context);
+			++state.m_shutdownCalls;
+			if (state.m_bIsInitializing)
+			{
+				// Report wrong ordering without freeing the App still inspected by initialization.
+				state.m_bWasStoppedEarly = true;
+				return false;
+			}
+			return App::Shutdown();
+		};
+		const auto request = Tests::ProtocolWire::MakeRequest(1u, 10u, initialize);
+		constexpr std::string_view token = "0123456789abcdef0123456789abcdef";
+		const auto status = Protocol::StartEditorEngineLocalHost(
+			reinterpret_cast<const uint8_t*>(request.data()), static_cast<uint32_t>(request.size()),
+			port, token.data(), static_cast<uint32_t>(token.size()), dependencies);
+		Require(state.m_shutdown.valid(), "the bootstrap race must reach real App initialization");
+		while (state.m_shutdown.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready)
+		{
+			Mac::Window::ProcessMacMsgs();
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+		const bool bStopped = state.m_shutdown.get();
+		Require(state.m_result == expectedResult && state.m_bWasAppRetained && !state.m_bWasStoppedEarly &&
+			status == Protocol::EEditorEngineWebSocketHostStatus::InitializationFailed && bStopped &&
+			state.m_stopCalls == 1 && state.m_shutdownCalls == 1 && !App::GetInstance() &&
+			!ImGuiApi::GetCurrentContext(),
+			"concurrent native Stop must retain the real App until initialization returns, then own its only teardown");
+		std::cout << "Concurrent native Stop drained real App bootstrap: result=" << static_cast<uint32_t>(state.m_result) << '\n';
+	}
+
 	int RunImGuiLifetimeGpu(int argc, const char** argv)
 	{
 		ImGuiAllocationProbe allocations;
@@ -3933,6 +4012,9 @@ frame: []
 				!ImGuiApi::GetCurrentContext() && allocations.m_liveAllocations == 0,
 				"native host rollback must also destroy ImGui when world loading fails after context creation");
 			std::cout << "Failed world bootstrap released its ImGui context through both App and native host shutdown\n";
+			CheckAppBootstrapStop(initialize, static_cast<uint16_t>(port), EAppInitializationResult::Ready);
+			CheckAppBootstrapStop(failedWorldInitialize, static_cast<uint16_t>(port), EAppInitializationResult::Failed);
+			Require(allocations.m_liveAllocations == 0, "concurrent bootstrap shutdown must release all ImGui allocations");
 
 			for (uint32_t cycle = 0; cycle < 24; ++cycle)
 			{
