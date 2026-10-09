@@ -5,6 +5,46 @@ namespace SailorEditor.Tests;
 public sealed class WorkspaceBuildPlanTests
 {
     [Fact]
+    public void Compile_ReconfiguresForTheRunningEditorInsteadOfTheManifestEngine()
+    {
+        var root = Directory.CreateTempSubdirectory("sailor-active-engine-");
+        try
+        {
+            var activeEngine = Path.Combine(root.FullName, "Current engine");
+            Directory.CreateDirectory(Path.Combine(activeEngine, "Runtime"));
+            var session = new WorkspaceSession(root.FullName, Path.Combine(root.FullName, "Game.sailor"),
+                WorkspaceManifest.CreateDefault("Game", "../OldEngine"),
+                Path.Combine(root.FullName, "Content"), Path.Combine(root.FullName, "Source"),
+                Path.Combine(root.FullName, "Generated"), Path.Combine(root.FullName, "Cache"))
+            {
+                BuildDirectory = Path.Combine(root.FullName, "Cache", "Build"),
+                LogicOutputDirectory = Path.Combine(root.FullName, "Binaries"),
+            };
+
+            var plan = WorkspaceBuildPlan.Create(session, "Release", configure: false,
+                engineDirectory: activeEngine);
+
+            Assert.Equal(2, plan.Invocations.Count);
+            Assert.Contains("-DSAILOR_ENGINE_ROOT=" + activeEngine, plan.Invocations[0].Arguments);
+            Assert.Contains("-DSAILOR_ENGINE_REFERENCE_KIND=source", plan.Invocations[0].Arguments);
+            Assert.Contains("--build", plan.Invocations[1].Arguments);
+            Assert.Equal(session.WorkspaceRoot, plan.Invocations[1].WorkingDirectory);
+
+            var sdk = Path.Combine(root.FullName, "Editor", "EngineSDK");
+            var sdkPlan = WorkspaceBuildPlan.Create(session, "Release", configure: false,
+                engineDirectory: activeEngine, engineSdkDirectory: sdk);
+            Assert.Equal(2, sdkPlan.Invocations.Count);
+            Assert.Contains("-DSAILOR_ENGINE_ROOT=" + sdk, sdkPlan.Invocations[0].Arguments);
+            Assert.Contains("-DSAILOR_ENGINE_REFERENCE_KIND=installed", sdkPlan.Invocations[0].Arguments);
+            Assert.Contains("-DSailor_DIR=" + Path.Combine(sdk, "lib", "cmake", "Sailor"), sdkPlan.Invocations[0].Arguments);
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public void CreateConfigure_OnlyCreatesCMakeProjectInvocation()
     {
         var root = Path.Combine(Path.GetTempPath(), "Sailor Workspace");

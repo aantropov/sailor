@@ -17,7 +17,6 @@ public sealed class WorkspaceProjectGeneratorTests
         var generated = await generator.GenerateAsync(session);
 
         var cmake = await File.ReadAllTextAsync(workspace.File("Generated/CMakeLists.txt"));
-        Assert.Contains($"add_subdirectory(\"{ToCMakePath(engine.Root)}\" \"${{CMAKE_BINARY_DIR}}/SailorEngine\" EXCLUDE_FROM_ALL)", cmake);
         Assert.Contains("set(SAILOR_BUILD_EXECUTABLE OFF", cmake);
         Assert.Contains("set(SAILOR_BUILD_TESTS OFF", cmake);
         Assert.Contains("target_link_libraries(SailorGame PRIVATE Sailor::Runtime)", cmake);
@@ -71,9 +70,7 @@ public sealed class WorkspaceProjectGeneratorTests
         await generator.GenerateAsync(session);
 
         var cmake = await File.ReadAllTextAsync(workspace.File("Project Files/CMakeLists.txt"));
-        Assert.Contains($"list(PREPEND CMAKE_PREFIX_PATH \"{ToCMakePath(engineInstall.Root)}\")", cmake);
         Assert.Contains("find_package(Sailor CONFIG REQUIRED)", cmake);
-        Assert.DoesNotContain("add_subdirectory", cmake);
         Assert.Contains("project(GameLogic LANGUAGES CXX)", cmake);
         Assert.Contains("${CMAKE_CURRENT_LIST_DIR}/../Game Source", cmake);
         Assert.Contains("${CMAKE_CURRENT_LIST_DIR}/../Output Files", cmake);

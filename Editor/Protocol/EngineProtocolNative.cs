@@ -33,14 +33,17 @@ internal static class EngineProtocolNative
 
 #if MACCATALYST
 #if DEBUG
-    const string EngineLibrary = "Sailor-Debug";
+    public const string Configuration = "Debug";
 #else
-    const string EngineLibrary = "Sailor-Release";
+    public const string Configuration = "Release";
 #endif
+    const string EngineLibrary = "Sailor-" + Configuration;
 #elif DEBUG
-    const string EngineLibrary = "../../../../../Sailor-RelWithDebInfo.dll";
+    public const string Configuration = "RelWithDebInfo";
+    const string EngineLibrary = "../../../../../Sailor-" + Configuration + ".dll";
 #else
-    const string EngineLibrary = "../../../../../Sailor-Release.dll";
+    public const string Configuration = "Release";
+    const string EngineLibrary = "../../../../../Sailor-" + Configuration + ".dll";
 #endif
 
     [DllImport(

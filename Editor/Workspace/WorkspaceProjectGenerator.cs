@@ -138,28 +138,23 @@ public sealed class WorkspaceProjectGenerator
             string.Empty,
             $"set(SAILOR_GAME_SOURCE_DIR \"{sourcePath}\")",
             $"set(SAILOR_GAME_OUTPUT_DIR \"{outputPath}\")",
+            $"set(SAILOR_ENGINE_ROOT \"{enginePath}\" CACHE PATH \"Sailor engine root\")",
+            $"set(SAILOR_ENGINE_REFERENCE_KIND \"{session.Manifest.EngineReferenceKind}\" CACHE STRING \"Sailor engine reference kind\")",
             string.Empty
         };
 
-        if (session.Manifest.EngineReferenceKind == WorkspaceEngineReferenceKinds.Source)
-        {
-            lines.AddRange([
-                "set(SAILOR_BUILD_EXECUTABLE OFF CACHE BOOL \"Build Sailor executables\" FORCE)",
-                "set(SAILOR_BUILD_TESTS OFF CACHE BOOL \"Build Sailor tests\" FORCE)",
-                $"add_subdirectory(\"{enginePath}\" \"${{CMAKE_BINARY_DIR}}/SailorEngine\" EXCLUDE_FROM_ALL)"
-            ]);
-        }
-        else if (session.Manifest.EngineReferenceKind == WorkspaceEngineReferenceKinds.Installed)
-        {
-            lines.AddRange([
-                $"list(PREPEND CMAKE_PREFIX_PATH \"{enginePath}\")",
-                "find_package(Sailor CONFIG REQUIRED)"
-            ]);
-        }
-        else
-        {
-            throw new InvalidOperationException($"Unsupported engine reference kind: {session.Manifest.EngineReferenceKind}");
-        }
+        lines.AddRange([
+            "if(SAILOR_ENGINE_REFERENCE_KIND STREQUAL \"source\")",
+            "  set(SAILOR_BUILD_EXECUTABLE OFF CACHE BOOL \"Build Sailor executables\" FORCE)",
+            "  set(SAILOR_BUILD_TESTS OFF CACHE BOOL \"Build Sailor tests\" FORCE)",
+            "  add_subdirectory(\"${SAILOR_ENGINE_ROOT}\" \"${CMAKE_BINARY_DIR}/SailorEngine\" EXCLUDE_FROM_ALL)",
+            "elseif(SAILOR_ENGINE_REFERENCE_KIND STREQUAL \"installed\")",
+            "  list(PREPEND CMAKE_PREFIX_PATH \"${SAILOR_ENGINE_ROOT}\")",
+            "  find_package(Sailor CONFIG REQUIRED)",
+            "else()",
+            "  message(FATAL_ERROR \"Unsupported Sailor engine reference kind: ${SAILOR_ENGINE_REFERENCE_KIND}\")",
+            "endif()"
+        ]);
 
         lines.AddRange([
             string.Empty,
