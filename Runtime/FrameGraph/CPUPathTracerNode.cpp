@@ -473,6 +473,13 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 	if (bShouldRenderNewSamples)
 	{
+		if (maxAccumulatedSamples > 0ull)
+		{
+			const uint64_t remaining = maxAccumulatedSamples - camera.m_accumulatedSamples;
+			params.m_msaa = static_cast<uint32_t>((std::min<uint64_t>)(params.m_msaa, remaining));
+			params.m_numSamples = static_cast<uint32_t>((std::min<uint64_t>)(params.m_numSamples, remaining / params.m_msaa));
+			params.m_numAmbientSamples = params.m_numSamples;
+		}
 		if (camera.m_scene != tracedScene)
 		{
 			if (!camera.m_pathTracer.InitializeSceneSnapshot(tracedScene->m_instances, tracedScene->m_materials, tracedScene->m_lights))
@@ -499,15 +506,11 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 			return;
 		}
 
-		AccumulateImage(camera, image, imageExtent, spp);
+		AccumulateImage(camera, image, imageExtent, params.m_msaa * params.m_numSamples);
 		if (!camera.m_bHasAccumulationState)
 		{
 			camera.m_accumulationKey = key;
 			camera.m_bHasAccumulationState = true;
-		}
-		if (maxAccumulatedSamples > 0ull)
-		{
-			camera.m_accumulatedSamples = (std::min)(camera.m_accumulatedSamples, maxAccumulatedSamples);
 		}
 	}
 

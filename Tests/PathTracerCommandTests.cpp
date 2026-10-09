@@ -986,6 +986,55 @@ namespace
 		sun.m_intensity = vec3(0);
 		++view->m_lightingRevision;
 		RequireComposite(draw(), vec3(0));
+
+		replacement->SetUniform("material.baseColorFactor"_h, vec4(0, 0, 0, 1));
+		replacement->SetUniform("material.emissiveFactor"_h, vec4(2, 0.5f, 0.125f, 0));
+		node->SetFloat("maxAccumulatedSamples"_h, 0);
+		for (const auto& batch : { std::pair{ 5u, 4u }, std::pair{ 7u, 8u } })
+		{
+			node->SetFloat("samplesPerFrame"_h, static_cast<float>(batch.first));
+			RequireComposite(draw(), vec3(2, 0.5f, 0.125f));
+			Require(node->Camera().m_accumulatedSamples == batch.second,
+				"the image must report the actual rounded sampling batch, not the requested count");
+		}
+
+		node->SetFloat("samplesPerFrame"_h, 2);
+		node->SetFloat("maxAccumulatedSamples"_h, 3);
+		RequireComposite(draw(), vec3(2, 0.5f, 0.125f));
+		const auto firstBatch = node->Camera().m_accumulatedImage;
+		RequireComposite(draw(), vec3(2, 0.5f, 0.125f));
+		Require(node->Camera().m_accumulatedSamples == 3, "the final batch must fit the remaining sample budget");
+		const auto& finalBatch = node->Camera().m_pathTracer.GetLastRenderedImageLinear();
+		ImageNode singleSample;
+		singleSample.m_pShader = shader;
+		singleSample.SetFloat("enabled"_h, 1);
+		singleSample.SetFloat("samplesPerFrame"_h, 1);
+		const auto reference = RecordComposite(singleSample, graph, view->m_snapshots[0], extent);
+		Require(Renderer::GetDriver()->SubmitCommandList_Immediate(reference.command), "the single-sample reference must complete");
+		const auto& referenceImage = singleSample.Camera().m_accumulatedImage;
+		for (size_t i = 0; i < finalBatch.Num(); ++i)
+		{
+			Require(length(finalBatch[i] - referenceImage[i]) < 1e-5f,
+				"the final batch must match an independently rendered one-sample image, including filtered edges");
+			Require(length(node->Camera().m_accumulatedImage[i] - (firstBatch[i] * 2.0f + finalBatch[i]) / 3.0f) < 1e-5f,
+				"HDR and edge coverage must use the final batch's actual weight");
+		}
+		const auto cappedImage = node->Camera().m_accumulatedImage;
+		const auto cappedRevision = node->Camera().m_imageRevision;
+		node->SetFloat("maxAccumulatedSamples"_h, 2);
+		RequireComposite(draw(), vec3(2, 0.5f, 0.125f));
+		Require(node->Camera().m_accumulatedSamples == 3 && node->Camera().m_imageRevision == cappedRevision,
+			"lowering the budget must retain the completed image and its true sample count");
+		node->SetFloat("maxAccumulatedSamples"_h, 5);
+		RequireComposite(draw(), vec3(2, 0.5f, 0.125f));
+		Require(node->Camera().m_accumulatedSamples == 5, "raising the budget must resume without losing prior samples");
+		const auto& resumedBatch = node->Camera().m_pathTracer.GetLastRenderedImageLinear();
+		for (size_t i = 0; i < resumedBatch.Num(); ++i)
+		{
+			Require(length(node->Camera().m_accumulatedImage[i] - (cappedImage[i] * 3.0f + resumedBatch[i] * 2.0f) / 5.0f) < 1e-5f,
+				"resumed accumulation must preserve HDR and edge coverage with the true previous weight");
+		}
+		std::cout << "CPU tracer samples: rounded batches, partial final batch, reduced/raised cap and all-pixel HDR weights passed\n";
 	}
 
 	void TestHdrCompositing()
