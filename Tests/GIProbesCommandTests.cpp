@@ -204,7 +204,9 @@ namespace
 		auto reject = [&](std::string_view reason)
 		{
 			std::string diagnostic;
-			Require(!editor->StartGIProbesBake(request, diagnostic), "invalid or unsaved input must fail before starting a bake");
+			const bool bStarted = editor->StartGIProbesBake(request, diagnostic);
+			Require(!bStarted,
+				"invalid or unsaved input must fail before starting a bake: " + std::string(reason) + "; " + diagnostic);
 			const auto status = editor->GetGIProbesBakeStatus();
 			Require(diagnostic.find(reason) != std::string::npos && status.m_diagnostic == diagnostic &&
 				status.m_state == EEditorGIProbesBakeState::Failed,
@@ -220,10 +222,24 @@ namespace
 		malformed["prefabs"] = YAML::Node(YAML::NodeType::Map);
 		write(path, YAML::Dump(malformed));
 		reject("no prefab sequence");
+		auto mesh = receiver->GetComponent<MeshRendererComponent>();
 		malformed = YAML::Clone(saved);
-		malformed["prefabs"][0]["components"][0]["typename"] = "MissingBakeComponent";
+		bool bChangedComponent = false;
+		for (YAML::Node prefab : malformed["prefabs"])
+		{
+			for (YAML::Node component : prefab["components"])
+			{
+				if (component["overrideProperties"]["instanceId"].as<InstanceId>() == mesh->GetInstanceId())
+				{
+					component["typename"] = "MissingBakeComponent";
+					bChangedComponent = true;
+				}
+			}
+		}
+		Require(bChangedComponent, "preflight must change a gameplay component, not the excluded editor camera");
 		write(path, YAML::Dump(malformed));
-		reject("unknown type");
+		// Unknown types remain loadable, but changed gameplay data must not match the saved scene.
+		reject("unsaved changes");
 		for (const char* field : { "instanceIds", "gameObjectOverrides", "componentOverrides" })
 		{
 			malformed = YAML::Clone(saved);
@@ -243,7 +259,6 @@ namespace
 		transform.SetPosition(glm::vec3(position) + glm::vec3(1, 0, 0));
 		reject("unsaved changes");
 		transform.SetPosition(glm::vec3(position));
-		auto mesh = receiver->GetComponent<MeshRendererComponent>();
 		const auto model = mesh->GetModel();
 		mesh->SetModel({});
 		reject("unsaved changes");
