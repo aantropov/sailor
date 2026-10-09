@@ -254,7 +254,10 @@ ThreadContext& VulkanDevice::GetOrAddThreadContext(DWORD threadId)
 
 ThreadContext& VulkanDevice::GetCurrentThreadContext()
 {
-	return GetOrAddThreadContext(GetCurrentThreadId());
+	// Main's pools follow its queue across bootstrap, engine-loop and shutdown threads.
+	// The former owner can still allocate resources through its own native-thread context.
+	const DWORD contextId = App::GetSubmodule<Tasks::Scheduler>()->IsMainThread() ? 0 : GetCurrentThreadId();
+	return GetOrAddThreadContext(contextId);
 }
 
 VulkanSurfacePtr VulkanDevice::GetSurface() const

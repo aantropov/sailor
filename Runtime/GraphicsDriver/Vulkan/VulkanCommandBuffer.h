@@ -199,6 +199,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VkCommandBufferLevel m_level;
 
 		DWORD m_currentThreadId = 0;
+		bool m_bIsMainThreadOwned = false;
 
 		bool m_bIsRecorded = false;
 		bool m_bGraphicsPipelineBound = false;

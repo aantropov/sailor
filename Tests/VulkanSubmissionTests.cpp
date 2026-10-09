@@ -40,6 +40,7 @@
 #include "Submodules/Editor.h"
 #include "Settings/GraphicsSettings.h"
 #include "GraphicsDriver/Vulkan/VulkanDevice.h"
+#include "GraphicsDriver/Vulkan/VulkanCommandPool.h"
 #include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
 #include "GraphicsDriver/Vulkan/VulkanImage.h"
 #include "GraphicsDriver/Vulkan/VulkanImageView.h"
@@ -4254,6 +4255,55 @@ frame: []
 		return result;
 	}
 
+	void CheckMainCommandBufferRetirement()
+	{
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+		Require(scheduler->IsMainThread(), "the bootstrap caller must initially own Main");
+		auto callerCommand = Renderer::GetDriver()->CreateCommandList(false, ECommandListQueue::Graphics);
+		auto workerCommand = Renderer::GetDriver()->CreateCommandList(false, ECommandListQueue::Graphics);
+		const VkCommandBuffer callerHandle = *callerCommand->m_vulkan.m_commandBuffer;
+		const VkCommandBuffer workerHandle = *workerCommand->m_vulkan.m_commandBuffer;
+		const VkCommandPool originalPool = *callerCommand->m_vulkan.m_commandBuffer->GetCommandPool();
+		VkCommandPool mainPool = VK_NULL_HANDLE;
+		std::latch attached{ 1 }, released{ 1 };
+		std::vector<VkCommandBuffer> mainReleases;
+		std::thread owner([&]()
+			{
+				scheduler->AttachCurrentThreadAsMainThread();
+				auto command = Renderer::GetDriver()->CreateCommandList(false, ECommandListQueue::Graphics);
+				mainPool = *command->m_vulkan.m_commandBuffer->GetCommandPool();
+				command.Clear();
+				attached.count_down();
+				released.wait();
+				mainReleases = Tests::CaptureVulkanCommandBufferReleases([&]()
+					{
+						scheduler->ProcessTasksOnMainThread();
+					});
+			});
+		Tests::ScopeExit restore([&]()
+			{
+				released.count_down();
+				owner.join();
+				scheduler->AttachCurrentThreadAsMainThread();
+			});
+		attached.wait();
+		auto hostCommand = Renderer::GetDriver()->CreateCommandList(false, ECommandListQueue::Graphics);
+		const VkCommandPool hostPool = *hostCommand->m_vulkan.m_commandBuffer->GetCommandPool();
+		hostCommand.Clear();
+		const auto callerReleases = Tests::CaptureVulkanCommandBufferReleases([&]() { callerCommand.Clear(); });
+		auto releaseWorker = Tasks::CreateTask("Release old Main command buffer"_h,
+			[command = std::move(workerCommand)]() mutable { command.Clear(); }, EThreadType::RHI);
+		releaseWorker->Run()->Wait();
+		restore.Run();
+		Require(callerReleases.empty() && std::count(mainReleases.begin(), mainReleases.end(), callerHandle) == 1 &&
+			std::count(mainReleases.begin(), mainReleases.end(), workerHandle) == 1,
+			"Main command buffers released by the old owner and RHI must retire once on the new Main owner");
+		Require(mainPool == originalPool && hostPool != mainPool,
+			"Main must retain its pool while the former owner can independently create resources");
+		std::cout << "Command buffer retirement followed Main across native thread rebinding\n";
+	}
+
 	int RunImGuiWorkspaceGpu(int argc, const char** argv)
 	{
 		Tests::TempDirectory workspace("imgui-workspace");
@@ -4311,6 +4361,10 @@ frame: []
 					"the native host must load the actual workspace fixture through its manifest");
 				Require(Reflection::TryGetTypeByName("ImGuiWorkspace::FixtureComponent"),
 					"the App module manager must register the fixture's reflected component");
+				if (&probe == &probes.front())
+				{
+					CheckMainCommandBufferRetirement();
+				}
 				auto* context = ImGuiApi::GetCurrentContext();
 				ImGui::SetCurrentContext(context);
 				ImGui::GetIO().IniFilename = nullptr;

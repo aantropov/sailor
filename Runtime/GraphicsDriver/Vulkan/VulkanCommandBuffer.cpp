@@ -39,36 +39,45 @@ VulkanCommandBuffer::VulkanCommandBuffer(VulkanDevicePtr device, VulkanCommandPo
 	VK_CHECK(vkAllocateCommandBuffers(*m_device, &allocateInfo, &m_commandBuffer));
 
 	m_currentThreadId = GetCurrentThreadId();
+	if (auto* scheduler = App::GetSubmodule<Tasks::Scheduler>())
+	{
+		m_bIsMainThreadOwned = scheduler->IsMainThread();
+	}
 }
 
 VulkanCommandBuffer::~VulkanCommandBuffer()
 {
-	DWORD currentThreadId = GetCurrentThreadId();
-
 	auto pReleaseResource = Tasks::CreateTask("Release command buffer"_h,
 		[
 			duplicatedCommandBuffer = m_commandBuffer,
-				duplicatedCommandPool = m_commandPool,
-				duplicatedDevice = m_device
+			duplicatedCommandPool = m_commandPool,
+			duplicatedDevice = m_device
 		]()
 		{
 			if (duplicatedCommandBuffer)
 			{
 				vkFreeCommandBuffers(*duplicatedDevice, *duplicatedCommandPool, 1, &duplicatedCommandBuffer);
 			}
-		});
+		}, m_bIsMainThreadOwned ? EThreadType::Main : EThreadType::Worker);
 
-			auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
-			if (m_currentThreadId == currentThreadId || !scheduler || !scheduler->HasThread(m_currentThreadId))
-			{
-				pReleaseResource->Execute();
-				m_device.Clear();
-			}
-			else
-			{
-				scheduler->Run(pReleaseResource, m_currentThreadId);
-			}
-			ClearDependencies();
+	auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+	const bool bIsOwnerThread = m_bIsMainThreadOwned ? scheduler && scheduler->IsMainThread() :
+		m_currentThreadId == GetCurrentThreadId();
+	if (!scheduler || bIsOwnerThread || (!m_bIsMainThreadOwned && !scheduler->HasThread(m_currentThreadId)))
+	{
+		pReleaseResource->Execute();
+		m_device.Clear();
+	}
+	else if (m_bIsMainThreadOwned)
+	{
+		// Main can move from the bootstrap caller to the engine loop or shutdown caller.
+		scheduler->Run(pReleaseResource);
+	}
+	else
+	{
+		scheduler->Run(pReleaseResource, m_currentThreadId);
+	}
+	ClearDependencies();
 }
 
 VulkanCommandPoolPtr VulkanCommandBuffer::GetCommandPool() const

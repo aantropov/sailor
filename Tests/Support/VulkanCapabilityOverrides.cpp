@@ -9,12 +9,22 @@ namespace
 	thread_local std::vector<Sailor::Tests::VulkanBufferWrite>* g_bufferWrites = nullptr;
 	thread_local std::vector<VkImageMemoryBarrier>* g_imageBarriers = nullptr;
 	thread_local std::vector<Sailor::Tests::VulkanBufferCreation>* g_bufferCreations = nullptr;
+	thread_local std::vector<VkCommandBuffer>* g_commandBufferReleases = nullptr;
 	thread_local std::vector<Sailor::Tests::VulkanComputeInputEvent>* g_computeInputs = nullptr;
 	thread_local Sailor::Tests::VulkanDescriptorAllocationFailure* g_descriptorFailure = nullptr;
 }
 
 namespace Sailor::Tests
 {
+	std::vector<VkCommandBuffer> CaptureVulkanCommandBufferReleases(const std::function<void()>& release)
+	{
+		std::vector<VkCommandBuffer> buffers;
+		auto* previous = std::exchange(g_commandBufferReleases, &buffers);
+		ScopeExit restore([previous]() { g_commandBufferReleases = previous; });
+		release();
+		return buffers;
+	}
+
 	std::vector<VulkanBufferCreation> CaptureVulkanBufferCreations(const std::function<void()>& create)
 	{
 		std::vector<VulkanBufferCreation> buffers;
@@ -306,6 +316,16 @@ namespace
 		return result;
 	}
 
+	VKAPI_ATTR void VKAPI_CALL FreeCommandBuffers(VkDevice device, VkCommandPool pool,
+		uint32_t count, const VkCommandBuffer* buffers)
+	{
+		if (g_commandBufferReleases)
+		{
+			g_commandBufferReleases->insert(g_commandBufferReleases->end(), buffers, buffers + count);
+		}
+		vkFreeCommandBuffers(device, pool, count, buffers);
+	}
+
 	VKAPI_ATTR void VKAPI_CALL DestroyBuffer(VkDevice device, VkBuffer buffer, const VkAllocationCallbacks* allocator)
 	{
 		if (buffer) ++GetVulkanCapabilityOverrides().bufferDestroyCalls;
@@ -448,6 +468,7 @@ namespace
 		{ reinterpret_cast<const void*>(&AcquireNextImage), reinterpret_cast<const void*>(&vkAcquireNextImageKHR) },
 		{ reinterpret_cast<const void*>(&CreateSampler), reinterpret_cast<const void*>(&vkCreateSampler) },
 		{ reinterpret_cast<const void*>(&CreateBuffer), reinterpret_cast<const void*>(&vkCreateBuffer) },
+		{ reinterpret_cast<const void*>(&FreeCommandBuffers), reinterpret_cast<const void*>(&vkFreeCommandBuffers) },
 		{ reinterpret_cast<const void*>(&DestroyBuffer), reinterpret_cast<const void*>(&vkDestroyBuffer) },
 		{ reinterpret_cast<const void*>(&CreateImage), reinterpret_cast<const void*>(&vkCreateImage) },
 		{ reinterpret_cast<const void*>(&DestroyImage), reinterpret_cast<const void*>(&vkDestroyImage) },

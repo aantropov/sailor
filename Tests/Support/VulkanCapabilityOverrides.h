@@ -27,6 +27,7 @@ namespace Sailor::Tests
 	};
 
 	std::vector<VulkanBufferCreation> CaptureVulkanBufferCreations(const std::function<void()>& create);
+	std::vector<VkCommandBuffer> CaptureVulkanCommandBufferReleases(const std::function<void()>& release);
 
 	struct VulkanComputeInputEvent
 	{
