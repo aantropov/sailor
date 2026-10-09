@@ -223,18 +223,37 @@ namespace
 				"the engine pump must leave unrelated host messages for the host loop");
 			// PostQuitMessage is generated after all queued work, including native
 			// helper windows. Drain as the host would, leaving WM_QUIT for Sailor.
+			uint32_t hostMessages = 0;
+			bool bHostObservedQuit = false;
+			bool bHostRemovedQuit = false;
 			while (survivor.IsRunning() && PeekMessage(&hostMessage, nullptr, 0, 0, PM_NOREMOVE))
 			{
 				if (hostMessage.message == WM_QUIT)
 				{
+					bHostObservedQuit = true;
 					break;
 				}
-				PeekMessage(&hostMessage, nullptr, 0, 0, PM_REMOVE);
+				const bool bRemoved = PeekMessage(&hostMessage, nullptr, 0, 0, PM_REMOVE) != FALSE;
+				bHostRemovedQuit |= bRemoved && hostMessage.message == WM_QUIT;
+				++hostMessages;
 				TranslateMessage(&hostMessage);
 				DispatchMessage(&hostMessage);
 			}
 			Window::ProcessWin32Msgs();
-			Require(!survivor.IsRunning(), "thread quit must stop the surviving native window after the host drains its messages");
+			const bool bStopped = !survivor.IsRunning();
+			if (!bStopped)
+			{
+				const DWORD queueStatus = GetQueueStatus(QS_ALLINPUT);
+				MSG pending{};
+				const bool bPending = PeekMessage(&pending, nullptr, 0, 0, PM_NOREMOVE) != FALSE;
+				std::cerr << "[INFO] Quit failure: iteration=" << iteration
+					<< ", sent=" << bUseSentMessage << ", hostMessages=" << hostMessages
+					<< ", observedQuit=" << bHostObservedQuit << ", removedQuit=" << bHostRemovedQuit
+					<< ", queue=" << queueStatus << ", pending=" << bPending
+					<< ", message=" << pending.message << ", hwnd=" << pending.hwnd
+					<< ", survivor=" << survivor.GetHWND() << '\n';
+			}
+			Require(bStopped, "thread quit must stop the surviving native window after the host drains its messages");
 		}
 	}
 
