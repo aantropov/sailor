@@ -780,7 +780,7 @@ namespace
 		const auto status = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 144,
 			ProtocolRequest::kGetModelFingerprintStatusFieldNumber, fileId.SerializeAsString()), queried, dependencies);
 		Require(status.success() && status.request_id() == 144 &&
-			status.result_case() == ProtocolResponse::kModelFingerprintStatusResultFieldNumber &&
+			status.result_case() == ProtocolResponse::kModelFingerprintStatusResult &&
 			status.model_fingerprint_status_result().status() == MODEL_FINGERPRINT_STATUS_UNAVAILABLE,
 			"status queries must distinguish an absent request/importer from pending or ready output");
 	}
