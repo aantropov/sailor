@@ -393,7 +393,7 @@ namespace
 	{
 		using Allocation = Memory::TMemoryPtr<Memory::VulkanBufferMemoryPtr>;
 		const Memory::VulkanBufferMemoryPtr storage({}, 0u, 65536u);
-		for (const size_t stride : { 16u, 48u, 112u, 144u, 176u, 256u, 512u })
+		for (const size_t stride : { 16u, 48u, 112u, 144u, 176u, 256u, 304u, 512u })
 		{
 			for (const size_t deviceAlignment : { 1u, 16u, 32u, 64u, 128u, 256u })
 			{

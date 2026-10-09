@@ -30,9 +30,9 @@ namespace
 	const EMemoryPropertyFlags HostMemory = EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent;
 	const EBufferUsageFlags TransferUsage = EBufferUsageBit::BufferTransferSrc_Bit | EBufferUsageBit::BufferTransferDst_Bit;
 
-	TSharedPtr<VulkanBufferAllocator> CreatePool()
+	TSharedPtr<VulkanBufferAllocator> CreatePool(size_t blockSize = 4096u)
 	{
-		auto pool = TSharedPtr<VulkanBufferAllocator>::Make(4096u, 64u, 4096u);
+		auto pool = TSharedPtr<VulkanBufferAllocator>::Make(blockSize, 64u, blockSize);
 		pool->GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 		pool->GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
 			VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT);
@@ -45,6 +45,37 @@ namespace
 		auto buffer = RHIBufferPtr::Make(usage, HostMemory);
 		buffer->m_vulkan.m_buffer = TSharedPtr<Allocation>::Make(pool->Allocate(size, alignment), pool);
 		return buffer;
+	}
+
+	std::string ValidateSsboRangeReuse()
+	{
+		for (const size_t stride : { 112u, 144u, 304u })
+		{
+			for (const size_t deviceAlignment : { 16u, 64u, 256u })
+			{
+				auto pool = CreatePool(65536u);
+				auto prefix = AllocateBuffer(pool, 13u, TransferUsage, 1u);
+				std::array<RHIBufferPtr, 3> buffers;
+				const size_t alignment = SsboLayout::ResolveSsboOffsetAlignment(stride, deviceAlignment);
+				for (auto& buffer : buffers)
+				{
+					buffer = AllocateBuffer(pool, stride * 3u, EBufferUsageBit::StorageBuffer_Bit, alignment);
+					if (buffer->GetOffset() % stride != 0u || buffer->GetOffset() % deviceAlignment != 0u ||
+						buffer->GetSize() != stride * 3u)
+					{
+						return std::format("SSBO range violates stride {} or device alignment {}", stride, deviceAlignment);
+					}
+				}
+				const auto middle = *buffers[1]->m_vulkan.m_buffer->Get();
+				buffers[1].Clear();
+				auto reused = AllocateBuffer(pool, stride * 3u, EBufferUsageBit::StorageBuffer_Bit, alignment);
+				if (*reused->m_vulkan.m_buffer->Get() != middle)
+				{
+					return std::format("SSBO hole was not reused at stride {} and device alignment {}", stride, deviceAlignment);
+				}
+			}
+		}
+		return {};
 	}
 
 	std::string Submit(RHICommandListPtr cmd)
@@ -252,6 +283,10 @@ std::string BufferLifetimeTestComponent::Prepare()
 {
 	// Factory-only gate precedes all client-side RHIBuffer layout access on older libraries.
 	if (auto error = ValidateSharedOwner(); !error.empty()) return error;
+	if (auto error = ValidateSsboRangeReuse(); !error.empty())
+	{
+		return error;
+	}
 	if (auto error = ValidateUploads(); !error.empty()) return error;
 	if (auto error = ValidateImageCopies(); !error.empty()) return error;
 	for (bool projected : { false, true })
@@ -392,6 +427,8 @@ void BufferLifetimeTestComponent::Tick(float)
 	}
 	else
 	{
+		AddJournalEvent("SsboRangeReuse",
+			"Strides 112/144/304 and device alignments 16/64/256 retain array sizes and reuse the middle allocation while both neighbors remain live");
 		AddJournalEvent("BufferLifetimeEvidence",
 			"Shared original allocation; padded partial uploads and pool reuse; buffer/image round trip; direct/projected A/B compute readbacks; real UpdateMesh replacement before direct/indirect draws with full 8x8 readbacks and final-owner release");
 		MarkPassed();
