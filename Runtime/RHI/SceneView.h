@@ -442,7 +442,6 @@ namespace Sailor::RHI
 
 		RHIShaderBindingSetPtr m_frameBindings{};
 		RHIShaderBindingSetPtr m_rhiLightsData{};
-		RHIShaderBindingSetPtr m_rhiLightCullingData{};
 		TSharedPtr<const TVector<RHILightShaderData>> m_cpuLightsData{};
 		TVector<glm::mat4> m_shadowMatrices{};
 		uint64_t m_lightingRevision = 0ull;

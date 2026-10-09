@@ -28,8 +28,6 @@ namespace Sailor::RHI
 		RHIShaderBindingSetPtr m_sharedLightsStorage{};
 		RHIShaderBindingSetPtr m_sharedGlobalIlluminationStorage{};
 		RHIShaderBindingSetPtr m_frameBindings{};
-		RHIShaderBindingSetPtr m_lightCullingBindings{};
-		size_t m_lightCullingTileCapacity = 0u;
 		size_t m_shadowMatrixCapacity = 0u;
 		size_t m_shadowIndexCapacity = 0u;
 		size_t m_shadowAtlasTileCapacity = 0u;

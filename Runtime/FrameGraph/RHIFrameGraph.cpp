@@ -10,7 +10,6 @@
 #include "RHI/Surface.h"
 #include "RHI/Cubemap.h"
 #include "RHI/CommandList.h"
-#include "FrameGraph/LightCullingNode.h"
 #include "FrameGraph/EnvironmentNode.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "Settings/GraphicsSettings.h"
@@ -91,47 +90,6 @@ namespace
 		}
 	}
 
-	void PrepareLightCullingResources(RHIFrameGraph* owner, const LightCullingNode& node, RHISceneViewSnapshot& snapshot)
-	{
-		auto depth = node.GetResolvedAttachment("linearDepth"_h, owner);
-		if (!depth)
-		{
-			const auto surface = owner->GetSurface("LinearDepth"_h);
-			depth = surface ? surface->GetResolved() : owner->GetRenderTarget("LinearDepth"_h);
-		}
-		if (!depth)
-		{
-			snapshot.m_rhiLightCullingData.Clear();
-			return;
-		}
-
-		auto resources = snapshot.m_submissionContext->GetOrAddFrameGraphResources<RHIViewSubmissionResources>(
-			owner, snapshot.m_cameraIndex, 0u);
-		auto& driver = Renderer::GetDriver();
-		const auto extent = depth->GetExtent();
-		const size_t numTiles = static_cast<size_t>((extent.x - 1) / LightCullingNode::TileSize + 1) *
-			((extent.y - 1) / LightCullingNode::TileSize + 1);
-		if (resources->m_lightCullingTileCapacity < numTiles)
-		{
-			auto bindings = driver->CreateShaderBindings();
-			driver->AddSsboToShaderBindings(bindings, "culledLights"_h,
-				sizeof(uint32_t) * numTiles * LightCullingNode::LightsPerTile, 1u, 0u, true);
-			driver->AddSsboToShaderBindings(bindings, "lightsGrid"_h, sizeof(uint32_t) * numTiles * 2u, 1u, 1u, true);
-			resources->m_lightCullingBindings = bindings;
-			resources->m_lightCullingTileCapacity = numTiles;
-
-			// The main pass reads the same allocations that this compute pass writes.
-			driver->AddShaderBinding(snapshot.m_rhiLightsData, bindings->GetOrAddShaderBinding("culledLights"_h), "culledLights"_h, 1u);
-			driver->AddShaderBinding(snapshot.m_rhiLightsData, bindings->GetOrAddShaderBinding("lightsGrid"_h), "lightsGrid"_h, 2u);
-		}
-		auto& bindings = resources->m_lightCullingBindings;
-		if (bindings->GetOrAddShaderBinding("linearDepth"_h)->GetTextureBinding() != depth)
-		{
-			driver->AddSamplerToShaderBindings(bindings, "linearDepth"_h, depth, 2u);
-		}
-		snapshot.m_rhiLightCullingData = bindings;
-	}
-
 	void PrepareViewSubmissionResources(
 		RHIFrameGraph* owner,
 		RHICommandListPtr transferCommandList,
@@ -163,8 +121,6 @@ namespace
 				EShaderBindingType::UniformBuffer);
 		}
 		snapshot.m_frameBindings = resources->m_frameBindings;
-
-		snapshot.m_rhiLightCullingData = resources->m_lightCullingBindings;
 
 		auto lightsTemplate = snapshot.m_rhiLightsData;
 		if (lightsTemplate == resources->m_lightsBindings && resources->m_lightsTemplate)
@@ -209,19 +165,6 @@ namespace
 				sharedResources->m_lightsStorage->GetOrAddShaderBinding("light"_h),
 				"light"_h,
 				0u);
-			if (resources->m_lightCullingBindings)
-			{
-				driver->AddShaderBinding(
-					resources->m_lightsBindings,
-					resources->m_lightCullingBindings->GetOrAddShaderBinding("culledLights"_h),
-					"culledLights"_h,
-					1u);
-				driver->AddShaderBinding(
-					resources->m_lightsBindings,
-					resources->m_lightCullingBindings->GetOrAddShaderBinding("lightsGrid"_h),
-					"lightsGrid"_h,
-					2u);
-			}
 			driver->AddSsboToShaderBindings(
 				resources->m_lightsBindings,
 				"lightsMatrices"_h,
@@ -883,10 +826,6 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 					timingName);
 			}
 
-			if (auto lightCulling = node.DynamicCast<LightCullingNode>())
-			{
-				PrepareLightCullingResources(this, *lightCulling, snapshot);
-			}
 			node->Process(frameRefPtr, transferCmdList, cmdList, snapshot);
 			if (bExecuteQueries)
 			{

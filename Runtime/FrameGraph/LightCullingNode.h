@@ -5,6 +5,7 @@
 #include "RHI/Types.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
+#include "RHI/RenderSubmission.h"
 
 namespace Sailor::Framegraph
 {
@@ -21,6 +22,16 @@ namespace Sailor::Framegraph
 		SAILOR_API virtual void Clear() override;
 
 	protected:
+
+		class SubmissionResources final : public RHI::RHIFrameGraphSubmissionResource
+		{
+		public:
+			void ResetForSubmission() override {}
+
+			RHI::RHIShaderBindingSetPtr m_bindings{};
+			RHI::RHIShaderBindingPtr m_publishedIndices{};
+			size_t m_tileCapacity = 0;
+		};
 
 		struct PushConstants
 		{

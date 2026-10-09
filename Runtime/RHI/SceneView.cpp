@@ -832,7 +832,6 @@ void RHISceneViewSnapshot::ResetForReuse()
 	m_shadowAtlasTiles.Clear(false);
 	m_frameBindings.Clear();
 	m_rhiLightsData.Clear();
-	m_rhiLightCullingData.Clear();
 	m_cpuLightsData.Clear();
 	m_shadowMatrices.Clear(false);
 	m_lightingRevision = 0ull;

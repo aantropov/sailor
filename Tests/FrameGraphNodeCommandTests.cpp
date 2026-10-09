@@ -7374,12 +7374,22 @@ frame:
 
 	enum class LightCullingInput { Default, Bound, Named, NamedWithoutDefault };
 
+	class LightCullingProbe : public LightCullingNode
+	{
+	public:
+		RHIShaderBindingSetPtr GetBindings(const RHISceneViewSnapshot& scene) const
+		{
+			return scene.m_submissionContext->GetOrAddFrameGraphResources<SubmissionResources>(
+				this, scene.m_cameraIndex, 0u)->m_bindings;
+		}
+	};
+
 	void TestLightCulling(LightCullingInput inputMode, bool surfaceInput, bool sameFlight)
 	{
 		auto& driver = Renderer::GetDriver();
 		auto commands = Renderer::GetDriverCommands();
 		auto graph = TRefPtr<TestGraph>::Make();
-		auto node = TRefPtr<LightCullingNode>::Make();
+		auto node = TRefPtr<LightCullingProbe>::Make();
 		graph->GetGraph().Add(node);
 		if (inputMode == LightCullingInput::Named || inputMode == LightCullingInput::NamedWithoutDefault)
 			node->SetRHIResource_Unresolved("linearDepth"_h, "SelectedDepth"_h);
@@ -7415,9 +7425,11 @@ frame:
 			scene.m_camera = TUniquePtr<CameraData>::Make(cameraData);
 			scene.m_bGlobalIlluminationEnabled = false;
 		}
-		// Initial, unchanged, replaced, larger, smaller, Clear, no lights, restored lights.
+		// Initial, unchanged, replaced, larger, smaller, Clear, no lights, restored lights,
+		// replaced lighting set, then unchanged again.
 		const std::array extents{ glm::ivec2(8), glm::ivec2(8), glm::ivec2(8), glm::ivec2(35, 19),
-			glm::ivec2(11, 5), glm::ivec2(17, 33), glm::ivec2(17, 33), glm::ivec2(17, 33) };
+			glm::ivec2(11, 5), glm::ivec2(17, 33), glm::ivec2(17, 33), glm::ivec2(17, 33),
+			glm::ivec2(17, 33), glm::ivec2(17, 33) };
 		for (uint32_t round = 0; round < extents.size(); ++round)
 		{
 			const auto extent = extents[round];
@@ -7452,8 +7464,12 @@ frame:
 				scene.m_cpuLightsData = lights;
 				scene.m_totalNumLights = round == 6 ? 0 : static_cast<uint32_t>(lights->Num());
 				scene.m_lightingRevision = round + 1;
+				if (round == 8)
+				{
+					scene.m_rhiLightsData = driver->CreateShaderBindings();
+				}
 				scene.m_camera->SetProjectionMatrix(Math::PerspectiveRH(glm::radians(90.0f), aspect, 0.1f, 200.0f));
-				if (round != 1 && round != 6 && round != 7)
+				if (round != 1 && round < 6)
 				{
 					auto surface = surfaceInput ? driver->CreateSurface(extent, 1, EFormat::R32_SFLOAT) : RHISurfacePtr{};
 					recording.depth = surface ? surface->GetResolved() : driver->CreateRenderTarget(extent, 1, EFormat::R32_SFLOAT);
@@ -7501,8 +7517,8 @@ frame:
 						Require(driver->SubmitCommandList(command, RHIFencePtr::Make(), next, recording.ready), "light-culling commands must submit");
 						recording.ready = next;
 					}
-				auto bindings = scene.m_rhiLightCullingData;
-				Require(bindings.IsValid(), "light-culling bindings must be published to the view");
+				auto bindings = node->GetBindings(scene);
+				Require(bindings.IsValid(), "light-culling bindings must belong to the node's flight/camera resources");
 				const auto indices = *bindings->GetOrAddShaderBinding("culledLights"_h)->m_vulkan.m_valueBinding->Get();
 				const auto grid = *bindings->GetOrAddShaderBinding("lightsGrid"_h)->m_vulkan.m_valueBinding->Get();
 				auto indexReadback = driver->CreateBuffer(indices.m_size, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
@@ -7542,11 +7558,13 @@ frame:
 				{
 					Require(bindings == recording.bindings && indices == recording.indices && grid == recording.grid,
 						"completed flight/camera must reuse sufficient tile storage, including replaced inputs and smaller extents");
-					Require(scene.m_rhiLightsData->m_vulkan.m_descriptorSet == recording.lightingDescriptor,
+					Require((scene.m_rhiLightsData->m_vulkan.m_descriptorSet == recording.lightingDescriptor) == (round != 8),
 						"unchanged output allocations must not rebuild downstream lighting descriptors");
 				}
-				if (round == 1 || round == 6 || round == 7)
+				if (round == 1 || round >= 6)
+				{
 					Require(bindings->m_vulkan.m_descriptorSet == recording.descriptor, "unchanged culling inputs must not rebuild descriptors");
+				}
 				recording.bindings = bindings;
 				recording.descriptor = bindings->m_vulkan.m_descriptorSet;
 				recording.lightingDescriptor = scene.m_rhiLightsData->m_vulkan.m_descriptorSet;
@@ -7557,7 +7575,7 @@ frame:
 				"pending cameras/flights must own separate culling output ranges");
 		}
 		std::cout << "LightCulling input=" << static_cast<uint32_t>(inputMode) << " surface=" << surfaceInput << " sameFlight=" << sameFlight <<
-			": eight frames, two pending views, native bindings and exact GPU tile lists passed\n";
+			": ten frames, two pending views, reused descriptors and exact GPU tile lists passed\n";
 	}
 
 	void TestPostProcessFlights(const std::string& shader, bool sameFlight)
