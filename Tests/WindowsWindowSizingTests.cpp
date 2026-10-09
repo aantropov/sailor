@@ -217,11 +217,13 @@ namespace
 			Require(PostMessage(hostWindow, WM_APP + 18, 0, 0), "the host's unrelated message must be queued");
 			PostQuitMessage(0);
 			Window::ProcessWin32Msgs();
-			Require(!survivor.IsRunning(), "thread quit must stop the surviving native window");
 			MSG hostMessage{};
 			Require(PeekMessage(&hostMessage, hostWindow, WM_APP + 18, WM_APP + 18, PM_REMOVE) &&
 				hostMessage.hwnd == hostWindow && hostMessage.message == WM_APP + 18,
 				"the engine pump must leave unrelated host messages for the host loop");
+			// PostQuitMessage waits for the host to drain its own queued work.
+			Window::ProcessWin32Msgs();
+			Require(!survivor.IsRunning(), "thread quit must stop the surviving native window after the host drains its messages");
 		}
 	}
 
