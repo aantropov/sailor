@@ -384,7 +384,7 @@ namespace
 		if (const auto* lightingEcs = world->GetECS<LightingECS>())
 		{
 			const auto sky = lightingEcs->GetSky();
-			const LightComponent* sun = sky ? sky->GetDirectionalLight().GetRawPtr() : nullptr;
+			const auto sun = sky ? sky->GetDirectionalLight() : TObjectPtr<LightComponent>{};
 			const bool bUsesSun = sun && sun->GetLightType() == ELightType::Directional &&
 				IsGlobalIlluminationBakeContributor(sun->GetOwner()->GetMobilityType()) &&
 				ContributesToBakedGlobalIllumination(sun->GetGlobalIlluminationMode());
