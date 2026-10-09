@@ -419,6 +419,29 @@ namespace Sailor::Tests
 				!binding.PumpFrame(start + 70'000).IsOk() && provider.m_createCalls.size() == creates,
 				"destroy must release recovery resources and prevent resurrection");
 		}
+
+		TProvider provider;
+		TPresenter presenter;
+		TBinding binding{ viewport, provider, presenter };
+		auto& session = binding.GetRuntimeSession();
+		const auto disconnect = Failure::FromDomain(ErrorDomain::Connection, 9, "import disconnected");
+		for (uint64_t attempt = 0; attempt < 2; ++attempt)
+		{
+			const auto nowMs = start + attempt * 3'600'000;
+			presenter.m_nextImportFailure = disconnect;
+			RequireViewport(binding.Create(nowMs) == disconnect && session.GetState() == SessionState::Lost,
+				"initial and repeated import failures must retain the connection error");
+			RequireViewport(binding.PumpFrame(nowMs + 4999) == disconnect,
+				"import failure must receive a full reconnect interval from the operation clock");
+			const auto timeout = binding.PumpFrame(nowMs + 5000);
+			RequireViewport(timeout.m_scope == FailureScope::Connection && timeout != disconnect &&
+				session.GetDiagnostics().m_lastCategory == DiagnosticCategory::Timeout,
+				"import reconnect timeout must expire on the same clock as creation and recreation");
+		}
+		RequireViewport(binding.Create(start + 7'200'000).IsOk() && binding.PumpFrame(start + 7'206'000).IsOk(),
+			"successful import must cancel the reconnect deadline");
+		RequireViewport(binding.Destroy().IsOk() && provider.m_liveSurfaces.empty(),
+			"import timeout fixture must release every surface");
 	}
 
 }

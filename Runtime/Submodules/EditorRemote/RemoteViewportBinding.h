@@ -28,7 +28,7 @@ namespace Sailor::EditorRemote
 			m_visible = true;
 			m_focused = false;
 			m_created = true;
-			return EnsureTransportImported();
+			return EnsureTransportImported(nowMs);
 		}
 
 		Failure Resize(uint32_t width, uint32_t height, uint64_t nowMs = GetMonotonicTimeMs())
@@ -137,10 +137,10 @@ namespace Sailor::EditorRemote
 			if (!result.IsOk()) return result;
 			result = m_runtimeSession.Recreate(m_runtimeSession.GetConnectionEpoch() + 1, nowMs);
 			if (!result.IsOk()) return result;
-			return EnsureTransportImported();
+			return EnsureTransportImported(nowMs);
 		}
 
-		Failure EnsureTransportImported()
+		Failure EnsureTransportImported(uint64_t nowMs)
 		{
 			TransportDescriptor transport;
 			auto result = m_runtimeSession.EnsureBackendTransport(m_transportBackend, transport);
@@ -151,7 +151,7 @@ namespace Sailor::EditorRemote
 			{
 				m_transportBackend.ReleaseSurface(m_runtimeSession.GetViewportId(),
 					m_runtimeSession.GetConnectionEpoch(), m_runtimeSession.GetGeneration());
-				m_runtimeSession.MarkFailure(result);
+				m_runtimeSession.MarkFailure(result, nowMs);
 				return result;
 			}
 			return CompleteTransportImport(transport);
