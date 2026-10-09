@@ -51,14 +51,22 @@ namespace
 	{
 		if (type.starts_with("List<") && type.ends_with('>'))
 		{
-			if (value.IsNull()) return true;
+			if (value.IsNull())
+			{
+				return true;
+			}
 			if (!value.IsSequence())
 			{
 				error = "Expected a list default for '" + std::string(type) + "'.";
 				return false;
 			}
 			for (const YAML::Node& item : value)
-				if (!ValidateDefault(item, type.substr(5, type.size() - 6), catalog, error)) return false;
+			{
+				if (!ValidateDefault(item, type.substr(5, type.size() - 6), catalog, error))
+				{
+					return false;
+				}
+			}
 			return true;
 		}
 		if (type.starts_with("enum "))
@@ -67,7 +75,12 @@ namespace
 			if (definition != catalog.m_enums.end() && value.IsScalar())
 			{
 				for (const YAML::Node& member : definition.Value().begin()->second)
-					if (member.IsScalar() && member.Scalar() == value.Scalar()) return true;
+				{
+					if (member.IsScalar() && member.Scalar() == value.Scalar())
+					{
+						return true;
+					}
+				}
 			}
 			error = "Default value for '" + std::string(type) + "' is not a declared member.";
 			return false;
@@ -76,11 +89,17 @@ namespace
 		if (schema != catalog.m_types.end() && value.IsMap())
 		{
 			const YAML::Node properties = schema.Value()["properties"];
-			if (!properties.IsMap()) return true;
+			if (!properties.IsMap())
+			{
+				return true;
+			}
 			for (const auto& property : value)
 			{
 				const auto fieldType = properties[property.first.Scalar()];
-				if (fieldType && fieldType.IsScalar() && !ValidateDefault(property.second, fieldType.Scalar(), catalog, error)) return false;
+				if (fieldType && fieldType.IsScalar() && !ValidateDefault(property.second, fieldType.Scalar(), catalog, error))
+				{
+					return false;
+				}
 			}
 		}
 		return true;
@@ -92,7 +111,9 @@ YAML::Node Reflection::ExportTypes(const TVector<const TypeInfo*>& types)
 	YAML::Node metadata;
 	metadata["timeStamp"] = std::time(nullptr);
 	for (const auto section : { "engineTypes", "cdos", "enums", "assetTypes" })
+	{
 		metadata[section] = YAML::Node(YAML::NodeType::Sequence);
+	}
 	TSet<std::string> typeNames;
 	TSet<std::string> enumNames;
 	for (const auto* type : types)
@@ -104,7 +125,10 @@ YAML::Node Reflection::ExportTypes(const TVector<const TypeInfo*>& types)
 		defaults["defaultValues"] = YAML::Clone(*type->GetDefaultValues());
 		metadata["cdos"].push_back(defaults);
 	}
-	for (const auto* type : types) type->AppendValueTypes(metadata, typeNames, enumNames);
+	for (const auto* type : types)
+	{
+		type->AppendValueTypes(metadata, typeNames, enumNames);
+	}
 	return metadata;
 }
 
@@ -112,7 +136,10 @@ bool Reflection::PrepareTypeCatalog(YAML::Node metadata, TSet<std::string> regis
 	ReflectedTypeCatalog& outCatalog, std::string& outError)
 {
 	ReflectedTypeCatalog catalog;
-	if (!IndexCatalog(metadata, catalog, outError)) return false;
+	if (!IndexCatalog(metadata, catalog, outError))
+	{
+		return false;
+	}
 	for (auto entry = catalog.m_enums.begin(); entry != catalog.m_enums.end(); ++entry)
 	{
 		const YAML::Node values = entry.Value().begin()->second;
@@ -123,7 +150,12 @@ bool Reflection::PrepareTypeCatalog(YAML::Node metadata, TSet<std::string> regis
 		}
 	}
 	for (auto defaults = catalog.m_defaults.begin(); defaults != catalog.m_defaults.end(); ++defaults)
-		if (!ValidateDefault(defaults.Value()["defaultValues"], defaults.Key(), catalog, outError)) return false;
+	{
+		if (!ValidateDefault(defaults.Value()["defaultValues"], defaults.Key(), catalog, outError))
+		{
+			return false;
+		}
+	}
 	catalog.m_metadata = std::move(metadata);
 	catalog.m_registeredTypes = std::move(registeredTypes);
 	outCatalog = std::move(catalog);
@@ -135,13 +167,19 @@ bool Reflection::MergeTypeMetadata(const YAML::Node& engineMetadata, const Refle
 	YAML::Node& outMetadata, std::string& outError)
 {
 	ReflectedTypeCatalog engine;
-	if (!IndexCatalog(engineMetadata, engine, outError)) return false;
+	if (!IndexCatalog(engineMetadata, engine, outError))
+	{
+		return false;
+	}
 	TSet<std::string> sharedTypes;
 	TSet<std::string> sharedEnums;
 	for (auto type = workspace.m_types.begin(); type != workspace.m_types.end(); ++type)
 	{
 		const auto existing = engine.m_types.Find(type.Key());
-		if (existing == engine.m_types.end()) continue;
+		if (existing == engine.m_types.end())
+		{
+			continue;
+		}
 		const auto existingDefaults = engine.m_defaults.Find(type.Key());
 		const auto defaults = workspace.m_defaults.Find(type.Key());
 		if (workspace.m_registeredTypes.Contains(type.Key()) ||
@@ -165,7 +203,10 @@ bool Reflection::MergeTypeMetadata(const YAML::Node& engineMetadata, const Refle
 	for (auto entry = workspace.m_enums.begin(); entry != workspace.m_enums.end(); ++entry)
 	{
 		const auto existing = engine.m_enums.Find(entry.Key());
-		if (existing == engine.m_enums.end()) continue;
+		if (existing == engine.m_enums.end())
+		{
+			continue;
+		}
 		if (!Utils::AreYamlNodesEqual(entry.Value(), existing.Value()))
 		{
 			outError = "Workspace enum metadata conflicts with engine identity '" + entry.Key() + "'.";
@@ -180,7 +221,10 @@ bool Reflection::MergeTypeMetadata(const YAML::Node& engineMetadata, const Refle
 		{
 			const bool bEnum = std::string_view(section) == "enums";
 			const auto& name = bEnum ? entry.begin()->first.Scalar() : entry["typename"].Scalar();
-			if ((bEnum ? sharedEnums : sharedTypes).Contains(name)) continue;
+			if ((bEnum ? sharedEnums : sharedTypes).Contains(name))
+			{
+				continue;
+			}
 			merged[section].push_back(YAML::Clone(entry));
 		}
 	}

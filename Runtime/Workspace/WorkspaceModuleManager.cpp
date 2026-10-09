@@ -36,7 +36,10 @@ namespace
 	uint32_t SAILOR_WORKSPACE_CALL CollectWorkspaceType(
 		void* context, const WorkspaceTypeDescriptorV1* descriptor) noexcept
 	{
-		if (!context || !descriptor) return static_cast<uint32_t>(EWorkspaceModuleResult::InvalidArgument);
+		if (!context || !descriptor)
+		{
+			return static_cast<uint32_t>(EWorkspaceModuleResult::InvalidArgument);
+		}
 		auto& collector = *static_cast<WorkspaceTypeCollector*>(context);
 		if (descriptor->structSize < sizeof(WorkspaceTypeDescriptorV1) || !descriptor->typeInfo ||
 			!descriptor->placementFactory || descriptor->typeSize == 0 || descriptor->typeAlignment == 0 ||
