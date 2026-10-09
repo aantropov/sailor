@@ -209,12 +209,13 @@ namespace
 					Require(SetConsoleCP(codePage) && SetConsoleOutputCP(codePage), "the native code page must be set");
 					Require(SetConsoleCtrlHandler(nullptr, FALSE), "Ctrl-C must not be inherited as ignored");
 
-					// The fixture writes input and reads output, opposite to the engine's streams.
+					// The fixture injects input rather than reading the engine's stream.
 					const auto input = CreateFileW(L"CONIN$", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
 						nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
 					Require(input != INVALID_HANDLE_VALUE, "the native input queue must be writable by the fixture");
 					Sailor::Tests::ScopeExit closeInput([&]() { CloseHandle(input); });
-					const auto output = CreateFileW(L"CONOUT$", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+					// Cursor positioning needs write access; echo inspection needs read access.
+					const auto output = CreateFileW(L"CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
 						nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
 					Require(output != INVALID_HANDLE_VALUE, "the native echo must be readable by the fixture");
 					Sailor::Tests::ScopeExit closeOutput([&]() { CloseHandle(output); });
