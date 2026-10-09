@@ -5460,7 +5460,7 @@ frame:
 		std::memset(buffer->GetPointer(), 0, sizeof(glm::vec4));
 		Require(driver->AddBufferToShaderBindings(bindings, buffer, "material"_h, 0).IsValid(), "transparent fixture parameters must bind");
 		const RenderState state(false, false, 0, false, ECullMode::None, EBlendMode::AlphaBlending,
-			EFillMode::Fill, "Translucent"_h.GetHash(), false);
+			EFillMode::Fill, "Translucent"_h.GetHash(), true);
 		auto material = driver->CreateMaterial(mesh->m_vertexDescription, EPrimitiveTopology::TriangleList, state, shader, bindings);
 		Require(material && material->GetVersion(), "transparent fixture must have a complete material");
 		auto scene = RHIScenePtr::Make();
@@ -5533,8 +5533,75 @@ frame:
 		Require(firstResources->m_packet.GetNumInstances() == 3 &&
 			firstResources->m_packet.GetPayload(EMobilityType::Dynamic).m_instances[1].model[3].z == -2,
 			"preparing the second camera must not rewrite the first camera's packet");
+
+		const glm::vec4 settings(0, 0, 0, 1);
+		std::memcpy(buffer->GetPointer(), &settings, sizeof(settings));
+		UboFrameData frame{};
+		frame.m_view = frame.m_projection = frame.m_invProjection = glm::mat4(1);
+		frame.m_projection[2][2] = -0.2f;
+		frame.m_viewportSize = glm::ivec2(Side);
+		auto frameBuffer = driver->CreateBuffer(sizeof(frame), EBufferUsageBit::UniformBuffer_Bit, HostMemory);
+		std::memcpy(frameBuffer->GetPointer(), &frame, sizeof(frame));
+		snapshot.m_frameBindings = driver->CreateShaderBindings();
+		driver->AddBufferToShaderBindings(snapshot.m_frameBindings, frameBuffer, "frame"_h, 0);
+		snapshot.m_rhiLightsData = driver->CreateShaderBindings();
+		snapshot.m_bGlobalIlluminationEnabled = false;
+		auto color = driver->CreateSurface(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
+		auto depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::D32_SFLOAT);
+		node->SetRHIResource("color"_h, color);
+		node->SetRHIResource("depthStencil"_h, depth);
+		auto commands = Renderer::GetDriverCommands();
+		for (uint32_t cameraIndex : { 1u, 0u })
+		{
+			snapshot.m_cameraIndex = cameraIndex;
+			const auto resources = node->GetResources(snapshot);
+			const auto& packet = resources->m_packet;
+			const auto count = packet.GetNumInstances();
+			auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+			commands->BeginCommandList(upload, true);
+			commands->BeginCommandList(draw, true);
+			ClearColor(draw, color->GetTarget(), glm::vec4(0));
+			node->Process(graph, upload, draw, snapshot);
+			Require(node->GetDrawCallStats().m_numInstances == count &&
+				packet.m_metrics.m_instanceUploadBytes == count * sizeof(RenderSceneNode::PerInstanceData) &&
+				packet.m_metrics.m_dirtyInstanceRanges == 1,
+				"each transparent camera must record its own draws and one complete dynamic upload");
+			draw->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+			const auto readBuffer = [&](const auto& source, size_t size)
+			{
+				auto result = driver->CreateBuffer(size, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+				draw->m_vulkan.m_commandBuffer->CopyBuffer(source, *result->m_vulkan.m_buffer->Get(), size);
+				return result;
+			};
+			const auto& instanceBindings = resources->m_perInstanceData->GetShaderBindings();
+			const auto instances = readBuffer(*instanceBindings["data"_h]->m_vulkan.m_valueBinding->Get(),
+				count * sizeof(RenderSceneNode::PerInstanceData));
+			const auto indices = readBuffer(*instanceBindings["indices"_h]->m_vulkan.m_valueBinding->Get(),
+				count * sizeof(uint32_t));
+			const auto indirect = readBuffer(*resources->m_indirectBuffers[0]->m_vulkan.m_buffer->Get(),
+				count * sizeof(DrawIndexedIndirectData));
+			const auto pixels = ReadColor(draw, color->GetResolved());
+			CompleteCommands(upload, draw);
+			const auto* actualInstances = static_cast<const RenderSceneNode::PerInstanceData*>(instances->GetPointer());
+			const auto* actualIndices = static_cast<const uint32_t*>(indices->GetPointer());
+			const auto* actualDraws = static_cast<const DrawIndexedIndirectData*>(indirect->GetPointer());
+			for (uint32_t i = 0; i < count; ++i)
+			{
+				Require(actualInstances[i] == packet.GetPayload(EMobilityType::Dynamic).m_instances[i] &&
+					actualIndices[i] == i && actualDraws[i].m_firstInstance == i && actualDraws[i].m_instanceCount == 1 &&
+					actualDraws[i].m_indexCount == mesh->GetIndexCount() && actualDraws[i].m_firstIndex == mesh->GetFirstIndex() &&
+					actualDraws[i].m_vertexOffset == mesh->GetVertexOffset(),
+					"submitted GPU instances, indices and indirect commands must preserve the prepared transparent order");
+			}
+			const auto* colors = static_cast<const glm::vec4*>(pixels->GetPointer());
+			for (uint32_t pixel = 0; pixel < Side * Side; ++pixel)
+			{
+				Require(colors[pixel] == glm::vec4(1), "each camera's transparent draws must cover the target");
+			}
+		}
 		std::cout << "Transparent packet paged=" << paged << " instanced=" << instanced
-			<< ": two cameras, mixed mobility, depth order, indices and material versions passed\n";
+			<< ": two cameras, mixed mobility, material versions, GPU draw order, uploads and pixels passed\n";
 	}
 
 	void TestDepthPacketParameters(ShaderSetPtr shader, bool paged, bool instanced, bool masked, EMobilityType mobility)
