@@ -9,6 +9,13 @@
 #include <string_view>
 #include <thread>
 
+#if defined(_WIN32)
+#include "Support/ScopeExit.h"
+#include "Support/TempDirectory.h"
+#include <fstream>
+#include <windows.h>
+#endif
+
 namespace Sailor::Tests
 {
 	struct ConsoleWindowTestAccess
@@ -175,13 +182,154 @@ namespace
 			"a close callback must wait through console closure and return only after engine shutdown completes");
 		ConsoleWindowTestAccess::RequestExit(true);
 	}
+
+#if defined(_WIN32)
+	int RunNativeConsole()
+	{
+		// OpenWindow redirects the CRT streams; retain the parent's report file separately.
+		HANDLE report = nullptr;
+		if (!DuplicateHandle(GetCurrentProcess(), GetStdHandle(STD_OUTPUT_HANDLE),
+			GetCurrentProcess(), &report, 0, FALSE, DUPLICATE_SAME_ACCESS))
+		{
+			return 1;
+		}
+		Sailor::Tests::ScopeExit closeReport([&]() { CloseHandle(report); });
+		try
+		{
+			for (UINT codePage : { 1251u, 1252u })
+			{
+				for (DWORD signal : { CTRL_C_EVENT, CTRL_BREAK_EVENT })
+				{
+					ConsoleWindow::Initialize(false);
+					Sailor::Tests::ScopeExit shutdown([]() { ConsoleWindow::Shutdown(); });
+					auto console = ConsoleWindowTestAccess::Make();
+					console.OpenWindow(L"Sailor console test");
+					Require(GetConsoleWindow() != nullptr, "the detached child must allocate its own console");
+					ShowWindow(GetConsoleWindow(), SW_HIDE);
+					Require(SetConsoleCP(codePage) && SetConsoleOutputCP(codePage), "the native code page must be set");
+					Require(SetConsoleCtrlHandler(nullptr, FALSE), "Ctrl-C must not be inherited as ignored");
+
+					const auto input = GetStdHandle(STD_INPUT_HANDLE);
+					const auto output = GetStdHandle(STD_OUTPUT_HANDLE);
+					Require(FlushConsoleInputBuffer(input) && SetConsoleCursorPosition(output, { 0, 0 }),
+						"the native input queue and output cursor must be ready");
+					for (wchar_t character : std::wstring_view(L"\u041a\u00e9x\b\rnext\r"))
+					{
+						INPUT_RECORD event{};
+						event.EventType = KEY_EVENT;
+						event.Event.KeyEvent.bKeyDown = TRUE;
+						event.Event.KeyEvent.wRepeatCount = 1;
+						event.Event.KeyEvent.uChar.UnicodeChar = character;
+						DWORD written = 0;
+						Require(WriteConsoleInputW(input, &event, 1, &written) && written == 1,
+							"each key must enter the actual Win32 input queue");
+					}
+
+					std::array<char, ConsoleWindow::MaxCommandBytes> line{};
+					console.Update();
+					const auto length = console.Read(line.data(), static_cast<uint32_t>(line.size()));
+					Require(std::string_view(line.data(), length) == "\xd0\x9a\xc3\xa9",
+						"native input must preserve Unicode and apply Backspace independently of the code page");
+					std::array<wchar_t, 3> echo{};
+					DWORD read = 0;
+					Require(ReadConsoleOutputCharacterW(output, echo.data(), static_cast<DWORD>(echo.size()), { 0, 0 }, &read) &&
+						read == echo.size() && std::wstring_view(echo.data(), echo.size()) == L"\u041a\u00e9 ",
+						"native echo must preserve Unicode and erase the deleted character");
+					console.Update();
+					Require(console.Read(line.data(), static_cast<uint32_t>(line.size())) == 4 &&
+						std::string_view(line.data()) == "next", "the second native line must survive the first Update");
+
+					Require(!ConsoleWindow::IsExitRequested() && GenerateConsoleCtrlEvent(signal, 0),
+						"each console session must receive a real control event");
+					const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+					while (!ConsoleWindow::IsExitRequested() && std::chrono::steady_clock::now() < deadline)
+					{
+						std::this_thread::sleep_for(std::chrono::milliseconds(1));
+					}
+					Require(ConsoleWindow::IsExitRequested(), "the registered native control handler must request engine stop");
+					console.CloseWindow();
+					shutdown.Run();
+					Require(GetConsoleWindow() == nullptr, "shutdown must detach the console before the next session");
+				}
+			}
+		}
+		catch (const std::exception& error)
+		{
+			DWORD written = 0;
+			const std::string message = std::string(error.what()) + '\n';
+			WriteFile(report, message.data(), static_cast<DWORD>(message.size()), &written, nullptr);
+			return 1;
+		}
+		return 0;
+	}
+
+	void TestNativeConsole()
+	{
+		Sailor::Tests::TempDirectory directory("native-console");
+		const auto logPath = directory.Path("console.log");
+		SECURITY_ATTRIBUTES security{ sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE };
+		const auto report = CreateFileW(logPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ, &security,
+			CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+		Require(report != INVALID_HANDLE_VALUE, "the native console report must be writable");
+		Sailor::Tests::ScopeExit closeReport([&]() { CloseHandle(report); });
+		const auto input = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &security,
+			OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+		Require(input != INVALID_HANDLE_VALUE, "the native child must have an input handle");
+		Sailor::Tests::ScopeExit closeInput([&]() { CloseHandle(input); });
+		std::wstring executable(32768, L'\0');
+		const DWORD length = GetModuleFileNameW(nullptr, executable.data(), static_cast<DWORD>(executable.size()));
+		Require(length > 0 && length < executable.size(), "the test executable path must be complete");
+		executable.resize(length);
+		auto command = L"\"" + executable + L"\" --native-console";
+		STARTUPINFOW startup{};
+		startup.cb = sizeof(startup);
+		startup.dwFlags = STARTF_USESTDHANDLES;
+		startup.hStdInput = input;
+		startup.hStdOutput = report;
+		startup.hStdError = report;
+		PROCESS_INFORMATION process{};
+		// Never send control events to the CI runner's console or another process group.
+		Require(CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, TRUE,
+			DETACHED_PROCESS, nullptr, nullptr, &startup, &process), "the isolated native console child must start");
+		CloseHandle(process.hThread);
+		Sailor::Tests::ScopeExit closeProcess([&]() { CloseHandle(process.hProcess); });
+		const auto wait = WaitForSingleObject(process.hProcess, 10000);
+		if (wait != WAIT_OBJECT_0)
+		{
+			Require(TerminateProcess(process.hProcess, 1) &&
+				WaitForSingleObject(process.hProcess, 5000) == WAIT_OBJECT_0,
+				"the timed-out native console child must terminate before its report is removed");
+		}
+		DWORD exitCode = 1;
+		const bool bHasExitCode = GetExitCodeProcess(process.hProcess, &exitCode) != FALSE;
+		closeReport.Run();
+		std::ifstream log(logPath);
+		std::cout << std::string(std::istreambuf_iterator<char>(log), {});
+		Require(wait == WAIT_OBJECT_0 && bHasExitCode && exitCode == 0,
+			"native Windows console input, echo, control delivery and repeated shutdown must pass");
+		std::cout << "Native Windows console passed: CP1251/CP1252, Ctrl-C/Ctrl-Break, four sessions\n";
+	}
+#endif
 }
 
-int main()
+int main(int argc, char** argv)
 {
+#if defined(_WIN32)
+	if (argc == 2 && std::string_view(argv[1]) == "--native-console")
+	{
+		return RunNativeConsole();
+	}
+#else
+	(void)argc;
+	(void)argv;
+#endif
 	uint32_t failures = 0;
 	for (const auto test : { TestUnicodeLine, TestSequentialLines, TestBoundedOutput,
-		TestContinuousInput, TestFullAndOverflowedLines, TestEditingAndReset, TestExitRequest, TestShutdownHandoff })
+		TestContinuousInput, TestFullAndOverflowedLines, TestEditingAndReset, TestExitRequest, TestShutdownHandoff
+#if defined(_WIN32)
+		, TestNativeConsole
+#endif
+	})
 	{
 		try { test(); }
 		catch (const std::exception& error)
