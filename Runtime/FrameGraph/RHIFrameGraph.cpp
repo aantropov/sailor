@@ -10,7 +10,7 @@
 #include "RHI/Surface.h"
 #include "RHI/Cubemap.h"
 #include "RHI/CommandList.h"
-#include "FrameGraph/EnvironmentNode.h"
+#include "FrameGraph/LocalReflection.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "Settings/GraphicsSettings.h"
 #include "Tasks/Tasks.h"
@@ -288,9 +288,8 @@ namespace
 			resources->m_shadowAtlasTilesHash = InvalidContentHash;
 		}
 
-		LocalReflectionParameters localParameters{};
-		if (auto environment = owner->GetGraphNode("Environment"_h).DynamicCast<EnvironmentNode>())
-			localParameters = environment->GetLocalReflectionParameters();
+		// Shader defaults apply even when the graph omits the producing node.
+		const LocalReflectionParameters localParameters{};
 		commands->UpdateShaderBinding(transferCommandList,
 			resources->m_lightsBindings->GetOrAddShaderBinding("localReflection"_h),
 			&localParameters, sizeof(localParameters), 0u);

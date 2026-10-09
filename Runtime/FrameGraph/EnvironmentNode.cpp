@@ -66,6 +66,16 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdCompute);
 
+	if (sceneView.m_rhiLightsData && m_localParameters.m_minEnabled.w != 0.0f)
+	{
+		// This view already bound the published maps; filtering below prepares the next view.
+		commands->MemoryBarrier(transferCommandList, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+			static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit));
+		commands->UpdateShaderBinding(transferCommandList,
+			sceneView.m_rhiLightsData->GetShaderBindings()["localReflection"_h],
+			&m_localParameters, sizeof(m_localParameters), 0u);
+	}
+
 	SetTag("Environment"_h);
 
 	if (!m_pComputeBrdfShader)

@@ -3697,11 +3697,96 @@ frame:
 			checkPixels(graph, { 4, 0.5f, 0.25f });
 		});
 		const std::array localNames{ "g_localEnvCubemap"_h, "g_localSheenEnvCubemap"_h };
+		auto lightingView = RHISceneViewPtr::Make();
+		lightingView->m_snapshots.Resize(2);
+		auto lightingSubmission = RHIRenderSubmissionContextPtr::Make();
+		World cameraWorld("LocalReflectionCamera", 0);
+		auto camera = cameraWorld.Instantiate("Camera")->AddComponent<CameraComponent>();
+		cameraWorld.GetECS<CameraECS>()->Tick(0);
+		auto cameraData = camera->GetData();
+		cameraData.SetOwner({});
+		cameraWorld.Clear();
+		for (uint32_t i = 0; i < 2; ++i)
+		{
+			auto& scene = lightingView->m_snapshots[i];
+			scene.m_submissionContext = lightingSubmission;
+			scene.m_cameraIndex = i;
+			scene.m_camera = TUniquePtr<CameraData>::Make(cameraData);
+			scene.m_bGlobalIlluminationEnabled = false;
+		}
+		uint64_t lightingFrame = 0;
+		const auto checkLighting = [&](bool bReplaceBindings = false)
+		{
+			auto& driver = Renderer::GetDriver();
+			auto commands = Renderer::GetDriverCommands();
+			const auto expected = graph->GetGraph().IsEmpty() ? LocalReflectionParameters{} : node->GetLocalReflectionParameters();
+			lightingSubmission->BeginSubmission(++lightingFrame, 0);
+			if (bReplaceBindings)
+			{
+				for (auto& scene : lightingView->m_snapshots)
+				{
+					scene.m_rhiLightsData = driver->CreateShaderBindings();
+				}
+			}
+			TVector<RHICommandListPtr> uploads, draws;
+			RHISemaphorePtr ready;
+			Require(graph->Process(lightingView, uploads, draws, {}, ready), "the local reflection graph must record both cameras");
+			for (size_t i = 0; i < uploads.Num(); ++i)
+			{
+				for (const auto& command : { uploads[i], draws[i] })
+				{
+					auto next = driver->CreateWaitSemaphore();
+					Require(driver->SubmitCommandList(command, RHIFencePtr::Make(), next, ready), "local reflection view commands must submit");
+					ready = next;
+				}
+			}
+			std::array<Memory::VulkanBufferMemoryPtr, 2> uniforms;
+			for (uint32_t i = 0; i < 2; ++i)
+			{
+				auto bindings = lightingView->m_snapshots[i].m_rhiLightsData;
+				uniforms[i] = *bindings->GetOrAddShaderBinding("localReflection"_h)->m_vulkan.m_valueBinding->Get();
+				auto buffer = driver->CreateBuffer(sizeof(expected), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+				auto read = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				commands->BeginCommandList(read, true);
+				read->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+				read->m_vulkan.m_commandBuffer->CopyBuffer(uniforms[i], *buffer->m_vulkan.m_buffer->Get(), sizeof(expected));
+				read->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
+				commands->EndCommandList(read);
+				auto finished = RHIFencePtr::Make();
+				auto next = driver->CreateWaitSemaphore();
+				Require(driver->SubmitCommandList(read, finished, next, ready) && finished->Wait(5000000000ull) == EFenceStatus::Finished,
+					"local reflection uniform readback must complete");
+				ready = next;
+				const auto& actual = *static_cast<const LocalReflectionParameters*>(buffer->GetPointer());
+				if (actual.m_positionBlend != expected.m_positionBlend || actual.m_minEnabled != expected.m_minEnabled ||
+					actual.m_max != expected.m_max)
+				{
+					throw std::runtime_error("Local reflection uniform mismatch: frame=" + std::to_string(lightingFrame) +
+						", camera=" + std::to_string(i) + ", expected position/enabled=" + std::to_string(expected.m_positionBlend.x) +
+						"/" + std::to_string(expected.m_minEnabled.w) + ", actual=" + std::to_string(actual.m_positionBlend.x) +
+						"/" + std::to_string(actual.m_minEnabled.w));
+				}
+				if (expected.m_minEnabled.w != 0.0f)
+				{
+					for (auto name : localNames)
+					{
+						Require(bindings->GetOrAddShaderBinding(name)->GetTextureBinding() == graph->GetSampler(name),
+							"the uniform and sampled local maps must belong to the same completed capture");
+					}
+				}
+			}
+			Require(uniforms[0] != uniforms[1], "pending cameras must not share a writable local reflection uniform range");
+		};
+		onRender([&]()
+		{
+			checkLighting(); // A graph without Environment must initialize a disabled local capture.
+			graph->GetGraph().Add(node);
+		});
 		const auto publishLocal = [&](uint32_t samples, glm::vec3 radiance)
 		{
 			LocalReflectionImage image;
 			image.m_extent = { 4, 2 };
-			image.m_parameters.m_positionBlend = { 0, 0, 0, 1 };
+			image.m_parameters.m_positionBlend = { float(samples), 0, 0, 1 + float(samples) };
 			image.m_parameters.m_minEnabled = { -10, -10, -10, 1 };
 			image.m_parameters.m_max = { 10, 10, 10, 0 };
 			image.m_samplesPerPixel = samples;
@@ -3747,6 +3832,7 @@ frame:
 			for (uint32_t frame = 0; frame < 16 && !node->IsLocalReflectionReady(); ++frame) process();
 			Require(node->GetLocalReflectionSamples() == 1, "the initial local capture must publish");
 			checkLocalPixels({ 1, 0.5f, 0.25f });
+			checkLighting();
 		});
 		uint32_t samples = 1;
 		for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
@@ -3779,6 +3865,11 @@ frame:
 				for (uint32_t frame = 0; frame < 16 && node->GetLocalReflectionSamples() != samples; ++frame) process();
 				Require(node->GetLocalReflectionSamples() == samples, "the pending local capture must retry without another SetLocalReflection");
 				checkLocalPixels(radiance);
+				checkLighting();
+				const auto bindings = lightingView->m_snapshots[0].m_rhiLightsData;
+				checkLighting();
+				Require(lightingView->m_snapshots[0].m_rhiLightsData == bindings, "warm local parameters must reuse lighting bindings");
+				checkLighting(true);
 				std::array<RHITexturePtr, 2> accepted;
 				for (uint32_t i = 0; i < accepted.size(); ++i) accepted[i] = graph->GetSampler(localNames[i]);
 				for (uint32_t frame = 0; frame < 8; ++frame) process();
@@ -3786,7 +3877,24 @@ frame:
 					Require(graph->GetSampler(localNames[i]) == accepted[i], "warm local reflection frames must retain the accepted pair");
 			});
 		}
+		onRender([&]()
+		{
+			graph->GetGraph().Clear(false);
+			checkLighting();
+			graph->GetGraph().Add(node);
+			checkLighting();
+		});
+		node->ResetLocalReflection();
+		App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(EThreadType::Render);
+		onRender([&]()
+		{
+			checkLighting();
+			checkLighting();
+			graph->Clear();
+			checkLighting();
+		});
 		std::cout << "Local reflection initialization: upload/three-map refusal, retained capture, Render-queue retry and all face/mip pixels passed\n";
+		std::cout << "Local reflection lighting: two camera GPU uniforms, matching maps, warm reuse, replaced bindings, reset and absent node passed\n";
 		std::cout << "Authored HDR reload: four-map pixels, retained consumers, failed reload/repair and 32 warm invalidations passed\n";
 	}
 
