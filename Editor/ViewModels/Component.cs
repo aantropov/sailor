@@ -218,41 +218,54 @@ public class ComponentYamlConverter : IYamlTypeConverter
         var catalog = MauiProgram.GetService<EngineService>().EngineTypes;
         if (!catalog.TryGetComponent(document.Typename, out var componentType))
         {
-            var unknown = new Component
-            {
-                Typename = new ComponentType { Name = document.Typename },
-                IsUndefined = true
-            };
-            foreach (var property in document.OverrideProperties)
-            {
-                unknown.PreservedReadOnlyProperties[property.Key] = property.Value;
-            }
-            return unknown;
+            return PreserveUndefined(document);
         }
 
         var component = new Component { Typename = componentType };
         var values = new ReflectedValueCodec(catalog);
-        foreach (var property in document.OverrideProperties ?? [])
+        try
         {
-            var propertyAccess = EditorComponentPropertyContract.Classify(
-                property.Key,
-                componentType.Properties,
-                componentType.ReadOnlyProperties);
-            if (propertyAccess == EditorComponentPropertyAccess.ReadOnly)
+            foreach (var property in document.OverrideProperties ?? [])
             {
-                component.PreservedReadOnlyProperties[property.Key] = property.Value;
-                continue;
-            }
-            if (propertyAccess == EditorComponentPropertyAccess.Unknown)
-            {
-                throw new YamlException(
-                    $"Unknown property '{property.Key}' for component type '{componentType.Name}'.");
-            }
+                var propertyAccess = EditorComponentPropertyContract.Classify(
+                    property.Key,
+                    componentType.Properties,
+                    componentType.ReadOnlyProperties);
+                if (propertyAccess == EditorComponentPropertyAccess.ReadOnly)
+                {
+                    component.PreservedReadOnlyProperties[property.Key] = property.Value;
+                    continue;
+                }
+                if (propertyAccess == EditorComponentPropertyAccess.Unknown)
+                {
+                    throw new YamlException(
+                        $"Unknown property '{property.Key}' for component type '{componentType.Name}'.");
+                }
 
-            component.OverrideProperties[property.Key] = values.Read(
-                componentType.Properties[property.Key], property.Value, componentType.Name, property.Key);
+                component.OverrideProperties[property.Key] = values.Read(
+                    componentType.Properties[property.Key], property.Value, componentType.Name, property.Key);
+            }
+        }
+        catch (Exception error) when (error is YamlException or InvalidDataException)
+        {
+            Console.Error.WriteLine($"Cannot read component '{document.Typename}': {error.Message}");
+            return PreserveUndefined(document);
         }
 
+        return component;
+    }
+
+    static Component PreserveUndefined(EditorComponentYamlContract document)
+    {
+        var component = new Component
+        {
+            Typename = new ComponentType { Name = document.Typename },
+            IsUndefined = true
+        };
+        foreach (var property in document.OverrideProperties ?? [])
+        {
+            component.PreservedReadOnlyProperties[property.Key] = property.Value;
+        }
         return component;
     }
 

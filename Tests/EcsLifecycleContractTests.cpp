@@ -1,6 +1,8 @@
 #include "Components/AnimatorComponent.h"
 #include "Components/LandscapeComponent.h"
 #include "Components/MeshRendererComponent.h"
+#include "Components/UnknownComponent.h"
+#include "Core/YamlUtils.h"
 #include "ECS/PhysicsECS.h"
 #include "Submodules/Editor.h"
 #include "Support/EcsTestFixtures.h"
@@ -961,7 +963,7 @@ namespace
 		prefab.DestroyObject(world.GetAllocator());
 	}
 
-	void TestFailedPrefabNeverBeginsGameplay()
+	void TestMalformedComponentPreservesPrefab()
 	{
 		PrefabTestWorld world(GameplayMask);
 		world.Instantiate("ExistingObject");
@@ -974,20 +976,66 @@ namespace
 		{
 			YAML::Node properties;
 			properties["value"] = index == 0 ? "15.0" : "not-a-float";
+			if (index == 1)
+			{
+				properties["m_dependency"]["fileId"] = "NullFileId";
+				properties["m_dependency"]["instanceId"] = "1111111111111111_10010010010010010000";
+			}
 			components.push_back(MakeReflectedComponent(
 				index == 0 ? "1111111111111111_10010010010010010000" : "2222222222222222_10010010010010010000",
 				properties, true, LifecycleTestComponent::GetStaticTypeInfo().Name()));
 		}
 		auto prefab = DeserializePrefab(world, MakeComponentPrefabNode(components));
-		Require(!world.Instantiate(prefab), "a malformed property must reject the prefab after component initialization");
-		Require(world.GetGameObjects().Num() == 1 && world.GetPendingDependencyCount() == 0 &&
-			LifecycleTestComponent::s_initialized == initialized + 2 && LifecycleTestComponent::s_ended == ended + 2 &&
+		auto root = world.Instantiate(prefab);
+		Require(root && root->GetComponents().Num() == 2 && root->GetComponent(1).DynamicCast<UnknownComponent>(),
+			"a malformed component must be preserved without discarding its prefab");
+		Require(world.GetGameObjects().Num() == 2 && world.GetPendingDependencyCount() == 0 &&
+			LifecycleTestComponent::s_initialized == initialized + 2 && LifecycleTestComponent::s_ended == ended + 1 &&
 			LifecycleTestComponent::s_begun == begun,
-			"rollback must release initialized components without running their gameplay callbacks");
+			"only the failed component must release its initialized ECS slot, without starting gameplay");
+		auto saved = PrefabDocumentTestAsset::Capture(world, root);
+		Require(Utils::AreYamlNodesEqual(saved->Serialize()["components"][1], components[1]),
+			"saving must preserve the malformed value, original type and component identity");
 		world.TickLifecycle();
-		Require(LifecycleTestComponent::s_begun == begun,
-			"failed prefab components must not remain eligible for a later lifecycle phase");
+		Require(LifecycleTestComponent::s_begun == begun + 1 && root->GetComponent<LifecycleTestComponent>()->m_valueAtBegin == 15.0f,
+			"healthy components must begin gameplay while the malformed component stays inactive");
+		auto duplicate = world.Instantiate(saved, EPrefabInstanceIdPolicy::GenerateNew);
+		Require(duplicate && duplicate->GetComponent(1).DynamicCast<UnknownComponent>(),
+			"saving and duplicating must keep the malformed component loadable");
+		const auto copied = duplicate->GetComponent(1)->GetReflectedData().Serialize();
+		Require(copied["overrideProperties"]["m_dependency"]["instanceId"].as<InstanceId>() == duplicate->GetComponent(0)->GetInstanceId(),
+			"the preserved component's references must point into its own prefab instance");
+		auto repaired = saved->Serialize();
+		repaired["components"][1]["overrideProperties"]["value"] = 42.0f;
+		auto restored = world.Instantiate(DeserializePrefab(world, repaired), EPrefabInstanceIdPolicy::GenerateNew);
+		Require(restored && restored->GetComponent(1).DynamicCast<LifecycleTestComponent>(),
+			"reloading corrected properties must restore the real component");
+		Require(restored->GetComponent(1).DynamicCast<LifecycleTestComponent>()->GetValue() == 42.0f,
+			"the restored component must use its repaired value");
 		world.Clear();
+		saved.DestroyObject(world.GetAllocator());
+		prefab.DestroyObject(world.GetAllocator());
+	}
+
+	void TestMalformedLandscapeStampsPreserveSceneData()
+	{
+		BulkClearTestWorld world;
+		ScopeExit cleanup([&]() { world.Clear(); });
+		YAML::Node properties;
+		properties["sculptStamps"] = YAML::Load("[0, 0, 1100, 8, 0]");
+		YAML::Node components;
+		components.push_back(MakeReflectedComponent("1111111111111111_10010010010010010000",
+			properties, true, LandscapeComponent::GetStaticTypeInfo().Name()));
+		components.push_back(MakeReflectedComponent("2222222222222222_10010010010010010000",
+			YAML::Node(YAML::NodeType::Map), true, MeshRendererComponent::GetStaticTypeInfo().Name()));
+		auto prefab = PrefabPtr::Make(world.GetAllocator(), FileId::Invalid);
+		prefab->Deserialize(MakeComponentPrefabNode(components));
+		auto root = world.Instantiate(prefab);
+		Require(root && root->GetComponents().Num() == 2 && root->GetComponent<MeshRendererComponent>() &&
+			root->GetComponent(0).DynamicCast<UnknownComponent>(),
+			"a scalar where a landscape stamp record is expected must not stop subsequent components from loading");
+		Require(Utils::AreYamlNodesEqual(root->GetComponent(0)->GetReflectedData().Serialize(), components[0]),
+			"the rejected landscape data must remain intact for inspection and repair");
 		prefab.DestroyObject(world.GetAllocator());
 	}
 
@@ -1640,7 +1688,8 @@ int main()
 		{ "EditorLifecycleNeverStartsGameplay", TestEditorLifecycleNeverStartsGameplay },
 		{ "BeginPlayAndTickMasksRemainIndependent", TestBeginPlayAndTickMasksRemainIndependent },
 		{ "PrefabBeginsAfterHydrationAndHierarchy", TestPrefabBeginsAfterHydrationAndHierarchy },
-		{ "FailedPrefabNeverBeginsGameplay", TestFailedPrefabNeverBeginsGameplay },
+		{ "MalformedComponentPreservesPrefab", TestMalformedComponentPreservesPrefab },
+		{ "MalformedLandscapeStampsPreserveSceneData", TestMalformedLandscapeStampsPreserveSceneData },
 		{ "BeginPlayWaitsForExternalReferences", TestBeginPlayWaitsForExternalReferences },
 		{ "PendingReferencesStayWithinPrefabInstance", TestPendingReferencesStayWithinPrefabInstance },
 		{ "BeginPlayCanChangeComponentLists", TestBeginPlayCanChangeComponentLists },

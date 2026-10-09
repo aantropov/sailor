@@ -2817,17 +2817,6 @@ namespace
 			mismatchedComponentOwnerNode,
 			"a prefab with a reflected component owned by another game object");
 
-		YAML::Node malformedValueComponents(YAML::NodeType::Sequence);
-		YAML::Node malformedValueProperties;
-		malformedValueProperties["m_value"] = "not-a-float";
-		malformedValueComponents.push_back(MakeReflectedComponent(
-			"1111111111111111_10010010010010010000",
-			malformedValueProperties));
-		RequireRejectedWithoutWorldMutation(
-			world,
-			MakeComponentPrefabNode(malformedValueComponents),
-			"a reflected component with a malformed scalar property");
-
 		YAML::Node lateFailureComponents(YAML::NodeType::Sequence);
 		YAML::Node unresolvedProperties;
 		unresolvedProperties["m_dependency"]["fileId"] = "NullFileId";

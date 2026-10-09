@@ -474,11 +474,15 @@ GameObjectPtr World::Instantiate(
 					applyDiagnostic))
 			{
 				SAILOR_LOG_ERROR(
-					"Cannot apply reflected component %u from prefab '%s': %s.",
-					componentIndex,
-					prefab->GetFileId().ToString().c_str(),
+					"Cannot load component '%s' on '%s': %s. Its data is preserved as undefined.",
+					reflection.GetTypeName().c_str(),
+					prefab->m_gameObjects[j].m_name.c_str(),
 					applyDiagnostic.c_str());
-				return {};
+				// Initialize may have allocated ECS state before a property failed to decode.
+				gameObject->RemoveComponent(newComponent);
+				newComponent = gameObject->AddComponentRaw(
+					TObjectPtr<UnknownComponent>::Make(GetAllocator()), newComponentInstanceId);
+				newComponent->ApplyReflection(reflection);
 			}
 
 			// We store the old ids for internal dependencies during resolve
@@ -511,7 +515,7 @@ GameObjectPtr World::Instantiate(
 
 			const ReflectedData& reflection = prefab->m_components[componentIndex];
 
-			if (!reflection.IsValid())
+			if (newComp.DynamicCast<UnknownComponent>())
 			{
 				ReflectedData remapped;
 				remapped.Deserialize(PrefabInstance::NormalizeReferences(reflection.Serialize(), sourceToInstanceIds));

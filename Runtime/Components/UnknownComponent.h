@@ -3,7 +3,7 @@
 
 namespace Sailor
 {
-	// Preserves missing workspace component data until its module is rebuilt.
+	// Preserves component data when its type is unavailable or its properties cannot be read.
 	class UnknownComponent final : public Component
 	{
 	public:
