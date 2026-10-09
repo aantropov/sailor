@@ -314,6 +314,7 @@ target_compile_features(SailorLib PUBLIC cxx_std_20)
 target_compile_definitions(SailorLib PUBLIC GLM_FORCE_CXX11)
 target_compile_definitions(SailorLib PUBLIC NOMINMAX)
 
+target_compile_definitions(SailorLib PUBLIC $<$<CONFIG:Debug>:_DEBUG>)
 target_compile_definitions(SailorLib PUBLIC $<$<CONFIG:Release>:_SHIPPING>)
 target_compile_definitions(SailorLib PRIVATE SAILOR_BUILD_CONFIG="$<CONFIG>")
 target_compile_definitions(SailorLib PRIVATE SAILOR_ENGINE_VERSION="${PROJECT_VERSION}")
@@ -360,6 +361,9 @@ if(WIN32)
 endif()
 
 if(APPLE)
+	# Xcode enables this implicitly; SDK consumers using other generators must match.
+	target_compile_definitions(SailorLib PUBLIC
+		$<$<CONFIG:Debug>:_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG>)
 	find_library(SAILOR_COREAUDIO_FRAMEWORK CoreAudio REQUIRED)
 	find_library(SAILOR_AUDIOTOOLBOX_FRAMEWORK AudioToolbox REQUIRED)
 	find_library(SAILOR_COCOA_FRAMEWORK Cocoa REQUIRED)
