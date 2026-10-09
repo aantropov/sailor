@@ -1910,6 +1910,12 @@ void main() { color = vec4(float(params.value)); }
 			{ RHI::EShaderStage::Vertex, 0u, 0u, R"(#version 450
 layout(location=0) in vec4 position;
 void main() { gl_Position = position; }
+)" },
+			{ RHI::EShaderStage::Compute, 0u, 16u, R"(#version 450
+layout(local_size_x=1) in;
+layout(push_constant) uniform Params { uvec4 value; } params;
+layout(set=0,binding=0) buffer Result { uvec4 value; } result;
+void main() { result.value = params.value; }
 )" }
 		};
 		for (const bool debug : { false, true })
