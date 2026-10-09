@@ -33,22 +33,16 @@
 #include <thread>
 #include <utility>
 
-#if defined(_WIN32)
-#define SAILOR_PROTOCOL_TEST_IMPORT __declspec(dllimport)
-#else
-#define SAILOR_PROTOCOL_TEST_IMPORT
-#endif
-
 extern "C"
 {
-	SAILOR_PROTOCOL_TEST_IMPORT int32_t SailorProtocolInvoke(
+	SAILOR_SHARED_API int32_t SailorProtocolInvoke(
 		const uint8_t* requestData,
 		uint32_t requestSize,
 		uint8_t** responseData,
 		uint32_t* responseSize) noexcept;
 
-	SAILOR_PROTOCOL_TEST_IMPORT void SailorProtocolFreeBuffer(uint8_t* buffer) noexcept;
-	SAILOR_PROTOCOL_TEST_IMPORT int32_t SailorProtocolStopLocalHost(bool bShutdownEngine) noexcept;
+	SAILOR_SHARED_API void SailorProtocolFreeBuffer(uint8_t* buffer) noexcept;
+	SAILOR_SHARED_API int32_t SailorProtocolStopLocalHost(bool bShutdownEngine) noexcept;
 }
 
 namespace
@@ -2802,7 +2796,7 @@ namespace
 	}
 }
 
-int main()
+SAILOR_SHARED_API int RunEditorEngineProtocolTests()
 {
 	try
 	{

@@ -74,8 +74,11 @@ add_executable(RemoteViewportRuntimeTests
 )
 
 add_executable(EditorEngineProtocolTests
-    EditorEngineProtocolTests.cpp
+    EditorEngineProtocolTestMain.cpp
 )
+# Generated messages belong to SailorLib. Run typed assertions there without
+# exporting protobuf classes or registering their descriptors in another module.
+target_sources(SailorLib PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/EditorEngineProtocolTests.cpp")
 
 # Keep this executable wire-only. Compiling editor_engine.pb.cc here as well
 # as inside SailorLib registers the same descriptors twice when both modules
