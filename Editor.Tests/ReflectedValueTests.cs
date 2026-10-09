@@ -15,6 +15,36 @@ public class ReflectedValueTests
     const string RecordName = "Sailor::Tests::RecordSettings";
     const string LayerName = "Sailor::Tests::RecordLayer";
 
+    [Theory]
+    [InlineData("{14a75bf9-09ac-49ee-a0df-2945f4b452a6}")]
+    [InlineData("14a75bf9-09ac-49ee-a0df-2945f4b452a6")]
+    [InlineData("14A75BF9-09AC-49EE-A0DF-2945F4B452A6")]
+    public void AssetMetadataAndRuntimeFileIdsResolveTheSameEntry(string metadataId)
+    {
+        const string runtimeId = "14A75BF9-09AC-49EE-A0DF-2945F4B452A6";
+        var fromMetadata = new FileId { Value = metadataId };
+        var fromRuntime = new FileId(runtimeId);
+        var assets = new Dictionary<FileId, string> { [fromMetadata] = "Duck.glb" };
+
+        Assert.Equal(runtimeId, fromMetadata.Value);
+        Assert.Equal(fromMetadata, fromRuntime);
+        Assert.Equal(fromMetadata.GetHashCode(), fromRuntime.GetHashCode());
+        Assert.Equal(0, fromMetadata.CompareTo(fromRuntime));
+        Assert.Equal("Duck.glb", assets[fromRuntime]);
+        Assert.Equal(runtimeId, ((FileId)fromMetadata.Clone()).Value);
+        Assert.Equal(runtimeId, ((FileId)metadataId).Value);
+    }
+
+    [Theory]
+    [InlineData(FileId.NullFileId)]
+    [InlineData("")]
+    [InlineData("{MODEL}")]
+    [InlineData("Duck.glb")]
+    public void NonGuidFileIdsKeepTheirText(string value)
+    {
+        Assert.Equal(value, new FileId(value).Value);
+    }
+
     public static IEnumerable<object[]> Catalogs()
     {
         yield return ["fixture", CatalogYaml];

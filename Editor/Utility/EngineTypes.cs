@@ -137,7 +137,16 @@ namespace SailorEngine
         public FileId() { }
         public FileId(string v) { Value = v; }
 
-        public string Value = NullFileId;
+        string value = NullFileId;
+
+        public string Value
+        {
+            get => value;
+            set => this.value = value is { Length: 36 or 38 } &&
+                Guid.TryParseExact(value, value.Length == 38 ? "B" : "D", out var guid)
+                    ? guid.ToString("D").ToUpperInvariant()
+                    : value;
+        }
 
         public bool IsEmpty() => Value == NullFileId || Value == "";
 
