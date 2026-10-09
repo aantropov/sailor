@@ -10,6 +10,7 @@
 
 #include <chrono>
 #include <condition_variable>
+#include <dlfcn.h>
 #include <functional>
 #include <future>
 #include <iostream>
@@ -56,22 +57,61 @@ static_assert(std::is_move_assignable_v<MacNativePresentationState>);
 }
 @end
 
-// Fault only queue creation; all other device operations retain native behavior.
-@interface QueueFailureDevice : NSProxy
+namespace
+{
+	void ObserveNativeRelease(id object, const Sailor::TSharedPtr<std::atomic<uint32_t>>& releases);
+	thread_local bool g_bOverrideDeviceFactory = false;
+	thread_local id<MTLDevice> g_deviceFactoryResult = nil;
+	thread_local uint32_t g_deviceFactoryCalls = 0;
+}
+
+extern "C" id<MTLDevice> MTLCreateSystemDefaultDevice()
+{
+	static auto nativeFactory = reinterpret_cast<id<MTLDevice>(*)()>(dlsym(RTLD_NEXT, "MTLCreateSystemDefaultDevice"));
+	if (g_bOverrideDeviceFactory)
+	{
+		++g_deviceFactoryCalls;
+		return [g_deviceFactoryResult retain];
+	}
+	return nativeFactory();
+}
+
+// Refuse selected factories; texture/queue creation and all other calls stay native.
+@interface NativeDeviceProbe : NSProxy
 {
 	id<MTLDevice> m_device;
+@public
+	bool m_bRefuseTexture;
+	bool m_bRefuseQueue;
+	Sailor::TSharedPtr<std::atomic<uint32_t>> m_textureReleases;
 }
 - (id)initWithDevice:(id<MTLDevice>)device;
 - (id<MTLCommandQueue>)newCommandQueue;
 @end
 
-@implementation QueueFailureDevice
+@implementation NativeDeviceProbe
 - (id)initWithDevice:(id<MTLDevice>)device
 {
 	m_device = [device retain];
 	return self;
 }
-- (id<MTLCommandQueue>)newCommandQueue { return nil; }
+- (id<MTLCommandQueue>)newCommandQueue
+{
+	return m_bRefuseQueue ? nil : [m_device newCommandQueue];
+}
+- (id<MTLTexture>)newTextureWithDescriptor:(MTLTextureDescriptor*)descriptor iosurface:(IOSurfaceRef)surface plane:(NSUInteger)plane
+{
+	if (m_bRefuseTexture)
+	{
+		return nil;
+	}
+	id<MTLTexture> texture = [m_device newTextureWithDescriptor:descriptor iosurface:surface plane:plane];
+	if (texture && m_textureReleases)
+	{
+		ObserveNativeRelease(texture, m_textureReleases);
+	}
+	return texture;
+}
 - (NSMethodSignature*)methodSignatureForSelector:(SEL)selector
 {
 	return [(NSObject*)m_device methodSignatureForSelector:selector];
@@ -259,7 +299,9 @@ namespace
 	{
 		QueueFailureLayer* layer = [QueueFailureLayer layer];
 		id<MTLDevice> device = [MTLCreateSystemDefaultDevice() autorelease];
-		layer->m_failureDevice = (id<MTLDevice>)[[QueueFailureDevice alloc] initWithDevice:device];
+		NativeDeviceProbe* probe = [[NativeDeviceProbe alloc] initWithDevice:device];
+		probe->m_bRefuseQueue = true;
+		layer->m_failureDevice = (id<MTLDevice>)probe;
 		layer->m_failQueue = true;
 		return layer;
 	}
@@ -1558,6 +1600,77 @@ namespace
 		Require(textures->load() == 2 && queues->load() == 2, "last state must release the replacement allocation once");
 	}
 
+	void TestProducerFactoryFailuresReleaseCandidates()
+	{
+		for (const bool bExisting : { false, true })
+		{
+			for (const uint32_t failure : { 1005u, 1007u, 1032u })
+			{
+				auto devices = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+				auto textures = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
+				MacLoopbackIOSurfaceProvider provider;
+				MacViewportSurfaceState state;
+				ViewportDescriptor viewport;
+				viewport.m_viewportId = 114;
+				viewport.m_width = 64;
+				viewport.m_height = 48;
+				viewport.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+				if (bExisting)
+				{
+					Require(provider.CreateOrResizeSurface(viewport, 1, 1, state).IsOk(), "factory failure needs an existing native surface");
+				}
+				const auto original = state.m_nativeAllocation;
+				const auto originalKey = state.m_key;
+				@autoreleasepool
+				{
+					id<MTLDevice> device = [MTLCreateSystemDefaultDevice() autorelease];
+					Require(device != nil, "factory failure test needs a real Metal device");
+					NativeDeviceProbe* probe = [[[NativeDeviceProbe alloc] initWithDevice:device] autorelease];
+					probe->m_bRefuseTexture = failure == 1007u;
+					probe->m_bRefuseQueue = failure == 1032u;
+					probe->m_textureReleases = textures;
+					ObserveNativeRelease(probe, devices);
+					g_deviceFactoryResult = failure == 1005u ? nil : (id<MTLDevice>)probe;
+					g_deviceFactoryCalls = 0;
+					g_bOverrideDeviceFactory = true;
+					ScopeExit restore([]()
+					{
+						g_bOverrideDeviceFactory = false;
+						g_deviceFactoryResult = nil;
+					});
+					const auto result = provider.CreateOrResizeSurface(viewport, 1, 2, state);
+					Require(result.m_nativeCode == failure && g_deviceFactoryCalls == 2u,
+						"producer must reach the native factory refusal after its alignment query");
+					Require(state.m_nativeAllocation == original && state.m_key == originalKey &&
+						provider.GetLiveAllocationCount() == (bExisting ? 1u : 0u),
+						"factory refusal must preserve the previous surface without publishing a candidate");
+					if (failure != 1007u)
+					{
+						CAMetalLayer* layer = [CAMetalLayer layer];
+						layer.device = nil;
+						TUniquePtr<MacNativeLayerBinding> binding;
+						const auto bind = BindMacNativeLayer(LayerHandle(layer), 64, 48, viewport.m_pixelFormat, binding);
+						Require(bind.m_nativeCode == (failure == 1005u ? 2105u : 2107u) && !binding &&
+							g_deviceFactoryCalls == 3u && layer.device == nil,
+							"default-device binding refusal must release its candidate without changing the layer");
+					}
+				}
+				RequireNativeReleases(devices, 1u, "factory refusal must release its candidate device ownership");
+				RequireNativeReleases(textures, failure == 1032u ? 1u : 0u, "queue refusal must release the already created native texture");
+				Require(provider.CreateOrResizeSurface(viewport, 1, 2, state).IsOk(), "the same producer request must recover after factory refusal");
+				Require(provider.ReleaseSurface(state).IsOk(), "factory recovery must release its replacement surface");
+				if (original)
+				{
+					MacViewportSurfaceState previous;
+					previous.m_key = originalKey;
+					previous.m_nativeAllocation = original;
+					Require(provider.ReleaseSurface(previous).IsOk(), "factory recovery must release its old surface registration");
+				}
+				Require(provider.GetLiveAllocationCount() == 0u, "factory recovery must leave no registered surfaces");
+			}
+		}
+	}
+
 	void TestProducerCopiesReuseQueueAndPropagateFailure()
 	{
 		auto releases = Sailor::TSharedPtr<std::atomic<uint32_t>>::Make(0u);
@@ -2039,6 +2152,7 @@ int main()
 		{ "FailedNativeWriteInvalidatesReadbackReuse", TestFailedNativeWriteInvalidatesReadbackReuse },
 		{ "ProviderDestructionReleasesNativeTextures", TestProviderDestructionReleasesNativeTextures },
 		{ "ProducerAllocationSharedLifetimeAndReplacement", TestProducerAllocationSharedLifetimeAndReplacement },
+		{ "ProducerFactoryFailuresReleaseCandidates", TestProducerFactoryFailuresReleaseCandidates },
 		{ "ProducerCopiesReuseQueueAndPropagateFailure", TestProducerCopiesReuseQueueAndPropagateFailure },
 		{ "BindingFailurePreservesCurrentLayer", TestBindingFailurePreservesCurrentLayer },
 		{ "NativeBindingReleasesOwnedObjects", TestNativeBindingReleasesOwnedObjects },
