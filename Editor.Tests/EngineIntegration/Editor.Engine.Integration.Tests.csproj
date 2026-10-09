@@ -24,10 +24,26 @@
   <ItemGroup>
     <Compile Include="GlobalUsings.cs" />
     <Compile Include="HeadlessUi.cs" />
+    <Compile Include="AssetRefreshTests.cs" />
     <Compile Include="EngineModuleReloadTests.cs" />
     <Compile Include="../AssetReimportIntegrationTests.cs" Link="AssetReimportIntegrationTests.cs" />
     <Compile Include="../Support/NativeEditorHost.cs" Link="Support/NativeEditorHost.cs" />
     <Compile Include="../../Editor/Services/EngineService.cs" Link="Services/EngineService.cs" />
+    <Compile Include="../../Editor/Services/AssetsService.cs" Link="Services/AssetsService.cs" />
+    <Compile Include="../../Editor/Services/AssetCacheIndexStore.cs" Link="Services/AssetCacheIndexStore.cs" />
+    <Compile Include="../../Editor/ViewModels/AssetFile.cs" Link="ViewModels/AssetFile.cs" />
+    <Compile Include="../../Editor/ViewModels/AssetFolder.cs" Link="ViewModels/AssetFolder.cs" />
+    <Compile Include="../../Editor/ViewModels/ProjectRoot.cs" Link="ViewModels/ProjectRoot.cs" />
+    <Compile Include="../../Editor/Content/AssetSourcePathContract.cs" Link="Content/AssetSourcePathContract.cs" />
+    <Compile Include="../../Editor/Content/ProjectContentFileOperations.cs" Link="Content/ProjectContentFileOperations.cs" />
+    <Compile Include="../../Editor/Content/ProjectContentModels.cs" Link="Content/ProjectContentModels.cs" />
+    <Compile Include="../../Editor/Content/ProjectContentFolderIds.cs" Link="Content/ProjectContentFolderIds.cs" />
+    <Compile Include="../../Editor/Content/ProjectContentPathPolicy.cs" Link="Content/ProjectContentPathPolicy.cs" />
+    <Compile Include="../../Editor/Content/ProjectContentFolderRebindPolicy.cs" Link="Content/ProjectContentFolderRebindPolicy.cs" />
+    <Compile Include="../../Editor/Content/ProjectContentAssetResolutionPolicy.cs" Link="Content/ProjectContentAssetResolutionPolicy.cs" />
+    <Compile Include="../../Editor/Content/ProjectContentStore.cs" Link="Content/ProjectContentStore.cs" />
+    <Compile Include="../../Editor/Content/PrefabOverrideApplier.cs" Link="Content/PrefabOverrideApplier.cs" />
+    <Compile Include="../../Editor/Workflow/WorkflowProjections.cs" Link="Workflow/WorkflowProjections.cs" />
     <Compile Include="../../Editor/Services/EngineLaunchContract.cs" Link="Services/EngineLaunchContract.cs" />
     <Compile Include="../../Editor/Services/EditorTypeCacheStore.cs" Link="Services/EditorTypeCacheStore.cs" />
     <Compile Include="../../Editor/Services/GlobalIlluminationContracts.cs" Link="Services/GlobalIlluminationContracts.cs" />

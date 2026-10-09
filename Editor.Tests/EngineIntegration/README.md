@@ -18,7 +18,7 @@ DYLD_LIBRARY_PATH="$PWD/build-audit/Lib/Release" \
 dotnet test Editor.Tests/EngineIntegration/Editor.Engine.Integration.Tests.csproj -c Release
 ```
 
-The test skips unless `SAILOR_NATIVE_TEST_HOST` is set. All other paths are
+Native tests skip unless `SAILOR_NATIVE_TEST_HOST` is set. All other paths are
 required when running it. The five fresh processes cover the original module,
 changed types/defaults, recovery of a world using the new component, editor-only
 startup without the module, and recovery after the module is restored. All
@@ -28,9 +28,11 @@ The shared host resets its ready/stop markers and checks native exit codes.
 The asset-reimport scenario is shared with `Editor.Contracts.Tests`: that target
 calls the protocol directly; this one calls `EngineService`. It checks generated
 material repair, authored values and FileIds, unchanged normal loads, full-reload
-notifications and rejection after Stop. Both service tests run serially because
-they share the queued UI dispatcher. Actual `AssetsService` and menu interaction
-remain outside this headless target.
+notifications and rejection after Stop. Service tests run serially because
+they share the queued UI dispatcher. Asset refresh tests compile the actual
+`AssetsService`, `AssetFile` and `ProjectContentStore`, checking queued refresh
+across workspace switch/close and normal folder restoration without a native host.
+Specialized inspectors, selection and menu interaction remain outside this target.
 
 For ThreadSanitizer, build `build-audit-tsan` and use its `Binaries/Release`,
 `Tests/Release` and `Lib/Release` directories with `TSAN_OPTIONS=halt_on_error=1`.

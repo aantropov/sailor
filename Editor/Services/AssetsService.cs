@@ -1204,6 +1204,7 @@ namespace SailorEditor.Services
 
         public async Task RefreshAsync(CancellationToken cancellationToken = default)
         {
+            var workspaceEpoch = WorkspaceEpoch;
             if (_activeLaunchContext is null)
             {
                 return;
@@ -1215,14 +1216,21 @@ namespace SailorEditor.Services
                 .Select(folder => (folder.ProjectRootId, folder.FullPath))
                 .OrderBy(folder => folder.FullPath.Count(character => character == Path.DirectorySeparatorChar))
                 .ToArray();
-            await MainThread.InvokeOnMainThreadAsync(() => AddProjectRoot(launchContext));
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                // A queued refresh still belongs to the workspace that requested it.
+                if (workspaceEpoch == WorkspaceEpoch)
+                {
+                    AddProjectRoot(launchContext);
+                }
+            });
             foreach (var loadedFolder in loadedFolders)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var folderId = await MainThread.InvokeOnMainThreadAsync(() =>
-                    Folders.FirstOrDefault(candidate =>
+                    workspaceEpoch == WorkspaceEpoch ? Folders.FirstOrDefault(candidate =>
                         candidate.ProjectRootId == loadedFolder.ProjectRootId &&
-                        ProjectContentPathPolicy.IsSamePath(candidate.FullPath, loadedFolder.FullPath))?.Id);
+                        ProjectContentPathPolicy.IsSamePath(candidate.FullPath, loadedFolder.FullPath))?.Id : null);
                 if (folderId is not null)
                 {
                     await EnsureFolderLoadedAsync(folderId.Value, cancellationToken).ConfigureAwait(false);
