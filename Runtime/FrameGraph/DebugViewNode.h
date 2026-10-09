@@ -36,6 +36,7 @@ namespace Sailor::Framegraph
 
 		TRefPtr<BlitNode> m_litPass{};
 		std::array<TRefPtr<PostProcessNode>, 3> m_debugPasses{};
+		uint64_t m_appliedParameterRevision = 0;
 	};
 
 	template class TFrameGraphNode<DebugViewNode>;

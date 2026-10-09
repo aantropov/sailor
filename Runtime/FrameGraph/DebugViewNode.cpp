@@ -31,6 +31,10 @@ void DebugViewNode::Process(
 
 	const ESceneViewRenderMode mode = sceneView.m_renderMode;
 	PostProcessNode* debugPass = GetDebugPass(mode);
+	if (debugPass)
+	{
+		debugPass->PreloadShader();
+	}
 	if (debugPass && debugPass->IsShaderReady())
 	{
 		debugPass->Process(
@@ -69,12 +73,15 @@ void DebugViewNode::Clear()
 
 void DebugViewNode::EnsurePasses()
 {
-	if (m_litPass)
+	if (m_litPass && m_appliedParameterRevision == m_parameterRevision)
 	{
 		return;
 	}
 
-	m_litPass = TRefPtr<BlitNode>::Make();
+	if (!m_litPass)
+	{
+		m_litPass = TRefPtr<BlitNode>::Make();
+	}
 	CopyResource(*m_litPass, "src"_h, "src"_h);
 	CopyResource(*m_litPass, "dst"_h, "dst"_h);
 
@@ -86,7 +93,10 @@ void DebugViewNode::EnsurePasses()
 	for (size_t index = 0u; index < modes.size(); ++index)
 	{
 		auto& pass = m_debugPasses[index];
-		pass = TRefPtr<PostProcessNode>::Make();
+		if (!pass)
+		{
+			pass = TRefPtr<PostProcessNode>::Make();
+		}
 		pass->SetString("shader"_h, GetString("shader"_h));
 		pass->SetString(
 			"defines"_h,
@@ -95,6 +105,7 @@ void DebugViewNode::EnsurePasses()
 		CopyResource(*pass, "ldrSceneSampler"_h, "src"_h);
 		CopyResource(*pass, "linearDepthSampler"_h, "linearDepth"_h);
 	}
+	m_appliedParameterRevision = m_parameterRevision;
 }
 
 void DebugViewNode::CopyResource(

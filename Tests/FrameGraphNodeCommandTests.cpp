@@ -14,6 +14,7 @@
 #include "FrameGraph/DepthHighZNode.h"
 #include "FrameGraph/DepthPrepassNode.h"
 #include "FrameGraph/DebugDrawNode.h"
+#include "FrameGraph/DebugViewNode.h"
 #include "FrameGraph/EnvironmentNode.h"
 #include "FrameGraph/LinearizeDepthNode.h"
 #include "FrameGraph/LightCullingNode.h"
@@ -7321,12 +7322,16 @@ frame:
 		std::cout << "Clear color surface=" << surfaceInput << " late=" << late << ": two frames and both images passed\n";
 	}
 
-	void TestBlit(bool sourceIsSurface, bool destinationIsSurface, bool late, bool scaled = false)
+	void TestBlit(bool sourceIsSurface, bool destinationIsSurface, bool late, bool scaled = false, bool debugView = false)
 	{
 		auto& driver = Renderer::GetDriver();
 		auto commands = Renderer::GetDriverCommands();
 		auto graph = TRefPtr<TestGraph>::Make();
-		auto node = TRefPtr<BlitNode>::Make();
+		FrameGraphNodePtr node = debugView ? FrameGraphNodePtr(TRefPtr<DebugViewNode>::Make()) : TRefPtr<BlitNode>::Make();
+		if (debugView)
+		{
+			node->SetString("shader"_h, "Shaders/Blit.shader");
+		}
 		RHISceneViewSnapshot scene;
 		scene.m_frameBindings = driver->CreateShaderBindings();
 		if (late)
@@ -7378,7 +7383,8 @@ frame:
 					for (uint32_t component = 0; component < 4; ++component)
 						if (!std::isfinite(pixels[i][component]) || std::abs(pixels[i][component] - image.second[component]) > 0.00001f)
 							throw std::runtime_error("Blit changed resolved/live target contents: sourceSurface=" + std::to_string(sourceIsSurface) +
-								", destinationSurface=" + std::to_string(destinationIsSurface) + ", late=" + std::to_string(late) + ", scaled=" + std::to_string(scaled));
+								", destinationSurface=" + std::to_string(destinationIsSurface) + ", late=" + std::to_string(late) +
+								", scaled=" + std::to_string(scaled) + ", debugView=" + std::to_string(debugView));
 			}
 			const bool shaderDraw = (destinationMsaa && !copyLiveTarget) || (!destinationSurface && scaled);
 			Require(node->GetDrawCallStats().m_numBatches == (shaderDraw ? 1u : 0u), "Blit must retain direct-copy versus shader paths");
@@ -7390,7 +7396,7 @@ frame:
 					recordedColor.storeOp == VK_ATTACHMENT_STORE_OP_STORE, "Blit fullscreen draw must write the selected target directly");
 			}
 		}
-		std::cout << "Blit sourceSurface=" << sourceIsSurface << " destinationSurface=" << destinationIsSurface << " late=" << late <<
+		std::cout << (debugView ? "DebugView" : "Blit") << " sourceSurface=" << sourceIsSurface << " destinationSurface=" << destinationIsSurface << " late=" << late <<
 			" scaled=" << scaled << ": replaced inputs, both images and native descriptors passed\n";
 	}
 
@@ -8293,7 +8299,13 @@ namespace Sailor::Tests
 						}
 						for (bool surface : { false, true }) TestClearColor(surface, late);
 						for (bool sourceSurface : { false, true })
-							for (bool destinationSurface : { false, true }) TestBlit(sourceSurface, destinationSurface, late);
+						{
+							for (bool destinationSurface : { false, true })
+							{
+								TestBlit(sourceSurface, destinationSurface, late);
+								TestBlit(sourceSurface, destinationSurface, late, false, true);
+							}
+						}
 						TestBlit(false, false, late, true);
 						TestBlit(true, true, late, true);
 						for (bool colorSurface : { false, true })
