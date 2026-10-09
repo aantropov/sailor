@@ -3311,6 +3311,9 @@ frame: []
 							!overrides.requestedCompatibilityLayer,
 							"an installed primary validation layer must not depend on the synchronization2 compatibility layer");
 						Require(overrides.requestedDebugMessenger == expected, "the debug callback must follow the selected validation configuration");
+						Require(((overrides.m_instanceFlags & VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR) != 0) ==
+							overrides.m_bRequestedPortabilityEnumeration,
+							"portability enumeration must enable both the extension and its instance flag");
 						Require(!driver.IsInitialized() && !VulkanApi::GetInstance() && overrides.deviceCreateCalls == devices && driver.imageCalls == 0,
 							"fake layer configuration must stop before creating a native instance or device");
 					}

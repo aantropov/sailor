@@ -93,6 +93,8 @@ namespace Sailor::Tests
 		std::atomic<uint32_t> coreRenderingLookups{ 0 };
 		std::atomic<uint32_t> khrRenderingLookups{ 0 };
 		std::atomic<uint32_t> instanceTarget{ 0 };
+		std::atomic<VkInstanceCreateFlags> m_instanceFlags{ 0 };
+		std::atomic<bool> m_bRequestedPortabilityEnumeration{ false };
 		std::atomic<bool> enabledKhrRendering{ false };
 		std::atomic<ValidationLayerInventory> validationLayers{ ValidationLayerInventory::Native };
 		std::atomic<uint32_t> layerEnumerationCalls{ 0 };

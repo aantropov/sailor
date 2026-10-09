@@ -334,7 +334,7 @@ void VulkanApi::Initialize(Platform::Window* viewport, RHI::EMsaaSamples msaaSam
 	createInfo.ppEnabledExtensionNames = extensions.GetData();
 	createInfo.enabledExtensionCount = (uint32_t)extensions.Num();
 	createInfo.pNext = nullptr;
-#if defined(__APPLE__) && defined(VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR)
+#if defined(__APPLE__)
 	if (bEnablePortabilityEnumeration)
 	{
 		createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;

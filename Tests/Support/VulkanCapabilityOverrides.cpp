@@ -230,6 +230,15 @@ namespace
 		auto& overrides = GetVulkanCapabilityOverrides();
 		++overrides.instanceCreateCalls;
 		overrides.instanceTarget = info->pApplicationInfo->apiVersion;
+		overrides.m_instanceFlags = info->flags;
+		overrides.m_bRequestedPortabilityEnumeration = false;
+		for (uint32_t i = 0; i < info->enabledExtensionCount; ++i)
+		{
+			if (std::strcmp(info->ppEnabledExtensionNames[i], VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME) == 0)
+			{
+				overrides.m_bRequestedPortabilityEnumeration = true;
+			}
+		}
 		if (overrides.validationLayers != ValidationLayerInventory::Native)
 		{
 			overrides.requestedLayerCount = info->enabledLayerCount;
