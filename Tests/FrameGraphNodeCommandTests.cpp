@@ -1929,7 +1929,10 @@ frame:
 				graph->SetSampler("g_ditherPatternSampler"_h, driver->GetDefaultTexture());
 				graph->SetSampler("g_noiseSampler"_h, driver->GetDefaultTexture());
 				auto color = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R16G16B16A16_SFLOAT);
-				auto depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::D32_SFLOAT);
+				auto depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::D32_SFLOAT,
+					ETextureFiltration::Nearest, ETextureClamping::Clamp,
+					ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::Sampled_Bit |
+					ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit);
 				auto linearDepth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32_SFLOAT);
 				graph->SetRenderTarget("DepthBuffer"_h, depth);
 				node->SetRHIResource("color"_h, color);
@@ -2620,7 +2623,10 @@ frame:
 			graph->SetSampler("g_ditherPatternSampler"_h, driver->GetDefaultTexture());
 			graph->SetSampler("g_noiseSampler"_h, driver->GetDefaultTexture());
 			color = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R16G16B16A16_SFLOAT);
-			depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::D32_SFLOAT);
+			depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::D32_SFLOAT,
+				ETextureFiltration::Nearest, ETextureClamping::Clamp,
+				ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::Sampled_Bit |
+				ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit);
 			linearDepth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32_SFLOAT);
 			graph->SetRenderTarget("DepthBuffer"_h, depth);
 			node->SetRHIResource("color"_h, color);
@@ -3239,7 +3245,10 @@ frame:
 		auto& driver = Renderer::GetDriver();
 		auto commands = Renderer::GetDriverCommands();
 		auto color = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R16G16B16A16_SFLOAT);
-		auto depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::D32_SFLOAT);
+		auto depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::D32_SFLOAT,
+			ETextureFiltration::Nearest, ETextureClamping::Clamp,
+			ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::Sampled_Bit |
+			ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit);
 		auto linearDepth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32_SFLOAT);
 		RHISceneViewSnapshot scene;
 		scene.m_frameBindings = driver->CreateShaderBindings();
@@ -5695,7 +5704,10 @@ frame:
 		snapshot.m_rhiLightsData = driver->CreateShaderBindings();
 		snapshot.m_bGlobalIlluminationEnabled = false;
 		auto color = driver->CreateSurface(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
-		auto depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::D32_SFLOAT);
+		auto depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::D32_SFLOAT,
+			ETextureFiltration::Nearest, ETextureClamping::Clamp,
+			ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::Sampled_Bit |
+			ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit);
 		node->SetRHIResource("color"_h, color);
 		node->SetRHIResource("depthStencil"_h, depth);
 		auto commands = Renderer::GetDriverCommands();
