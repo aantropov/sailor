@@ -1934,9 +1934,18 @@ namespace
 				const auto* actual = static_cast<const uint32_t*>(readback->GetPointer());
 				Require(std::equal(data.begin(), data.end(), actual), "immediate binding contents mismatch");
 			};
-		Require(driver->UpdateShaderBinding_Immediate(bindings, "immediate"_h, data.data(), sizeof(data)),
-			"successful binding upload must report completion");
+		{
+			FenceDispatchOverride dispatch(*device);
+			fenceWaitCalls = 0u;
+			fenceWaitResult = VK_SUCCESS;
+			captureNextFenceWait = true;
+			capturedFenceCompleted = false;
+			Require(driver->UpdateShaderBinding_Immediate(bindings, "immediate"_h, data.data(), sizeof(data)) &&
+				capturedFenceCompleted && fenceWaitCalls == 1u,
+				"immediate binding upload must complete its native fence before returning success");
+		}
 		checkData();
+		std::cout << "Immediate binding upload: native fence completed before return and full payload matched\n";
 		for (VkResult error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
 		{
 			if (!lost)
