@@ -747,6 +747,8 @@ renderTargets:
 frame:
   - name: PostProcess
     tag: Bindings
+    float: [{gain: 0.75}]
+    vec4: [{tint: [0.125, 0.5, 2.0, 0.75]}]
     renderTargets:
       - color: StaticSurface
       - sourceSampler: StaticTexture
@@ -767,6 +769,8 @@ frame:
 		const auto surface = graph->GetSurface("StaticSurface"_h);
 		const auto texture = graph->GetRenderTarget("StaticTexture"_h);
 		Require(node && surface && texture, "imported graph must contain native surfaces and targets");
+		Require(node->GetFloat("gain"_h) == 0.75f && node->GetVec4("tint"_h) == glm::vec4(0.125f, 0.5f, 2.0f, 0.75f),
+			"imported nodes must preserve authored scalar and vector parameters independently of global values");
 		Require(node->GetRHIResource("color"_h) == surface && node->GetRHIResource("sourceSampler"_h) == texture &&
 			node->GetResolvedAttachment("color"_h) == surface->GetResolved(),
 			"static graph binding must retain the surface rather than discard its multisampled target");
