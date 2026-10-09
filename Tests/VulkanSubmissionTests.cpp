@@ -5640,9 +5640,10 @@ frame: []
 		renderer->WaitIdle();
 		Require(renderer->EnsureFrameGraph(), "timing publication requires the real renderer graph");
 		auto graph = renderer->GetFrameGraph()->GetRHI();
-		const auto originalNodes = graph->GetGraph();
+		auto originalNodes = graph->GetGraph();
 		const auto originalMode = App::GetRenderStatsMode();
 		const bool bWasOutdated = VulkanSubmissionTestAccess::ExchangeSwapchainOutdated(*device, true);
+		TUniquePtr<RendererQueueOverride> dispatch;
 		auto node = TRefPtr<SubmissionLifecycleNode>::Make();
 		node->SetTag("Measured submission"_h);
 		node->m_material = TRefPtr<SubmissionHistoryMaterial>::Make();
@@ -5655,8 +5656,11 @@ frame: []
 		Require(vkCreateEvent(*device, &eventInfo, nullptr, &gate) == VK_SUCCESS, "timing publication requires a GPU gate");
 		Tests::ScopeExit cleanup([&]()
 			{
+				node->m_bReleased.store(true);
+				node->m_bReleased.notify_one();
 				vkSetEvent(*device, gate);
 				renderer->WaitIdle();
+				OnRender([&]() { dispatch.Clear(); });
 				node->m_gpuGate = VK_NULL_HANDLE;
 				graph->GetGraph() = originalNodes;
 				App::SetRenderStatsMode(originalMode);
@@ -5732,7 +5736,58 @@ frame: []
 		const auto restarted = submit();
 		Require(restarted.m_bValid && restarted.m_generation > replacement.m_generation && restarted.m_timings.Num() == 2,
 			"profiling must recover with a fresh native sample after a generation change");
-		std::cout << "Renderer timing publication: native queues, delayed flights, retired scopes and profiling restart passed\n";
+
+		node->m_bStarted.store(false);
+		node->m_bReleased.store(false);
+		FrameState failedFrame(world.GetRawPtr(), ++node->m_payload * 16, {}, { 32, 24 });
+		engine->ProcessCpuFrame(failedFrame);
+		failedFrame.GetDrawImGuiTask()->Wait();
+		Require(renderer->PushFrame(failedFrame), "the timing failure must reach native submission");
+		node->m_bStarted.wait(false);
+		OnRender([&]()
+			{
+				dispatch = TUniquePtr<RendererQueueOverride>::Make(*device,
+					RendererFailure::MainSubmit, VK_NULL_HANDLE, node.GetRawPtr());
+			});
+		node->m_bReleased.store(true);
+		node->m_bReleased.notify_one();
+		scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+		uint32_t refusals = 0;
+		OnRender([&]()
+			{
+				refusals = rendererRefusals;
+				dispatch.Clear();
+			});
+		const auto failed = renderer->GetGpuTimings();
+		Require(Renderer::GetDriver()->FixLostDevice(App::GetMainWindow().GetRawPtr()),
+			"the timing fixture must recover synchronization after a rejected submission");
+		VulkanSubmissionTestAccess::ExchangeSwapchainOutdated(*device, true);
+		Require(refusals == 1 && !node->m_token->IsSuccessful() &&
+			node->m_completion->Wait(5000000000ull) == EFenceStatus::Failed,
+			"the native main-submit refusal must reach the renderer's failure path");
+		Require(!failed.m_bValid && failed.m_timings.IsEmpty() && failed.m_generation > restarted.m_generation,
+			"a failed frame must invalidate previously published GPU timings");
+		Require(!submit().m_bValid, "recovery must not republish a query from the failed generation");
+		const auto recovered = submit();
+		Require(recovered.m_bValid && recovered.m_generation >= failed.m_generation,
+			"successful GPU work must restore profiling after submission failure");
+
+		const auto previousGraph = graph;
+		renderer->RefreshFrameGraph();
+		const auto refreshing = renderer->GetGpuTimings();
+		Require(!refreshing.m_bValid && refreshing.m_timings.IsEmpty(),
+			"requesting graph replacement must immediately hide the previous graph's timings");
+		Require(renderer->EnsureFrameGraph(), "timing publication must rebuild the actual graph");
+		graph = renderer->GetFrameGraph()->GetRHI();
+		Require(graph != previousGraph, "the profiling generation test must use a replacement graph");
+		originalNodes = graph->GetGraph();
+		graph->GetGraph().Clear();
+		graph->GetGraph().Add(node);
+		Require(!submit().m_bValid, "the replacement graph must not inherit a pending old query");
+		const auto refreshed = submit();
+		Require(refreshed.m_bValid && refreshed.m_generation > recovered.m_generation && refreshed.m_timings.Num() == 2,
+			"the replacement graph must publish its own completed native measurements");
+		std::cout << "Renderer timing publication: native queues, delayed flights, retired scopes, profiling restart, submit failure and graph replacement passed\n";
 	}
 
 	class SkyPublicationNode : public Framegraph::SkyNode
