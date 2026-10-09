@@ -68,6 +68,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <barrier>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -5790,6 +5791,79 @@ frame: []
 		std::cout << "Renderer timing publication: native queues, delayed flights, retired scopes, profiling restart, submit failure and graph replacement passed\n";
 	}
 
+	void TestRetainedLightsDuringPublication()
+	{
+		App::GetSubmodule<Renderer>()->WaitIdle();
+		auto world = App::GetSubmodule<EngineLoop>()->GetWorld();
+		auto* lights = world->GetECS<LightingECS>();
+		const auto owner = world->Instantiate("Published light");
+		const auto slot = lights->RegisterComponent();
+		Tests::ScopeExit cleanup([&]()
+		{
+			lights->UnregisterComponent(slot);
+			world->DestroyImmediate(owner);
+			lights->Tick(0.0f);
+		});
+		auto& data = lights->GetComponentData(slot);
+		data.SetOwner(owner);
+		data.m_intensity = glm::vec3(0.0f);
+		data.m_shadowType = EShadowType::None;
+		data.MarkDirty();
+		const auto capture = [&]()
+		{
+			lights->Tick(0.0f);
+			auto scene = RHISceneViewPtr::Make();
+			lights->FillLightingData(scene, 0);
+			return scene;
+		};
+		const auto first = capture();
+		Require(first->m_cpuLightsData && slot < first->m_cpuLightsData->Num(),
+			"the actual lighting producer must publish before a reader retains it");
+
+		std::barrier step(2);
+		std::atomic<bool> bValid{ true };
+		constexpr uint32_t publications = 128u;
+		std::thread reader([&]()
+		{
+			for (uint32_t i = 0; i < publications; ++i)
+			{
+				step.arrive_and_wait();
+				if (slot >= first->m_cpuLightsData->Num() ||
+					(*first->m_cpuLightsData)[slot].m_intensity != glm::vec3(0.0f))
+				{
+					bValid = false;
+				}
+				step.arrive_and_wait();
+			}
+		});
+		for (uint32_t revision = 1; revision <= publications; ++revision)
+		{
+			step.arrive_and_wait();
+			data.m_intensity = glm::vec3(float(revision));
+			data.MarkDirty();
+			const auto current = capture();
+			const auto warm = capture();
+			if (current->m_cpuLightsData == first->m_cpuLightsData ||
+				(*current->m_cpuLightsData)[slot].m_intensity != glm::vec3(float(revision)) ||
+				current->m_lightingRevision != first->m_lightingRevision + revision ||
+				warm->m_cpuLightsData != current->m_cpuLightsData ||
+				warm->m_lightingRevision != current->m_lightingRevision)
+			{
+				bValid = false;
+			}
+			step.arrive_and_wait();
+		}
+		reader.join();
+		Require(bValid, "light publication must preserve a concurrent reader's old data and reuse unchanged snapshots");
+		cleanup.Run();
+		const auto removed = capture();
+		Require((slot >= removed->m_cpuLightsData->Num() ||
+			(*removed->m_cpuLightsData)[slot].m_type == RHILightShaderData::InvalidType) &&
+			(*first->m_cpuLightsData)[slot].m_intensity == glm::vec3(0.0f),
+			"removing the light must clear new captures without changing the retained snapshot");
+		std::cout << "Light publication: 128 updates, concurrent retained reader, warm reuse and removal passed\n";
+	}
+
 	class SkyPublicationNode : public Framegraph::SkyNode
 	{
 	public:
@@ -5970,6 +6044,7 @@ frame: []
 				TestRendererPendingFlightReuse();
 				TestRendererSubmissionOutcomes();
 				TestRendererTimingPublication();
+				TestRetainedLightsDuringPublication();
 				TestSingleActiveWorld();
 				Tests::RunAnimationShadowCommandTests();
 				Tests::RunWorldLifecycleCommandTests();
