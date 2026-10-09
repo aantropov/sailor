@@ -209,10 +209,17 @@ namespace
 					Require(SetConsoleCP(codePage) && SetConsoleOutputCP(codePage), "the native code page must be set");
 					Require(SetConsoleCtrlHandler(nullptr, FALSE), "Ctrl-C must not be inherited as ignored");
 
-					const auto input = GetStdHandle(STD_INPUT_HANDLE);
-					const auto output = GetStdHandle(STD_OUTPUT_HANDLE);
-					Require(FlushConsoleInputBuffer(input) && SetConsoleCursorPosition(output, { 0, 0 }),
-						"the native input queue and output cursor must be ready");
+					// The fixture writes input and reads output, opposite to the engine's streams.
+					const auto input = CreateFileW(L"CONIN$", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+						nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+					Require(input != INVALID_HANDLE_VALUE, "the native input queue must be writable by the fixture");
+					Sailor::Tests::ScopeExit closeInput([&]() { CloseHandle(input); });
+					const auto output = CreateFileW(L"CONOUT$", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+						nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+					Require(output != INVALID_HANDLE_VALUE, "the native echo must be readable by the fixture");
+					Sailor::Tests::ScopeExit closeOutput([&]() { CloseHandle(output); });
+					Require(FlushConsoleInputBuffer(input), "the native input queue must be empty before injection");
+					Require(SetConsoleCursorPosition(output, { 0, 0 }), "the native output cursor must be ready");
 					for (wchar_t character : std::wstring_view(L"\u041a\u00e9x\b\rnext\r"))
 					{
 						INPUT_RECORD event{};
@@ -247,6 +254,8 @@ namespace
 						std::this_thread::sleep_for(std::chrono::milliseconds(1));
 					}
 					Require(ConsoleWindow::IsExitRequested(), "the registered native control handler must request engine stop");
+					closeOutput.Run();
+					closeInput.Run();
 					console.CloseWindow();
 					shutdown.Run();
 					Require(GetConsoleWindow() == nullptr, "shutdown must detach the console before the next session");

@@ -74,7 +74,8 @@ void ConsoleWindow::Attach()
 	if (AttachConsole(ATTACH_PARENT_PROCESS))
 	{
 		m_bIsOpen = true;
-		freopen_s(&m_stdout_file, "CONOUT$", "wb", stdout);
+		// Backspace reads the screen buffer and moves its cursor before erasing.
+		freopen_s(&m_stdout_file, "CONOUT$", "w+b", stdout);
 		freopen_s(&m_stderr_file, "CONOUT$", "wb", stderr);
 		freopen_s(&m_stdin_file, "CONIN$", "rb", stdin);
 		SetConsoleCtrlHandler(HandleControl, TRUE);
@@ -121,7 +122,7 @@ void ConsoleWindow::OpenWindow(const wchar_t* Title)
 
 		SetConsoleTitleW(Title);
 
-		freopen_s(&m_stdout_file, "CONOUT$", "wb", stdout);
+		freopen_s(&m_stdout_file, "CONOUT$", "w+b", stdout);
 		freopen_s(&m_stderr_file, "CONOUT$", "wb", stderr);
 		freopen_s(&m_stdin_file, "CONIN$", "rb", stdin);
 	}
