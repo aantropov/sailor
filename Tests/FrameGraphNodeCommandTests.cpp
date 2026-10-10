@@ -216,9 +216,15 @@ namespace
 	VkRenderingAttachmentInfo recordedDepth{};
 	VkRenderingFlags recordedRenderingFlags = 0;
 	uint32_t recordedColorCount = 0;
+	bool bCaptureRenderPass = true;
 
 	VKAPI_ATTR void VKAPI_CALL CaptureRendering(VkCommandBuffer command, const VkRenderingInfo* info)
 	{
+		if (!bCaptureRenderPass)
+		{
+			originalBeginRendering(command, info);
+			return;
+		}
 		recordedColorCount = info->colorAttachmentCount;
 		recordedDepth = info->pDepthAttachment ? *info->pDepthAttachment : VkRenderingAttachmentInfo{};
 		recordedRenderingFlags = info->flags;
@@ -1690,16 +1696,25 @@ frame:
 	{
 		auto& driver = Renderer::GetDriver();
 		auto commands = Renderer::GetDriverCommands();
-		commands->ImageMemoryBarrier(command, texture, EImageLayout::TransferSrcOptimal);
 		if (texture->GetMsaaSamples() != EMsaaSamples::Samples_1)
 		{
 			auto resolved = driver->CreateRenderTarget(texture->GetExtent(), 1, texture->GetFormat());
-			commands->ImageMemoryBarrier(command, resolved, EImageLayout::TransferDstOptimal);
+			// Internal MSAA targets support attachment resolves, not transfer reads.
+			commands->ImageMemoryBarrier(command, texture, EImageLayout::ColorAttachmentOptimal);
+			commands->ImageMemoryBarrier(command, resolved, EImageLayout::ColorAttachmentOptimal);
+			commands->MemoryBarrier(command, static_cast<EAccessFlags>(EAccessBit::ColorAttachmentWrite_Bit),
+				static_cast<EAccessFlags>(EAccessBit::ColorAttachmentRead_Bit) | static_cast<EAccessFlags>(EAccessBit::ColorAttachmentWrite_Bit));
 			const glm::ivec4 area(0, 0, texture->GetExtent().x, texture->GetExtent().y);
-			Require(commands->BlitImage(command, texture, resolved, area, area), "live MSAA readback must resolve");
+			// Keep the observer on the tested node, not the readback's resolve pass.
+			const bool bWasCapturing = std::exchange(bCaptureRenderPass, false);
+			const bool bBegan = commands->BeginRenderPass(command, TVector<RHITexturePtr>{ texture }, TVector<RHITexturePtr>{ resolved },
+				nullptr, nullptr, area, glm::ivec2(0), false, glm::vec4(0), 0.0f, false, false);
+			bCaptureRenderPass = bWasCapturing;
+			Require(bBegan, "live MSAA readback must resolve");
+			commands->EndRenderPass(command);
 			texture = resolved;
-			commands->ImageMemoryBarrier(command, texture, EImageLayout::TransferSrcOptimal);
 		}
+		commands->ImageMemoryBarrier(command, texture, EImageLayout::TransferSrcOptimal);
 		const auto extent = texture->GetExtent();
 		auto buffer = driver->CreateBuffer(size_t(extent.x) * extent.y * sizeof(glm::vec4), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
 		commands->CopyImageToBuffer(command, texture, buffer);
