@@ -676,6 +676,119 @@ namespace
 				"GPU frame readback does not match accepted/rejected submission");
 	}
 
+	struct DeferredPresentation
+	{
+		PFN_vkQueueSubmit m_submit = nullptr;
+		PFN_vkQueuePresentKHR m_present = nullptr;
+		VkSwapchainKHR m_swapchain = VK_NULL_HANDLE;
+		VkSemaphore m_wait = VK_NULL_HANDLE;
+		uint32_t m_image = 0u;
+		bool m_bIsPending = false;
+		bool m_bWasSemaphoreReused = false;
+	};
+	DeferredPresentation* deferredPresentation = nullptr;
+
+	VKAPI_ATTR VkResult VKAPI_CALL SubmitWhilePresentationIsDeferred(
+		VkQueue queue, uint32_t count, const VkSubmitInfo* info, VkFence fence)
+	{
+		auto& pending = *deferredPresentation;
+		for (uint32_t batch = 0u; batch < count; ++batch)
+		{
+			for (uint32_t signal = 0u; signal < info[batch].signalSemaphoreCount; ++signal)
+			{
+				if (pending.m_bIsPending && info[batch].pSignalSemaphores[signal] == pending.m_wait)
+				{
+					// Observe the regression without submitting an invalid second binary signal.
+					pending.m_bWasSemaphoreReused = true;
+					return VK_ERROR_OUT_OF_HOST_MEMORY;
+				}
+			}
+		}
+		return pending.m_submit(queue, count, info, fence);
+	}
+
+	VKAPI_ATTR VkResult VKAPI_CALL DeferFirstPresentation(VkQueue queue, const VkPresentInfoKHR* info)
+	{
+		auto& pending = *deferredPresentation;
+		if (!pending.m_wait && info->waitSemaphoreCount == 1u && info->swapchainCount == 1u && !info->pNext)
+		{
+			pending.m_swapchain = info->pSwapchains[0];
+			pending.m_wait = info->pWaitSemaphores[0];
+			pending.m_image = info->pImageIndices[0];
+			pending.m_bIsPending = true;
+			return VK_SUCCESS;
+		}
+		return pending.m_present(queue, info);
+	}
+
+	void TestDelayedPresentation()
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		const auto& swapchain = device->GetSwapchain();
+		if (swapchain->GetImageViews().Num() <= swapchain->GetSwapchainSupportDetails().m_capabilities.minImageCount)
+		{
+			std::cout << "Delayed presentation skipped: surface cannot keep two acquired images\n";
+			return;
+		}
+		Require(device->WaitIdle() == VK_SUCCESS, "delayed presentation must start with drained queues");
+		auto graphics = device->GetGraphicsQueue();
+		auto present = VulkanSubmissionTestAccess::PresentQueue(*device);
+		DeferredPresentation pending;
+		deferredPresentation = &pending;
+		pending.m_submit = VulkanSubmissionTestAccess::ExchangeSubmit(*graphics, SubmitWhilePresentationIsDeferred);
+		pending.m_present = VulkanSubmissionTestAccess::ExchangePresent(*present, DeferFirstPresentation);
+		const auto release = [&]()
+		{
+			if (!pending.m_bIsPending)
+			{
+				return VK_SUCCESS;
+			}
+			VkPresentInfoKHR info{ VK_STRUCTURE_TYPE_PRESENT_INFO_KHR };
+			info.waitSemaphoreCount = info.swapchainCount = 1u;
+			info.pWaitSemaphores = &pending.m_wait;
+			info.pSwapchains = &pending.m_swapchain;
+			info.pImageIndices = &pending.m_image;
+			const auto result = present->Present(info);
+			pending.m_bIsPending = false;
+			return result;
+		};
+		Tests::ScopeExit restore([&]()
+			{
+				release();
+				device->WaitIdle();
+				VulkanSubmissionTestAccess::ExchangePresent(*present, pending.m_present);
+				VulkanSubmissionTestAccess::ExchangeSubmit(*graphics, pending.m_submit);
+				deferredPresentation = nullptr;
+			});
+		const auto firstFlight = VulkanSubmissionTestAccess::Flight(*device);
+		const uint32_t frames = 2u * device->GetMaxFramesInFlight() + 1u;
+		for (uint32_t i = 0u; i < frames; ++i)
+		{
+			uint32_t flight = 0u;
+			bool bHasImage = false;
+			Require(device->BeginRenderSubmission(flight, bHasImage) && bHasImage,
+				"another image must remain acquirable while the first presentation is deferred");
+			Require(i == 0u || VulkanSubmissionTestAccess::ImageIndex(*device) != pending.m_image,
+				"an image held for presentation must not be reacquired");
+			Require(flight == (firstFlight + i) % device->GetMaxFramesInFlight(),
+				"the test must wrap real flight slots while presentation remains pending");
+			auto fence = VulkanSubmissionTestAccess::FlightFence(*device);
+			auto frame = RecordFrame(1200u + i);
+			const bool bSubmitted = device->PresentFrame({}, { frame.command->m_vulkan.m_commandBuffer }, {});
+			Require(!pending.m_bWasSemaphoreReused,
+				"graphics completion must not permit signaling a semaphore still held by presentation");
+			Require(bSubmitted && pending.m_bIsPending && fence->Wait(5000000000ull) == VK_SUCCESS,
+				"real graphics must complete while the first presentation is still pending");
+			CheckReadback(frame, true);
+		}
+		const auto result = release();
+		Require(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR,
+			"the delayed presentation must finally consume its original image semaphore");
+		Require(device->WaitIdle() == VK_SUCCESS, "delayed presentation must drain before teardown");
+		std::cout << "Delayed presentation: " << frames << " native GPU readbacks across "
+			<< device->GetMaxFramesInFlight() << " flights; pending image semaphore was not reused\n";
+	}
+
 	struct FailedFrame
 	{
 		RecordedFrame frame;
@@ -6803,6 +6916,10 @@ frame: []
 					});
 			}
 #endif
+			if (present && !lost)
+			{
+				OnRender([]() { TestDelayedPresentation(); });
+			}
 			for (VkResult error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
 			{
 				if (upload)
