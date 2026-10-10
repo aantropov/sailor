@@ -81,6 +81,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <future>
 #include <chrono>
 #include <stdexcept>
@@ -4562,6 +4563,7 @@ frame: []
 		void* m_userData{};
 		std::atomic<int64_t> m_liveAllocations{ 0 };
 		std::atomic<uint64_t> m_totalAllocations{ 0 };
+		std::function<void()> m_beforeAllocation;
 
 		ImGuiAllocationProbe()
 		{
@@ -4577,6 +4579,10 @@ frame: []
 		static void* Allocate(size_t size, void* userData)
 		{
 			auto& probe = *static_cast<ImGuiAllocationProbe*>(userData);
+			if (auto beforeAllocation = std::exchange(probe.m_beforeAllocation, {}))
+			{
+				beforeAllocation();
+			}
 			void* allocation = probe.m_allocate(size, probe.m_userData);
 			if (allocation)
 			{
@@ -4748,6 +4754,47 @@ frame: []
 				!ImGuiApi::GetCurrentContext() && allocations.m_liveAllocations == 0,
 				"native host rollback must also destroy ImGui when world loading fails after context creation");
 			std::cout << "Failed world bootstrap released its ImGui context through both App and native host shutdown\n";
+			for (bool bFailWorld : { false, true })
+			{
+				bool bReachedConstruction = false;
+				bool bRetainedApp = false;
+				// Pause real construction, not the protocol gate or App callbacks.
+				allocations.m_beforeAllocation = [&]()
+				{
+					auto* app = App::GetInstance();
+					auto* renderer = App::GetSubmodule<Renderer>();
+					auto* window = App::GetMainWindow().GetRawPtr();
+					bReachedConstruction = App::IsRendererInitialized() && !ImGuiApi::GetCurrentContext() &&
+						!App::GetSubmodule<EngineLoop>() && window;
+					std::async(std::launch::async, []() { SailorProtocolRequestLocalHostStop(); }).get();
+					bRetainedApp = app == App::GetInstance() && renderer == App::GetSubmodule<Renderer>() &&
+						window == App::GetMainWindow().GetRawPtr();
+				};
+				Tests::ScopeExit resetAllocation([&]() { allocations.m_beforeAllocation = {}; });
+				const auto status = start(bFailWorld ? failedWorldInitialize : initialize);
+				Require(bReachedConstruction && bRetainedApp && status == (bFailWorld ?
+					Protocol::EEditorEngineWebSocketHostStatus::InitializationFailed : Protocol::EEditorEngineWebSocketHostStatus::Ok),
+					"native StopRequest during real initialization must retain the partially built App");
+				if (!bFailWorld)
+				{
+					const auto payload = Tests::ProtocolWire::MakeRequest(2u, 11u);
+					uint8_t* responseData = nullptr;
+					uint32_t responseSize = 0;
+					Tests::ScopeExit freeResponse([&]() { SailorProtocolFreeBuffer(responseData); });
+					const auto invoked = SailorProtocolInvoke(reinterpret_cast<const uint8_t*>(payload.data()),
+						static_cast<uint32_t>(payload.size()), &responseData, &responseSize);
+					Tests::ProtocolWire::TProtocolResponseWire response;
+					Require(invoked == static_cast<int32_t>(Protocol::EEditorEngineTransportStatus::Ok) && responseData &&
+						Tests::ProtocolWire::ParseResponse(std::string_view(reinterpret_cast<const char*>(responseData), responseSize), response) &&
+						response.m_protocolVersion == Protocol::EditorEngineProtocolVersion && response.m_requestId == 2u &&
+						!response.m_bSuccess && !response.m_error.empty(),
+						"a StopRequest accepted during construction must prevent the later native Start");
+				}
+				Require(SailorProtocolStopLocalHost(true) != 0 && !App::GetInstance() &&
+					!ImGuiApi::GetCurrentContext() && allocations.m_liveAllocations == 0,
+					"native cleanup after a construction-time StopRequest must release the actual App and ImGui allocations");
+				std::cout << "Default native StopRequest during App construction passed: failedWorld=" << bFailWorld << '\n';
+			}
 			CheckAppBootstrapStop(initialize, static_cast<uint16_t>(port), EAppInitializationResult::Ready);
 			CheckAppBootstrapStop(failedWorldInitialize, static_cast<uint16_t>(port), EAppInitializationResult::Failed);
 			Require(allocations.m_liveAllocations == 0, "concurrent bootstrap shutdown must release all ImGui allocations");
