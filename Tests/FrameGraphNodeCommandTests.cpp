@@ -146,6 +146,8 @@ namespace
 {
 	constexpr uint32_t Side = 8;
 	const auto HostMemory = EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent;
+	const auto PyramidUsage = ETextureUsageBit::ColorAttachment_Bit | ETextureUsageBit::Storage_Bit |
+		ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit;
 
 	void Require(bool condition, const char* message)
 	{
@@ -4197,7 +4199,7 @@ frame:
 			if (frame == 0 || frame == 5)
 			{
 				pyramid = driver->CreateRenderTarget(glm::ivec2(Extent / 2), 5, EFormat::R32_SFLOAT,
-					ETextureFiltration::Nearest, ETextureClamping::Clamp);
+					ETextureFiltration::Nearest, ETextureClamping::Clamp, PyramidUsage);
 				if (named) graph->SetRenderTarget("Pyramid"_h, pyramid);
 				else
 				{
@@ -6827,6 +6829,8 @@ frame:
 			const auto batchesBefore = draw->GetRecordedDrawCallStats().m_numBatches;
 			if (path == DepthDrawPath::SurfacePass)
 			{
+				commands->ImageMemoryBarrier(draw, target, EImageLayout::ColorAttachmentOptimal);
+				commands->ImageMemoryBarrier(draw, resolved, EImageLayout::ColorAttachmentOptimal);
 				commands->BeginRenderPass(draw, TVector<RHISurfacePtr>{ color }, surface ? surface->GetTarget() : depth,
 					glm::ivec4(0, 0, Side, Side), glm::ivec2(0), false, glm::vec4(0), 0.0f, true);
 				DebugContext::DrawDebugMesh(draw, glm::translate(glm::mat4(1), glm::vec3(0, 0, 0.5f)), snapshot, glm::ivec2(Side));
@@ -6953,8 +6957,10 @@ frame:
 				graph->SetRenderTarget("DepthBuffer"_h, input == DepthInput::DefaultSurfaceOnly ? RHIRenderTargetPtr{} :
 					input == DepthInput::DefaultSurfaceDecoy ? defaultDepth : resolved);
 			}
-			auto surface = outputSurface ? driver->CreateSurface(outputSize, mipCount, EFormat::R32_SFLOAT) : RHISurfacePtr{};
-			auto pyramid = surface ? surface->GetResolved() : driver->CreateRenderTarget(outputSize, mipCount, EFormat::R32_SFLOAT);
+			auto surface = outputSurface ? driver->CreateSurface(outputSize, mipCount, EFormat::R32_SFLOAT,
+				ETextureFiltration::Linear, ETextureClamping::Clamp, PyramidUsage) : RHISurfacePtr{};
+			auto pyramid = surface ? surface->GetResolved() : driver->CreateRenderTarget(outputSize, mipCount, EFormat::R32_SFLOAT,
+				ETextureFiltration::Linear, ETextureClamping::Clamp, PyramidUsage);
 			if (depthSurface) graph->SetSurface("CustomDepth"_h, depthSurface);
 			else graph->SetRenderTarget("CustomDepth"_h, resolved);
 			if (surface) graph->SetSurface("Pyramid"_h, surface);
@@ -7061,7 +7067,8 @@ frame:
 			auto depth = driver->CreateRenderTarget({ 9, 7 }, 1, EFormat::D32_SFLOAT,
 				ETextureFiltration::Nearest, ETextureClamping::Clamp,
 				ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferDst_Bit);
-			auto pyramid = driver->CreateRenderTarget(mipSizes[0], 3, EFormat::R32_SFLOAT);
+			auto pyramid = driver->CreateRenderTarget(mipSizes[0], 3, EFormat::R32_SFLOAT,
+				ETextureFiltration::Linear, ETextureClamping::Clamp, PyramidUsage);
 			node->SetRHIResource("src"_h, depth);
 			node->SetRHIResource("dst"_h, pyramid);
 			auto source = driver->CreateBuffer(9 * 7 * sizeof(float), EBufferUsageBit::BufferTransferSrc_Bit, HostMemory);
@@ -7507,7 +7514,8 @@ frame:
 			auto target = surface ? surface->GetTarget() : color;
 			const bool msaa = surface && surface->NeedsResolve();
 			auto depth = driver->CreateRenderTarget(glm::ivec2(Side), 1, depthFormat,
-				ETextureFiltration::Nearest, ETextureClamping::Clamp, ETextureUsageBit::DepthStencilAttachment_Bit);
+				ETextureFiltration::Nearest, ETextureClamping::Clamp,
+				ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferDst_Bit);
 			auto environment = driver->CreateCubemap(glm::ivec2(1), 1, EFormat::R32G32B32A32_SFLOAT);
 			const glm::vec4 background(0.25f, 0.5f, 0.75f, 0.625f);
 			const glm::vec4 radiance = frame == 0 ? glm::vec4(0.125f, 1, 0.25f, 1) : glm::vec4(1, 0.125f, 0.5f, 1);
