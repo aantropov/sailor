@@ -71,6 +71,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		bool Compile();
 		void Release();
 		bool IsCompiled() const { return m_pipeline != VK_NULL_HANDLE; }
+		VkSampleCountFlagBits GetMsaaSamples() const { return m_msaaSamples; }
 
 		operator VkPipeline() const { return m_pipeline; }
 
@@ -80,6 +81,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		virtual ~VulkanGraphicsPipeline();
 
 		VkPipeline m_pipeline{};
+		VkSampleCountFlagBits m_msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 		VulkanDevicePtr m_pDevice;
 	};
 

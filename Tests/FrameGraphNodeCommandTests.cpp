@@ -4573,6 +4573,58 @@ frame:
 		std::cout << "Particle history: 513 particles, four trace segments, five times, GPU transforms/colors/decay and trailing sentinel passed\n";
 	}
 
+	void TestPipelineSampleVariants(ShaderSetPtr shader)
+	{
+		auto& driver = *Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		const RenderState state(true, true, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, "Opaque"_h.GetHash(), true);
+		auto material = driver.CreateMaterial(driver.GetOrAddVertexDescription<VertexP3N3T3B3UV2C4>(),
+			EPrimitiveTopology::TriangleList, state, shader, driver.CreateShaderBindings());
+		const TVector<VkFormat> colors{ VK_FORMAT_R32G32B32A32_SFLOAT, VK_FORMAT_R32G32B32A32_SFLOAT };
+		const auto deviceSamples = VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples();
+		const auto basePipeline = material->m_vulkan.m_pipelines[0];
+		const auto baseSamples = basePipeline->GetMsaaSamples();
+		std::array<VulkanGraphicsPipelinePtr, 2> variants;
+		size_t count = 0;
+		for (uint32_t pass = 0; pass < 8; ++pass)
+		{
+			const auto samples = pass % 2 ? deviceSamples : VK_SAMPLE_COUNT_1_BIT;
+			auto draw = driver.CreateCommandList(true, ECommandListQueue::Graphics);
+			draw->m_vulkan.m_commandBuffer->BeginSecondaryCommandList(colors, VK_FORMAT_D32_SFLOAT,
+				VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+				VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT, samples != VK_SAMPLE_COUNT_1_BIT);
+			Require(draw->m_vulkan.m_commandBuffer->GetCurrentMsaaSamples() == samples,
+				"secondary recording must inherit the pass sample count for material binding");
+			commands->BindMaterial(draw, material);
+			commands->EndCommandList(draw);
+			const auto index = material->m_vulkan.m_pipelines.FindIf([&](const auto& pipeline)
+			{
+				return pipeline->GetMsaaSamples() == samples && pipeline->m_pipelineStates[0].template StaticCast<VulkanStateDynamicRendering>()->
+					Fits(colors, VK_FORMAT_D32_SFLOAT, VK_FORMAT_UNDEFINED);
+			});
+			Require(index != decltype(material->m_vulkan.m_pipelines)::InvalidIndex,
+				"material binding must publish a pipeline matching both formats and sample count");
+			const auto pipeline = material->m_vulkan.m_pipelines[index];
+			VkGraphicsPipelineCreateInfo createInfo{};
+			for (const auto& pipelineState : pipeline->m_pipelineStates)
+			{
+				pipelineState->Apply(createInfo);
+			}
+			Require(createInfo.pMultisampleState->rasterizationSamples == samples,
+				"the compiled variant's native state must agree with its sample count");
+			if (pass < 2)
+			{
+				variants[pass] = pipeline;
+				count = material->m_vulkan.m_pipelines.Num();
+			}
+			Require(pipeline == variants[pass % 2] && material->m_vulkan.m_pipelines.Num() == count && basePipeline->GetMsaaSamples() == baseSamples,
+				"binding cached variants must not compile again or mutate the shared base pipeline");
+		}
+		Require(deviceSamples == VK_SAMPLE_COUNT_1_BIT || variants[0] != variants[1],
+			"identical formats with different sample counts require separate pipelines");
+		std::cout << "Pipeline MSAA: sample-specific variants, native state, warm reuse and secondary inheritance passed\n";
+	}
+
 	class ParticleDrawNode : public Experimental::ParticlesNode
 	{
 	public:
@@ -8114,6 +8166,7 @@ namespace Sailor::Tests
 				try
 				{
 					TestCubemapMipViews();
+					TestPipelineSampleVariants(mrtShader);
 					TestParticleHistory(particleShaders[2]);
 					std::string particleGraphFailures;
 					for (uint32_t kind : { 1u, 2u, 0u })

@@ -3725,7 +3725,8 @@ void VulkanGraphicsDriver::Dispatch(RHI::RHICommandListPtr cmd,
 void VulkanGraphicsDriver::BindMaterial(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material)
 {
 	auto pipeline = material->m_vulkan.GetOrAddPipeline(cmd->m_vulkan.m_commandBuffer->GetCurrentColorAttachments(),
-		(VkFormat)cmd->m_vulkan.m_commandBuffer->GetCurrentDepthAttachment());
+		cmd->m_vulkan.m_commandBuffer->GetCurrentDepthAttachment(),
+		cmd->m_vulkan.m_commandBuffer->GetCurrentMsaaSamples());
 
 	cmd->m_vulkan.m_commandBuffer->BindPipeline(pipeline);
 	cmd->m_vulkan.m_commandBuffer->SetDepthBias(material->GetRenderState().GetDepthBias());

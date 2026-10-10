@@ -93,7 +93,8 @@ namespace Sailor::RHI
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 		struct Vulkan
 		{
-			GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr GetOrAddPipeline(const TVector<VkFormat>& colorAttachments, VkFormat depthStencilAttachment);
+			GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr GetOrAddPipeline(const TVector<VkFormat>& colorAttachments,
+				VkFormat depthStencilAttachment, VkSampleCountFlagBits samples);
 			TVector<GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr> m_pipelines{};
 			SpinLock m_pipelinesLock;
 

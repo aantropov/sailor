@@ -195,6 +195,7 @@ bool VulkanGraphicsPipeline::Compile()
 	pipelineInfo.pStages = shaderStageCreateInfo;
 
 	ApplyStates(pipelineInfo);
+	m_msaaSamples = pipelineInfo.pMultisampleState->rasterizationSamples;
 
 	// Dynamic rendering can add MRT attachments to an existing material. Match
 	// the blend array to this pipeline's actual target count, retaining the

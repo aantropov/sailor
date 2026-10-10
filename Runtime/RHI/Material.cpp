@@ -56,7 +56,8 @@ namespace
 	}
 }
 
-GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr RHIMaterial::Vulkan::GetOrAddPipeline(const TVector<VkFormat>& colorAttachments, VkFormat depthStencilAttachment)
+GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr RHIMaterial::Vulkan::GetOrAddPipeline(const TVector<VkFormat>& colorAttachments,
+	VkFormat depthStencilAttachment, VkSampleCountFlagBits samples)
 {
 	SAILOR_PROFILE_FUNCTION();
 	m_pipelinesLock.Lock();
@@ -66,6 +67,10 @@ GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr RHIMaterial::Vulkan::GetOrAddP
 
 	for (auto& p : m_pipelines)
 	{
+		if (p->GetMsaaSamples() != samples)
+		{
+			continue;
+		}
 		stateIndex = 0;
 		for (auto& state : p->m_pipelineStates)
 		{
@@ -90,6 +95,13 @@ GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr RHIMaterial::Vulkan::GetOrAddP
 	TVector<VulkanPipelineStatePtr> states = m_pipelines[0]->m_pipelineStates;
 
 	states[stateIndex] = GraphicsDriver::Vulkan::VulkanStateDynamicRenderingPtr::Make(colorAttachments, depthStencilAttachment, stencilAttachmentFormat);
+	for (auto& state : states)
+	{
+		if (state.DynamicCast<VulkanStateMultisample>())
+		{
+			state = VulkanStateMultisamplePtr::Make(samples);
+		}
+	}
 
 	GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr pipeline = VulkanGraphicsPipelinePtr::Make(device,
 		m_pipelines[0]->m_layout,

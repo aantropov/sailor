@@ -133,6 +133,7 @@ void VulkanCommandBuffer::BeginSecondaryCommandList(const TVector<VkFormat>& col
 
 	m_currentAttachments = colorAttachments;
 	m_currentDepthAttachment = depthStencilAttachment;
+	m_currentMsaaSamples = attachments.rasterizationSamples;
 
 	VK_CHECK(vkBeginCommandBuffer(m_commandBuffer, &beginInfo));
 }
@@ -147,6 +148,7 @@ void VulkanCommandBuffer::BeginSecondaryCommandList(VulkanRenderPassPtr renderPa
 	inheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
 	inheritanceInfo.renderPass = *renderPass;
 	inheritanceInfo.subpass = subpassIndex;
+	m_currentMsaaSamples = renderPass->GetMaxMSSamples();
 
 	VkCommandBufferBeginInfo beginInfo{};
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -386,6 +388,8 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 
 	m_currentAttachments = colorAttachments.Select<VkFormat>([](const auto& lhs) { return lhs->m_format; });
 	m_currentDepthAttachment = depthStencilAttachment ? depthStencilAttachment->m_format : VkFormat::VK_FORMAT_UNDEFINED;
+	m_currentMsaaSamples = !colorAttachments.IsEmpty() ? colorAttachments[0]->GetImage()->m_samples :
+		depthStencilAttachment ? depthStencilAttachment->GetImage()->m_samples : VK_SAMPLE_COUNT_1_BIT;
 }
 
 bool VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& colorAttachments,
@@ -458,6 +462,7 @@ void VulkanCommandBuffer::BeginRenderPass(VulkanRenderPassPtr renderPass, Vulkan
 {
 	m_rhiDependecies.Insert(renderPass);
 	m_rhiDependecies.Insert(frameBuffer);
+	m_currentMsaaSamples = renderPass->GetMaxMSSamples();
 
 	VkRenderPassBeginInfo renderPassInfo{};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -851,6 +856,7 @@ void VulkanCommandBuffer::Reset()
 	m_bHasViewport = false;
 	m_currentAttachments.Clear(false);
 	m_currentDepthAttachment = VK_FORMAT_UNDEFINED;
+	m_currentMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
 	m_numRecordedCommands = 0;
 	m_gpuCost = 0;
 }

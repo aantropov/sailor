@@ -182,12 +182,14 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API const TVector<VkFormat>& GetCurrentColorAttachments() const { return m_currentAttachments; }
 		SAILOR_API VkFormat GetCurrentDepthAttachment() const { return m_currentDepthAttachment; }
+		SAILOR_API VkSampleCountFlagBits GetCurrentMsaaSamples() const { return m_currentMsaaSamples; }
 		SAILOR_API const auto& GetImageBarriers() const { return m_imageBarriers; }
 
 	protected:
 
 		TVector<VkFormat> m_currentAttachments;
 		VkFormat m_currentDepthAttachment = VkFormat::VK_FORMAT_UNDEFINED;
+		VkSampleCountFlagBits m_currentMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
 		TSet<RHI::RHIResourcePtr> m_rhiDependecies;
 		TSet<TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>> m_managedMemoryPtrs;
