@@ -1,5 +1,4 @@
 #include "Core/Defines.h"
-#include "Editor/EditorRuntimeBridge.h"
 #include "EditorEngineProtocolInternal.h"
 #include "EditorEngineWebSocketServer.h"
 #include <cstdint>
@@ -53,7 +52,7 @@ extern "C"
 	{
 		try
 		{
-			return Sailor::EditorRuntime::SetEditorRemoteViewportWindowsHost(
+			return Sailor::Protocol::SetWindowsViewportHost(
 				viewportId,
 				swapChainPanelInspectable,
 				compositionScale) ? 1 : 0;

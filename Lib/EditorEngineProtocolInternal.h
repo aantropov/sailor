@@ -109,6 +109,7 @@ namespace Sailor::Protocol
 	SAILOR_SHARED_API bool StopEditorEngineLocalHost(bool bShutdownEngine,
 		const EditorEngineProtocolDependencies& dependencies = {}) noexcept;
 	bool SetMacViewportHost(uint64_t viewportId, uintptr_t layer);
+	bool SetWindowsViewportHost(uint64_t viewportId, void* swapChainPanelInspectable, float compositionScale);
 	void RequestEditorEngineProtocolStop();
 	SAILOR_SHARED_API bool TryDrainEditorEngineProtocolForShutdown(
 		const EditorEngineProtocolDependencies& dependencies = {});

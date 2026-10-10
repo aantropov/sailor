@@ -397,6 +397,19 @@ bool Sailor::Protocol::SetMacViewportHost(uint64_t viewportId, uintptr_t layer)
 		static_cast<uint32_t>(EditorRemote::MacNativeHostHandleKind::CAMetalLayer), layer);
 }
 
+bool Sailor::Protocol::SetWindowsViewportHost(uint64_t viewportId, void* swapChainPanelInspectable, float compositionScale)
+{
+	auto& gate = GetEditorEngineProtocolLifecycleGate();
+	std::string error;
+	if (!gate.TryAcquireOperation(error, false))
+	{
+		return false;
+	}
+	// Keep binding on the UI caller while shutdown drains this operation.
+	const TProtocolLifecycleCompletion completion(gate, EProtocolLifecycleCompletion::Operation);
+	return EditorRuntime::SetEditorRemoteViewportWindowsHost(viewportId, swapChainPanelInspectable, compositionScale);
+}
+
 int32_t Sailor::Protocol::InvokeEditorEngineProtocol(const uint8_t* requestData,
 	uint32_t requestSize,
 	uint8_t** responseData,

@@ -27,6 +27,8 @@ extern "C" SAILOR_SHARED_API void SailorProtocolFreeBuffer(uint8_t* buffer) noex
 extern "C" SAILOR_SHARED_API int32_t SailorProtocolInvoke(const uint8_t* requestData, uint32_t requestSize,
 	uint8_t** responseData, uint32_t* responseSize) noexcept;
 extern "C" SAILOR_SHARED_API int32_t SailorProtocolSetMacViewportHost(uint64_t viewportId, uintptr_t layer) noexcept;
+extern "C" SAILOR_SHARED_API int32_t SailorProtocolSetWindowsViewportHost(uint64_t viewportId,
+	void* swapChainPanelInspectable, float compositionScale) noexcept;
 
 struct HostBindGate
 {
@@ -385,6 +387,11 @@ namespace Sailor::Tests
 
 	void CheckMacHostShutdown(const std::function<bool()>& shutdown)
 	{
+		// The unsupported platform's failed bind must release its admitted operation.
+		if (SailorProtocolSetWindowsViewportHost(258, nullptr, 1.0f) != 0)
+		{
+			throw std::runtime_error("a Windows host binding must be unsupported on Mac");
+		}
 		auto releases = TSharedPtr<std::atomic<uint32_t>>::Make(0u);
 		@autoreleasepool
 		{
