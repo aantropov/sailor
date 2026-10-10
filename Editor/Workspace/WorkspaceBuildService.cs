@@ -8,7 +8,10 @@ namespace SailorEditor.Workspace;
 public sealed record WorkspaceProcessInvocation(
     string FileName,
     IReadOnlyList<string> Arguments,
-    string WorkingDirectory);
+    string WorkingDirectory)
+{
+    public Encoding? OutputEncoding { get; init; }
+}
 
 public sealed record WorkspaceProcessResult(
     int ExitCode,
@@ -208,6 +211,8 @@ public sealed class WorkspaceProcessRunner : IWorkspaceProcessRunner
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardOutputEncoding = invocation.OutputEncoding,
+            StandardErrorEncoding = invocation.OutputEncoding,
             CreateNoWindow = true,
         };
         foreach (var argument in invocation.Arguments)

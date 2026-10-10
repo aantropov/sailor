@@ -1,5 +1,6 @@
 using SailorEditor.Workspace;
 using SailorEditor.Settings;
+using System.Text;
 
 namespace SailorEditor.Editor.Tests;
 
@@ -298,12 +299,16 @@ public sealed class WorkspaceProjectGeneratorIntegrationTests
             ["--noconsole", "--null-audio", "--no-title-stats",
                 useManifestArgument ? "--workspace-manifest" : "--workspace",
                 useManifestArgument ? session.ManifestPath : session.WorkspaceRoot],
-            workspace.Root), timeout.Token);
+            workspace.Root)
+        {
+            OutputEncoding = Encoding.UTF8
+        }, timeout.Token);
 
         Assert.Equal(1, result.ExitCode);
         var expectedModuleDirectory = Path.Combine(session.LogicOutputDirectory, "Release").Replace('\\', '/');
-        Assert.Contains($"Workspace module for configuration 'Release' was not found at '{expectedModuleDirectory}/",
-            result.Output, StringComparison.Ordinal);
+        Assert.True(result.Output.Contains(
+            $"Workspace module for configuration 'Release' was not found at '{expectedModuleDirectory}/",
+            StringComparison.Ordinal), result.Output);
         Assert.Contains(manifest.LogicModuleName, result.Output, StringComparison.Ordinal);
     }
 
