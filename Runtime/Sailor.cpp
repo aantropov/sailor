@@ -802,6 +802,8 @@ void App::Start()
 
 	Utils::Timer timer{};
 	Utils::Timer trackEditor{};
+	Utils::Timer garbageCollection{};
+	garbageCollection.Start();
 	FrameState currentFrame{};
 	FrameState lastFrame{};
 	bool bCanCreateNewFrame = true;
@@ -815,6 +817,7 @@ void App::Start()
 
 	while (pMainWindow->IsRunning())
 	{
+		bool bFrameSubmitted = false;
 		timer.Start();
 		trackEditor.Start();
 
@@ -909,6 +912,7 @@ void App::Start()
 
 		if (!bCanCreateNewFrame && bEditorRenderAreaReady && renderer->PushFrame(currentFrame))
 		{
+			bFrameSubmitted = true;
 			bCanCreateNewFrame = true;
 			lastFrame = currentFrame;
 
@@ -927,12 +931,17 @@ void App::Start()
 			break;
 		}
 
-		// Collect garbage
-		uint32_t index = 0;
-		while (auto submodule = GetSubmodule(index))
+		// Polling input while a frame is pending must not repeatedly scan every importer.
+		// Keep periodic cleanup when rendering is paused or the editor viewport is hidden.
+		if (bFrameSubmitted || garbageCollection.ResultMs() >= 1000)
 		{
-			submodule->CollectGarbage();
-			index++;
+			uint32_t index = 0;
+			while (auto submodule = GetSubmodule(index))
+			{
+				submodule->CollectGarbage();
+				index++;
+			}
+			garbageCollection.Start();
 		}
 
 		timer.Stop();

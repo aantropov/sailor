@@ -6922,6 +6922,17 @@ frame: []
 		std::cout << "EngineLoop: one active world, dormant candidates, deferred promotion and retained frame commands passed\n";
 	}
 
+	class GarbageCollectionProbe : public TSubmodule<GarbageCollectionProbe>
+	{
+	public:
+		void CollectGarbage() override
+		{
+			++m_numCollections;
+		}
+
+		uint64_t m_numCollections = 0;
+	};
+
 	void TestAppFramePacing()
 	{
 		auto* renderer = App::GetSubmodule<Renderer>();
@@ -6936,6 +6947,7 @@ frame: []
 		auto graph = renderer->GetFrameGraph()->GetRHI();
 		const auto nodes = graph->GetGraph();
 		graph->GetGraph().Clear();
+		auto* garbage = App::AddSubmodule(TSubmodule<GarbageCollectionProbe>::Make());
 		Win32::GlobalInput::ApplyEvent({ Platform::InputEvent::Type::Reset });
 		FrameState warm(world.GetRawPtr(), 16, {}, { 32, 24 });
 		engine->ProcessCpuFrame(warm);
@@ -6983,6 +6995,7 @@ frame: []
 				Win32::GlobalInput::ApplyEvent({ Platform::InputEvent::Type::Reset });
 				engine->ExitWorld(world.GetRawPtr());
 				engine->ProcessPendingWorldExits();
+				App::RemoveSubmodule<GarbageCollectionProbe>();
 			});
 		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
 		VkResult signalResult = VK_ERROR_UNKNOWN;
@@ -6996,6 +7009,7 @@ frame: []
 				signalResult = gate.Release();
 			});
 		uint64_t queuedWorldFrames = 0;
+		uint64_t frameCollections = 0, busyCollections = 0, idleCollections = 0;
 		bool bMainResponsive = false, bFreshInput = false;
 		std::jthread controller([&]()
 			{
@@ -7006,6 +7020,7 @@ frame: []
 				bMainResponsive = App::ExecuteOnEngineMainThread<bool>(false, [&]()
 					{
 						queuedWorldFrames = world->GetCurrentFrame() - initialWorldFrame;
+						frameCollections = garbage->m_numCollections;
 						Win32::GlobalInput::ApplyEvent({ Platform::InputEvent::Type::Key, 0, 0, 'W', -1, true });
 						return bWaitStarted.load() && !world->GetInput().IsKeyDown('W') &&
 							vkGetFenceStatus(*device, *completions[0]->m_vulkan.m_fence) == VK_NOT_READY;
@@ -7018,6 +7033,17 @@ frame: []
 								Win32::GlobalInput::GetInputState().IsKeyDown('W');
 						});
 				}
+				std::this_thread::sleep_for(std::chrono::milliseconds(100));
+				const auto afterPolling = App::ExecuteOnEngineMainThread<uint64_t>(0, [&]()
+					{
+						return garbage->m_numCollections;
+					});
+				busyCollections = afterPolling - frameCollections;
+				std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+				idleCollections = App::ExecuteOnEngineMainThread<uint64_t>(0, [&]()
+					{
+						return garbage->m_numCollections - afterPolling;
+					});
 				bReleaseGpu.store(true);
 				while (!bFreshInput && std::chrono::steady_clock::now() < deadline)
 				{
@@ -7039,9 +7065,12 @@ frame: []
 			CheckReadback(frame, true);
 		}
 		std::cout << "App frame pacing: queued CPU frames=" << queuedWorldFrames << ", Main responsive=" << bMainResponsive
-			<< ", fresh input=" << bFreshInput << '\n';
+			<< ", fresh input=" << bFreshInput << ", frame collections=" << frameCollections
+			<< ", polling collections=" << busyCollections << ", idle collections=" << idleCollections << '\n';
 		Require(signalResult == VK_SUCCESS && bMainResponsive && bFreshInput && queuedWorldFrames == 1,
 			"App must capture one independent frame, keep Main responsive and sample the next input only after admission reopens");
+		Require(frameCollections == queuedWorldFrames && busyCollections <= 1 && idleCollections >= 1 && idleCollections <= 2,
+			"garbage collection must follow accepted frames, with periodic maintenance while rendering is stalled");
 	}
 
 	void TestGpuTimingNames()
