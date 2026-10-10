@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <array>
 
 #include "VulkanApi.h"
@@ -925,6 +926,17 @@ void VulkanCommandBuffer::Blit(VulkanImagePtr srcImage, VkImageLayout srcImageLa
 	m_gpuCost += 20;
 }
 
+void VulkanCommandBuffer::GenerateMipMaps(RHI::RHITexturePtr texture)
+{
+	const auto image = texture->m_vulkan.m_image;
+	const VkImageSubresourceRange range{ VK_IMAGE_ASPECT_COLOR_BIT, 0, image->m_mipLevels, 0, image->m_arrayLayers };
+	TransitionImage(texture, range, RHI::EImageLayout::TransferDstOptimal);
+	GenerateMipMaps(image);
+	auto& state = m_imageBarriers[*image];
+	state.m_layout = RHI::EImageLayout::ShaderReadOnlyOptimal;
+	state.m_subresourceLayouts.Clear(false);
+}
+
 void VulkanCommandBuffer::GenerateMipMaps(VulkanImagePtr image)
 {
 	constexpr VkImageLayout finalLayout =
@@ -1181,6 +1193,114 @@ void VulkanCommandBuffer::MemoryBarrier(VkAccessFlags srcAccess, VkAccessFlags d
 	m_gpuCost += 1;
 }
 
+void VulkanCommandBuffer::ImageMemoryBarrier(RHI::RHITexturePtr image, RHI::EImageLayout newLayout, bool bComputeSampling)
+{
+	auto range = image->m_vulkan.m_imageView->m_subresourceRange;
+	// Depth and stencil layouts remain coupled; separateDepthStencilLayouts is not enabled.
+	range.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(static_cast<VkFormat>(image->GetFormat()));
+	TransitionImage(image, range, newLayout, bComputeSampling);
+}
+
+void VulkanCommandBuffer::TransitionImage(const RHI::RHITexturePtr& texture, const VkImageSubresourceRange& range,
+	RHI::EImageLayout newLayout, bool bComputeSampling)
+{
+	const auto image = texture->m_vulkan.m_image;
+	auto& state = m_imageBarriers[*image];
+	if (!state.m_texture)
+	{
+		// Published images start in their default layout; command lists restore it before completion.
+		state.m_texture = texture;
+		state.m_layout = texture->GetDefaultLayout();
+	}
+	const uint32_t mips = image->m_mipLevels;
+	const bool bWholeImage = range.baseMipLevel == 0 && range.levelCount == mips &&
+		range.baseArrayLayer == 0 && range.layerCount == image->m_arrayLayers;
+	auto& layouts = state.m_subresourceLayouts;
+	if (layouts.IsEmpty())
+	{
+		if (bWholeImage || state.m_layout == newLayout)
+		{
+			ImageMemoryBarrier(image, range, state.m_layout, newLayout, bComputeSampling);
+			state.m_layout = newLayout;
+			return;
+		}
+		layouts.Resize(mips * image->m_arrayLayers);
+		std::fill(layouts.begin(), layouts.end(), state.m_layout);
+	}
+
+	const uint32_t endMip = range.baseMipLevel + range.levelCount;
+	const uint32_t endLayer = range.baseArrayLayer + range.layerCount;
+	for (uint32_t layer = range.baseArrayLayer; layer < endLayer;)
+	{
+		// Identical rows share a barrier, including all six faces of a uniform cubemap.
+		uint32_t layerCount = 1;
+		const auto* row = layouts.GetData() + layer * mips + range.baseMipLevel;
+		while (layer + layerCount < endLayer && std::equal(row, row + range.levelCount,
+			layouts.GetData() + (layer + layerCount) * mips + range.baseMipLevel))
+		{
+			++layerCount;
+		}
+		for (uint32_t mip = range.baseMipLevel; mip < endMip;)
+		{
+			const auto oldLayout = layouts[layer * mips + mip];
+			uint32_t mipCount = 1;
+			while (mip + mipCount < endMip && layouts[layer * mips + mip + mipCount] == oldLayout)
+			{
+				++mipCount;
+			}
+			const VkImageSubresourceRange transition{ range.aspectMask, mip, mipCount, layer, layerCount };
+			ImageMemoryBarrier(image, transition, oldLayout, newLayout, bComputeSampling);
+			for (uint32_t rowIndex = layer; rowIndex < layer + layerCount; ++rowIndex)
+			{
+				std::fill_n(layouts.GetData() + rowIndex * mips + mip, mipCount, newLayout);
+			}
+			mip += mipCount;
+		}
+		layer += layerCount;
+	}
+	if (bWholeImage)
+	{
+		state.m_layout = newLayout;
+		layouts.Clear(false);
+	}
+}
+
+void VulkanCommandBuffer::RestoreImageBarriers()
+{
+	for (const auto& entry : m_imageBarriers)
+	{
+		const auto& texture = entry.Second()->m_texture;
+		const auto image = texture->m_vulkan.m_image;
+		const VkImageSubresourceRange range{ VulkanApi::ComputeAspectFlagsForFormat(image->m_format),
+			0, image->m_mipLevels, 0, image->m_arrayLayers };
+		TransitionImage(texture, range, texture->GetDefaultLayout());
+	}
+	m_imageBarriers.Clear();
+}
+
+void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, const VkImageSubresourceRange& range,
+	RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout, bool bComputeSampling)
+{
+	const bool bComputeOld = oldLayout == RHI::EImageLayout::ComputeRead || oldLayout == RHI::EImageLayout::ComputeWrite;
+	const bool bComputeNew = newLayout == RHI::EImageLayout::ComputeRead || newLayout == RHI::EImageLayout::ComputeWrite;
+	if (!bComputeOld && !bComputeNew && !bComputeSampling && oldLayout == newLayout)
+	{
+		return;
+	}
+	const auto oldVkLayout = bComputeOld ? VK_IMAGE_LAYOUT_GENERAL : static_cast<VkImageLayout>(oldLayout);
+	const auto newVkLayout = bComputeNew ? VK_IMAGE_LAYOUT_GENERAL : static_cast<VkImageLayout>(newLayout);
+	const auto queueFlags = GetQueueFlags();
+	const VkAccessFlags srcAccess = bComputeOld
+		? (oldLayout == RHI::EImageLayout::ComputeWrite ? VK_ACCESS_SHADER_WRITE_BIT : VK_ACCESS_SHADER_READ_BIT)
+		: GetAccessFlags(oldVkLayout, queueFlags);
+	const VkAccessFlags dstAccess = bComputeSampling ? VK_ACCESS_SHADER_READ_BIT : bComputeNew
+		? (newLayout == RHI::EImageLayout::ComputeWrite ? VK_ACCESS_SHADER_WRITE_BIT : VK_ACCESS_SHADER_READ_BIT)
+		: GetAccessFlags(newVkLayout, queueFlags);
+	const auto srcStage = bComputeOld ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : GetPipelineStage(oldVkLayout, queueFlags);
+	const auto dstStage = bComputeNew || bComputeSampling ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : GetPipelineStage(newVkLayout, queueFlags);
+	ImageMemoryBarrier(image, range, oldVkLayout, newVkLayout, srcAccess, dstAccess, srcStage, dstStage);
+}
+
 void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image,
 	VkFormat format,
 	VkImageLayout oldLayout,
@@ -1192,16 +1312,26 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image,
 	uint32_t srcQueueFamilyIndex,
 	uint32_t dstQueueFamilyIndex)
 {
+	auto range = image->m_subresourceRange;
+	range.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(format);
+	m_rhiDependecies.Insert(image);
+	ImageMemoryBarrier(image->GetImage(), range, oldLayout, newLayout, srcAccess, dstAccess,
+		srcStage, dstStage, srcQueueFamilyIndex, dstQueueFamilyIndex);
+}
+
+void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, const VkImageSubresourceRange& range,
+	VkImageLayout oldLayout, VkImageLayout newLayout, VkAccessFlags srcAccess, VkAccessFlags dstAccess,
+	VkPipelineStageFlags srcStage, VkPipelineStageFlags dstStage,
+	uint32_t srcQueueFamilyIndex, uint32_t dstQueueFamilyIndex)
+{
 	VkImageMemoryBarrier barrier{};
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 	barrier.oldLayout = oldLayout;
 	barrier.newLayout = newLayout;
 	barrier.srcQueueFamilyIndex = srcQueueFamilyIndex;
 	barrier.dstQueueFamilyIndex = dstQueueFamilyIndex;
-	barrier.image = *image->GetImage();
-
-	barrier.subresourceRange = image->m_subresourceRange;
-	barrier.subresourceRange.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(image->m_format);
+	barrier.image = *image;
+	barrier.subresourceRange = range;
 
 	barrier.srcAccessMask = srcAccess;
 	barrier.dstAccessMask = dstAccess;
@@ -1228,9 +1358,10 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image, VkFormat 
 		return;
 	}
 
-	m_rhiDependecies.Insert(image);
-
-	return ImageMemoryBarrier(image->GetImage(), format, oldLayout, newLayout);
+	const auto queueFlags = GetQueueFlags();
+	ImageMemoryBarrier(image, format, oldLayout, newLayout,
+		GetAccessFlags(oldLayout, queueFlags), GetAccessFlags(newLayout, queueFlags),
+		GetPipelineStage(oldLayout, queueFlags), GetPipelineStage(newLayout, queueFlags));
 }
 
 void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
@@ -1240,38 +1371,10 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat form
 		return;
 	}
 
-	VkImageMemoryBarrier barrier{};
-	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-	barrier.oldLayout = oldLayout;
-	barrier.newLayout = newLayout;
-	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrier.image = *image;
-
-	barrier.subresourceRange.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(format);
-	barrier.subresourceRange.baseMipLevel = 0;
-	barrier.subresourceRange.levelCount = image->m_mipLevels;
-	barrier.subresourceRange.baseArrayLayer = 0;
-	barrier.subresourceRange.layerCount = image->m_arrayLayers;
-
-	const VkQueueFlags queueFlags = GetQueueFlags();
-	VkPipelineStageFlags sourceStage = GetPipelineStage(oldLayout, queueFlags);
-	VkPipelineStageFlags destinationStage = GetPipelineStage(newLayout, queueFlags);
-
-	barrier.srcAccessMask = GetAccessFlags(oldLayout, queueFlags);
-	barrier.dstAccessMask = GetAccessFlags(newLayout, queueFlags);
-
-	vkCmdPipelineBarrier(
-		m_commandBuffer,
-		sourceStage, destinationStage,
-		0,
-		0, nullptr,
-		0, nullptr,
-		1, &barrier
-	);
-
-	m_rhiDependecies.Insert(image);
-
-	m_numRecordedCommands++;
-	m_gpuCost += 1;
+	const VkImageSubresourceRange range{ VulkanApi::ComputeAspectFlagsForFormat(format),
+		0, image->m_mipLevels, 0, image->m_arrayLayers };
+	const auto queueFlags = GetQueueFlags();
+	ImageMemoryBarrier(image, range, oldLayout, newLayout,
+		GetAccessFlags(oldLayout, queueFlags), GetAccessFlags(newLayout, queueFlags),
+		GetPipelineStage(oldLayout, queueFlags), GetPipelineStage(newLayout, queueFlags));
 }

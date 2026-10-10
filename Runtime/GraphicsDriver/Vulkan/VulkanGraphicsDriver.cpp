@@ -1293,14 +1293,15 @@ bool VulkanGraphicsDriver::CopyBuffer_Immediate(RHI::RHIBufferPtr src, RHI::RHIB
 
 void VulkanGraphicsDriver::RestoreImageBarriers(RHI::RHICommandListPtr cmd)
 {
-	for (const auto& barrier : cmd->m_vulkan.m_commandBuffer->GetImageBarriers())
+	if (m_bIsTrackingGpu)
 	{
-		RHI::RHITexturePtr tex = (*barrier.Second()).First();
-
-		ImageMemoryBarrier(cmd, tex, tex->GetDefaultLayout());
+		for (const auto& entry : cmd->m_vulkan.m_commandBuffer->GetImageBarriers())
+		{
+			const auto& texture = entry.Second()->m_texture;
+			m_lastFrameGpuStats.m_barriers[texture][texture->GetDefaultLayout()]++;
+		}
 	}
-
-	cmd->m_vulkan.m_commandBuffer->GetImageBarriers().Clear();
+	cmd->m_vulkan.m_commandBuffer->RestoreImageBarriers();
 }
 
 void VulkanGraphicsDriver::SetDebugName(RHI::RHIResourcePtr resource, StringHash name)
@@ -3017,18 +3018,11 @@ void VulkanGraphicsDriver::PushConstants(RHI::RHICommandListPtr cmd, RHI::RHIMat
 
 void VulkanGraphicsDriver::GenerateMipMaps(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr target)
 {
-	VkImage vkHandle = *target->m_vulkan.m_image;
-
-	const bool bShouldOptimizeBarriers = cmd->m_vulkan.m_commandBuffer->GetImageBarriers().ContainsKey(vkHandle);
-	if (bShouldOptimizeBarriers)
+	if (m_bIsTrackingGpu && cmd->m_vulkan.m_commandBuffer->GetImageBarriers().ContainsKey(*target->m_vulkan.m_image))
 	{
-		ImageMemoryBarrier(cmd, target, RHI::EImageLayout::TransferDstOptimal);
+		m_lastFrameGpuStats.m_barriers[target][RHI::EImageLayout::TransferDstOptimal]++;
 	}
-
-	cmd->m_vulkan.m_commandBuffer->GenerateMipMaps(target->m_vulkan.m_image);
-
-	cmd->m_vulkan.m_commandBuffer->GetImageBarriers()[vkHandle] =
-		TPair(target, RHI::EImageLayout::ShaderReadOnlyOptimal);
+	cmd->m_vulkan.m_commandBuffer->GenerateMipMaps(target);
 }
 
 void VulkanGraphicsDriver::ConvertEquirect2Cubemap(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr equirect, RHI::RHICubemapPtr cubemap)
@@ -3080,110 +3074,25 @@ void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::R
 		m_lastFrameGpuStats.m_barriers[image][newLayout]++;
 	}
 
-	auto& imageBarriers = cmd->m_vulkan.m_commandBuffer->GetImageBarriers();
-
-	VkImage vkHandle = *image->m_vulkan.m_image;
-	if (!imageBarriers.ContainsKey(vkHandle))
-	{
-		// Engine-owned images are initialized before publication and every
-		// command list restores them to their current default layout.
-		imageBarriers[vkHandle] = TPair(image, image->GetDefaultLayout());
-	}
-
-	RHI::EImageLayout oldLayout = imageBarriers[vkHandle].Second();
-
-	const bool bCompute = newLayout == RHI::EImageLayout::ComputeRead || newLayout == RHI::EImageLayout::ComputeWrite ||
-		oldLayout == RHI::EImageLayout::ComputeRead || oldLayout == RHI::EImageLayout::ComputeWrite;
-
-	if (!bCompute && (oldLayout == newLayout))
-	{
-		return;
-	}
-
-	ImageMemoryBarrier(cmd, image, image->GetFormat(), oldLayout, newLayout);
-
-	imageBarriers[vkHandle] = TPair(image, newLayout);
+	cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image, newLayout);
 }
 
 void VulkanGraphicsDriver::ImageMemoryBarrierForComputeSampling(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image)
 {
 	constexpr RHI::EImageLayout newLayout = RHI::EImageLayout::ShaderReadOnlyOptimal;
-	const VkQueueFlags queueFlags = cmd->m_vulkan.m_commandBuffer->GetQueueFlags();
 	if (m_bIsTrackingGpu)
 	{
 		m_lastFrameGpuStats.m_barriers[image][newLayout]++;
 	}
 
-	auto& imageBarriers = cmd->m_vulkan.m_commandBuffer->GetImageBarriers();
-	const VkImage vkHandle = *image->m_vulkan.m_image;
-	if (!imageBarriers.ContainsKey(vkHandle))
-	{
-		imageBarriers[vkHandle] = TPair(image, image->GetDefaultLayout());
-	}
-
-	const RHI::EImageLayout oldLayout = imageBarriers[vkHandle].Second();
-	const bool bComputeOld = oldLayout == RHI::EImageLayout::ComputeRead ||
-		oldLayout == RHI::EImageLayout::ComputeWrite;
-	const VkImageLayout oldVkLayout = bComputeOld ?
-		VK_IMAGE_LAYOUT_GENERAL : static_cast<VkImageLayout>(oldLayout);
-	const VkAccessFlags oldAccess = bComputeOld ?
-		(oldLayout == RHI::EImageLayout::ComputeWrite ? VK_ACCESS_SHADER_WRITE_BIT : VK_ACCESS_SHADER_READ_BIT) :
-		VulkanCommandBuffer::GetAccessFlags(oldVkLayout, queueFlags);
-	const VkPipelineStageFlags oldStage = bComputeOld ?
-		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : VulkanCommandBuffer::GetPipelineStage(oldVkLayout, queueFlags);
-
-	cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(
-		image->m_vulkan.m_imageView,
-		static_cast<VkFormat>(image->GetFormat()),
-		oldVkLayout,
-		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		oldAccess,
-		VK_ACCESS_SHADER_READ_BIT,
-		oldStage,
-		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-
-	imageBarriers[vkHandle] = TPair(image, newLayout);
+	cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image, newLayout, true);
 }
 
 void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout)
 {
-	const VkQueueFlags queueFlags = cmd->m_vulkan.m_commandBuffer->GetQueueFlags();
-	const VkImageLayout defaultComputeLayout = VkImageLayout::VK_IMAGE_LAYOUT_GENERAL;
-	const VkAccessFlags oldComputeAccess = oldLayout == RHI::EImageLayout::ComputeWrite ? VK_ACCESS_SHADER_WRITE_BIT : VK_ACCESS_SHADER_READ_BIT;
-	const VkAccessFlags newComputeAccess = newLayout == RHI::EImageLayout::ComputeWrite ? VK_ACCESS_SHADER_WRITE_BIT : VK_ACCESS_SHADER_READ_BIT;
-	const VkPipelineStageFlagBits computeStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-
-	const bool bComputeOld = oldLayout == RHI::EImageLayout::ComputeWrite || oldLayout == RHI::EImageLayout::ComputeRead;
-	const bool bComputeNew = newLayout == RHI::EImageLayout::ComputeWrite || newLayout == RHI::EImageLayout::ComputeRead;
-
-	if (bComputeOld && bComputeNew)
-	{
-		cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image->m_vulkan.m_imageView,
-			(VkFormat)format,
-			defaultComputeLayout, defaultComputeLayout,
-			oldComputeAccess, newComputeAccess,
-			computeStage, computeStage);
-	}
-	else if (bComputeOld && !bComputeNew)
-	{
-		cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image->m_vulkan.m_imageView,
-			(VkFormat)format,
-			defaultComputeLayout, (VkImageLayout)newLayout,
-			oldComputeAccess, VulkanCommandBuffer::GetAccessFlags((VkImageLayout)newLayout, queueFlags),
-			computeStage, VulkanCommandBuffer::GetPipelineStage((VkImageLayout)newLayout, queueFlags));
-	}
-	else if (!bComputeOld && bComputeNew)
-	{
-		cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image->m_vulkan.m_imageView,
-			(VkFormat)format,
-			(VkImageLayout)oldLayout, defaultComputeLayout,
-			VulkanCommandBuffer::GetAccessFlags((VkImageLayout)oldLayout, queueFlags), newComputeAccess,
-			VulkanCommandBuffer::GetPipelineStage((VkImageLayout)oldLayout, queueFlags), computeStage);
-	}
-	else
-	{
-		cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image->m_vulkan.m_imageView, (VkFormat)format, (VkImageLayout)oldLayout, (VkImageLayout)newLayout);
-	}
+	auto range = image->m_vulkan.m_imageView->m_subresourceRange;
+	range.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(static_cast<VkFormat>(format));
+	cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image->m_vulkan.m_image, range, oldLayout, newLayout);
 }
 
 bool VulkanGraphicsDriver::BlitImage(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr src, RHI::RHITexturePtr dst, glm::ivec4 srcRegionRect, glm::ivec4 dstRegionRect, RHI::ETextureFiltration filtration)

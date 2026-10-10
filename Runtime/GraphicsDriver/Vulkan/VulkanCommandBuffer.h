@@ -139,6 +139,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API void ImageMemoryBarrier(VulkanImageViewPtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
 		SAILOR_API void ImageMemoryBarrier(VulkanImagePtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
+		SAILOR_API void ImageMemoryBarrier(VulkanImagePtr image, const VkImageSubresourceRange& range,
+			RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout, bool bComputeSampling = false);
+		SAILOR_API void ImageMemoryBarrier(RHI::RHITexturePtr image, RHI::EImageLayout newLayout, bool bComputeSampling = false);
+		SAILOR_API void RestoreImageBarriers();
 
 		SAILOR_API void Blit(VulkanImagePtr srcImage, VkImageLayout srcImageLayout, VulkanImagePtr dstImage, VkImageLayout dstImageLayout,
 			uint32_t regionCount, const VkImageBlit* pRegions, VkFilter filter);
@@ -148,6 +152,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void ClearAttachments(VkRect2D renderArea, const glm::vec4& clearColor, float clearDepth);
 
 		SAILOR_API void GenerateMipMaps(VulkanImagePtr image);
+		SAILOR_API void GenerateMipMaps(RHI::RHITexturePtr image);
 		SAILOR_API void ClearDependencies();
 		SAILOR_API void Reset();
 
@@ -177,8 +182,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API const TVector<VkFormat>& GetCurrentColorAttachments() const { return m_currentAttachments; }
 		SAILOR_API VkFormat GetCurrentDepthAttachment() const { return m_currentDepthAttachment; }
-
-		SAILOR_API TMap<VkImage, TPair<RHI::RHITexturePtr, RHI::EImageLayout>>& GetImageBarriers() { return m_imageBarriers; }
+		SAILOR_API const auto& GetImageBarriers() const { return m_imageBarriers; }
 
 	protected:
 
@@ -189,9 +193,21 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TSet<TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>> m_managedMemoryPtrs;
 		TSet<TPair<TMemoryPtr<VulkanBufferMemoryPtr>, TWeakPtr<VulkanBufferAllocator>>> m_memoryPtrs;
 
-		// That is used for image barrier optimization
-		// TODO: Store VkImage + Sub resource (level + layer) to fit better
-		TMap<VkImage, TPair<RHI::RHITexturePtr, RHI::EImageLayout>> m_imageBarriers;
+		struct ImageLayoutState
+		{
+			RHI::RHITexturePtr m_texture;
+			RHI::EImageLayout m_layout = RHI::EImageLayout::Undefined;
+			// Allocate only when views split an otherwise uniform image layout.
+			TVector<RHI::EImageLayout> m_subresourceLayouts;
+		};
+		TMap<VkImage, ImageLayoutState> m_imageBarriers;
+
+		void TransitionImage(const RHI::RHITexturePtr& image, const VkImageSubresourceRange& range,
+			RHI::EImageLayout newLayout, bool bComputeSampling = false);
+		void ImageMemoryBarrier(VulkanImagePtr image, const VkImageSubresourceRange& range,
+			VkImageLayout oldLayout, VkImageLayout newLayout, VkAccessFlags srcAccess, VkAccessFlags dstAccess,
+			VkPipelineStageFlags srcStage, VkPipelineStageFlags dstStage,
+			uint32_t srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, uint32_t dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED);
 
 		VulkanDevicePtr m_device;
 		VulkanCommandPoolPtr m_commandPool;
