@@ -180,6 +180,8 @@ bool VulkanDevice::BeginConditionalDestroy()
 	m_swapchain.Clear();
 	m_commandPool.Clear();
 
+	check(m_threadContext.Num() <= App::GetSubmodule<Tasks::Scheduler>()->GetNumRHIThreads() + 2);
+
 	for (auto& pair : m_threadContext)
 	{
 		pair.m_second.Clear();
@@ -213,7 +215,6 @@ void VulkanDevice::Shutdown()
 
 ThreadContext& VulkanDevice::GetOrAddThreadContext(DWORD threadId)
 {
-	// Resource creation is allowed on any thread; each caller owns its pools.
 	auto& res = m_threadContext.At_Lock(threadId);
 	if (!res)
 	{
@@ -223,6 +224,7 @@ ThreadContext& VulkanDevice::GetOrAddThreadContext(DWORD threadId)
 		VkDescriptorPool pool = *res->m_descriptorPool;
 		SetDebugName(VkObjectType::VK_OBJECT_TYPE_DESCRIPTOR_POOL, (uint64_t)pool, Utils::GetCurrentThreadName().ToString());
 #endif
+		check(m_threadContext.Num() <= App::GetSubmodule<Tasks::Scheduler>()->GetNumRHIThreads() + 2);
 	}
 	m_threadContext.Unlock(threadId);
 
@@ -231,9 +233,13 @@ ThreadContext& VulkanDevice::GetOrAddThreadContext(DWORD threadId)
 
 ThreadContext& VulkanDevice::GetCurrentThreadContext()
 {
+	auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+	check(scheduler->HasThread(GetCurrentThreadId()));
+	check(scheduler->IsMainThread() || scheduler->IsRendererThread() ||
+		scheduler->GetCurrentThreadType() == EThreadType::RHI);
+
 	// Main's pools follow its queue across bootstrap, engine-loop and shutdown threads.
-	// The former owner can still allocate resources through its own native-thread context.
-	const DWORD contextId = App::GetSubmodule<Tasks::Scheduler>()->IsMainThread() ? 0 : GetCurrentThreadId();
+	const DWORD contextId = scheduler->IsMainThread() ? 0 : GetCurrentThreadId();
 	return GetOrAddThreadContext(contextId);
 }
 

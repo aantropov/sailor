@@ -4890,9 +4890,6 @@ frame: []
 				scheduler->AttachCurrentThreadAsMainThread();
 			});
 		attached.wait();
-		auto hostCommand = Renderer::GetDriver()->CreateCommandList(false, ECommandListQueue::Graphics);
-		const VkCommandPool hostPool = *hostCommand->m_vulkan.m_commandBuffer->GetCommandPool();
-		hostCommand.Clear();
 		const auto callerReleases = Tests::CaptureVulkanCommandBufferReleases([&]() { callerCommand.Clear(); });
 		auto releaseWorker = Tasks::CreateTask("Release old Main command buffer"_h,
 			[command = std::move(workerCommand)]() mutable { command.Clear(); }, EThreadType::RHI);
@@ -4901,8 +4898,8 @@ frame: []
 		Require(callerReleases.empty() && std::count(mainReleases.begin(), mainReleases.end(), callerHandle) == 1 &&
 			std::count(mainReleases.begin(), mainReleases.end(), workerHandle) == 1,
 			"Main command buffers released by the old owner and RHI must retire once on the new Main owner");
-		Require(mainPool == originalPool && hostPool != mainPool,
-			"Main must retain its pool while the former owner can independently create resources");
+		Require(mainPool == originalPool,
+			"Main must retain its pool when ownership moves to another native thread");
 		std::cout << "Command buffer retirement followed Main across native thread rebinding\n";
 	}
 

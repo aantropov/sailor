@@ -437,7 +437,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 				packet.Finalize(false);
 			}
 			orderedDrawItems.Clear(false);
-		}, EThreadType::Worker);
+		}, EThreadType::RHI);
 
 	return res;
 }
