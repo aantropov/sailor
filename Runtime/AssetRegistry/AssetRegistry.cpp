@@ -1,4 +1,5 @@
 #include "AssetRegistry/AssetRegistry.h"
+#include "Core/FileRevision.h"
 #include "AssetRegistry/AssetRegistryInternal.h"
 
 #include "AssetRegistry/Animation/AnimationAssetInfo.h"
@@ -22,8 +23,28 @@
 
 using namespace Sailor;
 using namespace Sailor::AssetRegistryInternal;
+using namespace Sailor::Workspace;
 
 bool Sailor::g_bUseLazyAssetInfoLoading = false;
+
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+namespace
+{
+	thread_local AssetRegistry::TextReadObserver g_textReadObserver;
+}
+
+AssetRegistry::TextReadObserver AssetRegistry::ExchangeTextReadObserverForTests(TextReadObserver observer)
+{
+	auto previous = std::move(g_textReadObserver);
+	g_textReadObserver = std::move(observer);
+	return previous;
+}
+
+void AssetRegistry::NotifyTextReadForTests(const std::filesystem::path& path)
+{
+	if (g_textReadObserver) g_textReadObserver(path);
+}
+#endif
 
 std::string AssetRegistry::GetContentFolder()
 {
@@ -72,7 +93,7 @@ bool AssetRegistry::ReadAllTextFile(const std::string& filename, std::string& te
 	SAILOR_PROFILE_FUNCTION();
 
 	constexpr auto readSize = std::size_t{4096};
-	auto stream = std::ifstream{filename.data()};
+	auto stream = std::ifstream{PathFromUtf8(filename)};
 	if (!stream.is_open())
 	{
 		return false;
@@ -93,14 +114,14 @@ bool AssetRegistry::ReadAllTextFile(const std::string& filename, std::string& te
 	return true;
 }
 
-bool AssetRegistry::ResolveContentFile(const std::string& virtualPath, AssetReadLocation& outLocation) const
+bool AssetRegistry::ResolveContentFile(std::string_view virtualPath, AssetReadLocation& outLocation) const
 {
 	if (!IsSafeVirtualPath(virtualPath))
 	{
 		return false;
 	}
 
-	const auto winner = m_contentFileWinners.Find(VirtualPathKey(virtualPath));
+	const auto winner = m_contentFileWinners.Find(VirtualPathKey(std::string(virtualPath)));
 	if (winner == m_contentFileWinners.end())
 	{
 		return false;
@@ -109,24 +130,24 @@ bool AssetRegistry::ResolveContentFile(const std::string& virtualPath, AssetRead
 	return true;
 }
 
-bool AssetRegistry::ReadContentText(const std::string& virtualPath, std::string& outText) const
+bool AssetRegistry::ReadContentText(std::string_view virtualPath, std::string& outText) const
 {
 	AssetReadLocation location;
-	return ResolveContentFile(virtualPath, location) && ReadAllTextFile(location.m_physicalPath.string(), outText);
+	return ResolveContentFile(virtualPath, location) && ReadAllTextFile(PathToUtf8(location.m_physicalPath), outText);
 }
 
-bool AssetRegistry::GetContentFileModificationTime(const std::string& virtualPath, std::time_t& outTimestamp) const
+bool AssetRegistry::GetContentFileModificationTime(std::string_view virtualPath, std::time_t& outTimestamp) const
 {
 	AssetReadLocation location;
 	if (!ResolveContentFile(virtualPath, location))
 	{
 		return false;
 	}
-	outTimestamp = Utils::GetFileModificationTime(location.m_physicalPath.string());
+	outTimestamp = Utils::GetFileModificationTime(PathToUtf8(location.m_physicalPath));
 	return true;
 }
 
-bool AssetRegistry::ResolveWorkspaceContentPathForWrite(const std::string& virtualPath,
+bool AssetRegistry::ResolveWorkspaceContentPathForWrite(std::string_view virtualPath,
 	std::filesystem::path& outPath) const
 {
 	if (!IsSafeVirtualPath(virtualPath))
@@ -136,14 +157,14 @@ bool AssetRegistry::ResolveWorkspaceContentPathForWrite(const std::string& virtu
 
 	std::error_code error;
 	const std::filesystem::path root = m_workspaceContext.GetContent();
-	outPath = std::filesystem::weakly_canonical(root / std::filesystem::path(virtualPath), error);
+	outPath = std::filesystem::weakly_canonical(root / PathFromUtf8(virtualPath), error);
 	return !error && IsInside(root, outPath);
 }
 
-IAssetInfoHandler* AssetRegistry::GetAssetInfoHandler(const std::string& extension) const
+IAssetInfoHandler* AssetRegistry::GetAssetInfoHandler(std::string_view extension) const
 {
 	IAssetInfoHandler* handler = App::GetSubmodule<DefaultAssetInfoHandler>();
-	auto handlerIt = m_assetInfoHandlers.Find(Lowercase(extension));
+	auto handlerIt = m_assetInfoHandlers.Find(Lowercase(std::string(extension)));
 	if (handlerIt != m_assetInfoHandlers.end())
 	{
 		handler = *(*handlerIt).m_second;
@@ -151,8 +172,8 @@ IAssetInfoHandler* AssetRegistry::GetAssetInfoHandler(const std::string& extensi
 	return handler;
 }
 
-IAssetInfoHandler* AssetRegistry::GetAssetInfoHandler(const std::string& extension,
-	const std::string& assetInfoType,
+IAssetInfoHandler* AssetRegistry::GetAssetInfoHandler(std::string_view extension,
+	std::string_view assetInfoType,
 	bool bPrimary) const
 {
 	if (bPrimary || assetInfoType.empty())
@@ -161,7 +182,7 @@ IAssetInfoHandler* AssetRegistry::GetAssetInfoHandler(const std::string& extensi
 	}
 	if (assetInfoType == "Sailor::AnimationAssetInfo")
 	{
-		return App::GetSubmodule<AnimationAssetInfoHandler>();
+		return GetAssetInfoHandler("anim");
 	}
 	if (assetInfoType == "Sailor::AnimationControllerAssetInfo")
 	{
@@ -206,6 +227,14 @@ IAssetInfoHandler* AssetRegistry::GetAssetInfoHandler(const std::string& extensi
 	return GetAssetInfoHandler(extension);
 }
 
+IAssetInfoHandler* AssetRegistry::GetAssetInfoHandler(const AssetInfo& info) const
+{
+	auto path = PathFromUtf8(info.GetMetaFilepath());
+	path.replace_extension();
+	return GetAssetInfoHandler(Extension(PathToUtf8(path)), info.GetAssetInfoType(),
+		PathKey(path) == PathKey(PathFromUtf8(info.GetAssetFilepath())));
+}
+
 bool AssetRegistry::RegisterAssetInfoHandler(const TVector<std::string>& supportedExtensions,
 	IAssetInfoHandler* assetInfoHandler)
 {
@@ -237,9 +266,9 @@ void AssetRegistry::UnsubscribeContentChanges(IAssetRegistryContentListener* lis
 	m_contentListeners.Remove(listener);
 }
 
-std::string AssetRegistry::GetMetaFilePath(const std::string& assetFilepath)
+std::string AssetRegistry::GetMetaFilePath(std::string_view assetFilepath)
 {
-	return assetFilepath + "." + MetaFileExtension;
+	return std::string(assetFilepath) + "." + MetaFileExtension;
 }
 
 AssetRegistry::~AssetRegistry()

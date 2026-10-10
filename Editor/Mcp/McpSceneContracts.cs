@@ -1,6 +1,7 @@
 #nullable enable
 
 using System.Text.Json;
+using SailorEngine;
 
 namespace SailorEditor.Mcp;
 
@@ -65,7 +66,10 @@ public sealed record McpComponentPropertySchema(
     bool ReadOnly,
     object? DefaultValue,
     IReadOnlyList<string>? AllowedValues,
-    string? ObjectType);
+    string? ObjectType,
+    NumericPropertyRange? Range = null,
+    IReadOnlyList<McpComponentPropertySchema>? Fields = null,
+    McpComponentPropertySchema? Element = null);
 
 public sealed record McpComponentTypeSchema(
     string Name,

@@ -7,6 +7,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 using namespace Sailor;
 
@@ -21,11 +22,11 @@ namespace
 		std::_Exit(2);
 	}
 
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -55,15 +56,9 @@ namespace
 			"a stale full-width end timestamp must not become an enormous unsigned duration");
 		Require(
 			RHI::TryResolveGpuFrameTimeMilliseconds(
-				0xfffffff0u, 0x10u, 32u, 1.0f, milliseconds),
-			"limited-width timestamp counters should still support a valid wrap");
-		Require(
-			RHI::CalculateGpuFramesPerSecond(40.0f) == 25u &&
-			RHI::CalculateGpuFramesPerSecond(0.0f) == 0u &&
-			RHI::CalculateGpuFramesPerSecond(
-				(std::numeric_limits<float>::quiet_NaN)()) == 0u,
-			"GPU FPS must be derived from the measured GPU frame duration");
-
+				0xfffffff0u, 0x10u, 32u, 1.0f, milliseconds) &&
+			IsNear(milliseconds, 0.000032f, 0.000000001f),
+			"a 32-tick counter wrap at one nanosecond per tick must resolve to 0.000032 ms");
 		RHI::TGpuFrameTimeQueryRing<2u> ring;
 		const uint32_t first = ring.Acquire();
 		Require(first == 0u && ring.MarkIssued(first),

@@ -2,6 +2,7 @@
 #include "VulkanApi.h"
 #include "Core/SpinLock.h"
 #include "Memory/RefPtr.hpp"
+#include "VulkanBufferMemory.h"
 #include "VulkanDevice.h"
 #include "RHI/Types.h"
 
@@ -106,11 +107,19 @@ namespace Sailor::GraphicsDriver::Vulkan
 			VkDeviceSize range = VK_WHOLE_SIZE,
 			RHI::EShaderBindingType bufferType = RHI::EShaderBindingType::UniformBuffer);
 
+		SAILOR_API VulkanDescriptorBuffer(uint32_t dstBinding,
+			uint32_t dstArrayElement,
+			TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator> allocation,
+			VkDeviceSize offset,
+			VkDeviceSize range,
+			RHI::EShaderBindingType bufferType);
+
 		SAILOR_API virtual void Apply(VkWriteDescriptorSet& writeDescriptorSet) const override;
 
 	protected:
 
 		VulkanBufferPtr m_buffer;
+		TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator> m_allocation;
 		VkDeviceSize m_offset;
 		VkDeviceSize m_range;
 		VkDescriptorBufferInfo m_bufferInfo;

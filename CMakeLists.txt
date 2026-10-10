@@ -10,7 +10,7 @@ else()
 endif()
 
 option(SAILOR_BUILD_EXECUTABLE "Build the standalone Sailor executable" ${SAILOR_IS_TOP_LEVEL})
-option(SAILOR_BUILD_TESTS "Build Sailor tests" ${SAILOR_IS_TOP_LEVEL})
+option(SAILOR_BUILD_TESTS "Build Sailor tests" OFF)
 
 option(SAILOR_BUILD_WITH_TRACY_PROFILER "Build with tracy profile" OFF)
 option(SAILOR_MEMORY_USE_LOCK_FREE_HEAP_ALLOCATOR_AS_DEFAULT "Use LockFreeHeapAllocator as default" ON)

@@ -57,7 +57,7 @@ FileId::FileId(std::string_view value)
 YAML::Node FileId::Serialize() const
 {
 	YAML::Node outData;
-	outData = m_fileId.ToString();
+	outData = ToString();
 	return outData;
 }
 
@@ -78,6 +78,8 @@ void FileId::Assign(std::string_view value)
 
 const std::string& FileId::ToString() const
 {
+	// Constant-initialized sentinels have a hash but may not have registered text yet.
+	if (m_fileId == FileId::Invalid.m_fileId) return "NullFileId"_h.ToString();
 	return m_fileId.ToString();
 }
 

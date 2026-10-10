@@ -6,7 +6,7 @@
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
 #include "Memory/UniquePtr.hpp"
-#include "Platform/Win32/Window.h"
+#include "Platform/NativeWindow.h"
 #include "Containers/Containers.h"
 #include "Math/Math.h"
 #include "RHI/RenderDebugView.h"
@@ -16,10 +16,7 @@
 
 namespace Sailor
 {
-	struct EditorGIProbesBakeRequest;
-	struct EditorGIProbesBakeStatus;
-	struct EditorGlobalIlluminationState;
-	struct GISettings;
+	namespace Tests { class TaskTestApp; }
 
 	namespace Workspace
 	{
@@ -50,6 +47,13 @@ namespace Sailor
 		std::string m_world = "Editor.world";
 	};
 
+	enum class EAppInitializationResult : uint8_t
+	{
+		Failed,
+		Ready,
+		Completed
+	};
+
 	class App
 	{
 		static constexpr size_t MaxSubmodules = 128u;
@@ -60,6 +64,7 @@ namespace Sailor
 		SAILOR_API static App* GetInstance();
 		SAILOR_API static const std::string& GetWorkspace();
 		SAILOR_API static const Workspace::WorkspaceContext& GetWorkspaceContext();
+		SAILOR_API static const Workspace::WorkspaceModuleManager* GetWorkspaceModuleManager();
 		SAILOR_API static const Settings::GraphicsSettings& GetGraphicsSettings();
 		SAILOR_API static const Settings::GraphicsQualityProfile& GetActiveGraphicsSettings();
 		SAILOR_API static Settings::EGraphicsQualitySelection GetSelectedGraphicsQuality();
@@ -70,13 +75,30 @@ namespace Sailor
 		SAILOR_API static RHI::ESceneViewRenderMode GetEditorRenderMode();
 		SAILOR_API static bool SetEditorRenderMode(RHI::ESceneViewRenderMode mode);
 
-		SAILOR_API static void Initialize(const char** commandLineArgs = nullptr, int32_t num = 0);
+		SAILOR_API static EAppInitializationResult Initialize(const char** commandLineArgs = nullptr, int32_t num = 0);
 		SAILOR_API static void Start();
 		SAILOR_API static void Stop();
-		SAILOR_API static void Shutdown();
+		SAILOR_API static bool Shutdown();
 		SAILOR_API static bool IsEngineMainThreadReady();
+
+		// Synchronous call; returns the fallback when lifecycle admission is closed.
+		template<typename TResult>
+		static TResult ExecuteOnEngineMainThread(TResult fallback, std::function<TResult()> command)
+		{
+			TResult result = fallback;
+			if (!command || !DispatchOnEngineMainThread([&result, &command]()
+				{
+					result = command();
+				}))
+			{
+				return fallback;
+			}
+
+			return result;
+		}
+
 		SAILOR_API static bool RequestAssetReload();
-		SAILOR_API static bool UpdateAsset(const char* strFileId);
+		SAILOR_API static bool UpdateAsset(const char* strFileId, bool bReimport = false);
 		SAILOR_API static bool GetAssetReloadState(
 			uint64_t& outRequestGeneration,
 			uint64_t& outCompletedGeneration,
@@ -84,128 +106,6 @@ namespace Sailor
 		SAILOR_API static bool IsRendererInitialized();
 		SAILOR_API static bool HasEditor();
 		SAILOR_API static bool IsEditorMode();
-		SAILOR_API static void SetEditorViewport(uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height);
-		SAILOR_API static void SetEditorRenderTargetSize(uint32_t width, uint32_t height);
-		SAILOR_API static bool UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height, bool bVisible, bool bFocused);
-		SAILOR_API static bool DestroyEditorRemoteViewport(uint64_t viewportId);
-		SAILOR_API static uint32_t GetEditorRemoteViewportState(uint64_t viewportId);
-		SAILOR_API static uint32_t GetEditorRemoteViewportDiagnostics(uint64_t viewportId, char** diagnostics);
-		SAILOR_API static bool RetryEditorRemoteViewport(uint64_t viewportId);
-		SAILOR_API static bool SetEditorRemoteViewportMacHostHandle(uint64_t viewportId, uint32_t hostHandleKind, uint64_t hostHandleValue);
-		SAILOR_API static bool SetEditorRemoteViewportWindowsHost(uint64_t viewportId, void* swapChainPanelInspectable, float compositionScale);
-		SAILOR_API static bool SendEditorRemoteViewportInput(uint64_t viewportId, uint32_t kind, float pointerX, float pointerY, float wheelDeltaX, float wheelDeltaY, uint32_t keyCode, uint32_t button, uint32_t modifiers, bool bPressed, bool bFocused, bool bCaptured);
-		SAILOR_API static uint32_t PullEditorMessages(char** messages, uint32_t num);
-		SAILOR_API static uint32_t PullEditorViewportEvents(char** events, uint32_t num);
-		SAILOR_API static bool TraceViewportRay(
-			uint64_t viewportId,
-			float normalizedX,
-			float normalizedY,
-			float& outWorldX,
-			float& outWorldY,
-			float& outWorldZ);
-		SAILOR_API static uint64_t GetEditorManagedMutationRevision(uint32_t kind, const char* strInstanceId);
-		SAILOR_API static uint32_t SerializeCurrentWorld(char** yamlNode);
-		SAILOR_API static uint32_t SerializeEngineTypes(char** yamlNode);
-		SAILOR_API static uint32_t SerializeEditorTypes(char** yamlNode);
-		SAILOR_API static uint32_t SerializeWorkspaceCacheIdentity(char** yamlNode);
-		SAILOR_API static bool LoadEditorWorld(const char* strFileId);
-		SAILOR_API static bool CreateEditorWorld();
-		SAILOR_API static bool SetEditorSimulationEnabled(bool bEnabled);
-		SAILOR_API static bool IsEditorSimulationEnabled();
-		SAILOR_API static bool PreviewEditorAudioAsset(const char* strFileId);
-		SAILOR_API static bool StartEditorGIProbesBake(
-			const EditorGIProbesBakeRequest& request,
-			std::string& outDiagnostic);
-		SAILOR_API static bool CancelEditorGIProbesBake(
-			std::string& outDiagnostic);
-		SAILOR_API static bool GetEditorGIProbesBakeStatus(
-			EditorGIProbesBakeStatus& outStatus);
-		SAILOR_API static bool SetEditorGISettings(
-			GISettings settings,
-			std::string& outDiagnostic);
-		SAILOR_API static bool GetEditorGlobalIlluminationState(
-			EditorGlobalIlluminationState& outState);
-		SAILOR_API static bool SetEditorRuntimeGIProbesPreviewEnabled(
-			bool bEnabled,
-			std::string& outDiagnostic);
-		SAILOR_API static bool SetEditorRuntimeGIProbesBudget(
-			Settings::ERuntimeGIProbesEditorBudget budget,
-			std::string& outDiagnostic);
-		SAILOR_API static bool SetEditorRuntimeGIProbesPaused(
-			bool bPaused,
-			std::string& outDiagnostic);
-		SAILOR_API static bool RestartEditorRuntimeGIProbes(
-			std::string& outDiagnostic);
-		SAILOR_API static bool RebuildEditorRuntimeGIProbesScene(
-			std::string& outDiagnostic);
-		SAILOR_API static bool UpdateEditorObject(const char* strInstanceId, const char* strYamlNode);
-		SAILOR_API static bool SetEditorAnimatorParameter(
-			const char* strInstanceId,
-			const char* strName,
-			uint32_t valueKind,
-			float floatValue,
-			int32_t intValue,
-			bool boolValue);
-		SAILOR_API static bool GetEditorAnimatorState(
-			const char* strInstanceId,
-			bool& outHasController,
-			uint64_t& outControllerRevision,
-			uint64_t& outActiveStateId,
-			char** outActiveStateName,
-			float& outActiveStateTime,
-			bool& outTransitioning,
-			uint64_t& outDestinationStateId,
-			char** outDestinationStateName,
-			float& outDestinationStateTime,
-			float& outTransitionAlpha);
-		SAILOR_API static bool ReparentEditorObject(const char* strInstanceId, const char* strParentInstanceId, bool bKeepWorldTransform);
-		SAILOR_API static bool CreateEditorGameObject(const char* strParentInstanceId, const char* strPreferredInstanceId, char** outInstanceId);
-		SAILOR_API static bool CreateEditorModelInstance(
-			const char* strModelFileId,
-			const char* strName,
-			const char* strParentInstanceId,
-			bool bCreateHierarchy,
-			bool bHasWorldPosition,
-			float worldX,
-			float worldY,
-			float worldZ,
-			const char* strPreferredInstanceId,
-			char** outInstanceId);
-		SAILOR_API static bool DestroyEditorObject(const char* strInstanceId);
-		SAILOR_API static bool ResetEditorComponentToDefaults(const char* strInstanceId);
-		SAILOR_API static bool AddEditorComponent(const char* strInstanceId, const char* strComponentTypeName, const char* strPreferredInstanceId, char** outInstanceId);
-		SAILOR_API static bool RemoveEditorComponent(const char* strInstanceId);
-		SAILOR_API static bool InstantiateEditorPrefab(const char* strFileId, const char* strParentInstanceId);
-		SAILOR_API static bool InstantiateEditorPrefabInstance(
-			const char* strFileId,
-			const char* strParentInstanceId,
-			bool bHasWorldPosition,
-			float worldX,
-			float worldY,
-			float worldZ,
-			char** outInstanceId);
-		SAILOR_API static bool InstantiateEditorPrefabFromYaml(
-			const char* strPrefabYaml,
-			const char* strParentInstanceId);
-		SAILOR_API static bool InstantiateEditorPrefabFromYaml(
-			const char* strPrefabYaml,
-			const char* strParentInstanceId,
-			bool bStrictInstanceIds);
-		SAILOR_API static bool InstantiateEditorPrefabFromYaml(
-			const char* strPrefabYaml,
-			const char* strParentInstanceId,
-			bool bStrictInstanceIds,
-			char** outInstanceId);
-		SAILOR_API static bool FocusEditorCamera(const char* strInstanceId);
-		SAILOR_API static bool SetEditorPrefabLink(
-			const char* strInstanceId,
-			const char* strFileId);
-		SAILOR_API static bool BreakEditorPrefabLink(const char* strInstanceId);
-		SAILOR_API static bool SetEditorViewportToolState(uint32_t operation, uint32_t space);
-		SAILOR_API static bool GetEditorViewportToolState(uint32_t& outOperation, uint32_t& outSpace);
-		SAILOR_API static bool SetEditorSelection(const char* strSelectionYaml);
-		SAILOR_API static bool RenderPathTracedImage(const char* strOutputPath, const char* strInstanceId, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces);
-		SAILOR_API static void ShowMainWindow(bool bShow);
 
 		static SubmoduleBase* GetSubmodule(uint32_t index)
 		{
@@ -265,7 +165,7 @@ namespace Sailor
 			instance->m_submodules[(uint32_t)typeId].Clear();
 		}
 
-		SAILOR_API static TUniquePtr<Win32::Window>& GetMainWindow();
+		SAILOR_API static TUniquePtr<Platform::NativeWindow>& GetMainWindow();
 		SAILOR_API static Platform::Window* GetMainWindowPlatform();
 		static const char* GetApplicationName() { return "SailorEngine"; }
 		static const char* GetEngineName() { return "SailorEngine"; }
@@ -277,32 +177,19 @@ namespace Sailor
 
 	protected:
 
-		TUniquePtr<Win32::Window> m_pMainWindow;
+		TUniquePtr<Platform::NativeWindow> m_pMainWindow;
 		TUniquePtr<Workspace::WorkspaceModuleManager> m_pWorkspaceModuleManager;
 		Workspace::WorkspaceContext m_workspaceContext;
-		bool m_bSkipMainLoop = false;
+		EAppInitializationResult m_initializationResult = EAppInitializationResult::Failed;
 		int32_t m_exitCode = 0;
 		AppArgs m_args{};
 
 	private:
-		static bool DispatchOnEngineMainThread(std::function<void()> command);
+		friend class Tests::TaskTestApp;
+
+		SAILOR_API static bool DispatchOnEngineMainThread(std::function<void()> command);
 		static void QueueAssetReloadTaskLocked(Tasks::Scheduler* scheduler);
 		static void ProcessAssetReloadRequestOnEngineMainThread();
-
-		template<typename TResult>
-		static TResult ExecuteOnEngineMainThread(TResult fallback, std::function<TResult()> command)
-		{
-			TResult result = fallback;
-			if (!command || !DispatchOnEngineMainThread([&result, &command]()
-				{
-					result = command();
-				}))
-			{
-				return fallback;
-			}
-
-			return result;
-		}
 
 		TSharedPtr<Tasks::ITask> m_pendingAssetReloadTask;
 		uint64_t m_assetReloadRequestGeneration = 0;
@@ -315,7 +202,7 @@ namespace Sailor
 		App(const App&) = delete;
 		App(App&&) = delete;
 
-		App() = default;
+		App();
 		~App();
 	};
 }

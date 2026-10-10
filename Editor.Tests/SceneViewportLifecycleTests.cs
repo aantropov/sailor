@@ -8,6 +8,36 @@ namespace Editor.Tests;
 public sealed class SceneViewportLifecycleTests
 {
     [Fact]
+    public void HostChange_HandsOffImmediately_WithoutWaitingForLayout()
+    {
+        var backend = new FakeSceneViewportBackend();
+        var sut = new SceneViewportLifecycleAdapter(backend, 7);
+
+        sut.SetNativeHost((nint)42, 2);
+        Assert.Equal(["bind:42"], backend.Operations);
+        Assert.Equal(2, backend.BoundHostScale);
+
+        sut.SetNativeHost(0);
+        Assert.Equal(["bind:42", "bind:0"], backend.Operations);
+        Assert.Empty(backend.UpdatedViewportIds);
+    }
+
+    [Fact]
+    public void HostReconnect_BeforeLayout_IsStillDetachedByDestroy()
+    {
+        var backend = new FakeSceneViewportBackend();
+        var sut = new SceneViewportLifecycleAdapter(backend, 7);
+
+        sut.SetNativeHost((nint)42);
+        sut.Destroy();
+        sut.SetNativeHost((nint)43);
+        sut.Destroy();
+
+        Assert.Equal(["bind:42", "bind:0", "destroy", "bind:43", "bind:0", "destroy"], backend.Operations);
+        Assert.Empty(backend.UpdatedViewportIds);
+    }
+
+    [Fact]
     public void Sync_BindsHost_UpdatesViewport_AndTracksRenderTarget()
     {
         var backend = new FakeSceneViewportBackend();
@@ -277,6 +307,6 @@ public sealed class SceneViewportLifecycleTests
         public void RetryViewport(ulong viewportId) { }
         public RemoteViewportSessionState GetViewportState(ulong viewportId) => RemoteViewportSessionState.Active;
         public string GetViewportDiagnostics(ulong viewportId) => string.Empty;
-        public bool SendInput(ulong viewportId, RemoteViewportInputKind kind, float pointerX = 0, float pointerY = 0, float wheelDeltaX = 0, float wheelDeltaY = 0, uint keyCode = 0, uint button = 0, RemoteViewportInputModifier modifiers = RemoteViewportInputModifier.None, bool pressed = false, bool focused = false, bool captured = false) => true;
+        public bool SendInput(ulong viewportId, RemoteViewportInputKind kind, float pointerX = 0, float pointerY = 0, float wheelDeltaX = 0, float wheelDeltaY = 0, uint keyCode = 0, uint button = 0, RemoteViewportInputModifier modifiers = RemoteViewportInputModifier.None, bool pressed = false, bool focused = false, bool captured = false, string text = "") => true;
     }
 }

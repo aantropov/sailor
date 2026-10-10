@@ -27,6 +27,7 @@ namespace Sailor
 		float m_normalBias = 0.05f;
 		float m_viewBias = 0.05f;
 		float m_maxRayDistance = 1000.0f;
+		float m_sunAngleThresholdDegrees = 30.0f;
 		bool m_bIncludeSky = true;
 		bool m_bIncludeEmissive = true;
 		bool m_bIncludeDirectLighting = true;
@@ -45,6 +46,7 @@ namespace Sailor
 			RuntimeGIProbesInitialSamplesPerProbe;
 		uint32_t m_targetSamplesPerProbe = 64u;
 		uint32_t m_workerCount = 2u;
+		// Full packed grid upload per flight; unchanged buffers are not uploaded.
 		uint32_t m_maxDirtyUploadBytesPerFrame = 2u * 1024u * 1024u;
 		float m_spacingMultiplier = 1.0f;
 		float m_cpuDutyFraction = 0.25f;

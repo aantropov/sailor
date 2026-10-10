@@ -1,17 +1,14 @@
-#include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
-#include "AssetRegistry/Texture/TextureImporter.h"
-#include "RHI/Texture.h"
-#include "AssetRegistry/FileId.h"
+#include "FrameGraphImporter.h"
 #include "AssetRegistry/AssetRegistry.h"
-#include "FrameGraphAssetInfo.h"
-#include "Core/Utils.h"
-#include <filesystem>
-#include <fstream>
-#include <algorithm>
-#include <iostream>
+#include "AssetRegistry/Texture/TextureImporter.h"
 #include "FrameGraph/FrameGraphNode.h"
+#include "RHI/Renderer.h"
+#include "RHI/RenderTarget.h"
+#include "RHI/Surface.h"
+#include "RHI/Texture.h"
 
-#include "Tasks/Scheduler.h"
+#include <algorithm>
+#include <cmath>
 
 using namespace Sailor;
 
@@ -36,6 +33,59 @@ void FrameGraphImporter::OnImportAsset(AssetInfoPtr assetInfo)
 
 void FrameGraphImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 {
+	if (assetInfo->GetFileId() == m_environmentRenderer)
+		m_environmentRendererRevision = {};
+}
+
+const char* FrameGraphImporter::GetRendererAssetPath()
+{
+	return App::HasEditor() ? "EditorRenderer.renderer" : "DefaultRenderer.renderer";
+}
+
+bool FrameGraphImporter::GetEnvironmentMap(std::string& outPath, std::string& outDiagnostic)
+{
+	outPath.clear();
+	outDiagnostic.clear();
+	const auto* asset = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(GetRendererAssetPath());
+	FileRevision revision;
+	if (!asset || !Utils::TryGetFileRevision(asset->GetAssetFilepath(), revision))
+	{
+		outDiagnostic = "cannot read the active renderer configuration";
+		return false;
+	}
+	if (asset->GetFileId() != m_environmentRenderer || revision != m_environmentRendererRevision)
+	{
+		std::string text;
+		if (!AssetRegistry::ReadAllTextFile(asset->GetAssetFilepath(), text))
+		{
+			outDiagnostic = "cannot read renderer '" + asset->GetAssetFilepath() + "'";
+			return false;
+		}
+		std::string environmentMap;
+		try
+		{
+			const auto document = YAML::Load(text);
+			for (const auto& entry : document["frame"])
+			{
+				FrameGraphAsset::Node node;
+				node.Deserialize(entry);
+				if (node.m_name != "Environment") continue;
+				if (const auto it = node.m_values.Find("EnvironmentMap"); it != node.m_values.end())
+					environmentMap = it->m_second->GetString();
+				break;
+			}
+		}
+		catch (const YAML::Exception& error)
+		{
+			outDiagnostic = "cannot read renderer '" + asset->GetAssetFilepath() + "': " + error.what();
+			return false;
+		}
+		m_environmentRenderer = asset->GetFileId();
+		m_environmentRendererRevision = revision;
+		m_environmentMap = std::move(environmentMap);
+	}
+	outPath = m_environmentMap;
+	return true;
 }
 
 FrameGraphAssetPtr FrameGraphImporter::LoadFrameGraphAsset(FileId uid)
@@ -44,20 +94,29 @@ FrameGraphAssetPtr FrameGraphImporter::LoadFrameGraphAsset(FileId uid)
 
 	if (FrameGraphAssetInfoPtr assetInfo = dynamic_cast<FrameGraphAssetInfoPtr>(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)))
 	{
-		SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
+		SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath());
 
 		const std::string& filepath = assetInfo->GetAssetFilepath();
 
 		std::string text;
 
-		AssetRegistry::ReadAllTextFile(filepath, text);
+		if (!AssetRegistry::ReadAllTextFile(filepath, text))
+		{
+			SAILOR_LOG_ERROR("Cannot load frame graph '%s': cannot read the file.", filepath.c_str());
+			return {};
+		}
 
-		YAML::Node yamlNode = YAML::Load(text);
-
-		FrameGraphAsset* frameGraphAsset = new FrameGraphAsset();
-		frameGraphAsset->Deserialize(yamlNode);
-
-		return FrameGraphAssetPtr(frameGraphAsset);
+		try
+		{
+			auto frameGraphAsset = FrameGraphAssetPtr::Make();
+			frameGraphAsset->Deserialize(YAML::Load(text));
+			return frameGraphAsset;
+		}
+		catch (const YAML::Exception& error)
+		{
+			SAILOR_LOG_ERROR("Cannot load frame graph '%s': %s", filepath.c_str(), error.what());
+			return {};
+		}
 	}
 
 	SAILOR_LOG("Cannot find frameGraph asset info with FileId: %s", uid.ToString().c_str());
@@ -75,25 +134,176 @@ bool FrameGraphImporter::LoadFrameGraph_Immediate(FileId uid, FrameGraphPtr& out
 
 	if (auto pFrameGraphAsset = LoadFrameGraphAsset(uid))
 	{
-		FrameGraphPtr pFrameGraph = BuildFrameGraph(uid, pFrameGraphAsset);
-
-		m_loadedFrameGraphs.At_Lock(uid) = outFrameGraph = pFrameGraph;
-		m_loadedFrameGraphs.Unlock(uid);
-
-		return true;
+		if (FrameGraphPtr pFrameGraph = BuildFrameGraph(uid, pFrameGraphAsset))
+		{
+			m_loadedFrameGraphs.At_Lock(uid) = outFrameGraph = pFrameGraph;
+			m_loadedFrameGraphs.Unlock(uid);
+			return true;
+		}
 	}
 
 	return false;
+}
+
+FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const FrameGraphAssetPtr& frameGraphAsset) const
+{
+	RHI::RHIFrameGraphPtr pRhiFrameGraph = RHI::RHIFrameGraphPtr::Make();
+
+	auto& graph = pRhiFrameGraph->GetGraph();
+
+	for (const auto& renderTarget : frameGraphAsset->m_renderTargets)
+	{
+		const auto name = StringHash::Runtime(renderTarget.m_first);
+		const bool bUsedWithComputeShaders = renderTarget.m_second->m_bIsCompatibleWithComputeShaders;
+		const bool bShouldGenerateMips = renderTarget.m_second->m_bGenerateMips;
+		const bool bIsDepthFormat = RHI::IsDepthFormat(renderTarget.m_second->m_format);
+
+		const RHI::ETextureUsageFlags defaultUsage = (bIsDepthFormat ? RHI::ETextureUsageBit::DepthStencilAttachment_Bit : RHI::ETextureUsageBit::ColorAttachment_Bit) |
+			RHI::ETextureUsageBit::TextureTransferSrc_Bit |
+			RHI::ETextureUsageBit::TextureTransferDst_Bit |
+			RHI::ETextureUsageBit::Sampled_Bit |
+			(bUsedWithComputeShaders ? RHI::ETextureUsageBit::Storage_Bit : 0);
+
+		const uint32_t maxExtent = std::max(renderTarget.m_second->m_width, renderTarget.m_second->m_height);
+		const uint32_t numMips = std::min(renderTarget.m_second->m_maxMipLevel, bShouldGenerateMips ? (uint32_t)std::floor(std::log2f((float)maxExtent)) + 1 : 1u);
+		const RHI::ETextureFiltration filtration = renderTarget.m_second->m_filtration;
+		const RHI::ETextureClamping clamping = renderTarget.m_second->m_clamping;
+		const  RHI::ESamplerReductionMode reduction = renderTarget.m_second->m_reduction;
+
+		if (renderTarget.m_second->m_bIsSurface)
+		{
+			RHI::RHISurfacePtr rhiSurface = RHI::Renderer::GetDriver()->CreateSurface(glm::vec2(renderTarget.m_second->m_width, renderTarget.m_second->m_height),
+				numMips, renderTarget.m_second->m_format, filtration, clamping, defaultUsage);
+			if (!rhiSurface)
+			{
+				SAILOR_LOG_ERROR("Cannot initialize frame graph surface '%s'.", renderTarget.m_first.c_str());
+				return {};
+			}
+
+			pRhiFrameGraph->SetSurface(name, rhiSurface);
+			pRhiFrameGraph->SetRenderTarget(name, rhiSurface->GetResolved());
+
+			RHI::Renderer::GetDriver()->SetDebugName(rhiSurface->GetTarget(), renderTarget.m_first + " Target");
+			RHI::Renderer::GetDriver()->SetDebugName(rhiSurface->GetResolved(), renderTarget.m_first + " Resolved");
+		}
+		else
+		{
+			RHI::RHIRenderTargetPtr rhiRenderTarget = RHI::Renderer::GetDriver()->CreateRenderTarget(glm::vec2(renderTarget.m_second->m_width, renderTarget.m_second->m_height),
+				numMips, renderTarget.m_second->m_format, filtration, clamping, defaultUsage, reduction);
+			if (!rhiRenderTarget)
+			{
+				SAILOR_LOG_ERROR("Cannot initialize frame graph render target '%s'.", renderTarget.m_first.c_str());
+				return {};
+			}
+
+			pRhiFrameGraph->SetRenderTarget(name, rhiRenderTarget);
+
+			RHI::Renderer::GetDriver()->SetDebugName(rhiRenderTarget, renderTarget.m_first);
+		}
+	}
+
+	for (const auto& value : frameGraphAsset->m_values)
+	{
+		if (value.m_second->IsVec4())
+		{
+			pRhiFrameGraph->SetValue(StringHash::Runtime(value.m_first), value.m_second->GetVec4());
+		}
+		else if (value.m_second->IsFloat())
+		{
+			pRhiFrameGraph->SetValue(StringHash::Runtime(value.m_first), value.m_second->GetFloat());
+		}
+	}
+
+	for (const auto& sampler : frameGraphAsset->m_samplers)
+	{
+		TexturePtr texture;
+		bool bLoaded = false;
+		if (sampler.m_second->m_fileId)
+		{
+			bLoaded = App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(sampler.m_second->m_fileId, texture);
+		}
+		else if (auto assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(sampler.m_second->m_path))
+		{
+			bLoaded = App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(assetInfo->GetFileId(), texture);
+		}
+
+		if (!bLoaded)
+		{
+			const std::string source = sampler.m_second->m_fileId ? sampler.m_second->m_fileId.ToString() : sampler.m_second->m_path;
+			SAILOR_LOG_ERROR("Cannot build frame graph %s: sampler '%s' could not load texture '%s'.",
+				uid.ToString().c_str(), sampler.m_first.c_str(), source.c_str());
+			return {};
+		}
+		pRhiFrameGraph->SetSampler(StringHash::Runtime(sampler.m_first), texture->GetRHI());
+	}
+
+	for (auto& node : frameGraphAsset->m_nodes)
+	{
+		const auto name = StringHash::Runtime(node.m_name);
+		auto pNewNode = App::GetSubmodule<FrameGraphBuilder>()->CreateNode(name);
+
+		if (!pNewNode)
+		{
+			SAILOR_LOG_ERROR("Cannot build frame graph %s: unknown node '%s'.", uid.ToString().c_str(), node.m_name.c_str());
+			return {};
+		}
+
+		pNewNode->SetTag(node.m_tag.empty() ? name : StringHash::Runtime(node.m_tag));
+
+		for (const auto& param : node.m_values)
+		{
+			if (param.m_second->IsVec4())
+			{
+				pNewNode->SetVec4(StringHash::Runtime(param.m_first), param.m_second->GetVec4());
+			}
+			else if (param.m_second->IsFloat())
+			{
+				pNewNode->SetFloat(StringHash::Runtime(param.m_first), param.m_second->GetFloat());
+			}
+			else if (param.m_second->IsString())
+			{
+				pNewNode->SetString(StringHash::Runtime(param.m_first), param.m_second->GetString());
+			}
+		}
+
+		for (const auto& param : node.m_renderTargets)
+		{
+			const auto resourceName = StringHash::Runtime(*param.m_second);
+			if (auto resource = pRhiFrameGraph->GetResource(resourceName))
+			{
+				pNewNode->SetRHIResource(StringHash::Runtime(param.m_first), resource);
+			}
+			else
+			{
+				// Resolve per-frame resources, such as DepthBuffer and BackBuffer,
+				// when the frame is recorded.
+				pNewNode->SetRHIResource_Unresolved(StringHash::Runtime(param.m_first), resourceName);
+			}
+		}
+		// TODO: Build params
+		graph.Add(pNewNode);
+	}
+
+	if (!graph.IsEmpty() && !pRhiFrameGraph->PrepareRenderTargets())
+	{
+		SAILOR_LOG_ERROR("Cannot initialize frame graph MSAA attachments.");
+		return {};
+	}
+	FrameGraphPtr pFrameGraph = FrameGraphPtr::Make(m_allocator, uid);
+	pFrameGraph->m_frameGraph = pRhiFrameGraph;
+
+	return pFrameGraph;
 }
 
 bool FrameGraphImporter::Instantiate_Immediate(FileId uid, FrameGraphPtr& outFrameGraph)
 {
 	if (auto pFrameGraphAsset = LoadFrameGraphAsset(uid))
 	{
-		FrameGraphPtr pFrameGraph = BuildFrameGraph(uid, pFrameGraphAsset);
-		outFrameGraph = pFrameGraph;
-
-		return outFrameGraph.IsValid();
+		if (FrameGraphPtr pFrameGraph = BuildFrameGraph(uid, pFrameGraphAsset))
+		{
+			outFrameGraph = pFrameGraph;
+			return true;
+		}
 	}
 
 	return false;

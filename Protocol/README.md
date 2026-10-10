@@ -15,9 +15,11 @@ traffic is rejected.
 
 The current local editor host still loads SailorLib because the macOS viewport
 data plane passes same-process `CAMetalLayer` and `IOSurface` object handles.
-The one-time local bootstrap and fail-safe teardown use a small lifecycle-only
-C surface; normal command traffic, including orderly stop and shutdown, uses
-WebSocket. The bundled native host binds only to `127.0.0.1` and requires an
+Local bootstrap, fail-safe teardown and same-process viewport host binding use
+the C surface. Mac host binding retains the native object on the UI caller before
+queuing its use; raw host pointers are not protobuf commands. Normal command
+traffic, including orderly stop and shutdown, uses WebSocket. The bundled
+native host binds only to `127.0.0.1` and requires an
 ephemeral bearer token; it cannot be configured for a network-visible
 plaintext listener. A future process/remote host can expose the same endpoint
 over `wss://` without changing protobuf clients after the viewport presenter is
@@ -33,8 +35,8 @@ allows one in-flight request, while independent lanes may make progress
 concurrently. Cancelling the managed wait closes the affected lane but does not
 imply that an already admitted native mutation was rolled back.
 
-The local `Initialize` bootstrap is the only platform-affine exception: on
-macOS it executes on the MAUI/Cocoa main thread because `App::Initialize`
+The local `Initialize` bootstrap is platform-affine: on macOS it executes on
+the MAUI/Cocoa main thread because `App::Initialize`
 creates the native `NSWindow`, `NSView`, and `CAMetalLayer`. Once that bootstrap
 has established the loopback host, all normal Editor RPC waits and WebSocket
 I/O are asynchronous.
@@ -60,10 +62,13 @@ a trace failure.
 
 `update_asset` revalidates one registered `FileId` against its metadata,
 source-file, and cache revisions. A metadata-only edit reloads that exact
-AssetInfo; a changed source reloads every registered AssetInfo backed by the
-same source (for example, the assets generated from one glTF file). It does not
-scan Content or wait for unrelated Worker, RHI, or Render work. Commands that
-change Content topology still use `request_asset_reload`.
+AssetInfo; a changed source reloads loaded AssetInfos backed by the same source
+(for example, assets generated from one glTF file). Explicit Editor Reimport
+sets `reimport = true` to regenerate even when those revisions are unchanged.
+Normal Save/watcher updates leave it false. Reimport preserves authored values
+and generated FileIds; it does not change source timestamps to trigger work.
+The command drains asset tasks around updates, but does not scan Content.
+Commands that change Content topology still use `request_asset_reload`.
 
 `set_animator_parameter` updates one runtime Animator instance using a typed
 Float, Int, Bool, Trigger, or ResetTrigger value. `get_animator_state` returns
@@ -72,6 +77,14 @@ and crossfade alpha for Editor preview and diagnostics. Both commands identify
 the component by its full `InstanceId`, execute through the regular Editor
 worker, and marshal to the Engine main thread. They never persist runtime
 parameter values into scene or controller YAML.
+
+`get_remote_viewport_diagnostics` reads counters and any previously requested
+pixel evidence; it never samples the surface. `capture_remote_viewport_frame_evidence`
+is a separate, explicit macOS diagnostic request. It samples the last presented
+IOSurface frame and returns its frame/epoch/generation with pixel statistics.
+An absent frame, pending producer copy, changed-but-unpresented surface or native
+capture error fails that request without failing the viewport session. Other
+platforms report unsupported. This command stays at protocol version 1.
 
 `create_model_instance` performs one atomic Engine-side model drop. With
 `create_hierarchy = true`, the Engine creates the asset root and the editable
@@ -99,16 +112,21 @@ regular asset registry, and plays it as a non-spatial one-shot voice. Starting
 another preview stops and destroys the previous preview voice. The Editor sends
 this command asynchronously through the normal WebSocket transport.
 
-Compatibility rules:
+`request_model_fingerprint` accepts a model FileId and queues its preview only
+on explicit consumer demand. `get_model_fingerprint_status` reports Unavailable,
+Pending, Ready or Failed without starting or retrying work. Both commands marshal
+to the Engine main thread; rendering runs on Background and does not block the
+Editor worker. A renewed request retries failure without a source edit, while
+duplicate pending requests share the same attempt. Ready means publication
+completed successfully. Failed rendering or replacement preserves the old PNG;
+a failure to confirm OS sync after replacement remains retryable, not a rollback.
+Neither command changes the model processing acknowledgement. Both remain v1.
 
-- Ordinary commands use baseline `protocol_version = 1`. Strict InstanceId
-  restoration uses feature version `2`; the current host accepts version `2`
-  only for `instantiate_prefab_from_yaml` with `strict_instance_ids = true`.
-- Every current host response advertises
-  `supports_strict_instance_ids = true`. A new Editor probes this additive
-  capability over a baseline v1 request before sending a strict restore. An
-  older v1 host omits the field, so ordinary v1 commands remain available but
-  strict restore fails closed without sending the mutation.
+Contract rules:
+
+- All commands use `protocol_version = 1`, including strict InstanceId
+  restoration. Update producers and consumers together without legacy wire
+  variants. The current host advertises `supports_strict_instance_ids = true`.
 - Never reuse a field number. Reserve removed fields and enum values.
 - Keep `InstanceId` and `FileId` strings byte-for-byte compatible with their
   existing serialized forms.

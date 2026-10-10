@@ -5,7 +5,9 @@
 #include "Memory/SharedPtr.hpp"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -40,11 +42,10 @@ namespace Sailor
 	inline constexpr uint32_t GIProbesMaxSubdivisionLevel = 16u;
 
 	inline bool IsGIProbesBakerVersionSupported(
-		const std::string& version) noexcept
+		std::string_view version) noexcept
 	{
-		const std::string_view view(version);
-		return !view.starts_with(GIProbesBakerVersionPrefix) ||
-			view == GIProbesCurrentBakerVersion;
+		return !version.starts_with(GIProbesBakerVersionPrefix) ||
+			version == GIProbesCurrentBakerVersion;
 	}
 
 	enum class EGIProbesCompression : uint32_t
@@ -156,6 +157,7 @@ namespace Sailor
 		TVector<GIProbe> m_probes{};
 
 		bool Validate(std::string& outDiagnostic) const;
+		bool Validate(std::string& outDiagnostic, const std::function<bool()>& shouldContinue) const;
 		bool IsCompositionCompatibleWith(
 			const GIProbesData& rhs,
 			std::string& outDiagnostic) const;
@@ -165,6 +167,16 @@ namespace Sailor
 
 	SAILOR_SHARED_API uint64_t ComputeGIProbesLayoutHash(
 		const GIProbesData& data) noexcept;
+	SAILOR_SHARED_API bool ComputeGIProbesLayoutHash(const GIProbesData& data,
+		uint64_t& outHash, const std::function<bool()>& shouldContinue);
+	SAILOR_SHARED_API bool ComputeGIProbesTransportHash(
+		const GIProbesData& data,
+		uint64_t& outHash,
+		const std::atomic<bool>* cancel = nullptr) noexcept;
+	SAILOR_SHARED_API bool ComputeGIProbesLightingHash(
+		const GIProbesData& data,
+		uint64_t& outHash,
+		const std::atomic<bool>* cancel = nullptr) noexcept;
 	SAILOR_SHARED_API uint64_t ComputeGIProbesRepresentationHash(
 		uint32_t formatVersion,
 		uint32_t shOrder,

@@ -21,7 +21,8 @@ void VulkanBuffer::Release()
 {
 	if (m_ptr)
 	{
-		m_device->GetMemoryAllocator(m_deviceMemory->GetMemoryPropertyFlags(), m_deviceMemory->GetMemoryRequirements()).Free(m_ptr);
+		m_device->GetMemoryAllocator(m_deviceMemory->GetMemoryPropertyFlags(),
+			m_deviceMemory->GetMemoryRequirements(), EVulkanMemoryClass::Linear).Free(m_ptr);
 	}
 	
 	if (m_buffer)

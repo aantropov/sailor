@@ -4,19 +4,12 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <string_view>
 
 using namespace Sailor;
 
 namespace
 {
-	void AddError(TVector<std::string>* errors, const std::string& error)
-	{
-		if (errors)
-		{
-			errors->Add(error);
-		}
-	}
-
 	bool IsOperationValid(
 		EAnimationParameterType type,
 		EAnimationConditionOperation operation)
@@ -50,7 +43,7 @@ YAML::Node AnimationControllerAsset::Serialize() const
 		YAML::Node serialized;
 		serialized["id"] = parameter.m_id;
 		serialized["name"] = parameter.m_name;
-		serialized["type"] = std::string(magic_enum::enum_name(parameter.m_type));
+		serialized["type"] = magic_enum::enum_name(parameter.m_type);
 		switch (parameter.m_type)
 		{
 		case EAnimationParameterType::Float:
@@ -97,8 +90,7 @@ YAML::Node AnimationControllerAsset::Serialize() const
 		{
 			YAML::Node serializedCondition;
 			serializedCondition["parameter"] = condition.m_parameterId;
-			serializedCondition["operation"] =
-				std::string(magic_enum::enum_name(condition.m_operation));
+			serializedCondition["operation"] = magic_enum::enum_name(condition.m_operation);
 			serializedCondition["floatValue"] = condition.m_floatValue;
 			serializedCondition["intValue"] = condition.m_intValue;
 			serializedCondition["boolValue"] = condition.m_boolValue;
@@ -132,7 +124,7 @@ void AnimationControllerAsset::Deserialize(const YAML::Node& inData)
 			const YAML::Node parameterType = serialized["type"];
 			parameter.m_type = parameterType && !parameterType.IsNull()
 				? magic_enum::enum_cast<EAnimationParameterType>(
-					parameterType.as<std::string>()).value_or(
+					parameterType.as<std::string_view>()).value_or(
 						EAnimationParameterType::Invalid)
 				: EAnimationParameterType::Float;
 			switch (parameter.m_type)
@@ -195,7 +187,7 @@ void AnimationControllerAsset::Deserialize(const YAML::Node& inData)
 			YAML::Node conditions;
 			for (const auto& field : serialized)
 			{
-				if (field.first.as<std::string>("") == "conditions")
+				if (field.first.IsScalar() && field.first.Scalar() == "conditions")
 				{
 					conditions = field.second;
 					break;
@@ -214,7 +206,7 @@ void AnimationControllerAsset::Deserialize(const YAML::Node& inData)
 					condition.m_operation = conditionOperation &&
 						!conditionOperation.IsNull()
 						? magic_enum::enum_cast<EAnimationConditionOperation>(
-							conditionOperation.as<std::string>()).value_or(
+							conditionOperation.as<std::string_view>()).value_or(
 								EAnimationConditionOperation::Invalid)
 						: EAnimationConditionOperation::Equal;
 					condition.m_floatValue = serializedCondition["floatValue"].as<float>(0.0f);
@@ -267,7 +259,7 @@ void AnimationSetAsset::Deserialize(const YAML::Node& inData)
 
 bool AnimationController::Initialize(
 	const AnimationControllerAsset& asset,
-	TVector<std::string>* outErrors)
+	TVector<std::string>& outErrors)
 {
 	TVector<AnimationParameterDefinition> previousParameters = m_parameters;
 	TVector<AnimationStateDefinition> previousStates = m_states;
@@ -303,28 +295,27 @@ bool AnimationController::Initialize(
 			condition.m_parameterIndex = static_cast<uint32_t>(FindParameterIndex(condition.m_parameterId));
 		}
 	}
+	m_parameterIndices.Clear();
+	for (size_t i = 0; i < m_parameters.Num(); ++i)
+	{
+		m_parameterIndices.Add(StringHash::Runtime(m_parameters[i].m_name), static_cast<int32_t>(i));
+	}
 	++m_revision;
 
 	return true;
 }
 
-bool AnimationController::Validate(TVector<std::string>* outErrors) const
+bool AnimationController::Validate(TVector<std::string>& outErrors) const
 {
-	if (outErrors)
-	{
-		outErrors->Clear();
-	}
-	bool bValid = true;
+	outErrors.Clear();
 
 	if (m_states.IsEmpty())
 	{
-		AddError(outErrors, "The controller must contain at least one state.");
-		bValid = false;
+		outErrors.Emplace("The controller must contain at least one state.");
 	}
 	if (m_defaultStateIndex >= m_states.Num())
 	{
-		AddError(outErrors, "The controller default state does not exist.");
-		bValid = false;
+		outErrors.Emplace("The controller default state does not exist.");
 	}
 
 	for (size_t i = 0; i < m_parameters.Num(); ++i)
@@ -332,27 +323,23 @@ bool AnimationController::Validate(TVector<std::string>* outErrors) const
 		const auto& parameter = m_parameters[i];
 		if (parameter.m_id == InvalidAnimationControllerNodeId || parameter.m_name.empty())
 		{
-			AddError(outErrors, "Animation parameters require a stable id and name.");
-			bValid = false;
+			outErrors.Emplace("Animation parameters require a stable id and name.");
 		}
 		if (parameter.m_type == EAnimationParameterType::Invalid)
 		{
-			AddError(outErrors, "Animation parameter type is unknown.");
-			bValid = false;
+			outErrors.Emplace("Animation parameter type is unknown.");
 		}
 		if (parameter.m_type == EAnimationParameterType::Float &&
 			!std::isfinite(parameter.m_defaultFloat))
 		{
-			AddError(outErrors, "Float parameter defaults must be finite.");
-			bValid = false;
+			outErrors.Emplace("Float parameter defaults must be finite.");
 		}
 		for (size_t j = 0; j < i; ++j)
 		{
 			if (m_parameters[j].m_id == parameter.m_id ||
 				m_parameters[j].m_name == parameter.m_name)
 			{
-				AddError(outErrors, "Animation parameter ids and names must be unique.");
-				bValid = false;
+				outErrors.Emplace("Animation parameter ids and names must be unique.");
 				break;
 			}
 		}
@@ -364,21 +351,18 @@ bool AnimationController::Validate(TVector<std::string>* outErrors) const
 		if (state.m_id == InvalidAnimationControllerNodeId ||
 			state.m_name.empty() || state.m_clipSlot.empty())
 		{
-			AddError(outErrors, "Animation states require a stable id, name, and clip slot.");
-			bValid = false;
+			outErrors.Emplace("Animation states require a stable id, name, and clip slot.");
 		}
 		if (!std::isfinite(state.m_speed) || state.m_speed <= 0.0f ||
 			!std::isfinite(state.m_editorX) || !std::isfinite(state.m_editorY))
 		{
-			AddError(outErrors, "Animation state speed and editor position must be finite, with speed greater than zero.");
-			bValid = false;
+			outErrors.Emplace("Animation state speed and editor position must be finite, with speed greater than zero.");
 		}
 		for (size_t j = 0; j < i; ++j)
 		{
 			if (m_states[j].m_id == state.m_id || m_states[j].m_name == state.m_name)
 			{
-				AddError(outErrors, "Animation state ids and names must be unique.");
-				bValid = false;
+				outErrors.Emplace("Animation state ids and names must be unique.");
 				break;
 			}
 		}
@@ -391,22 +375,19 @@ bool AnimationController::Validate(TVector<std::string>* outErrors) const
 			FindStateIndex(transition.m_fromStateId) < 0 ||
 			FindStateIndex(transition.m_toStateId) < 0)
 		{
-			AddError(outErrors, "Animation transitions require a stable id and valid source and destination states.");
-			bValid = false;
+			outErrors.Emplace("Animation transitions require a stable id and valid source and destination states.");
 		}
 		if (!std::isfinite(transition.m_duration) || transition.m_duration < 0.0f ||
 			!std::isfinite(transition.m_exitTime) || transition.m_exitTime < 0.0f ||
 			transition.m_exitTime > 1.0f)
 		{
-			AddError(outErrors, "Animation transition duration and normalized exit time are invalid.");
-			bValid = false;
+			outErrors.Emplace("Animation transition duration and normalized exit time are invalid.");
 		}
 		for (size_t j = 0; j < i; ++j)
 		{
 			if (m_transitions[j].m_id == transition.m_id)
 			{
-				AddError(outErrors, "Animation transition ids must be unique.");
-				bValid = false;
+				outErrors.Emplace("Animation transition ids must be unique.");
 				break;
 			}
 		}
@@ -416,8 +397,7 @@ bool AnimationController::Validate(TVector<std::string>* outErrors) const
 			const int32_t parameterIndex = FindParameterIndex(condition.m_parameterId);
 			if (parameterIndex < 0)
 			{
-				AddError(outErrors, "Animation transition conditions must reference an existing parameter.");
-				bValid = false;
+				outErrors.Emplace("Animation transition conditions must reference an existing parameter.");
 				continue;
 			}
 
@@ -426,13 +406,12 @@ bool AnimationController::Validate(TVector<std::string>* outErrors) const
 				(parameter.m_type == EAnimationParameterType::Float &&
 				 !std::isfinite(condition.m_floatValue)))
 			{
-				AddError(outErrors, "Animation transition condition operation does not match its parameter type.");
-				bValid = false;
+				outErrors.Emplace("Animation transition condition operation does not match its parameter type.");
 			}
 		}
 	}
 
-	return bValid;
+	return outErrors.IsEmpty();
 }
 
 int32_t AnimationController::FindStateIndex(AnimationControllerNodeId stateId) const
@@ -459,63 +438,50 @@ int32_t AnimationController::FindParameterIndex(AnimationControllerNodeId parame
 	return -1;
 }
 
-int32_t AnimationController::FindParameterIndex(const std::string& name) const
+int32_t AnimationController::FindParameterIndex(StringHash name) const
 {
-	for (size_t i = 0; i < m_parameters.Num(); ++i)
-	{
-		if (m_parameters[i].m_name == name)
-		{
-			return static_cast<int32_t>(i);
-		}
-	}
-	return -1;
+	const int32_t* index = nullptr;
+	return m_parameterIndices.Find(name, index) ? *index : -1;
 }
 
 bool AnimationSet::Initialize(
 	const AnimationSetAsset& asset,
-	TVector<std::string>* outErrors)
+	TVector<std::string>& outErrors)
 {
-	if (outErrors)
-	{
-		outErrors->Clear();
-	}
+	outErrors.Clear();
 	TVector<AnimationSetEntry> entries = asset.GetEntries();
-	bool bValid = true;
 	for (size_t i = 0; i < entries.Num(); ++i)
 	{
 		if (entries[i].m_slot.empty() || !entries[i].m_animation)
 		{
-			AddError(outErrors, "Animation set entries require a slot name and animation FileId.");
-			bValid = false;
+			outErrors.Emplace("Animation set entries require a slot name and animation FileId.");
 		}
 		for (size_t j = 0; j < i; ++j)
 		{
 			if (entries[j].m_slot == entries[i].m_slot)
 			{
-				AddError(outErrors, "Animation set slot names must be unique.");
-				bValid = false;
+				outErrors.Emplace("Animation set slot names must be unique.");
 				break;
 			}
 		}
 	}
-	if (bValid)
+	if (outErrors.IsEmpty())
 	{
 		m_entries = std::move(entries);
+		m_slotIndices.Clear();
+		for (size_t i = 0; i < m_entries.Num(); ++i)
+		{
+			m_slotIndices.Add(StringHash::Runtime(m_entries[i].m_slot), i);
+		}
 		++m_revision;
 	}
-	return bValid;
+	return outErrors.IsEmpty();
 }
 
-const FileId* AnimationSet::FindAnimation(const std::string& slot) const
+const FileId* AnimationSet::FindAnimation(StringHash slot) const
 {
-	for (const auto& entry : m_entries)
-	{
-		if (entry.m_slot == slot)
-		{
-			return &entry.m_animation;
-		}
-	}
-	return nullptr;
+	const size_t* index = nullptr;
+	return m_slotIndices.Find(slot, index) ? &m_entries[*index].m_animation : nullptr;
 }
 
 bool AnimationControllerInstance::SetController(const AnimationControllerPtr& controller)
@@ -590,7 +556,7 @@ void AnimationControllerInstance::Tick(float deltaTime, float activeClipDuration
 	TryBeginTransition(activeClipDuration);
 }
 
-bool AnimationControllerInstance::SetFloat(const std::string& name, float value)
+bool AnimationControllerInstance::SetFloat(StringHash name, float value)
 {
 	if (!std::isfinite(value))
 	{
@@ -601,28 +567,28 @@ bool AnimationControllerInstance::SetFloat(const std::string& name, float value)
 	return SetParameter(name, EAnimationParameterType::Float, parameter);
 }
 
-bool AnimationControllerInstance::SetInt(const std::string& name, int32_t value)
+bool AnimationControllerInstance::SetInt(StringHash name, int32_t value)
 {
 	AnimationParameterValue parameter;
 	parameter.m_intValue = value;
 	return SetParameter(name, EAnimationParameterType::Int, parameter);
 }
 
-bool AnimationControllerInstance::SetBool(const std::string& name, bool value)
+bool AnimationControllerInstance::SetBool(StringHash name, bool value)
 {
 	AnimationParameterValue parameter;
 	parameter.m_boolValue = value;
 	return SetParameter(name, EAnimationParameterType::Bool, parameter);
 }
 
-bool AnimationControllerInstance::SetTrigger(const std::string& name)
+bool AnimationControllerInstance::SetTrigger(StringHash name)
 {
 	AnimationParameterValue parameter;
 	parameter.m_boolValue = true;
 	return SetParameter(name, EAnimationParameterType::Trigger, parameter);
 }
 
-bool AnimationControllerInstance::ResetTrigger(const std::string& name)
+bool AnimationControllerInstance::ResetTrigger(StringHash name)
 {
 	AnimationParameterValue parameter;
 	parameter.m_boolValue = false;
@@ -643,7 +609,7 @@ float AnimationControllerInstance::GetTransitionAlpha() const
 }
 
 bool AnimationControllerInstance::SetParameter(
-	const std::string& name,
+	StringHash name,
 	EAnimationParameterType type,
 	const AnimationParameterValue& value)
 {

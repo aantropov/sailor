@@ -1,12 +1,12 @@
-#include "Platform/Win32/Window.h"
-#include "Platform/Win32/Input.h"
-#include "Submodules/ImGuiApi.h"
-#include "Sailor.h"
-
 #if defined(__APPLE__)
+
+#include "Platform/Mac/Window.h"
+#include "Platform/Win32/Input.h"
+#include "Sailor.h"
 
 #import <Cocoa/Cocoa.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <IOKit/hidsystem/IOLLEvent.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import <objc/runtime.h>
 
@@ -14,7 +14,9 @@
 #include <cmath>
 
 using namespace Sailor;
-using namespace Sailor::Win32;
+using Sailor::Mac::Window;
+using Sailor::Win32::GlobalInput;
+using Sailor::Platform::InputEvent;
 
 namespace
 {
@@ -22,13 +24,6 @@ namespace
 	NSWindow* sReusableEditorRenderingWindow = nil;
 }
 
-static void SailorDispatchImGuiMacEvent(const ImGuiApi::MacEvent& event)
-{
-	if (auto* imGui = App::GetSubmodule<ImGuiApi>())
-	{
-		imGui->HandleMac(event);
-	}
-}
 
 static uint32_t SailorMapMacKeyCode(unsigned short keyCode)
 {
@@ -70,23 +65,78 @@ static uint32_t SailorMapMacKeyCode(unsigned short keyCode)
 	case 0x1C: return '8';
 	case 0x19: return '9';
 	case 0x1D: return '0';
+	case 0x18: return 0xBB; // Equal
+	case 0x1B: return 0xBD; // Minus
+	case 0x1E: return 0xDD; // Right bracket
+	case 0x21: return 0xDB; // Left bracket
+	case 0x27: return 0xDE; // Quote
+	case 0x29: return 0xBA; // Semicolon
+	case 0x2A: return 0xDC; // Backslash
+	case 0x2B: return 0xBC; // Comma
+	case 0x2C: return 0xBF; // Slash
+	case 0x2F: return 0xBE; // Period
+	case 0x32: return 0xC0; // Grave
+	case 0x0A: return 0xE2; // ISO section
+	case 0x52: return 0x60; // Keypad 0
+	case 0x53: return 0x61; // Keypad 1
+	case 0x54: return 0x62; // Keypad 2
+	case 0x55: return 0x63; // Keypad 3
+	case 0x56: return 0x64; // Keypad 4
+	case 0x57: return 0x65; // Keypad 5
+	case 0x58: return 0x66; // Keypad 6
+	case 0x59: return 0x67; // Keypad 7
+	case 0x5B: return 0x68; // Keypad 8
+	case 0x5C: return 0x69; // Keypad 9
+	case 0x41: return 0x6E; // Keypad decimal
+	case 0x43: return 0x6A; // Keypad multiply
+	case 0x45: return 0x6B; // Keypad add
+	case 0x4B: return 0x6F; // Keypad divide
+	case 0x4E: return 0x6D; // Keypad subtract
 	case 0x30: return 0x09;
 	case 0x31: return 0x20;
 	case 0x24: return 0x0D;
+	case 0x4C: return 0x0D;
 	case 0x33: return 0x08;
 	case 0x7B: return 0x25;
 	case 0x7C: return 0x27;
 	case 0x7E: return 0x26;
 	case 0x7D: return 0x28;
+	case 0x72: return 0x2D; // Help / Insert
+	case 0x73: return 0x24; // Home
+	case 0x74: return 0x21; // Page up
+	case 0x75: return 0x2E; // Forward delete
+	case 0x77: return 0x23; // End
+	case 0x79: return 0x22; // Page down
+	case 0x6E: return 0x5D; // Context menu
 	case 0x35: return VK_ESCAPE;
+	case 0x7A: return 0x70; // F1
+	case 0x78: return 0x71; // F2
+	case 0x63: return 0x72; // F3
+	case 0x76: return 0x73; // F4
 	case 0x60: return VK_F5;
 	case 0x61: return VK_F6;
-	case 0x38:
-	case 0x3C:
-		return VK_SHIFT;
-	case 0x3B:
-	case 0x3E:
-		return VK_CONTROL;
+	case 0x62: return 0x76; // F7
+	case 0x64: return 0x77; // F8
+	case 0x65: return 0x78; // F9
+	case 0x6D: return 0x79; // F10
+	case 0x67: return 0x7A; // F11
+	case 0x6F: return 0x7B; // F12
+	case 0x69: return 0x7C; // F13
+	case 0x6B: return 0x7D; // F14
+	case 0x71: return 0x7E; // F15
+	case 0x6A: return 0x7F; // F16
+	case 0x40: return 0x80; // F17
+	case 0x4F: return 0x81; // F18
+	case 0x50: return 0x82; // F19
+	case 0x5A: return 0x83; // F20
+	case 0x38: return VK_LSHIFT;
+	case 0x3C: return VK_RSHIFT;
+	case 0x3B: return VK_LCONTROL;
+	case 0x3E: return VK_RCONTROL;
+	case 0x3A: return VK_LMENU;
+	case 0x3D: return VK_RMENU;
+	case 0x37: return VK_LWIN;
+	case 0x36: return VK_RWIN;
 	default:
 		return 0;
 	}
@@ -163,7 +213,7 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 }
 
 @interface SailorWindowDelegate : NSObject<NSWindowDelegate>
-@property(nonatomic, assign) Sailor::Win32::Window* sailorWindow;
+@property(nonatomic, assign) Sailor::Mac::Window* sailorWindow;
 @property(nonatomic, assign) BOOL terminatesApplicationOnClose;
 @end
 
@@ -172,14 +222,14 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 - (void)windowWillClose:(NSNotification*)notification
 {
 	SailorWindowDelegate* retainedSelf = [self retain];
-	Sailor::Win32::Window* sailorWindow = self.sailorWindow;
+	Sailor::Mac::Window* sailorWindow = self.sailorWindow;
 	const BOOL bTerminatesApplicationOnClose = self.terminatesApplicationOnClose;
 	self.sailorWindow = nullptr;
 
-	if (sailorWindow && Sailor::Win32::Window::IsWindowAlive(sailorWindow))
+	if (sailorWindow && Sailor::Mac::Window::IsWindowAlive(sailorWindow))
 	{
 		NSWindow* window = (NSWindow*)notification.object;
-		sailorWindow->HandleNativeWindowWillClose((HWND)(__bridge void*)window);
+		sailorWindow->HandleNativeWindowWillClose((__bridge void*)window);
 	}
 	[retainedSelf release];
 
@@ -202,7 +252,7 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 		self.sailorWindow->UpdateMouseCapture();
 	}
 
-	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::Focus, 0.0f, 0.0f, 0, -1, true, nullptr });
+	GlobalInput::QueueNativeEvent({ InputEvent::Type::Focus, 0.0f, 0.0f, 0, -1, true, {} });
 }
 
 - (void)windowDidResignKey:(NSNotification*)notification
@@ -214,7 +264,7 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 		self.sailorWindow->UpdateMouseCapture();
 	}
 
-	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::Focus, 0.0f, 0.0f, 0, -1, false, nullptr });
+	GlobalInput::QueueNativeEvent({ InputEvent::Type::Focus, 0.0f, 0.0f, 0, -1, false, {} });
 }
 
 - (void)windowDidResize:(NSNotification*)notification
@@ -245,7 +295,7 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 @end
 
 @interface SailorContentView : NSView
-@property(nonatomic, assign) Sailor::Win32::Window* sailorWindow;
+@property(nonatomic, assign) Sailor::Mac::Window* sailorWindow;
 @end
 
 @implementation SailorContentView
@@ -255,7 +305,7 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 	return YES;
 }
 
-- (void)updateCursorFromEvent:(NSEvent*)event
+- (NSPoint)updateCursorFromEvent:(NSEvent*)event
 {
 	if (self.sailorWindow && (event.type == NSEventTypeMouseMoved ||
 		event.type == NSEventTypeLeftMouseDragged || event.type == NSEventTypeRightMouseDragged ||
@@ -268,25 +318,20 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 	const float viewHeight = self.bounds.size.height;
 	const float x = (float)point.x;
 	const float y = (float)(viewHeight - point.y);
-	GlobalInput::SetCursorPosition((int32_t)x, (int32_t)y);
-	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::MousePos, x, y, 0, -1, false, nullptr });
+	GlobalInput::QueueNativeEvent({ InputEvent::Type::MousePos, x, y, 0, -1, false, {} });
+	return NSMakePoint(x, y);
 }
 
 - (void)keyDown:(NSEvent*)event
 {
-	if (event.isARepeat)
-	{
-		return;
-	}
-
 	const uint32_t key = SailorMapMacKeyCode(event.keyCode);
-	if (key != 0)
+	if (key != 0 && !event.isARepeat)
 	{
-		GlobalInput::SetKeyState(key, KeyState::Pressed);
-		SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::Key, 0.0f, 0.0f, key, -1, true, nullptr });
+		GlobalInput::QueueNativeEvent({ InputEvent::Type::Key, 0.0f, 0.0f, key, -1, true, {}, event.keyCode == 0x4C });
 	}
 
-	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::Text, 0.0f, 0.0f, 0, -1, false, [[event characters] UTF8String] });
+	if (const char* text = [[event characters] UTF8String])
+		GlobalInput::QueueNativeEvent({ InputEvent::Type::Text, 0.0f, 0.0f, 0, -1, false, text });
 }
 
 - (void)keyUp:(NSEvent*)event
@@ -294,20 +339,28 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 	const uint32_t key = SailorMapMacKeyCode(event.keyCode);
 	if (key != 0)
 	{
-		GlobalInput::SetKeyState(key, KeyState::Up);
-		SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::Key, 0.0f, 0.0f, key, -1, false, nullptr });
+		GlobalInput::QueueNativeEvent({ InputEvent::Type::Key, 0.0f, 0.0f, key, -1, false, {}, event.keyCode == 0x4C });
 	}
 }
 
 - (void)flagsChanged:(NSEvent*)event
 {
 	const uint32_t key = SailorMapMacKeyCode(event.keyCode);
-	if (key == VK_SHIFT || key == VK_CONTROL)
+	NSEventModifierFlags mask;
+	switch (key)
 	{
-		const bool isDown = (event.modifierFlags & (key == VK_SHIFT ? NSEventModifierFlagShift : NSEventModifierFlagControl)) != 0;
-		GlobalInput::SetKeyState(key, isDown ? KeyState::Pressed : KeyState::Up);
-		SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::Key, 0.0f, 0.0f, key, -1, isDown, nullptr });
+	case VK_LSHIFT: mask = NX_DEVICELSHIFTKEYMASK; break;
+	case VK_RSHIFT: mask = NX_DEVICERSHIFTKEYMASK; break;
+	case VK_LCONTROL: mask = NX_DEVICELCTLKEYMASK; break;
+	case VK_RCONTROL: mask = NX_DEVICERCTLKEYMASK; break;
+	case VK_LMENU: mask = NX_DEVICELALTKEYMASK; break;
+	case VK_RMENU: mask = NX_DEVICERALTKEYMASK; break;
+	case VK_LWIN: mask = NX_DEVICELCMDKEYMASK; break;
+	case VK_RWIN: mask = NX_DEVICERCMDKEYMASK; break;
+	default: return;
 	}
+	const bool bIsPressed = (event.modifierFlags & mask) != 0;
+	GlobalInput::QueueNativeEvent({ InputEvent::Type::Key, 0.0f, 0.0f, key, -1, bIsPressed, {} });
 }
 
 - (void)mouseMoved:(NSEvent*)event
@@ -333,50 +386,43 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 - (void)scrollWheel:(NSEvent*)event
 {
 	[self updateCursorFromEvent:event];
-	GlobalInput::AddMouseWheelDelta((float)event.scrollingDeltaY);
-	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::MouseWheel, (float)event.scrollingDeltaX, (float)event.scrollingDeltaY, 0, -1, false, nullptr });
+	GlobalInput::QueueNativeEvent({ InputEvent::Type::MouseWheel, (float)event.scrollingDeltaX, (float)event.scrollingDeltaY, 0, -1, false, {} });
 }
 
 - (void)mouseDown:(NSEvent*)event
 {
-	[self updateCursorFromEvent:event];
-	GlobalInput::SetMouseButtonState(0, KeyState::Pressed);
-	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::MouseButton, 0.0f, 0.0f, 0, 0, true, nullptr });
+	NSPoint position = [self updateCursorFromEvent:event];
+	GlobalInput::QueueNativeEvent({ InputEvent::Type::MouseButton, (float)position.x, (float)position.y, 0, 0, true, {} });
 }
 
 - (void)mouseUp:(NSEvent*)event
 {
-	[self updateCursorFromEvent:event];
-	GlobalInput::SetMouseButtonState(0, KeyState::Up);
-	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::MouseButton, 0.0f, 0.0f, 0, 0, false, nullptr });
+	NSPoint position = [self updateCursorFromEvent:event];
+	GlobalInput::QueueNativeEvent({ InputEvent::Type::MouseButton, (float)position.x, (float)position.y, 0, 0, false, {} });
 }
 
 - (void)rightMouseDown:(NSEvent*)event
 {
-	[self updateCursorFromEvent:event];
-	GlobalInput::SetMouseButtonState(1, KeyState::Pressed);
-	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::MouseButton, 0.0f, 0.0f, 0, 1, true, nullptr });
+	NSPoint position = [self updateCursorFromEvent:event];
+	GlobalInput::QueueNativeEvent({ InputEvent::Type::MouseButton, (float)position.x, (float)position.y, 0, 1, true, {} });
 }
 
 - (void)rightMouseUp:(NSEvent*)event
 {
-	[self updateCursorFromEvent:event];
-	GlobalInput::SetMouseButtonState(1, KeyState::Up);
-	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::MouseButton, 0.0f, 0.0f, 0, 1, false, nullptr });
+	NSPoint position = [self updateCursorFromEvent:event];
+	GlobalInput::QueueNativeEvent({ InputEvent::Type::MouseButton, (float)position.x, (float)position.y, 0, 1, false, {} });
 }
 
 - (void)otherMouseDown:(NSEvent*)event
 {
-	[self updateCursorFromEvent:event];
-	GlobalInput::SetMouseButtonState(2, KeyState::Pressed);
-	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::MouseButton, 0.0f, 0.0f, 0, 2, true, nullptr });
+	NSPoint position = [self updateCursorFromEvent:event];
+	GlobalInput::QueueNativeEvent({ InputEvent::Type::MouseButton, (float)position.x, (float)position.y, 0, 2, true, {} });
 }
 
 - (void)otherMouseUp:(NSEvent*)event
 {
-	[self updateCursorFromEvent:event];
-	GlobalInput::SetMouseButtonState(2, KeyState::Up);
-	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::MouseButton, 0.0f, 0.0f, 0, 2, false, nullptr });
+	NSPoint position = [self updateCursorFromEvent:event];
+	GlobalInput::QueueNativeEvent({ InputEvent::Type::MouseButton, (float)position.x, (float)position.y, 0, 2, false, {} });
 }
 
 @end
@@ -390,24 +436,13 @@ Window::~Window()
 
 bool Window::IsParentWindowValid() const
 {
-	if (m_parentHwnd == nullptr)
+	if (m_parentWindow == nullptr)
 	{
 		return true;
 	}
 
-	NSWindow* parent = (__bridge NSWindow*)m_parentHwnd;
+	NSWindow* parent = (__bridge NSWindow*)m_parentWindow;
 	return parent != nil;
-}
-
-void Window::SetWindowPos(const RECT& rect)
-{
-	NSWindow* window = (__bridge NSWindow*)m_hWnd;
-	if (!window)
-	{
-		return;
-	}
-
-	[window setFrame:NSMakeRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top) display:YES];
 }
 
 void Window::Show(bool bShowWindow)
@@ -421,7 +456,7 @@ void Window::Show(bool bShowWindow)
 		return;
 	}
 
-	NSWindow* window = (__bridge NSWindow*)m_hWnd;
+	NSWindow* window = (__bridge NSWindow*)m_nativeWindow;
 	if (window)
 	{
 		if (bShowWindow)
@@ -437,9 +472,9 @@ void Window::Show(bool bShowWindow)
 	m_bIsShown = bShowWindow;
 }
 
-void Window::SetWindowTitle(LPCSTR lString)
+void Window::SetWindowTitle(const char* titleText)
 {
-	NSWindow* window = (__bridge NSWindow*)m_hWnd;
+	NSWindow* window = (__bridge NSWindow*)m_nativeWindow;
 	if (!window)
 	{
 		return;
@@ -447,7 +482,7 @@ void Window::SetWindowTitle(LPCSTR lString)
 
 	@autoreleasepool
 	{
-		NSString* title = [NSString stringWithUTF8String:lString ? lString : ""];
+		NSString* title = [NSString stringWithUTF8String:titleText ? titleText : ""];
 		if (!title)
 		{
 			return;
@@ -466,15 +501,9 @@ void Window::SetWindowTitle(LPCSTR lString)
 	}
 }
 
-void Window::TrackParentWindowPosition(const RECT& viewport)
+bool Window::Create(const char* title, const char*, int32_t inWidth, int32_t inHeight, bool inbIsFullScreen, bool bIsVsyncRequested, void* parentWindow)
 {
-	(void)viewport;
-}
-
-bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inHeight, bool inbIsFullScreen, bool bIsVsyncRequested, HWND parentHwnd)
-{
-	m_parentHwnd = parentHwnd;
-	m_windowClassName = className;
+	m_parentWindow = parentWindow;
 	m_bIsVsyncRequested = bIsVsyncRequested;
 	m_width = inWidth;
 	m_height = inHeight;
@@ -489,7 +518,7 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 			[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 		}
 
-		const NSWindowStyleMask style = parentHwnd == nullptr ?
+		const NSWindowStyleMask style = parentWindow == nullptr ?
 			(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable) :
 			NSWindowStyleMaskBorderless;
 
@@ -547,7 +576,7 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 			m_bIsShown = false;
 		}
 
-		m_hWnd = (HWND)(__bridge void*)window;
+		m_nativeWindow = (__bridge void*)window;
 	}
 
 	g_windows.Add(this);
@@ -557,7 +586,7 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 
 void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScreen)
 {
-	NSWindow* window = (__bridge NSWindow*)m_hWnd;
+	NSWindow* window = (__bridge NSWindow*)m_nativeWindow;
 	if (!window)
 	{
 		m_width = width;
@@ -586,7 +615,7 @@ void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScree
 	SailorApplyMacWindowSizeOnMainThread(window, contentWidth, contentHeight, bInIsFullScreen, bRunsInsideEditor, bIsVsyncRequested);
 }
 
-void Sailor::Win32::Window::ProcessMacMsgs()
+void Sailor::Mac::Window::ProcessMacMsgs()
 {
 	@autoreleasepool
 	{
@@ -609,12 +638,12 @@ void Sailor::Win32::Window::ProcessMacMsgs()
 
 		for (auto* pWindow : g_windows)
 		{
-			if (!pWindow || !pWindow->m_hWnd)
+			if (!pWindow || !pWindow->m_nativeWindow)
 			{
 				continue;
 			}
 
-			NSWindow* window = (__bridge NSWindow*)pWindow->m_hWnd;
+			NSWindow* window = (__bridge NSWindow*)pWindow->m_nativeWindow;
 			pWindow->SetIsIconic(window.isMiniaturized);
 			if (!App::IsEditorMode())
 			{
@@ -635,7 +664,7 @@ void Window::UpdateMouseCapture()
 {
 	check([NSThread isMainThread]);
 
-	NSWindow* window = (__bridge NSWindow*)m_hWnd;
+	NSWindow* window = (__bridge NSWindow*)m_nativeWindow;
 	const bool bShouldCapture = m_bMouseCaptureRequested && !App::IsEditorMode() && m_bIsActive &&
 		window && window.isKeyWindow && NSApp.isActive && !window.isMiniaturized;
 	if (bShouldCapture == m_bMouseCaptured)
@@ -669,7 +698,7 @@ void Window::UpdateMouseCapture()
 
 glm::ivec2 Window::GetCenterPointScreen() const
 {
-	NSWindow* window = (__bridge NSWindow*)m_hWnd;
+	NSWindow* window = (__bridge NSWindow*)m_nativeWindow;
 	if (!window)
 	{
 		return glm::ivec2(0);
@@ -688,7 +717,7 @@ glm::ivec2 Window::GetCenterPointClient() const
 
 void Window::RecalculateWindowSize()
 {
-	NSWindow* window = (__bridge NSWindow*)m_hWnd;
+	NSWindow* window = (__bridge NSWindow*)m_nativeWindow;
 	if (!window)
 	{
 		m_width = 0;
@@ -721,8 +750,8 @@ void Window::Destroy()
 
 	RequestMouseCapture(false);
 	UpdateMouseCapture();
-	NSWindow* window = (__bridge NSWindow*)m_hWnd;
-	m_hWnd = nullptr;
+	NSWindow* window = (__bridge NSWindow*)m_nativeWindow;
+	m_nativeWindow = nullptr;
 	g_windows.Remove(this);
 	m_bIsShown = false;
 	m_bIsActive = false;
@@ -761,17 +790,17 @@ void Window::Destroy()
 	}
 }
 
-void Window::HandleNativeWindowWillClose(HWND nativeWindow)
+void Window::HandleNativeWindowWillClose(void* nativeWindow)
 {
 	NSWindow* window = (__bridge NSWindow*)nativeWindow;
-	if (!window || (__bridge NSWindow*)m_hWnd != window)
+	if (!window || (__bridge NSWindow*)m_nativeWindow != window)
 	{
 		return;
 	}
 
 	RequestMouseCapture(false);
 	UpdateMouseCapture();
-	m_hWnd = nullptr;
+	m_nativeWindow = nullptr;
 	g_windows.Remove(this);
 	m_bIsShown = false;
 	m_bIsActive = false;
@@ -811,7 +840,17 @@ bool Window::IsIconic() const
 
 void* Window::GetMetalLayer() const
 {
-	NSWindow* window = (__bridge NSWindow*)m_hWnd;
+	return Mac::GetMetalLayer(m_nativeWindow, m_bIsVsyncRequested);
+}
+
+void* Window::GetNativeView() const
+{
+	return Mac::GetNativeView(m_nativeWindow);
+}
+
+void* Sailor::Mac::GetMetalLayer(void* nativeWindow, bool bVsyncRequested)
+{
+	NSWindow* window = (__bridge NSWindow*)nativeWindow;
 	if (!window || !window.contentView)
 	{
 		return nullptr;
@@ -827,13 +866,13 @@ void* Window::GetMetalLayer() const
 		SailorUpdateMetalDrawableSize(window);
 	}
 
-	SailorConfigureMetalLayer(metalLayer, m_bIsVsyncRequested);
+	SailorConfigureMetalLayer(metalLayer, bVsyncRequested);
 	return (__bridge void*)metalLayer;
 }
 
-void* Window::GetNativeView() const
+void* Sailor::Mac::GetNativeView(void* nativeWindow)
 {
-	NSWindow* window = (__bridge NSWindow*)m_hWnd;
+	NSWindow* window = (__bridge NSWindow*)nativeWindow;
 	return window ? (__bridge void*)window.contentView : nullptr;
 }
 

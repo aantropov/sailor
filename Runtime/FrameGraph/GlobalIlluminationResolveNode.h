@@ -13,7 +13,7 @@ namespace Sailor::Framegraph
 		public TFrameGraphNode<GlobalIlluminationResolveNode>
 	{
 	public:
-		SAILOR_API static const char* GetName() { return m_name; }
+		SAILOR_API static StringHash GetName() { return "GlobalIlluminationResolve"_h; }
 
 		SAILOR_API virtual void Process(
 			RHI::RHIFrameGraphPtr frameGraph,
@@ -23,8 +23,6 @@ namespace Sailor::Framegraph
 		SAILOR_API virtual void Clear() override;
 
 	protected:
-		static const char* m_name;
-
 		ShaderSetPtr m_shader{};
 		RHI::RHIShaderBindingSetPtr m_bindings{};
 		RHI::RHITexturePtr m_depthTexture{};

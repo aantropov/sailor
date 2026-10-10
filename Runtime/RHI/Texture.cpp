@@ -34,6 +34,11 @@ EFormat RHITexture::GetFormat() const
 	return m_vulkan.m_image ? static_cast<EFormat>(m_vulkan.m_image->m_format) : EFormat::UNDEFINED;
 }
 
+EMsaaSamples RHITexture::GetMsaaSamples() const
+{
+	return m_vulkan.m_image ? static_cast<EMsaaSamples>(m_vulkan.m_image->m_samples) : EMsaaSamples::Samples_1;
+}
+
 size_t RHITexture::GetSize() const
 {
 	return m_vulkan.m_image ? m_vulkan.m_image->GetMemoryRequirements().size : 0;

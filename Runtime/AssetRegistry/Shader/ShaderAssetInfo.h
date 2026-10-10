@@ -37,7 +37,7 @@ namespace Sailor
 }
 
 REFL_AUTO(
-	type(Sailor::ShaderAssetInfo, bases<Sailor::AssetInfo>),
+	type(Sailor::ShaderAssetInfo, bases<Sailor::AssetInfo>, Sailor::Attributes::Asset{ "shader", "glsl" }),
 	field(m_fileId),
 	field(m_assetFilename)
 )

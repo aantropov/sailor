@@ -6,14 +6,19 @@
 #include "Engine/Frame.h"
 #include "Engine/Types.h"
 #include "Engine/InstanceId.h"
+#include "Engine/WorldPrefab.h"
 #include "GlobalIllumination/GISettings.h"
 #include "AssetRegistry/FileId.h"
 #include "Containers/Map.h"
+#include "Containers/List.h"
 #include "RHI/DebugContext.h"
 #include "ECS/ECS.h"
 
 namespace Sailor
 {
+	using GameObjectsList = TList<GameObjectPtr, Memory::TInlineAllocator<16'000 *
+		Memory::TInlineAllocator<>::GetAllocationSize(sizeof(TList<GameObjectPtr>::TNode), alignof(TList<GameObjectPtr>::TNode))>>;
+
 	enum class EWorldBehaviourBit : uint8_t
 	{
 		Tickable = 1 << 0,
@@ -23,15 +28,6 @@ namespace Sailor
 	};
 
 	typedef uint8_t EWorldBehaviourMask;
-
-	// Runtime-only data derived for a linked prefab root. The source asset is
-	// authoritative only on the live root GameObject::GetFileId().
-	struct PrefabInstanceLink final
-	{
-		InstanceId m_rootInstanceId{};
-		TMap<InstanceId, InstanceId> m_sourceToInstanceIds{};
-		PrefabPtr m_effectiveBaseline{};
-	};
 
 	class World
 	{
@@ -47,16 +43,11 @@ namespace Sailor
 		SAILOR_API World(World&&) = default;
 		SAILOR_API World& operator=(World&&) = default;
 
-		SAILOR_API GameObjectPtr Instantiate(PrefabPtr prefab);
 		SAILOR_API GameObjectPtr Instantiate(
 			PrefabPtr prefab,
-			bool bStrictInstanceIds);
-		SAILOR_API GameObjectPtr Instantiate(
-			PrefabPtr prefab,
-			bool bStrictInstanceIds,
-			bool bForceNewInstanceIds);
-		SAILOR_API GameObjectPtr Instantiate(const std::string& name = "Untitled");
-		SAILOR_API GameObjectPtr Instantiate(const std::string& name, const InstanceId& preferredInstanceId);
+			EPrefabInstanceIdPolicy idPolicy = EPrefabInstanceIdPolicy::PreserveAvailable);
+		SAILOR_API GameObjectPtr Instantiate(std::string_view name = "Untitled");
+		SAILOR_API GameObjectPtr Instantiate(std::string_view name, const InstanceId& preferredInstanceId);
 		SAILOR_API void Destroy(GameObjectPtr object);
 		SAILOR_API void DestroyImmediate(GameObjectPtr object);
 
@@ -74,12 +65,12 @@ namespace Sailor
 		template<typename T>
 		SAILOR_API __forceinline T* GetECS()
 		{
-			const size_t typeId = T::GetComponentStaticType();
-			return m_ecs[typeId].StaticCast<T>();
+			ECS::TBaseSystemPtr* system = nullptr;
+			return m_ecs.Find(T::GetComponentStaticType(), system) ? system->StaticCast<T>() : nullptr;
 		}
 
-		SAILOR_API TVector<GameObjectPtr> GetGameObjects() { return m_objects; }
-		SAILOR_API const TVector<GameObjectPtr>& GetGameObjects() const { return m_objects; }
+		SAILOR_API TVector<GameObjectPtr> GetGameObjects();
+		SAILOR_API const GameObjectsList& GetGameObjects() const { return *m_objects; }
 
 		SAILOR_API void Clear();
 		SAILOR_API size_t GetCurrentFrame() const { return m_currentFrame; }
@@ -97,11 +88,12 @@ namespace Sailor
 		SAILOR_API void ResolveExternalDependencies();
 		SAILOR_API void SetEditorSelection(const TVector<InstanceId>& selection);
 		SAILOR_API bool IsEditorSelected(const InstanceId& instanceId) const;
+		SAILOR_API GameObjectPtr GetPrimaryEditorSelection() const;
 
 		SAILOR_API ObjectPtr GetObjectByInstanceId(const InstanceId& instanceId) const;
 
 		SAILOR_API const TMap<InstanceId, ObjectPtr>& GetObjects() const { return m_objectsMap; }
-		SAILOR_API const TMap<InstanceId, PrefabInstanceLink>& GetPrefabInstances() const { return m_prefabInstances; }
+		SAILOR_API const TMap<InstanceId, PrefabInstanceLink>& GetPrefabInstances() const { return m_prefabLinks.m_instances; }
 		SAILOR_API bool TryGetPrefabInstance(
 			const InstanceId& objectInstanceId,
 			const PrefabInstanceLink*& outLink) const;
@@ -129,17 +121,26 @@ namespace Sailor
 
 	protected:
 
+		class PrefabInstantiationTransaction;
+
 		SAILOR_API World(
 			std::string name,
 			EWorldBehaviourMask mask,
 			TVector<ECS::TBaseSystemPtr>&& ecsArray);
 
-		size_t GetNumPendingDependencyResolutions() const { return ComponentsToResolveDependencies.Num(); }
-		void RemovePendingDependencyResolutions(const ComponentPtr& component);
-		void ApplyComponentReflection(ComponentPtr component, const ReflectedData& reflection, bool bImmediate);
+		SAILOR_API void BeginPlayEcs();
+		SAILOR_API void TickGameObjects(float deltaTime);
+		SAILOR_API void TickEcs(float deltaTime);
+		SAILOR_API void DestroyPendingGameObjects();
 
-		SAILOR_API GameObjectPtr NewGameObject(const std::string& name, const InstanceId& instanceId);
+		size_t GetNumPendingDependencyResolutions() const { return m_pendingDependencies.Num(); }
+		void QueuePendingDependencyResolution(ComponentPtr component, const ReflectedData& reflection);
+		void RemovePendingDependencyResolutions(ComponentPtr component);
+		SAILOR_API void ApplyComponentReflection(ComponentPtr component, const ReflectedData& reflection, bool bImmediate);
+
+		SAILOR_API GameObjectPtr NewGameObject(std::string_view name, const InstanceId& instanceId);
 		void DestroyGameObjectHierarchy(GameObjectPtr root);
+		bool ValidatePrefabInstanceIds(const PrefabPtr& prefab, EPrefabInstanceIdPolicy idPolicy) const;
 		bool RegisterPrefabInstance(
 			GameObjectPtr root,
 			const FileId& sourcePrefabId,
@@ -156,11 +157,11 @@ namespace Sailor
 		size_t m_currentFrame;
 		std::string m_name;
 
-		TVector<GameObjectPtr> m_objects;
+		TUniquePtr<GameObjectsList> m_objects = TUniquePtr<GameObjectsList>::Make();
 		TMap<InstanceId, ObjectPtr> m_objectsMap;
-		TMap<InstanceId, PrefabInstanceLink> m_prefabInstances;
-		TMap<InstanceId, InstanceId> m_prefabInstanceRootsByObject;
+		WorldPrefabLinks m_prefabLinks;
 		TSet<InstanceId> m_editorSelection;
+		uint64_t m_nextObjectOrder = 0;
 
 		TVector<size_t> m_sortedEcs;
 		TMap<size_t, Sailor::ECS::TBaseSystemPtr> m_ecs;
@@ -171,13 +172,16 @@ namespace Sailor
 		TUniquePtr<RHI::DebugContext> m_pDebugContext;
 
 		Memory::ObjectAllocatorPtr m_allocator;
-		bool m_bIsBeginPlayCalled;
+		bool m_bEcsBeginPlayCalled;
 		bool m_bPhysicsSimulationEnabled = false;
 		bool m_bIsClearing = false;
 
 		TList<GameObjectPtr, Memory::TInlineAllocator<sizeof(GameObjectPtr) * 32>> m_pendingDestroyObjects;
 
-		TVector<TPair<ComponentPtr, ReflectedData>> ComponentsToResolveDependencies;
+		TList<TPair<ComponentPtr, ReflectedData>> m_pendingDependencies;
+#if defined(SAILOR_ECS_TEST_HOOKS)
+		size_t m_numRemovalVisits = 0;
+#endif
 
 		friend class GameObject;
 		friend class Editor;

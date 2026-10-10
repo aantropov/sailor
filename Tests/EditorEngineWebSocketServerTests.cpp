@@ -1,5 +1,10 @@
 #include "EditorEngineProtocolInternal.h"
+#include "EditorEngineProtocolLifecycle.h"
 #include "EditorEngineWebSocketServer.h"
+#include "Sailor.h"
+#include "Support/TempDirectory.h"
+#include "Support/EditorProtocolWire.h"
+#include "Support/ScopeExit.h"
 
 #include <ixwebsocket/IXGetFreePort.h>
 #include <ixwebsocket/IXNetSystem.h>
@@ -8,6 +13,9 @@
 #include <ixwebsocket/IXWebSocketMessage.h>
 
 #include <chrono>
+#include <atomic>
+#include <future>
+#include <thread>
 #include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
@@ -15,6 +23,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #if !defined(_WIN32)
@@ -23,7 +32,9 @@
 
 extern "C"
 {
-	void SailorProtocolStopLocalHost(bool bShutdownEngine) noexcept;
+	int32_t SailorProtocolStartLocalHost(const uint8_t* requestData, uint32_t requestSize,
+		uint16_t port, const char* token, uint32_t tokenSize) noexcept;
+	int32_t SailorProtocolStopLocalHost(bool bShutdownEngine) noexcept;
 }
 
 namespace
@@ -39,211 +50,13 @@ namespace
 	constexpr uint16_t c_closeUnsupportedData = 1003u;
 	constexpr uint16_t c_closeInvalidPayload = 1007u;
 
-	void AppendVarint(std::string& payload, uint64_t value)
-	{
-		while (value >= 0x80u)
-		{
-			payload.push_back(static_cast<char>(
-				(value & 0x7fu) | 0x80u));
-			value >>= 7u;
-		}
-		payload.push_back(static_cast<char>(value));
-	}
+	using namespace Sailor::Tests::ProtocolWire;
 
-	void AppendKey(
-		std::string& payload,
-		const uint32_t fieldNumber,
-		const uint8_t wireType)
-	{
-		AppendVarint(
-			payload,
-			(static_cast<uint64_t>(fieldNumber) << 3u) | wireType);
-	}
-
-	void AppendVarintField(
-		std::string& payload,
-		const uint32_t fieldNumber,
-		const uint64_t value)
-	{
-		AppendKey(payload, fieldNumber, 0u);
-		AppendVarint(payload, value);
-	}
-
-	void AppendBytesField(
-		std::string& payload,
-		const uint32_t fieldNumber,
-		const std::string& value)
-	{
-		AppendKey(payload, fieldNumber, 2u);
-		AppendVarint(payload, value.size());
-		payload.append(value);
-	}
-
-	std::string MakeRequest(
-		const uint64_t requestId,
-		const uint32_t commandField,
-		const std::string& commandPayload = {})
-	{
-		std::string payload;
-		AppendVarintField(
-			payload,
-			1u,
-			EditorEngineProtocolVersion);
-		AppendVarintField(payload, 2u, requestId);
-		AppendBytesField(payload, commandField, commandPayload);
-		return payload;
-	}
-
-	bool ReadVarint(
-		const std::string& payload,
-		size_t& offset,
-		uint64_t& outValue)
-	{
-		outValue = 0u;
-		for (uint32_t shift = 0u;
-			shift < 64u && offset < payload.size();
-			shift += 7u)
-		{
-			const uint8_t byte = static_cast<uint8_t>(
-				payload[offset++]);
-			outValue |= static_cast<uint64_t>(byte & 0x7fu) << shift;
-			if ((byte & 0x80u) == 0u)
-			{
-				return true;
-			}
-		}
-		return false;
-	}
-
-	bool ReadBytes(
-		const std::string& payload,
-		size_t& offset,
-		std::string& outValue)
-	{
-		uint64_t length = 0u;
-		if (!ReadVarint(payload, offset, length) ||
-			length > payload.size() - offset)
-		{
-			return false;
-		}
-
-		outValue.assign(
-			payload.data() + offset,
-			static_cast<size_t>(length));
-		offset += static_cast<size_t>(length);
-		return true;
-	}
-
-	struct TProtocolResponseWire
-	{
-		uint64_t m_protocolVersion = 0u;
-		uint64_t m_requestId = 0u;
-		bool m_bSuccess = false;
-		bool m_bSupportsStrictInstanceIds = false;
-		std::string m_error{};
-		uint32_t m_resultField = 0u;
-		std::string m_resultPayload{};
-	};
-
-	bool ParseResponse(
-		const std::string& payload,
-		TProtocolResponseWire& outResponse)
-	{
-		size_t offset = 0u;
-		while (offset < payload.size())
-		{
-			uint64_t key = 0u;
-			if (!ReadVarint(payload, offset, key))
-			{
-				return false;
-			}
-
-			const uint32_t fieldNumber =
-				static_cast<uint32_t>(key >> 3u);
-			const uint8_t wireType =
-				static_cast<uint8_t>(key & 0x07u);
-			if (wireType == 0u)
-			{
-				uint64_t value = 0u;
-				if (!ReadVarint(payload, offset, value))
-				{
-					return false;
-				}
-				switch (fieldNumber)
-				{
-				case 1u:
-					outResponse.m_protocolVersion = value;
-					break;
-
-				case 2u:
-					outResponse.m_requestId = value;
-					break;
-
-				case 3u:
-					outResponse.m_bSuccess = value != 0u;
-					break;
-
-				case 5u:
-					outResponse.m_bSupportsStrictInstanceIds =
-						value != 0u;
-					break;
-
-				default:
-					break;
-				}
-				continue;
-			}
-			if (wireType == 2u)
-			{
-				std::string value;
-				if (!ReadBytes(payload, offset, value))
-				{
-					return false;
-				}
-				if (fieldNumber == 4u)
-				{
-					outResponse.m_error = std::move(value);
-				}
-				else if (fieldNumber >= 10u &&
-					fieldNumber <= 19u)
-				{
-					outResponse.m_resultField = fieldNumber;
-					outResponse.m_resultPayload = std::move(value);
-				}
-				continue;
-			}
-
-			// The protocol envelopes currently use only varint and
-			// length-delimited fields. Rejecting other wire types keeps this
-			// test decoder intentionally small and strict.
-			return false;
-		}
-		return true;
-	}
-
-	bool ReadNestedScalar(
-		const std::string& payload,
-		uint64_t& outValue)
-	{
-		outValue = 0u;
-		if (payload.empty())
-		{
-			return true;
-		}
-
-		size_t offset = 0u;
-		uint64_t key = 0u;
-		return ReadVarint(payload, offset, key) &&
-			key == 8u &&
-			ReadVarint(payload, offset, outValue) &&
-			offset == payload.size();
-	}
-
-	void Require(const bool condition, const std::string& message)
+	void Require(const bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -305,6 +118,36 @@ namespace
 		// performs the only teardown after later-registered static finalizers.
 	}
 
+	void TestFailedLocalHostInitialization(const std::string& authorizationToken)
+	{
+		Sailor::Tests::TempDirectory workspace("local-host-initialization");
+		Require(ix::initNetSystem(), "port reservation must initialize the network system");
+		const int port = ix::getFreePort();
+		Require(ix::uninitNetSystem() && port > 0 && port <= 65535, "port reservation must complete");
+		std::string arguments;
+		for (const auto& argument : { std::string("SailorEngine"), std::string("--workspace"),
+			workspace.Path("missing").string(), std::string("--noconsole"), std::string("--new-world") })
+		{
+			AppendBytesField(arguments, 1u, argument);
+		}
+		const auto request = MakeRequest(1u, 10u, arguments);
+		for (uint32_t attempt = 0; attempt < 3u; ++attempt)
+		{
+			const int32_t status = SailorProtocolStartLocalHost(
+				reinterpret_cast<const uint8_t*>(request.data()), static_cast<uint32_t>(request.size()),
+				static_cast<uint16_t>(port), authorizationToken.data(), static_cast<uint32_t>(authorizationToken.size()));
+			const bool bRolledBack = Sailor::App::GetInstance() == nullptr;
+			if (!bRolledBack) SailorProtocolStopLocalHost(true);
+			RequireHostStatus(status, EEditorEngineWebSocketHostStatus::InitializationFailed,
+				"local host must report the actual initialization failure on every attempt");
+			Require(bRolledBack, "failed local host bootstrap must release its partial App");
+			RequireHostStatus(Sailor::Protocol::StartEditorEngineWebSocketServer(static_cast<uint16_t>(port),
+				authorizationToken.data(), static_cast<uint32_t>(authorizationToken.size())),
+				EEditorEngineWebSocketHostStatus::Ok, "failed bootstrap must release its listening socket");
+			Sailor::Protocol::StopEditorEngineWebSocketServer();
+		}
+	}
+
 	class TServerGuard final
 	{
 	public:
@@ -355,6 +198,260 @@ namespace
 		uint16_t m_port = 0;
 		bool m_bStarted = false;
 	};
+
+	uint16_t ReserveLocalHostPort()
+	{
+		Require(ix::initNetSystem(), "port reservation must initialize the network system");
+		const int port = ix::getFreePort();
+		Require(ix::uninitNetSystem() && port > 0 && port <= 65535, "port reservation must complete");
+		return static_cast<uint16_t>(port);
+	}
+
+	void TestBootstrapReservesBeforePublishingServer(const std::string& token)
+	{
+		using namespace std::chrono_literals;
+		using Status = EEditorEngineWebSocketHostStatus;
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::atomic<uint32_t> initializeCalls{0u};
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_context = &initializeCalls;
+		dependencies.m_lifecycleGate = &gate;
+		dependencies.m_initialize = [](void* context, const char**, int32_t)
+			{
+				++*static_cast<std::atomic<uint32_t>*>(context);
+				return Sailor::EAppInitializationResult::Ready;
+			};
+		dependencies.m_stop = [](void*) {};
+		dependencies.m_shutdown = [](void*) { return true; };
+		const auto request = MakeRequest(1u, 10u);
+		const uint16_t port = ReserveLocalHostPort();
+		std::string error;
+		Require(gate.TryAcquireOperation(error, true), "bootstrap fixture must hold an earlier diagnostic operation");
+		std::future<Status> bootstrap;
+		Sailor::Tests::ScopeExit releaseOperation([&]() { gate.ReleaseOperation(); });
+		bool bStopped = false;
+		Sailor::Tests::ScopeExit cleanup([&]()
+			{
+				releaseOperation.Run();
+				if (bootstrap.valid())
+				{
+					bootstrap.wait();
+				}
+				bStopped = Sailor::Protocol::StopEditorEngineLocalHost(true, dependencies);
+			});
+		bootstrap = std::async(std::launch::async, [&]()
+			{
+				return Sailor::Protocol::StartEditorEngineLocalHost(
+					reinterpret_cast<const uint8_t*>(request.data()), static_cast<uint32_t>(request.size()),
+					port, token.data(), static_cast<uint32_t>(token.size()), dependencies);
+			});
+		bool bReserved = false;
+		const auto deadline = std::chrono::steady_clock::now() + 1s;
+		while (std::chrono::steady_clock::now() < deadline)
+		{
+			if (!gate.TryAcquireOperation(error, true))
+			{
+				bReserved = true;
+				break;
+			}
+			gate.ReleaseOperation();
+			std::this_thread::yield();
+		}
+		Require(bReserved && initializeCalls == 0u, "bootstrap must reserve initialization before entering App");
+		const auto probeStatus = static_cast<Status>(Sailor::Protocol::StartEditorEngineWebSocketServer(
+			port, token.data(), static_cast<uint32_t>(token.size())));
+		if (probeStatus == Status::Ok)
+		{
+			Sailor::Protocol::StopEditorEngineWebSocketServer();
+		}
+		releaseOperation.Run();
+		const auto status = bootstrap.get();
+		cleanup.Run();
+		Require(probeStatus == Status::Ok && status == Status::Ok && initializeCalls == 1u && bStopped,
+			"the host must not publish its server before initialization admission has drained earlier work");
+	}
+
+	void TestBootstrapRollbackAndRetry(const std::string& token)
+	{
+		using Status = EEditorEngineWebSocketHostStatus;
+		struct TBootstrapSource
+		{
+			Sailor::Protocol::TEditorEngineProtocolLifecycleGate m_gate;
+			Sailor::EAppInitializationResult m_result = Sailor::EAppInitializationResult::Failed;
+			uint32_t m_numInitializations = 0u;
+			uint32_t m_numShutdowns = 0u;
+			bool m_bRollbackExclusive = true;
+		} source;
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_context = &source;
+		dependencies.m_lifecycleGate = &source.m_gate;
+		dependencies.m_initialize = [](void* context, const char**, int32_t)
+			{
+				auto& state = *static_cast<TBootstrapSource*>(context);
+				++state.m_numInitializations;
+				return state.m_result;
+			};
+		dependencies.m_stop = [](void*) {};
+		dependencies.m_shutdown = [](void* context)
+			{
+				auto& state = *static_cast<TBootstrapSource*>(context);
+				std::string error;
+				state.m_bRollbackExclusive &= !state.m_gate.TryBeginInitialization(error);
+				return ++state.m_numShutdowns > 1u;
+			};
+		const auto request = MakeRequest(1u, 10u);
+		const uint16_t port = ReserveLocalHostPort();
+		auto start = [&]()
+			{
+				return Sailor::Protocol::StartEditorEngineLocalHost(
+					reinterpret_cast<const uint8_t*>(request.data()), static_cast<uint32_t>(request.size()),
+					port, token.data(), static_cast<uint32_t>(token.size()), dependencies);
+			};
+		Sailor::Tests::ScopeExit cleanup([&]() { Sailor::Protocol::StopEditorEngineLocalHost(true, dependencies); });
+		Require(start() == Status::ShutdownFailed && source.m_numInitializations == 1u && source.m_numShutdowns == 1u,
+			"a refused bootstrap rollback must retain the failed session");
+		Require(start() == Status::AlreadyRunning && source.m_numInitializations == 1u,
+			"a failed rollback must not admit another bootstrap");
+		Require(Sailor::Protocol::StopEditorEngineLocalHost(true, dependencies), "bootstrap cleanup must allow an explicit retry");
+		source.m_result = Sailor::EAppInitializationResult::Ready;
+		Require(start() == Status::Ok && start() == Status::AlreadyRunning && source.m_numInitializations == 2u,
+			"a successful bootstrap must reject duplicate initialization without destroying its session");
+		Require(source.m_bRollbackExclusive, "bootstrap rollback must retain exclusive lifecycle ownership");
+	}
+
+	void TestBootstrapHandsRollbackToShutdown(const std::string& token, Sailor::EAppInitializationResult result)
+	{
+		using namespace std::chrono_literals;
+		using Status = EEditorEngineWebSocketHostStatus;
+		using DispatchState = Sailor::Protocol::TEditorEngineProtocolLifecycleGate::EEditorDispatchState;
+		struct TBootstrapSource
+		{
+			Sailor::Protocol::TEditorEngineProtocolLifecycleGate m_gate;
+			Sailor::EAppInitializationResult m_result;
+			std::promise<void> m_initializationEntered;
+			std::promise<void> m_releaseInitialization;
+			std::shared_future<void> m_resume = m_releaseInitialization.get_future().share();
+			std::promise<void> m_stopEntered;
+			std::atomic<uint32_t> m_numStops{0u};
+			std::atomic<uint32_t> m_numShutdowns{0u};
+			std::atomic<bool> m_bIsInitializing{false};
+			std::atomic<bool> m_bStoppedDuringInitialization{false};
+			std::thread::id m_stopThread;
+			std::thread::id m_shutdownThread;
+		} source;
+		source.m_result = result;
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_context = &source;
+		dependencies.m_lifecycleGate = &source.m_gate;
+		dependencies.m_initialize = [](void* context, const char**, int32_t)
+			{
+				auto& state = *static_cast<TBootstrapSource*>(context);
+				state.m_bIsInitializing = true;
+				state.m_initializationEntered.set_value();
+				state.m_resume.wait();
+				state.m_bIsInitializing = false;
+				return state.m_result;
+			};
+		dependencies.m_stop = [](void* context)
+			{
+				auto& state = *static_cast<TBootstrapSource*>(context);
+				if (state.m_bIsInitializing)
+				{
+					state.m_bStoppedDuringInitialization = true;
+				}
+				if (++state.m_numStops == 1u)
+				{
+					state.m_stopEntered.set_value();
+				}
+			};
+		dependencies.m_shutdown = [](void* context)
+			{
+				auto& state = *static_cast<TBootstrapSource*>(context);
+				state.m_shutdownThread = std::this_thread::get_id();
+				return ++state.m_numShutdowns > 1u;
+			};
+		const auto request = MakeRequest(1u, 10u);
+		const uint16_t port = ReserveLocalHostPort();
+		auto start = [&]()
+			{
+				return Sailor::Protocol::StartEditorEngineLocalHost(
+					reinterpret_cast<const uint8_t*>(request.data()), static_cast<uint32_t>(request.size()),
+					port, token.data(), static_cast<uint32_t>(token.size()), dependencies);
+			};
+		std::future<Status> bootstrap;
+		std::future<bool> shutdown;
+		std::future<bool> stopObserved;
+		std::atomic<DispatchState> observation{DispatchState::Queued};
+		bool bRecovered = false;
+		Sailor::Tests::ScopeExit releaseInitialization([&]() { source.m_releaseInitialization.set_value(); });
+		Sailor::Tests::ScopeExit cleanup([&]()
+			{
+				releaseInitialization.Run();
+				if (bootstrap.valid())
+				{
+					bootstrap.wait();
+				}
+				if (shutdown.valid())
+				{
+					shutdown.wait();
+				}
+				if (stopObserved.valid())
+				{
+					stopObserved.wait();
+				}
+				bRecovered = Sailor::Protocol::StopEditorEngineLocalHost(true, dependencies);
+			});
+		bootstrap = std::async(std::launch::async, start);
+		Require(source.m_initializationEntered.get_future().wait_for(1s) == std::future_status::ready,
+			"bootstrap must reach initialization before starting the shutdown race");
+		// Observe the existing cancellation notification without taking ownership
+		// of shutdown or completing any lifecycle transition from the test.
+		stopObserved = std::async(std::launch::async, [&]() { return source.m_gate.WaitForEditorDispatch(observation); });
+		shutdown = std::async(std::launch::async, [&]()
+			{
+				source.m_stopThread = std::this_thread::get_id();
+				return Sailor::Protocol::StopEditorEngineLocalHost(true, dependencies);
+			});
+		Require(stopObserved.wait_for(1s) == std::future_status::ready && !stopObserved.get(),
+			"native Stop must claim shutdown while initialization is still blocked");
+		const bool bEnteredStopEarly = source.m_stopEntered.get_future().wait_for(30ms) == std::future_status::ready;
+		Require(!bEnteredStopEarly && source.m_numShutdowns == 0u,
+			"native Stop must not enter App stop or shutdown during initialization");
+		releaseInitialization.Run();
+		const auto status = bootstrap.get();
+		const bool bStopped = shutdown.get();
+		Require(status == Status::InitializationFailed && !bStopped && source.m_numShutdowns == 1u &&
+			source.m_shutdownThread == source.m_stopThread && !source.m_bStoppedDuringInitialization,
+			"bootstrap must leave the single teardown attempt to the concurrent native Stop owner");
+		Require(start() == Status::AlreadyRunning, "failed concurrent shutdown must retain the closed session");
+		cleanup.Run();
+		Require(bRecovered && source.m_numStops == 2u && source.m_numShutdowns == 2u,
+			"an explicit native Stop retry must complete the retained session");
+	}
+
+	void TestBootstrapPreservesAnExistingServer(uint16_t port, const std::string& token)
+	{
+		uint32_t appCalls = 0u;
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_context = &appCalls;
+		dependencies.m_initialize = [](void* context, const char**, int32_t)
+			{
+				++*static_cast<uint32_t*>(context);
+				return Sailor::EAppInitializationResult::Failed;
+			};
+		dependencies.m_shutdown = [](void* context)
+			{
+				++*static_cast<uint32_t*>(context);
+				return true;
+			};
+		const auto request = MakeRequest(1u, 10u);
+		Require(Sailor::Protocol::StartEditorEngineLocalHost(
+			reinterpret_cast<const uint8_t*>(request.data()), static_cast<uint32_t>(request.size()),
+			port, token.data(), static_cast<uint32_t>(token.size()), dependencies) ==
+			EEditorEngineWebSocketHostStatus::AlreadyRunning && appCalls == 0u,
+			"a rejected bootstrap must not initialize or shut down an existing host");
+		TestValidBinaryProtobufRoundTrip(port, token);
+	}
 
 	struct TReceivedMessage
 	{
@@ -936,9 +1033,15 @@ int main(const int argc, const char* const argv[])
 
 			const std::string authorizationToken =
 				"0123456789abcdef0123456789abcdef";
+			TestBootstrapReservesBeforePublishingServer(authorizationToken);
+			TestBootstrapRollbackAndRetry(authorizationToken);
+			TestBootstrapHandsRollbackToShutdown(authorizationToken, Sailor::EAppInitializationResult::Ready);
+			TestBootstrapHandsRollbackToShutdown(authorizationToken, Sailor::EAppInitializationResult::Failed);
 			TestInvalidServerArguments(authorizationToken);
+			TestFailedLocalHostInitialization(authorizationToken);
 			{
 				const TServerGuard server(authorizationToken);
+				TestBootstrapPreservesAnExistingServer(server.GetPort(), authorizationToken);
 
 				TestAlreadyRunningIsReported(
 					server.GetPort(),

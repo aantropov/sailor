@@ -80,28 +80,8 @@ internal sealed class McpSceneSnapshotBuilder
             BuildComponents(gameObject, includeYaml: true)));
     }
 
-    public IReadOnlyList<McpComponentTypeSchema> BuildComponentSchemas()
-    {
-        var catalog = _engine.EngineTypes;
-        return catalog.GetAddableComponentTypeNames()
-            .Select(typeName => catalog.TryGetComponent(typeName, out var type)
-                ? new McpComponentTypeSchema(
-                    type.Name,
-                    type.Base,
-                    type.Properties
-                        .OrderBy(property => property.Key, StringComparer.Ordinal)
-                        .Select(property => BuildPropertySchema(
-                            property.Key,
-                            property.Value,
-                            type.ReadOnlyProperties.Contains(property.Key) ||
-                                property.Key is "instanceId" or "fileId",
-                            catalog.Enums))
-                        .ToArray())
-                : null)
-            .Where(schema => schema is not null)
-            .Cast<McpComponentTypeSchema>()
-            .ToArray();
-    }
+    public IReadOnlyList<McpComponentTypeSchema> BuildComponentSchemas() =>
+        new McpComponentSchemaBuilder(_engine.EngineTypes).Build();
 
     IReadOnlyList<McpComponentSnapshot> BuildComponents(
         GameObject gameObject,
@@ -153,43 +133,6 @@ internal sealed class McpSceneSnapshotBuilder
                 .ThenBy(child => child.GameObject.InstanceId.Value, StringComparer.Ordinal)
                 .Select(ToSnapshot)
                 .ToArray());
-    }
-
-    static McpComponentPropertySchema BuildPropertySchema(
-        string name,
-        PropertyBase property,
-        bool readOnly,
-        IReadOnlyDictionary<string, List<string>> enums)
-    {
-        object? defaultValue = property switch
-        {
-            Property<string> value => value.DefaultValue,
-            Property<bool> value => value.DefaultValue,
-            Property<int> value => value.DefaultValue,
-            Property<uint> value => value.DefaultValue,
-            Property<float> value => value.DefaultValue,
-            Property<FileId> value => value.DefaultValue?.Value,
-            Property<InstanceId> value => value.DefaultValue?.Value,
-            Property<List<FileId>> value => value.DefaultValue?
-                .Select(fileId => fileId.Value)
-                .ToArray(),
-            _ => null,
-        };
-        var allowedValues = property is EnumProperty enumProperty &&
-            enums.TryGetValue(enumProperty.Typename, out var values)
-                ? values.ToArray()
-                : null;
-        var objectType = property is ObjectPtrProperty objectPtr
-            ? objectPtr.GenericTypename
-            : null;
-
-        return new McpComponentPropertySchema(
-            name,
-            property.Typename ?? property.GetType().Name,
-            readOnly,
-            defaultValue,
-            allowedValues,
-            objectType);
     }
 
     static string? ResolvePrefabFileId(World world, GameObject gameObject)

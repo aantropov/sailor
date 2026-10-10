@@ -1,6 +1,11 @@
 #include "Core/FileRevision.h"
 
 #include "Core/YamlSerializable.h"
+#include "Workspace/WorkspacePathEncoding.h"
+
+#include <chrono>
+#include <filesystem>
+#include <sys/stat.h>
 
 using namespace Sailor;
 
@@ -8,15 +13,52 @@ YAML::Node FileRevision::Serialize() const
 {
 	YAML::Node outData(YAML::NodeType::Map);
 	SERIALIZE_PROPERTY(outData, m_modificationTimeNanoseconds);
-	SERIALIZE_PROPERTY(outData, m_fileSize);
-	SERIALIZE_PROPERTY(outData, m_contentHash);
 	return outData;
 }
 
 void FileRevision::Deserialize(const YAML::Node& inData)
 {
-	m_bIsValid =
-		DESERIALIZE_PROPERTY(inData, m_modificationTimeNanoseconds) &&
-		DESERIALIZE_PROPERTY(inData, m_fileSize) &&
-		DESERIALIZE_PROPERTY(inData, m_contentHash);
+	*this = {};
+	m_bIsValid = inData.IsMap() && inData.size() == 1 &&
+		DESERIALIZE_PROPERTY(inData, m_modificationTimeNanoseconds);
+}
+
+std::time_t Utils::GetFileModificationTime(const std::string& filepath)
+{
+	SAILOR_PROFILE_FUNCTION();
+	const auto path = Workspace::PathFromUtf8(filepath);
+#if defined(_WIN32)
+	struct _stat64 result;
+	if (_wstat64(path.c_str(), &result) == 0)
+#else
+	struct stat result;
+	if (stat(path.c_str(), &result) == 0)
+#endif
+	{
+		return (std::time_t)result.st_mtime;
+	}
+	return 0;
+}
+
+bool Utils::TryGetFileRevision(
+	const std::string& filepath,
+	FileRevision& outRevision) noexcept
+{
+	outRevision = {};
+	const auto path = Workspace::PathFromUtf8(filepath);
+	std::error_code error;
+	if (!std::filesystem::is_regular_file(path, error) || error)
+	{
+		return false;
+	}
+
+	const auto modificationTime = std::filesystem::last_write_time(path, error);
+	if (error)
+	{
+		return false;
+	}
+	outRevision.m_modificationTimeNanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(
+		modificationTime.time_since_epoch()).count();
+	outRevision.m_bIsValid = true;
+	return true;
 }

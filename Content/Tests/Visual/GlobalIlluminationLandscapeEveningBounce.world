@@ -11,6 +11,7 @@ globalIllumination:
     normalBias: 0.05
     viewBias: 0.05
     maxRayDistance: 1000
+    sunAngleThresholdDegrees: 30
   probes:
     Evening Landscape Bounce:
       asset:
@@ -88,61 +89,29 @@ prefabs:
           instanceId: 15500000000040008000000000000101_15515515515515515512
           chunksZ: 2
           paintStamps: ~
-          vegetationMaxScale: ~
-          vegetationColliderOffsetY: ~
           chunkSize: 32
           heightScale: 0
-          vegetationMeshIndex: ~
           noiseScale: 0.0350000001
-          vegetationColliderHeight: ~
           seed: 155
-          vegetationMinLod: ~
           material:
             fileId: 15500000-0000-4000-8000-000000000101
             instanceId: ""
+          vegetationProfiles: []
           sculptStamps:
-            - -23
-            - -7
-            - 20
-            - 9
-            - 0
-            - 23
-            - -9
-            - 21
-            - 8
-            - 0
-            - -5
-            - 26
-            - 27
-            - 6
-            - 0
-            - 4
-            - -28
-            - 22
-            - 5
-            - 0
-          vegetationLod2ScreenCoverage: ~
+            - {x: -23, z: -7, radius: 20, strength: 9, operation: Raise}
+            - {x: 23, z: -9, radius: 21, strength: 8, operation: Raise}
+            - {x: -5, z: 26, radius: 27, strength: 6, operation: Raise}
+            - {x: 4, z: -28, radius: 22, strength: 5, operation: Raise}
           layerTextures:
             - B4320C76-1CCD-4B31-A1F3-8BDBC69126F8
             - 3BED67FC-52C7-4960-9BF0-3ED4C77C7F5B
             - 5707252A-D797-4525-B1AB-208835A97169
             - B8771893-0C2D-4327-9067-9DACF3AC6169
           textureTiling: 0.0900000036
-          vegetationInstancesPerChunk: ~
           regenerate: false
           heightmapTexture: ""
-          vegetationMaterials: ~
-          vegetationMaxLod: ~
           materialMasks: ~
-          vegetationGroundOffset: ~
-          vegetationLod1ScreenCoverage: ~
-          vegetationColliderRadius: ~
           fileId: ""
-          vegetationModels: ~
-          vegetationMinScale: ~
-          vegetationShadowMode: ~
-          vegetationShadowDistance: ~
-          vegetationCullDistance: ~
           flatten: false
   - gameObjects:
       - name: Evening Shadow Ridge

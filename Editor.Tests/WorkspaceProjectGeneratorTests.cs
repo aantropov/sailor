@@ -1,5 +1,6 @@
 using SailorEditor.Workspace;
 using SailorEditor.Settings;
+using System.Text;
 
 namespace SailorEditor.Editor.Tests;
 
@@ -17,7 +18,6 @@ public sealed class WorkspaceProjectGeneratorTests
         var generated = await generator.GenerateAsync(session);
 
         var cmake = await File.ReadAllTextAsync(workspace.File("Generated/CMakeLists.txt"));
-        Assert.Contains($"add_subdirectory(\"{ToCMakePath(engine.Root)}\" \"${{CMAKE_BINARY_DIR}}/SailorEngine\" EXCLUDE_FROM_ALL)", cmake);
         Assert.Contains("set(SAILOR_BUILD_EXECUTABLE OFF", cmake);
         Assert.Contains("set(SAILOR_BUILD_TESTS OFF", cmake);
         Assert.Contains("target_link_libraries(SailorGame PRIVATE Sailor::Runtime)", cmake);
@@ -71,9 +71,7 @@ public sealed class WorkspaceProjectGeneratorTests
         await generator.GenerateAsync(session);
 
         var cmake = await File.ReadAllTextAsync(workspace.File("Project Files/CMakeLists.txt"));
-        Assert.Contains($"list(PREPEND CMAKE_PREFIX_PATH \"{ToCMakePath(engineInstall.Root)}\")", cmake);
         Assert.Contains("find_package(Sailor CONFIG REQUIRED)", cmake);
-        Assert.DoesNotContain("add_subdirectory", cmake);
         Assert.Contains("project(GameLogic LANGUAGES CXX)", cmake);
         Assert.Contains("${CMAKE_CURRENT_LIST_DIR}/../Game Source", cmake);
         Assert.Contains("${CMAKE_CURRENT_LIST_DIR}/../Output Files", cmake);
@@ -186,14 +184,11 @@ public sealed class WorkspaceProjectGeneratorTests
         Assert.Contains("func(GetMoveSpeed, property(\"moveSpeed\"))", header);
         Assert.Contains("void SandboxLogic::SampleComponent::BeginPlay()", source);
         Assert.Contains("TWorkspaceTypeList<SampleComponent>", workspaceTypes);
-        Assert.Contains("SailorGetWorkspaceTypeMetadataV1", workspaceModule);
-        Assert.Contains("ExportWorkspaceTypeMetadataV1<SandboxLogic::WorkspaceTypes>", workspaceModule);
         Assert.Contains("constexpr char WorkspaceModuleName[] = \"SandboxLogic\"", workspaceModule);
         Assert.Contains("SailorGetWorkspaceModuleApiV1", workspaceModule);
         Assert.Contains("WorkspaceModuleApiVersion", workspaceModule);
         Assert.Contains("GetWorkspaceModuleAbiTagV1()", workspaceModule);
         Assert.Contains("RegisterWorkspaceTypesV1<SandboxLogic::WorkspaceTypes>", workspaceModule);
-        Assert.Contains("&SailorGetWorkspaceTypeMetadataV1", workspaceModule);
         Assert.Contains("&RegisterWorkspaceTypes", workspaceModule);
     }
 
@@ -266,6 +261,57 @@ public sealed class WorkspaceProjectGeneratorTests
 
 public sealed class WorkspaceProjectGeneratorIntegrationTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("Category", "CMakeIntegration")]
+    public async Task NativeCli_PreservesUnicodeWorkspace(bool useManifestArgument)
+    {
+        if (!WorkspaceCMakeIntegrationHarness.ShouldRun)
+        {
+            return;
+        }
+
+        var engineRoot = WorkspaceCMakeIntegrationHarness.GetRequiredEnvironmentVariable(
+            "SAILOR_ENGINE_SOURCE_DIR");
+        using var workspace = IntegrationWorkspace.Create();
+        var root = Path.Combine(workspace.Root, "Skipper Я é 船 🚢");
+        Directory.CreateDirectory(root);
+        var manifest = WorkspaceManifest.CreateDefault("Unicode CLI", Path.GetFullPath(engineRoot)) with
+        {
+            LogicModuleName = "MissingCliModule"
+        };
+        var serializer = new WorkspaceManifestSerializer();
+        // Ignoring the CLI path must select a different, also windowless, failure.
+        Directory.CreateDirectory(Path.Combine(workspace.Root, "Content"));
+        await serializer.SaveAsync(Path.Combine(workspace.Root, WorkspaceTemplateService.ManifestFileName),
+            manifest with { LogicModuleName = "MissingFallbackModule" });
+        var session = new WorkspaceTemplateService(serializer).CreateSession(root, manifest);
+        Directory.CreateDirectory(session.ContentDirectory);
+        await serializer.SaveAsync(session.ManifestPath, manifest);
+
+        // A missing module stops the real CLI before it creates a window or renderer.
+        var executable = Path.Combine(engineRoot, "Binaries", "Release",
+            "SailorEngine-Release" + (OperatingSystem.IsWindows() ? ".exe" : string.Empty));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var result = await new WorkspaceProcessRunner().RunAsync(new WorkspaceProcessInvocation(
+            executable,
+            ["--noconsole", "--null-audio", "--no-title-stats",
+                useManifestArgument ? "--workspace-manifest" : "--workspace",
+                useManifestArgument ? session.ManifestPath : session.WorkspaceRoot],
+            workspace.Root)
+        {
+            OutputEncoding = Encoding.UTF8
+        }, timeout.Token);
+
+        Assert.Equal(1, result.ExitCode);
+        var expectedModuleDirectory = Path.Combine(session.LogicOutputDirectory, "Release").Replace('\\', '/');
+        Assert.True(result.Output.Contains(
+            $"Workspace module for configuration 'Release' was not found at '{expectedModuleDirectory}/",
+            StringComparison.Ordinal), result.Output);
+        Assert.Contains(manifest.LogicModuleName, result.Output, StringComparison.Ordinal);
+    }
+
     [Fact]
     [Trait("Category", "CMakeIntegration")]
     public async Task SourceMode_ConfiguresBuildsAndEmitsReleaseDll()

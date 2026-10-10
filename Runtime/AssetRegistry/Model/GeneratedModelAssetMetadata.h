@@ -7,7 +7,7 @@ namespace Sailor::GeneratedModelAssetMetadata
 {
 	inline YAML::Node CreateTexture(
 		const FileId& fileId,
-		const std::string& glbFilename,
+		std::string_view glbFilename,
 		uint32_t glbTextureIndex,
 		bool bShouldGenerateMips = true,
 		RHI::ETextureFormat format = RHI::ETextureFormat::R8G8B8A8_SRGB,
@@ -27,7 +27,7 @@ namespace Sailor::GeneratedModelAssetMetadata
 
 	inline YAML::Node CreateAnimation(
 		const FileId& fileId,
-		const std::string& glbFilename,
+		std::string_view glbFilename,
 		uint32_t animationIndex,
 		uint32_t skinIndex)
 	{

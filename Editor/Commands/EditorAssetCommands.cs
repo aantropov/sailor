@@ -21,15 +21,14 @@ public sealed class ReimportAssetCommand(AssetFile assetFile) : IEditorCommand
 {
     public string Name => nameof(ReimportAssetCommand);
     public bool CanExecute(ActionContext context) =>
-        assetFile?.FileId is not null &&
-        !assetFile.FileId.IsEmpty();
+        MauiProgram.GetService<AssetsService>().CanReimportAsset(assetFile);
 
     public async Task<CommandResult> ExecuteAsync(
         ActionContext context,
         CancellationToken cancellationToken = default)
     {
-        var updated = await MauiProgram.GetService<EngineService>()
-            .UpdateAssetAsync(assetFile.FileId, cancellationToken);
+        var updated = await MauiProgram.GetService<AssetsService>()
+            .ReimportAssetAsync(assetFile, cancellationToken);
         return updated
             ? CommandResult.Success(
                 "Asset reimport completed.",

@@ -6,11 +6,24 @@
 
 #include <cstddef>
 #include <string>
+#include <string_view>
 
 #include <yaml-cpp/yaml.h>
 
 namespace Sailor::Utils
 {
+	enum class EYamlCanonicalizationMode
+	{
+		SemanticValue,
+		StrictDocument
+	};
+
+	SAILOR_API bool CanonicalizeYaml(
+		const YAML::Node& node,
+		std::string& destination,
+		EYamlCanonicalizationMode mode);
+	SAILOR_API bool AreYamlNodesEqual(const YAML::Node& lhs, const YAML::Node& rhs);
+
 	enum class EYamlMapValidationError
 	{
 		None,
@@ -40,20 +53,20 @@ namespace Sailor::Utils
 
 	SAILOR_API size_t CountYamlMapField(
 		const YAML::Node& map,
-		const std::string& fieldName,
+		std::string_view fieldName,
 		YAML::Node* outField = nullptr);
 
 	SAILOR_API YAML::Node FindYamlMapField(
 		const YAML::Node& map,
-		const std::string& fieldName);
+		std::string_view fieldName);
 
 	SAILOR_API YamlMapValidationResult ValidateYamlMap(
 		const YAML::Node& map);
 
 	SAILOR_API YamlMapValidationResult ValidateYamlMapFields(
 		const YAML::Node& map,
-		const TVector<std::string>& requiredFields,
-		const TVector<std::string>& optionalFields = {});
+		const TVector<std::string_view>& requiredFields,
+		const TVector<std::string_view>& optionalFields = {});
 
 	template<typename TValue>
 	bool TryDecodeYamlScalar(

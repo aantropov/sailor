@@ -5,6 +5,11 @@ namespace Sailor
 {
 	// Capture and release on the ImGui owner thread. Once published, render tasks
 	// may read this data without consulting the context mutated by NewFrame().
+	// Draw callbacks run on RHI and must not access mutable ImGui state. Nonzero
+	// UserCallbackDataSize copies payload bytes; zero leaves the data borrowed.
+	// The caller must retain borrowed data and callback code until RHI recording
+	// drains. App shutdown drains these tasks before destroying workspace objects
+	// or unloading their module.
 	class ImGuiDrawDataSnapshot final
 	{
 	public:

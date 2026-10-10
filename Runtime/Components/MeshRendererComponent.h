@@ -23,7 +23,7 @@ namespace Sailor
 
 		SAILOR_API const ModelPtr& GetModel() const { return GetData().GetModel(); }
 		SAILOR_API void SetModel(const ModelPtr& model);
-		SAILOR_API bool LoadModel(const std::string& path);
+		SAILOR_API bool LoadModel(std::string_view path);
 		SAILOR_API int32_t GetMeshIndex() const { return m_meshIndex; }
 		SAILOR_API void SetMeshIndex(int32_t meshIndex);
 		SAILOR_API const TVector<FileId>& GetOverrideMaterials() const { return m_overrideMaterials; }

@@ -2,7 +2,9 @@
 #include "Core/Defines.h"
 #include <atomic>
 #include <string>
+#include <string_view>
 #include "Containers/Pair.h"
+#include "Containers/Map.h"
 #include "Containers/Vector.h"
 #include "Containers/ConcurrentMap.h"
 #include "Core/Submodule.h"
@@ -64,6 +66,7 @@ namespace Sailor
 		RHI::EFormat m_depthStencilAttachment = RHI::EFormat::UNDEFINED;
 
 		TVector<std::string> m_defines{};
+		std::atomic<bool> m_ready{ false };
 
 		friend class ShaderCompiler;
 	};
@@ -81,6 +84,8 @@ namespace Sailor
 
 		SAILOR_API __forceinline const TVector<std::string>& GetIncludes() const { return m_includes; }
 		SAILOR_API __forceinline const TVector<std::string>& GetSupportedDefines() const { return m_defines; }
+		SAILOR_API const TMap<std::string, glm::vec4>& GetDefaultUniformsVec4() const { return m_defaultUniformsVec4; }
+		SAILOR_API const TMap<std::string, float>& GetDefaultUniformsFloat() const { return m_defaultUniformsFloat; }
 
 		SAILOR_API const TVector<RHI::EFormat>& GetColorAttachments() const { return m_colorAttachments; }
 		SAILOR_API RHI::EFormat GetDepthStencilAttachment() const { return m_depthStencilAttachment; }
@@ -107,6 +112,8 @@ namespace Sailor
 
 		TVector<std::string> m_includes;
 		TVector<std::string> m_defines;
+		TMap<std::string, glm::vec4> m_defaultUniformsVec4;
+		TMap<std::string, float> m_defaultUniformsFloat;
 	};
 
 	class ShaderCompiler final : public TSubmodule<ShaderCompiler>, public IAssetInfoHandlerListener,
@@ -121,12 +128,15 @@ namespace Sailor
 		SAILOR_API ShaderCompiler(ShaderAssetInfoHandler* infoHandler);
 
 		SAILOR_API Tasks::TaskPtr<bool> CompileAllPermutations(const FileId& uid);
-		SAILOR_API TWeakPtr<ShaderAsset> LoadShaderAsset(const FileId& uid);
+		SAILOR_API TSharedPtr<ShaderAsset> LoadShaderAsset(const FileId& uid);
 
 		SAILOR_API virtual ~ShaderCompiler() override;
 
 		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
+		SAILOR_API virtual void OnRegisterAsset(AssetInfoPtr assetInfo, bool bWasExpired) override;
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
+		SAILOR_API void OnAssetScanStarted() override;
+		SAILOR_API Tasks::TaskPtr<bool> OnAssetScanFinished() override;
 		SAILOR_API virtual Tasks::TaskPtr<bool> OnEffectiveContentChanged(
 			const std::string& virtualPath) override;
 		SAILOR_API bool RecoverMissingShaderCacheStorage();
@@ -146,6 +156,40 @@ namespace Sailor
 		TConcurrentMap<FileId, TSharedPtr<ShaderAsset>> m_shaderAssetsCache;
 		TConcurrentMap<FileId, TVector<TPair<uint32_t, ShaderSetPtr>>> m_loadedShaders;
 
+		using ShaderReloadResults = TVector<TPair<FileId, bool>>;
+		struct ShaderResources
+		{
+			// Worker prepares bytecode; RHI consumes it before publication.
+			ShaderCache::PermutationSpirv m_spirv;
+			std::string m_assetFilename;
+			RHI::RHIShaderPtr m_vertex, m_fragment, m_compute;
+			RHI::RHIShaderPtr m_debugVertex, m_debugFragment, m_debugCompute;
+			TVector<RHI::EFormat> m_colorAttachments;
+			RHI::EFormat m_depthStencilAttachment = RHI::EFormat::UNDEFINED;
+		};
+		struct PreparedShaderReload
+		{
+			ShaderReloadResults m_results;
+			TVector<TPair<ShaderSetPtr, ShaderResources>> m_resources;
+		};
+		// Registration uses the existing promise-map locks. Preparation never waits for Render.
+		Tasks::ITaskPtr m_lastShaderPreparation;
+		Tasks::ITaskPtr m_lastShaderPublication;
+		struct PendingShaderChange
+		{
+			AssetRegistry::AssetProcessingToken m_token;
+			std::string m_includePath;
+			TVector<size_t> m_shaderIndices;
+		};
+		// Scan notifications are collected on the engine main thread only.
+		TMap<FileId, PendingShaderChange> m_scanChanges;
+		TSet<std::string> m_scanChangedIncludes;
+		Tasks::TaskPtr<ShaderReloadResults> m_lastScanReload;
+		bool m_bCollectScanChanges = false;
+		bool IsCollectingScanChanges() const;
+		void ProcessRegisteredAsset(AssetInfoPtr assetInfo);
+		void ProcessAssetUpdate(AssetInfoPtr assetInfo);
+
 		SAILOR_API void UpdateConstantsLibrary();
 
 		// ShaderAsset related functions
@@ -158,29 +202,28 @@ namespace Sailor
 
 		// Compile related functions
 		SAILOR_API bool ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint32_t permutation);
+		bool GetSpirvPermutation(const FileId& assetFileId, uint32_t permutation, ShaderCache::PermutationSpirv& outSpirv);
 		SAILOR_API bool GetSpirvCode(const FileId& assetFileId, const TVector<std::string>& defines, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, RHI::ShaderByteCode& outComputeByteCode, bool bIsDebug);
 		SAILOR_API bool GetSpirvCode(const FileId& assetFileId, uint32_t permutation, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, RHI::ShaderByteCode& outComputeByteCode, bool bIsDebug);
-		SAILOR_API static bool CompileGlslToSpirv(const std::string& filename, const std::string& source, RHI::EShaderStage shaderKind, RHI::ShaderByteCode& outByteCode, bool bIsDebug);
+		SAILOR_API static bool CompileGlslToSpirv(const std::string& filename, std::string_view source, RHI::EShaderStage shaderKind, RHI::ShaderByteCode& outByteCode, bool bIsDebug);
 
 		SAILOR_API static uint32_t GetPermutation(const TVector<std::string>& defines, const TVector<std::string>& actualDefines);
 		SAILOR_API static TVector<std::string> GetDefines(const TVector<std::string>& defines, uint32_t permutation);
 
-		SAILOR_API bool UpdateRHIResource(ShaderSetPtr shader, uint32_t permutation);
+		bool PrepareShaderResources(const FileId& uid, uint32_t permutation, ShaderResources& resources);
+		static bool CreateShaderResources(ShaderResources& resources);
+		static void PublishShaderResources(ShaderSetPtr shader, const ShaderResources& resources);
 
-		static void RecordCompileResult(std::atomic_bool& aggregate, bool bSucceeded) noexcept;
 		static bool SaveShaderCacheAndCombineResult(
 			ShaderCache& cache,
 			bool bCompiledSuccessfully);
-		static bool ShouldRetryDirtyShaderCache(
-			size_t numPermutationsToCompile,
-			bool bCacheDirty) noexcept;
 		static TVector<FileId> MergeShaderDependencyCandidates(
 			const TVector<FileId>& parsedShaderIds,
 			const TVector<FileId>& loadedShaderIds);
-		static std::string NormalizeShaderExtension(const std::string& filepath);
+		static std::string NormalizeShaderExtension(std::string_view filepath);
 		static bool DoesShaderIncludePath(
 			const TVector<std::string>& includes,
-			const std::string& relativePath);
+			std::string_view relativePath);
 
 		template<typename TValue>
 		static size_t FindPermutationIndex(
@@ -224,35 +267,15 @@ namespace Sailor
 			}
 		}
 
-		template<typename TPromise, typename TShader>
-		static void AddShaderLoadEntries(
-			TVector<TPair<uint32_t, TPromise>>& promises,
-			TVector<TPair<uint32_t, TShader>>& shaders,
-			uint32_t permutation,
-			const TPromise& promise,
-			const TShader& shader)
-		{
-			promises.Add({ permutation, promise });
-			shaders.Add({ permutation, shader });
-		}
-
-		template<typename TPromise, typename TShader>
-		static void EvictFailedShaderLoadEntries(
-			TVector<TPair<uint32_t, TPromise>>& promises,
-			TVector<TPair<uint32_t, TShader>>& shaders,
-			uint32_t permutation)
-		{
-			RemovePermutationEntry(promises, permutation);
-			RemovePermutationEntry(shaders, permutation);
-		}
-
 		SAILOR_API void ReplaceTabsWithSpaces(AssetInfoPtr assetInfo) const;
 		Tasks::TaskPtr<bool> ReloadShader(ShaderAssetInfoPtr assetInfo);
+		Tasks::TaskPtr<bool> ReloadShaders(const TVector<ShaderAssetInfoPtr>& assetInfos, bool invalidate = true);
+		Tasks::TaskPtr<ShaderReloadResults> ReloadShaderBatch(const TVector<ShaderAssetInfoPtr>& assetInfos, bool invalidate = true);
+		PreparedShaderReload PrepareShaderReload(const TVector<ShaderAssetInfoPtr>& assetInfos, bool invalidate);
 		Tasks::TaskPtr<bool> ReloadShadersDependingOn(AssetInfoPtr includeAssetInfo);
 		Tasks::TaskPtr<bool> ReloadShadersDependingOn(const std::string& includeVirtualPath);
-		bool ReloadLoadedShaderResources(
-			ShaderAssetInfoPtr assetInfo,
-			bool bCompileBeforeRhiUpdate);
+		Tasks::TaskPtr<bool> CompilePermutations(ShaderAssetInfoPtr assetInfo, const TVector<uint32_t>& permutations);
+		bool CompileLoadedShaderPermutations(ShaderAssetInfoPtr assetInfo);
 		static Tasks::TaskPtr<bool> AggregateShaderReloadTasks(
 			const TVector<Tasks::TaskPtr<bool>>& reloadTasks);
 		static bool ReadShaderSourceBinary(
@@ -261,16 +284,16 @@ namespace Sailor
 			std::string& outDiagnostic);
 		static bool RewriteShaderSourceInPlace(
 			const std::string& filepath,
-			const std::string& expectedSource,
-			const std::string& replacement,
+			std::string_view expectedSource,
+			std::string_view replacement,
 			std::string& outDiagnostic);
 		static bool NormalizeShaderTabs(
-			const std::string& extension,
+			std::string_view extension,
 			std::string& shaderText,
 			std::string& outDiagnostic);
 
 		SAILOR_API Tasks::TaskPtr<bool> CompileAllPermutations(ShaderAssetInfoPtr shaderAssetInfo);
-		SAILOR_API TWeakPtr<ShaderAsset> LoadShaderAsset(ShaderAssetInfoPtr shaderAssetInfo);
+		SAILOR_API TSharedPtr<ShaderAsset> LoadShaderAsset(ShaderAssetInfoPtr shaderAssetInfo);
 
 #if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
 		friend class ShaderCompilerTestAccess;
@@ -281,28 +304,28 @@ namespace Sailor
 	class ShaderCompilerTestAccess final
 	{
 	public:
+		SAILOR_API static ShaderCache& GetShaderCache(ShaderCompiler& compiler);
+		SAILOR_API static Tasks::TaskPtr<bool> ReloadShaderResources(ShaderCompiler& compiler, const FileId& uid);
+		SAILOR_API static Tasks::ITaskPtr GetLastPreparation(ShaderCompiler& compiler);
 		SAILOR_API static bool AggregateCompileResults(const bool* results, size_t count);
 		SAILOR_API static bool SaveCacheAndCombineResult(
 			ShaderCache& cache,
 			bool bCompiledSuccessfully);
-		SAILOR_API static bool ShouldRetryCacheSave(
-			size_t numPermutationsToCompile,
-			bool bCacheDirty);
 		SAILOR_API static TVector<FileId> MergeShaderDependencyCandidates(
 			const TVector<FileId>& parsedShaderIds,
 			const TVector<FileId>& loadedShaderIds);
-		SAILOR_API static std::string NormalizeShaderExtension(const std::string& filepath);
+		SAILOR_API static std::string NormalizeShaderExtension(std::string_view filepath);
 		SAILOR_API static bool DoesShaderIncludePath(
 			const TVector<std::string>& includes,
-			const std::string& relativePath);
+			std::string_view relativePath);
 		SAILOR_API static bool NormalizeShaderTabs(
-			const std::string& extension,
+			std::string_view extension,
 			std::string& shaderText,
 			std::string& outDiagnostic);
 		SAILOR_API static bool RewriteShaderSourceInPlace(
 			const std::string& filepath,
-			const std::string& expectedSource,
-			const std::string& replacement,
+			std::string_view expectedSource,
+			std::string_view replacement,
 			std::string& outDiagnostic);
 		SAILOR_API static bool ReadShaderSourceBinary(
 			const std::string& filepath,
@@ -310,12 +333,10 @@ namespace Sailor
 			std::string& outDiagnostic);
 		SAILOR_API static bool CompileGlslToSpirv(
 			const std::string& filename,
-			const std::string& source,
+			std::string_view source,
 			RHI::EShaderStage shaderStage,
 			RHI::ShaderByteCode& outByteCode,
 			bool bIsDebug);
-		SAILOR_API static bool ExerciseFailedLoadEvictionAndRetry();
-		SAILOR_API static bool ExercisePromiseGarbageCollection();
 	};
 #endif
 }

@@ -1,7 +1,7 @@
 assetInfoType: Sailor::ModelAssetInfo
 fileId: "{2387902B-538E-4191-93D6-53503B5571B1}"
 filename: Box.gltf
-bShouldGenerateMaterials: true
+bShouldGenerateMaterials: false
 bShouldBatchByMaterial: true
 bShouldKeepCpuBuffers: false
 bGenerateBLAS: true

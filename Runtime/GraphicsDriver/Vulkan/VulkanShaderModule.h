@@ -3,6 +3,7 @@
 #include "vulkan/vulkan.h"
 #include "VulkanDevice.h"
 #include "RHI/Types.h"
+#include "Core/StringHash.h"
 #include "Memory/RefPtr.hpp"
 #include "Containers/Set.h"
 #include <spirv_reflect.h>
@@ -44,14 +45,14 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 	public:
 		SAILOR_API VulkanShaderStage() = default;
-		SAILOR_API VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, VulkanShaderModulePtr shaderModule);
-		SAILOR_API VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, VulkanDevicePtr pDevice, const RHI::ShaderByteCode& spirv);
+		SAILOR_API VulkanShaderStage(VkShaderStageFlagBits stage, StringHash entryPointName, VulkanShaderModulePtr shaderModule);
+		SAILOR_API VulkanShaderStage(VkShaderStageFlagBits stage, StringHash entryPointName, VulkanDevicePtr pDevice, const RHI::ShaderByteCode& spirv);
 
 		/// Vulkan VkPipelineShaderStageCreateInfo settings
 		VkPipelineShaderStageCreateFlags m_flags = 0;
 		VkShaderStageFlagBits m_stage = {};
 		VulkanShaderModulePtr m_module;
-		std::string m_entryPointName;
+		StringHash m_entryPointName;
 
 		SAILOR_API virtual void Apply(VkPipelineShaderStageCreateInfo& stageInfo) const override;
 		SAILOR_API virtual void Compile() override;
@@ -59,7 +60,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API const TVector<TVector<VkDescriptorSetLayoutBinding>>& GetDescriptorSetLayoutBindings() const { return m_layoutBindings; }
 		SAILOR_API const TVector<TVector<RHI::ShaderLayoutBinding>>& GetBindings() const { return m_bindings; }
-		SAILOR_API const TVector<uint32_t>& GetPushConstants() const { return m_pushConstants; }
+		SAILOR_API const TVector<VkPushConstantRange>& GetPushConstants() const { return m_pushConstants; }
 		SAILOR_API const TSet<uint32_t>& GetVertexAttributesBindings() const { return m_vertexAttributeBindings; }
 		SAILOR_API uint32_t GetFragmentOutputMask() const { return m_fragmentOutputMask; }
 
@@ -72,7 +73,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		uint32_t m_fragmentOutputMask = 0u;
 		TVector<TVector<VkDescriptorSetLayoutBinding>> m_layoutBindings;
 		TVector<TVector<RHI::ShaderLayoutBinding>> m_bindings;
-		TVector<uint32_t> m_pushConstants;
+		TVector<VkPushConstantRange> m_pushConstants;
 	};
 
 	class VulkanShaderModule : public RHI::RHIResource, public RHI::IExplicitInitialization

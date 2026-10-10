@@ -27,8 +27,7 @@ IAssetInfoHandler* PrefabAssetInfo::GetHandler()
 
 PrefabAssetInfoHandler::PrefabAssetInfoHandler(AssetRegistry* assetRegistry)
 {
-	m_supportedExtensions.Emplace("prefab");
-	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
+	assetRegistry->RegisterAssetInfoHandler(GetAssetInfoExtensions<PrefabAssetInfo>(), this);
 }
 
 void PrefabAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const

@@ -1,33 +1,89 @@
 #include "FrameGraphParser.h"
-#include "FrameGraphAssetInfo.h"
-#include "AssetRegistry/FileId.h"
-#include "AssetRegistry/AssetRegistry.h"
-#include "Core/Utils.h"
-#include <filesystem>
-#include <fstream>
-#include <algorithm>
-#include <iostream>
-#include "FrameGraph/FrameGraphNode.h"
-
-#include "Tasks/Scheduler.h"
-#include "RHI/Renderer.h"
-#include "RHI/Texture.h"
-#include "RHI/RenderTarget.h"
-#include "RHI/Cubemap.h"
-#include "RHI/Surface.h"
-#include "AssetRegistry/Texture/TextureImporter.h"
-#include "Core/YamlSerializable.h"
+#include <charconv>
+#include <cmath>
+#include <cstdlib>
 
 using namespace Sailor;
 
+uint32_t FrameGraphAsset::RenderTarget::ParseUintValue(std::string_view str)
+{
+	const std::string_view value = Utils::TrimView(str);
+	uint32_t size = 0;
+	if (!value.empty())
+	{
+		const char* begin = value.data();
+		if (value.front() == '+')
+		{
+			++begin;
+		}
+		const auto parsed = std::from_chars(begin, value.data() + value.size(), size);
+		if (parsed.ec == std::errc() && parsed.ptr == value.data() + value.size() && size > 0)
+		{
+			return size;
+		}
+	}
+
+	const auto slash = value.find('/');
+	const std::string_view variable = Utils::TrimView(value.substr(0, slash));
+	if (variable != "RenderWidth" && variable != "RenderHeight" &&
+		variable != "ViewportWidth" && variable != "ViewportHeight")
+	{
+		throw YAML::RepresentationException(YAML::Mark::null_mark(), "Invalid frame graph dimension: " + std::string(str));
+	}
+
+	double divisor = 1.0;
+	if (slash != std::string_view::npos)
+	{
+		const std::string denominator(Utils::TrimView(value.substr(slash + 1)));
+		char* end = nullptr;
+		divisor = std::strtod(denominator.c_str(), &end);
+		if (end != denominator.c_str() + denominator.size() || !std::isfinite(divisor) || divisor <= 0.0)
+		{
+			throw YAML::RepresentationException(YAML::Mark::null_mark(), "Invalid frame graph dimension divisor: " + std::string(str));
+		}
+	}
+
+	const glm::ivec2 viewportExtent = App::GetMainWindow()->GetRenderArea();
+	const auto renderExtent = Settings::ResolveRenderDimensions(
+		static_cast<uint32_t>((std::max)(viewportExtent.x, 1)),
+		static_cast<uint32_t>((std::max)(viewportExtent.y, 1)),
+		App::GetActiveGraphicsSettings().m_resolutionFactor);
+	if (variable == "RenderWidth")
+	{
+		size = renderExtent.m_width;
+	}
+	else if (variable == "RenderHeight")
+	{
+		size = renderExtent.m_height;
+	}
+	else if (variable == "ViewportWidth")
+	{
+		size = static_cast<uint32_t>((std::max)(viewportExtent.x, 1));
+	}
+	else
+	{
+		size = static_cast<uint32_t>((std::max)(viewportExtent.y, 1));
+	}
+	return (std::max)(1u, static_cast<uint32_t>(size / divisor));
+}
+
 void FrameGraphAsset::Deserialize(const YAML::Node& inData)
 {
+	m_samplers.Clear();
+	m_values.Clear();
+	m_renderTargets.Clear();
+	m_nodes.Clear();
+
 	if (inData["samplers"])
 	{
 		auto samplers = inData["samplers"].as<TVector<FrameGraphAsset::Resource>>();
 
 		for (auto& sampler : samplers)
 		{
+			if (m_samplers.ContainsKey(sampler.m_name))
+			{
+				throw YAML::RepresentationException(inData["samplers"].Mark(), "Duplicate frame graph resource: " + sampler.m_name);
+			}
 			m_samplers[sampler.m_name] = std::move(sampler);
 		}
 	}
@@ -62,6 +118,10 @@ void FrameGraphAsset::Deserialize(const YAML::Node& inData)
 
 		for (auto& target : targets)
 		{
+			if (m_renderTargets.ContainsKey(target.m_name) || m_samplers.ContainsKey(target.m_name))
+			{
+				throw YAML::RepresentationException(inData["renderTargets"].Mark(), "Duplicate frame graph resource: " + target.m_name);
+			}
 			m_renderTargets[target.m_name] = std::move(target);
 		}
 	}
@@ -75,133 +135,4 @@ void FrameGraphAsset::Deserialize(const YAML::Node& inData)
 			m_nodes.Add(std::move(node));
 		}
 	}
-}
-
-FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const FrameGraphAssetPtr& frameGraphAsset) const
-{
-	FrameGraphPtr pFrameGraph = FrameGraphPtr::Make(m_allocator, uid);
-	RHI::RHIFrameGraphPtr pRhiFrameGraph = RHI::RHIFrameGraphPtr::Make();
-
-	auto& graph = pRhiFrameGraph->GetGraph();
-
-	for (const auto& renderTarget : frameGraphAsset->m_renderTargets)
-	{
-		const bool bUsedWithComputeShaders = renderTarget.m_second->m_bIsCompatibleWithComputeShaders;
-		const bool bShouldGenerateMips = renderTarget.m_second->m_bGenerateMips;
-		const bool bIsDepthFormat = RHI::IsDepthFormat(renderTarget.m_second->m_format);
-
-		const RHI::ETextureUsageFlags defaultUsage = (bIsDepthFormat ? RHI::ETextureUsageBit::DepthStencilAttachment_Bit : RHI::ETextureUsageBit::ColorAttachment_Bit) |
-			RHI::ETextureUsageBit::TextureTransferSrc_Bit |
-			RHI::ETextureUsageBit::TextureTransferDst_Bit |
-			RHI::ETextureUsageBit::Sampled_Bit |
-			(bUsedWithComputeShaders ? RHI::ETextureUsageBit::Storage_Bit : 0);
-
-		const uint32_t maxExtent = std::max(renderTarget.m_second->m_width, renderTarget.m_second->m_height);
-		const uint32_t numMips = std::min(renderTarget.m_second->m_maxMipLevel, bShouldGenerateMips ? (uint32_t)std::floor(std::log2f((float)maxExtent)) + 1 : 1u);
-		const RHI::ETextureFiltration filtration = renderTarget.m_second->m_filtration;
-		const RHI::ETextureClamping clamping = renderTarget.m_second->m_clamping;
-		const  RHI::ESamplerReductionMode reduction = renderTarget.m_second->m_reduction;
-
-		if (renderTarget.m_second->m_bIsSurface)
-		{
-			RHI::RHISurfacePtr rhiSurface = RHI::Renderer::GetDriver()->CreateSurface(glm::vec2(renderTarget.m_second->m_width, renderTarget.m_second->m_height),
-				numMips, renderTarget.m_second->m_format, filtration, clamping, defaultUsage);
-
-			pRhiFrameGraph->SetSurface(renderTarget.m_first, rhiSurface);
-			pRhiFrameGraph->SetRenderTarget(renderTarget.m_first, rhiSurface->GetResolved());
-
-			RHI::Renderer::GetDriver()->SetDebugName(rhiSurface->GetTarget(), renderTarget.m_first + " Target");
-			RHI::Renderer::GetDriver()->SetDebugName(rhiSurface->GetResolved(), renderTarget.m_first + " Resolved");
-		}
-		else
-		{
-			RHI::RHIRenderTargetPtr rhiRenderTarget = RHI::Renderer::GetDriver()->CreateRenderTarget(glm::vec2(renderTarget.m_second->m_width, renderTarget.m_second->m_height),
-				numMips, renderTarget.m_second->m_format, filtration, clamping, defaultUsage, reduction);
-
-			pRhiFrameGraph->SetRenderTarget(renderTarget.m_first, rhiRenderTarget);
-
-			RHI::Renderer::GetDriver()->SetDebugName(rhiRenderTarget, renderTarget.m_first);
-		}
-	}
-
-	for (const auto& value : frameGraphAsset->m_values)
-	{
-		pRhiFrameGraph->SetValue(value.m_first, value.m_second->GetFloat());
-	}
-
-	for (const auto& sampler : frameGraphAsset->m_samplers)
-	{
-		TexturePtr texture;
-		if (sampler.m_second->m_fileId)
-		{
-			App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(sampler.m_second->m_fileId, texture);
-		}
-		else
-		{
-			if (auto assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(sampler.m_second->m_path))
-			{
-				App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(assetInfo->GetFileId(), texture);
-			}
-		}
-
-		check(texture);
-		pRhiFrameGraph->SetSampler(sampler.m_first, texture->GetRHI());
-	}
-
-	for (auto& node : frameGraphAsset->m_nodes)
-	{
-		auto pNewNode = App::GetSubmodule<FrameGraphBuilder>()->CreateNode(node.m_name);
-
-		if (!pNewNode)
-		{
-			SAILOR_LOG("FrameGraph Node %s is not implemented!", node.m_name.c_str());
-			continue;
-		}
-
-		pNewNode->SetTag(node.m_tag.empty() ? node.m_name : node.m_tag);
-
-		for (const auto& param : node.m_values)
-		{
-			if (param.m_second->IsVec4())
-			{
-				pNewNode->SetVec4(param.m_first, param.m_second->GetVec4());
-			}
-			else if (param.m_second->IsFloat())
-			{
-				pNewNode->SetFloat(param.m_first, param.m_second->GetFloat());
-			}
-			else if (param.m_second->IsString())
-			{
-				pNewNode->SetString(param.m_first, param.m_second->GetString());
-			}
-		}
-
-		for (const auto& param : node.m_renderTargets)
-		{
-			if (auto pSurface = pRhiFrameGraph->GetSurface(*param.m_second))
-			{
-				pNewNode->SetRHIResource(param.m_first, pSurface);
-			}
-			else if (auto pRenderTarget = pRhiFrameGraph->GetRenderTarget(*param.m_second))
-			{
-				pNewNode->SetRHIResource(param.m_first, pRenderTarget);
-			}
-			else if (auto pTextureTarget = pRhiFrameGraph->GetSampler(*param.m_second))
-			{
-				pNewNode->SetRHIResource(param.m_first, pTextureTarget);
-			}
-			else
-			{
-				// We cannot bind some of per frame render targets (DepthBuffer, BackBuffer, etc...), 
-				// So lets save their names to resolve later
-				pNewNode->SetRHIResource_Unresolved(param.m_first, *param.m_second);
-			}
-		}
-		// TODO: Build params
-		graph.Add(pNewNode);
-	}
-
-	pFrameGraph->m_frameGraph = pRhiFrameGraph;
-
-	return pFrameGraph;
 }

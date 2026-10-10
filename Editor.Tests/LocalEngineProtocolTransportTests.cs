@@ -331,12 +331,15 @@ public sealed class LocalEngineProtocolTransportTests
     }
 
     [Fact]
-    public async Task Dispose_ReleasesHostWhenNativeShutdownThrows()
+    public async Task DisposeAsync_RetainsFailedHostUntilExplicitRetry()
     {
+        var attempts = 0;
         var bridge = new FakeNativeBridge
         {
-            Stop = _ => throw new InvalidOperationException(
-                "shutdown failed")
+            Stop = _ =>
+            {
+                if (++attempts == 1) throw new InvalidOperationException("shutdown failed");
+            }
         };
         var candidateTransport = new RecordingTransport();
         var transport = new LocalEngineProtocolTransport(
@@ -344,12 +347,132 @@ public sealed class LocalEngineProtocolTransportTests
             (_, _) => candidateTransport);
         await transport.InitializeAsync([1]);
 
-        transport.Dispose();
-        await bridge.StopCompleted.Task.WaitAsync(TestTimeout);
-
+        try
+        {
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => transport.DisposeAsync().AsTask().WaitAsync(TestTimeout));
+            Assert.Equal("shutdown failed", exception.Message);
+            Assert.Equal(1, candidateTransport.DisposeCount);
+            Assert.Equal(1, bridge.RequestStopCount);
+            Assert.Equal(1, bridge.StopCount);
+            await AssertHostCannotBeReused();
+        }
+        finally
+        {
+            await transport.DisposeAsync().AsTask().WaitAsync(TestTimeout);
+        }
+        Assert.Equal(2, bridge.StopCount);
         Assert.Equal(1, candidateTransport.DisposeCount);
-        Assert.Equal(1, bridge.RequestStopCount);
-        Assert.Equal(1, bridge.StopCount);
+        await AssertHostCanBeReused();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CompleteShutdownAsync_FailureRetainsHostAndNotifiesConcurrentDisposal(bool dispose)
+    {
+        var stopEntered = NewSignal();
+        using var stopRelease = new ManualResetEventSlim();
+        var attempts = 0;
+        var bridge = new FakeNativeBridge
+        {
+            Stop = _ =>
+            {
+                if (++attempts != 1) return;
+                stopEntered.TrySetResult();
+                WaitForRelease(stopRelease, "failed shutdown");
+                throw new InvalidOperationException("shutdown failed");
+            }
+        };
+        var transport = new LocalEngineProtocolTransport(bridge, (_, _) => new RecordingTransport());
+        await transport.InitializeAsync([1]);
+        var shutdown = transport.CompleteShutdownAsync(shutdownEngine: true);
+        await stopEntered.Task.WaitAsync(TestTimeout);
+        var disposal = dispose ? transport.DisposeAsync().AsTask() : null;
+        stopRelease.Set();
+        try
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => shutdown.WaitAsync(TestTimeout));
+            if (disposal is not null)
+            {
+                await Assert.ThrowsAsync<InvalidOperationException>(() => disposal.WaitAsync(TestTimeout));
+            }
+            Assert.Equal(1, bridge.StopCount);
+            await AssertHostCannotBeReused();
+        }
+        finally
+        {
+            if (dispose) await transport.DisposeAsync().AsTask().WaitAsync(TestTimeout);
+            else await transport.CompleteShutdownAsync(shutdownEngine: true).WaitAsync(TestTimeout);
+        }
+        Assert.Equal(2, bridge.StopCount);
+        await transport.DisposeAsync();
+        await AssertHostCanBeReused();
+    }
+
+    [Fact]
+    public async Task FactoryRollbackFailure_NotifiesConcurrentDisposalAndAllowsRetry()
+    {
+        var stopEntered = NewSignal();
+        using var stopRelease = new ManualResetEventSlim();
+        var attempts = 0;
+        var bridge = new FakeNativeBridge
+        {
+            Stop = _ =>
+            {
+                if (++attempts != 1) return;
+                stopEntered.TrySetResult();
+                WaitForRelease(stopRelease, "factory rollback");
+                throw new InvalidOperationException("shutdown failed");
+            }
+        };
+        var transport = new LocalEngineProtocolTransport(bridge,
+            (_, _) => throw new InvalidOperationException("factory failed"));
+        var initialization = Task.Run(() => transport.InitializeAsync([1]));
+        await stopEntered.Task.WaitAsync(TestTimeout);
+        var disposal = transport.DisposeAsync().AsTask();
+        stopRelease.Set();
+        try
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => initialization.WaitAsync(TestTimeout));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => disposal.WaitAsync(TestTimeout));
+            await AssertHostCannotBeReused();
+        }
+        finally
+        {
+            await transport.DisposeAsync().AsTask().WaitAsync(TestTimeout);
+        }
+        Assert.Equal(2, bridge.StopCount);
+        await AssertHostCanBeReused();
+    }
+
+    [Fact]
+    public async Task NativeBootstrapRollbackFailure_RetainsHostForShutdownRetry()
+    {
+        var attempts = 0;
+        var bridge = new FakeNativeBridge
+        {
+            Start = () => 7,
+            Stop = _ =>
+            {
+                if (++attempts == 1) throw new InvalidOperationException("shutdown failed");
+            }
+        };
+        var transport = new LocalEngineProtocolTransport(bridge,
+            (_, _) => throw new InvalidOperationException("failed bootstrap must not create a WebSocket transport"));
+        try
+        {
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => transport.InitializeAsync([1]));
+            Assert.Equal("shutdown failed", exception.Message);
+            Assert.Equal(1, bridge.StartCount);
+            Assert.Equal(1, bridge.StopCount);
+            await AssertHostCannotBeReused();
+        }
+        finally
+        {
+            await transport.DisposeAsync().AsTask().WaitAsync(TestTimeout);
+        }
+        Assert.Equal(2, bridge.StopCount);
         await AssertHostCanBeReused();
     }
 
@@ -419,6 +542,14 @@ public sealed class LocalEngineProtocolTransportTests
             throw new TimeoutException(
                 $"Timed out waiting to release {operation}.");
         }
+    }
+
+    static async Task AssertHostCannotBeReused()
+    {
+        var bridge = new FakeNativeBridge();
+        await using var transport = new LocalEngineProtocolTransport(bridge, (_, _) => new RecordingTransport());
+        await Assert.ThrowsAsync<EngineProtocolException>(() => transport.InitializeAsync([2]));
+        Assert.Equal(0, bridge.StartCount);
     }
 
     static async Task AssertHostCanBeReused()

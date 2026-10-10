@@ -4,14 +4,19 @@
 #include "RHI/Types.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "Tasks/Tasks.h"
-#include "RHI/MotionHistory.h"
+#include "RHI/GlobalIllumination.h"
+#include "Core/SpinLock.h"
 
 using namespace Sailor::Framegraph;
 
+namespace Sailor
+{
+	class FrameGraphImporter;
+	class FrameGraphImporterTestAccess;
+}
+
 namespace Sailor::RHI
 {
-	struct RHIGlobalIlluminationRenderStats;
-
 	class RHIFrameGraph : public RHI::RHIResource
 	{
 	public:
@@ -24,16 +29,18 @@ namespace Sailor::RHI
 		SAILOR_API RHIFrameGraph() = default;
 		SAILOR_API virtual ~RHIFrameGraph() = default;
 
-		SAILOR_API FrameGraphNodePtr GetGraphNode(const std::string& tag);
+		SAILOR_API FrameGraphNodePtr GetGraphNode(StringHash tag);
 		SAILOR_API TVector<FrameGraphNodePtr>& GetGraph() { return m_graph; }
 
-		SAILOR_API void SetSampler(const std::string& name, RHI::RHITexturePtr sampler);
-		SAILOR_API void SetRenderTarget(const std::string& name, RHI::RHIRenderTargetPtr sampler);
-		SAILOR_API void SetSurface(const std::string& name, RHI::RHISurfacePtr surface);
+		SAILOR_API void SetSampler(StringHash name, RHI::RHITexturePtr sampler);
+		SAILOR_API void SetRenderTarget(StringHash name, RHI::RHIRenderTargetPtr sampler);
+		SAILOR_API void SetSurface(StringHash name, RHI::RHISurfacePtr surface);
 
-		SAILOR_API RHI::RHITexturePtr GetSampler(const std::string& name);
-		SAILOR_API RHI::RHIRenderTargetPtr GetRenderTarget(const std::string& name);
-		SAILOR_API RHI::RHISurfacePtr GetSurface(const std::string& name);
+		SAILOR_API RHI::RHIResourcePtr GetResource(StringHash name) const;
+		SAILOR_API RHI::RHIResourcePtr ResolveResource(RHI::RHIResourcePtr resource) const;
+		SAILOR_API RHI::RHITexturePtr GetSampler(StringHash name) const;
+		SAILOR_API RHI::RHIRenderTargetPtr GetRenderTarget(StringHash name) const;
+		SAILOR_API RHI::RHISurfacePtr GetSurface(StringHash name) const;
 		SAILOR_API glm::ivec2 GetSceneRenderExtent();
 
 		void ResetCurrentDepthPyramids() { m_currentDepthPyramids.Clear(); }
@@ -51,23 +58,22 @@ namespace Sailor::RHI
 
 		SAILOR_API RHI::RHIMeshPtr GetFullscreenNdcQuad() { return m_postEffectPlane; }
 		SAILOR_API RHI::DrawCallStats GetDrawCallStats() const { return m_drawCallStats; }
-		SAILOR_API const TVector<RHI::GpuTiming>& GetGpuTimings() const { return m_lastFrameGpuStats.m_timings; }
 		SAILOR_API RHIGlobalIlluminationRenderStats
 			GetGlobalIlluminationRenderStats() const;
 
 		template<typename T>
-		void SetValue(const std::string& name, T value)
+		void SetValue(StringHash name, T value)
 		{
 			m_values[name] = glm::vec4(1) * value;
 		}
 
 		template<>
-		void SetValue<glm::vec4>(const std::string& name, glm::vec4 value)
+		void SetValue<glm::vec4>(StringHash name, glm::vec4 value)
 		{
 			m_values[name] = value;
 		}
 
-		SAILOR_API TVector<Sailor::Tasks::TaskPtr<void, void>> Prepare(RHI::RHISceneViewPtr rhiSceneView);
+		SAILOR_API TVector<Sailor::Tasks::ITaskPtr> Prepare(RHI::RHISceneViewPtr rhiSceneView);
 
 		SAILOR_API bool Process(RHI::RHISceneViewPtr rhiSceneView,
 			TVector<RHI::RHICommandListPtr>& outTransferCommandLists,
@@ -76,23 +82,36 @@ namespace Sailor::RHI
 			RHISemaphorePtr& outWaitSemaphore);
 
 		SAILOR_API void Clear();
-		SAILOR_API void CompleteMotionHistory(RHI::RHISceneViewPtr sceneView, bool succeeded);
 
 	protected:
 
-		void FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, WorldPtr world, float worldTime);
+		friend class Sailor::FrameGraphImporter;
+		friend class Sailor::FrameGraphImporterTestAccess;
 
-		TMap<std::string, RHI::RHITexturePtr> m_samplers;
-		TMap<std::string, RHI::RHIRenderTargetPtr> m_renderTargets;
-		TMap<std::string, RHI::RHISurfacePtr> m_surfaces;
-		TMap<std::string, glm::vec4> m_values;
+		void FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot);
+		bool PrepareRenderTargets();
+		void PublishGlobalIlluminationRenderStats(const RHIGlobalIlluminationRenderStats& stats);
+
+		TMap<StringHash, RHI::RHITexturePtr> m_samplers;
+		TMap<StringHash, RHI::RHIRenderTargetPtr> m_renderTargets;
+		TMap<StringHash, RHI::RHISurfacePtr> m_surfaces;
+		TMap<RHI::RHIRenderTarget*, RHI::RHISurfacePtr> m_msaaSurfaces;
+		TVector<RHI::RHIRenderTargetPtr> m_msaaSources;
+		size_t m_numStaticMsaaSources = 0;
+		TVector<RHI::RHISurfacePtr> m_boundSurfaces;
+		TVector<TPair<Framegraph::FrameGraphNodePtr, uint64_t>> m_boundNodes;
+		TVector<Framegraph::FrameGraphNodePtr> m_externalRenderPasses;
+		RHI::EMsaaSamples m_boundMsaaSamples = RHI::EMsaaSamples::Samples_1;
+		uint64_t m_surfaceRevision = 0, m_boundSurfaceRevision = 0;
+		TMap<StringHash, glm::vec4> m_values;
 		TVector<Framegraph::FrameGraphNodePtr> m_graph;
 		// Cleared for every recorded view, including multiple cameras in one frame.
 		TVector<RHI::RHITexturePtr> m_currentDepthPyramids;
 
 		RHI::RHIMeshPtr m_postEffectPlane;
 
-		TVector<TSharedPtr<RHIMotionHistoryFrame>> m_motionHistory{};
+		mutable SpinLock m_globalIlluminationStatsLock;
+		RHIGlobalIlluminationRenderStats m_globalIlluminationStats{};
 
 		GpuStats m_lastFrameGpuStats{};
 		RHI::DrawCallStats m_drawCallStats{};

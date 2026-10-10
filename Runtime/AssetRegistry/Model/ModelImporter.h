@@ -2,6 +2,7 @@
 #include "Containers/Containers.h"
 #include "Core/Defines.h"
 #include "Core/FileRevision.h"
+#include <functional>
 #include <string>
 #include "Containers/Vector.h"
 #include "Containers/ConcurrentMap.h"
@@ -85,12 +86,28 @@ namespace Sailor
 		struct BLASData
 		{
 			TSharedPtr<Raytracing::BVH> m_blas{};
-			TVector<Math::Triangle> m_triangles{};
+			TSharedPtr<TVector<Math::Triangle>> m_triangles;
+			Math::AABB m_bounds{};
+			uint32_t m_materialSlots = 1;
 
 			bool IsValid() const
 			{
-				return m_blas.IsValid() && !m_triangles.IsEmpty();
+				return m_blas && m_triangles && !m_triangles->IsEmpty();
 			}
+		};
+
+		struct BLASInstance
+		{
+			TSharedPtr<const BLASData> m_geometry;
+			glm::mat4 m_modelMatrix{ 1.0f };
+			glm::mat4 m_inverseModelMatrix{ 1.0f };
+		};
+
+		struct BLASGeometry
+		{
+			TVector<BLASInstance> m_instances;
+			TVector<TVector<BLASInstance>> m_sourceMeshes;
+			SAILOR_API const TVector<BLASInstance>& GetInstances(int32_t meshIndex = AllMeshes) const;
 		};
 
 		SAILOR_API Model(FileId uid, TVector<RHI::RHIMeshPtr> meshes = {})
@@ -128,8 +145,9 @@ namespace Sailor
 			TVector<glm::mat4>& outModelMatrices,
 			Math::AABB& outBounds) const;
 
-		// Should be triggered after mesh/material changes
+		// Publish edits to meshes, materials or inverse-bind matrices.
 		SAILOR_API void Flush();
+		uint64_t GetSkeletonRevision() const { return m_skeletonRevision; }
 
 		// The model hierarchy and RHIMesh objects are available after the importer
 		// task completes, while their GPU uploads may still be in flight.
@@ -167,21 +185,12 @@ namespace Sailor
 			return m_cpuMeshes.Num() > 0;
 		}
 		SAILOR_API bool BuildBLAS();
-		SAILOR_API bool HasBLAS() const
+		SAILOR_API bool HasBLAS(int32_t meshIndex = AllMeshes) const;
+		SAILOR_API const TSharedPtr<const BLASGeometry>& GetBLASGeometry() const
 		{
-			return m_blas.IsValid() && m_blasTriangles.Num() > 0;
+			return m_blasGeometry;
 		}
-		SAILOR_API bool HasBLAS(int32_t meshIndex) const;
-		SAILOR_API const TSharedPtr<Raytracing::BVH>& GetBLAS() const
-		{
-			return m_blas;
-		}
-		SAILOR_API const TSharedPtr<Raytracing::BVH>& GetBLAS(int32_t meshIndex) const;
-		SAILOR_API const TVector<Math::Triangle>& GetBLASTriangles() const
-		{
-			return m_blasTriangles;
-		}
-		SAILOR_API const TVector<Math::Triangle>& GetBLASTriangles(int32_t meshIndex) const;
+		SAILOR_API const TVector<BLASInstance>& GetBLASInstances(int32_t meshIndex = AllMeshes) const;
 
 		SAILOR_API virtual YAML::Node Serialize() const override;
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
@@ -199,10 +208,10 @@ namespace Sailor
 		std::atomic<bool> m_bIsReady{};
 		mutable std::atomic<bool> m_bGpuReady{};
 		TVector<glm::mat4> m_inverseBind;
+		uint64_t m_inverseBindHash = 0;
+		uint64_t m_skeletonRevision = 0;
 		TVector<MeshCpuData> m_cpuMeshes;
-		TSharedPtr<Raytracing::BVH> m_blas{};
-		TVector<Math::Triangle> m_blasTriangles{};
-		TVector<BLASData> m_sourceMeshBlases{};
+		TSharedPtr<const BLASGeometry> m_blasGeometry;
 
 		Math::AABB m_boundsAabb;
 		Math::Sphere m_boundsSphere;
@@ -213,10 +222,13 @@ namespace Sailor
 	class ModelImporter final : public TSubmodule<ModelImporter>, public IAssetInfoHandlerListener, public IAssetFactory
 	{
 	  public:
+		enum class EFingerprintStatus : uint32_t { Unavailable, Pending, Ready, Failed };
+
 		struct MeshContext
 		{
 			struct LodGeometry
 			{
+				// Empty geometry reuses the preceding level's draw range.
 				TVector<RHI::VertexP3N3T3B3UV2C4I4W4> m_vertices;
 				TVector<uint32_t> m_indices;
 			};
@@ -237,7 +249,8 @@ namespace Sailor
 			}
 		};
 
-		SAILOR_API ModelImporter(ModelAssetInfoHandler* infoHandler);
+		SAILOR_API ModelImporter(ModelAssetInfoHandler* infoHandler, Tasks::Scheduler* scheduler,
+			AssetRegistry* assetRegistry);
 		SAILOR_API virtual ~ModelImporter() override;
 
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
@@ -251,14 +264,15 @@ namespace Sailor
 
 		SAILOR_API Tasks::TaskPtr<bool> LoadDefaultMaterials(FileId uid, TVector<MaterialPtr>& outMaterials);
 
+		// Main-thread preview requests are independent of model loading and processing acknowledgements.
+		SAILOR_API bool RequestFingerprint(const FileId& fileId);
+		SAILOR_API EFingerprintStatus GetFingerprintStatus(const FileId& fileId) const;
+
 		SAILOR_API virtual void CollectGarbage() override;
 
 	  protected:
 		SAILOR_API bool GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
-		bool UpdateGeneratedMaterialProperties(ModelAssetInfoPtr assetInfo);
-		bool UpdateGeneratedMaterialProperties(ModelAssetInfoPtr assetInfo, const tinygltf::Model& gltfModel);
-		bool UpdateGeneratedMaterialPropertiesOnDemand(ModelAssetInfoPtr assetInfo, const tinygltf::Model& gltfModel);
-		static FileId CreateTextureAsset(const std::string& filepath,
+		FileId CreateTextureAsset(const std::string& filepath,
 			const std::string& sourceFilename,
 			uint32_t sourceTextureIndex,
 			bool bShouldGenerateMips = true,
@@ -266,7 +280,7 @@ namespace Sailor
 			RHI::ETextureClamping clamping = RHI::ETextureClamping::Repeat,
 			RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear,
 			bool bShouldKeepCpuBuffers = false);
-		SAILOR_API bool GenerateAnimationAssets(ModelAssetInfoPtr assetInfo);
+		SAILOR_API bool GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, bool& outChanged);
 		static bool ImportModel(ModelAssetInfoPtr assetInfo,
 			TVector<MeshContext>& outParsedMeshes,
 			Math::AABB& outBoundsAabb,
@@ -282,21 +296,48 @@ namespace Sailor
 			TVector<glm::mat4>& outInverseBind,
 			tinygltf::Model* outGltfModel = nullptr);
 		static void PopulateModelSceneHierarchy(Model& model, TVector<GltfImporterUtils::SceneNode>& sourceNodes);
-		static bool GenerateFingerprint(const FileId& fileId,
+		static TVector<uint8_t> RenderFingerprint(const FileId& fileId,
 			const std::string& assetFilepath,
 			float unitScale,
 			bool bShouldBatchByMaterial,
-			bool bFlipTexcoordY,
-			const std::string& outputPath,
-			uint64_t requestGeneration,
-			const FileRevision& sourceRevision);
-		static void GenerateFingerprintAsync(ModelAssetInfoPtr modelAssetInfo);
+			bool bFlipTexcoordY);
 
 		TConcurrentMap<FileId, Tasks::TaskPtr<ModelPtr>> m_promises;
 		TConcurrentMap<FileId, ModelPtr> m_loadedModels;
-		TConcurrentMap<FileId, bool> m_generatedMaterialMigrationComplete;
-		TConcurrentMap<FileId, Tasks::ITaskPtr> m_generatedMaterialMigrationTasks;
 
 		ObjectAllocatorPtr m_allocator;
+
+	private:
+		struct FingerprintRequest
+		{
+			uint64_t m_generation = 0;
+			FileRevision m_sourceRevision{}, m_metadataRevision{};
+			std::string m_sourcePath, m_metadataPath;
+			float m_unitScale = 1.0f;
+			bool m_bBatchByMaterial = true, m_bFlipTexcoordY = false;
+			Tasks::TaskPtr<bool> m_task;
+
+			bool Matches(const FingerprintRequest& rhs) const
+			{
+				return m_sourceRevision == rhs.m_sourceRevision && m_metadataRevision == rhs.m_metadataRevision &&
+					m_sourcePath == rhs.m_sourcePath && m_metadataPath == rhs.m_metadataPath &&
+					m_unitScale == rhs.m_unitScale && m_bBatchByMaterial == rhs.m_bBatchByMaterial &&
+					m_bFlipTexcoordY == rhs.m_bFlipTexcoordY;
+			}
+		};
+		TMap<FileId, FingerprintRequest> m_fingerprintRequests;
+		uint64_t m_nextFingerprintGeneration = 0;
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+		bool m_bFailFingerprintWriteForTests = false;
+#endif
+#if defined(SAILOR_MODEL_IMPORT_TEST_HOOKS)
+		std::function<void()> m_beforeCpuPreparationForTests;
+#endif
+
+		bool UpdateGeneratedAssets(ModelAssetInfoPtr assetInfo, bool bWasExpired);
+		Tasks::Scheduler* const m_scheduler;
+		AssetRegistry* const m_assetRegistry;
+
+		friend class ModelImporterTestAccess;
 	};
 }

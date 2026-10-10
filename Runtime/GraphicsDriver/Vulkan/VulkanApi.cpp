@@ -17,7 +17,7 @@
 #include "Containers/Vector.h"
 #include "Containers/Set.h"
 #include "Sailor.h"
-#include "Platform/Win32/Window.h"
+#include "Platform/Window.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "VulkanDevice.h"
@@ -98,6 +98,86 @@ namespace
 }
 using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
+
+void VulkanDeviceFeatures::Query(VkPhysicalDevice device, const TSet<std::string>& extensions)
+{
+	*this = {};
+	VkPhysicalDeviceProperties properties{};
+	vkGetPhysicalDeviceProperties(device, &properties);
+	m_apiVersion = std::min(properties.apiVersion, TargetApiVersion);
+	if (m_apiVersion < MinimumApiVersion) return;
+
+	void** next = &m_base.pNext;
+	const auto add = [&](auto& feature)
+	{
+		*next = &feature;
+		next = &feature.pNext;
+	};
+	const auto supports = [&](const char* extension)
+	{
+		return m_apiVersion >= VK_API_VERSION_1_3 || extensions.Contains(std::string(extension));
+	};
+	add(m_core11);
+	add(m_core12);
+	if (supports(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME)) add(m_rendering);
+	if (supports(VK_KHR_MAINTENANCE_4_EXTENSION_NAME)) add(m_maintenance4);
+	if (supports(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME)) add(m_synchronization2);
+	if (extensions.Contains(std::string(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME))) add(m_atomicFloat);
+	vkGetPhysicalDeviceFeatures2(device, &m_base);
+}
+
+const char* VulkanDeviceFeatures::GetMissingRequirement() const
+{
+	if (m_apiVersion < MinimumApiVersion) return "Vulkan 1.2";
+	const struct { VkBool32 supported; const char* name; } required[] = {
+		{ m_base.features.samplerAnisotropy, "samplerAnisotropy" },
+		{ m_base.features.drawIndirectFirstInstance, "drawIndirectFirstInstance" },
+		{ m_base.features.independentBlend, "independentBlend" },
+		{ m_core12.runtimeDescriptorArray, "runtimeDescriptorArray" },
+		{ m_core12.shaderSampledImageArrayNonUniformIndexing, "shaderSampledImageArrayNonUniformIndexing" },
+		{ m_core12.descriptorBindingVariableDescriptorCount, "descriptorBindingVariableDescriptorCount" },
+		{ m_core12.descriptorBindingPartiallyBound, "descriptorBindingPartiallyBound" },
+		{ m_rendering.dynamicRendering, "dynamicRendering" }
+	};
+	for (const auto& feature : required)
+	{
+		if (!feature.supported) return feature.name;
+	}
+	return nullptr;
+}
+
+void VulkanDeviceFeatures::Enable()
+{
+#ifndef SAILOR_VULKAN_MSAA_IMPACTS_TEXTURE_SAMPLING
+	m_base.features.sampleRateShading = VK_FALSE;
+#endif
+	const auto core11 = m_core11;
+	m_core11 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES, core11.pNext };
+	m_core11.shaderDrawParameters = core11.shaderDrawParameters;
+
+	const auto core12 = m_core12;
+	m_core12 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES, core12.pNext };
+	m_core12.samplerFilterMinmax = core12.samplerFilterMinmax;
+	m_core12.runtimeDescriptorArray = core12.runtimeDescriptorArray;
+	m_core12.shaderSampledImageArrayNonUniformIndexing = core12.shaderSampledImageArrayNonUniformIndexing;
+	m_core12.shaderStorageBufferArrayNonUniformIndexing = core12.shaderStorageBufferArrayNonUniformIndexing;
+	m_core12.shaderStorageImageArrayNonUniformIndexing = core12.shaderStorageImageArrayNonUniformIndexing;
+	m_core12.shaderUniformBufferArrayNonUniformIndexing = core12.shaderUniformBufferArrayNonUniformIndexing;
+	m_core12.descriptorBindingSampledImageUpdateAfterBind = core12.descriptorBindingSampledImageUpdateAfterBind;
+	m_core12.descriptorBindingPartiallyBound = core12.descriptorBindingPartiallyBound;
+	m_core12.descriptorBindingStorageBufferUpdateAfterBind = core12.descriptorBindingStorageBufferUpdateAfterBind;
+	m_core12.descriptorBindingUniformBufferUpdateAfterBind = core12.descriptorBindingUniformBufferUpdateAfterBind;
+	m_core12.descriptorBindingStorageImageUpdateAfterBind = core12.descriptorBindingStorageImageUpdateAfterBind;
+	m_core12.descriptorBindingVariableDescriptorCount = core12.descriptorBindingVariableDescriptorCount;
+	m_core12.descriptorIndexing = core12.descriptorIndexing;
+	m_core12.descriptorBindingUpdateUnusedWhilePending = core12.descriptorBindingUpdateUnusedWhilePending;
+	m_core12.hostQueryReset = core12.hostQueryReset;
+	m_core12.timelineSemaphore = core12.timelineSemaphore;
+
+	const auto atomicFloat = m_atomicFloat;
+	m_atomicFloat = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT, atomicFloat.pNext };
+	m_atomicFloat.shaderBufferFloat32AtomicAdd = atomicFloat.shaderBufferFloat32AtomicAdd;
+}
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDebugCallback(
 	VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -185,14 +265,6 @@ void VulkanApi::Initialize(Platform::Window* viewport, RHI::EMsaaSamples msaaSam
 	appInfo.pEngineName = App::GetEngineName();
 	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
 
-#if defined(VK_API_VERSION_1_3)
-	uint32_t requestedApiVersion = VK_API_VERSION_1_3;
-#elif defined(VK_API_VERSION_1_2)
-	uint32_t requestedApiVersion = VK_API_VERSION_1_2;
-#else
-	uint32_t requestedApiVersion = VK_API_VERSION_1_1;
-#endif
-
 	uint32_t loaderApiVersion = VK_API_VERSION_1_0;
 	const auto pfnEnumerateInstanceVersion = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceVersion"));
 	if (pfnEnumerateInstanceVersion)
@@ -200,12 +272,18 @@ void VulkanApi::Initialize(Platform::Window* viewport, RHI::EMsaaSamples msaaSam
 		pfnEnumerateInstanceVersion(&loaderApiVersion);
 	}
 
-	const uint32_t clampedRequestedApiVersion = std::min(requestedApiVersion, loaderApiVersion);
-	appInfo.apiVersion = clampedRequestedApiVersion;
-	SAILOR_LOG("Vulkan API version (requested=%u.%u.%u, loader=%u.%u.%u, initial=%u.%u.%u)",
-		VK_VERSION_MAJOR(requestedApiVersion), VK_VERSION_MINOR(requestedApiVersion), VK_VERSION_PATCH(requestedApiVersion),
-		VK_VERSION_MAJOR(loaderApiVersion), VK_VERSION_MINOR(loaderApiVersion), VK_VERSION_PATCH(loaderApiVersion),
-		VK_VERSION_MAJOR(appInfo.apiVersion), VK_VERSION_MINOR(appInfo.apiVersion), VK_VERSION_PATCH(appInfo.apiVersion));
+	if (loaderApiVersion < VK_API_VERSION_1_1)
+	{
+		SAILOR_LOG_ERROR("Sailor requires a Vulkan 1.1 loader and a Vulkan 1.2 device.");
+		VulkanApi::Shutdown();
+		return;
+	}
+
+	// Instance and device API versions are independent starting with Vulkan 1.1.
+	appInfo.apiVersion = VulkanDeviceFeatures::TargetApiVersion;
+	SAILOR_LOG("Vulkan API version (target=%u.%u.%u, loader=%u.%u.%u)",
+		VK_VERSION_MAJOR(appInfo.apiVersion), VK_VERSION_MINOR(appInfo.apiVersion), VK_VERSION_PATCH(appInfo.apiVersion),
+		VK_VERSION_MAJOR(loaderApiVersion), VK_VERSION_MINOR(loaderApiVersion), VK_VERSION_PATCH(loaderApiVersion));
 
 	TVector<const char*> extensions =
 	{
@@ -237,6 +315,22 @@ void VulkanApi::Initialize(Platform::Window* viewport, RHI::EMsaaSamples msaaSam
 	{
 		extensions.Add(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
 	}
+	s_pInstance->m_bIsSurfaceMaintenance1Enabled =
+		hasInstanceExtension(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME) &&
+		hasInstanceExtension(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+	if (s_pInstance->m_bIsSurfaceMaintenance1Enabled)
+	{
+		extensions.Add(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+		extensions.Add(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+	}
+
+#ifndef _SHIPPING
+	// Debug markers require this instance extension even without validation layers.
+	if (hasInstanceExtension(VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
+	{
+		extensions.Add(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+	}
+#endif
 
 #if defined(__APPLE__)
 	bool bEnablePortabilityEnumeration = false;
@@ -257,7 +351,7 @@ void VulkanApi::Initialize(Platform::Window* viewport, RHI::EMsaaSamples msaaSam
 	createInfo.ppEnabledExtensionNames = extensions.GetData();
 	createInfo.enabledExtensionCount = (uint32_t)extensions.Num();
 	createInfo.pNext = nullptr;
-#if defined(__APPLE__) && defined(VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR)
+#if defined(__APPLE__)
 	if (bEnablePortabilityEnumeration)
 	{
 		createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
@@ -265,26 +359,24 @@ void VulkanApi::Initialize(Platform::Window* viewport, RHI::EMsaaSamples msaaSam
 #endif
 
 	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo;
-	const TVector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation", "VK_LAYER_KHRONOS_synchronization2" };
+	const TVector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
 
 	if (s_pInstance->bIsEnabledValidationLayers)
 	{
 		if (CheckValidationLayerSupport(validationLayers))
 		{
+			SAILOR_LOG("Requesting Vulkan validation: %s (using the layer's settings).", validationLayers[0]);
 			extensions.Add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-#ifndef _SHIPPING
-			extensions.Add(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
-#endif
 
 			createInfo.ppEnabledLayerNames = validationLayers.GetData();
 			createInfo.enabledLayerCount = (uint32_t)validationLayers.Num();
 
 			PopulateDebugMessengerCreateInfo(debugCreateInfo);
-			createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
+			createInfo.pNext = &debugCreateInfo;
 		}
 		else
 		{
-			SAILOR_LOG("Not all debug layers are supported. Validation layers will be disabled.");
+			SAILOR_LOG("Requested Vulkan validation layer %s is unavailable; continuing without validation.", validationLayers[0]);
 			s_pInstance->bIsEnabledValidationLayers = false;
 			createInfo.ppEnabledLayerNames = nullptr;
 			createInfo.enabledLayerCount = 0;
@@ -292,6 +384,7 @@ void VulkanApi::Initialize(Platform::Window* viewport, RHI::EMsaaSamples msaaSam
 	}
 	else
 	{
+		SAILOR_LOG("Vulkan validation is disabled by the caller.");
 		createInfo.ppEnabledLayerNames = nullptr;
 		createInfo.enabledLayerCount = 0;
 	}
@@ -304,41 +397,11 @@ void VulkanApi::Initialize(Platform::Window* viewport, RHI::EMsaaSamples msaaSam
 		SAILOR_LOG("Enabling Vulkan instance extension: %s", extensionName);
 	}
 
-	TVector<uint32_t> apiVersionFallbacks;
-	apiVersionFallbacks.Add(clampedRequestedApiVersion);
-	for (uint32_t minor = VK_VERSION_MINOR(clampedRequestedApiVersion); minor > 0; --minor)
-	{
-		apiVersionFallbacks.Add(VK_MAKE_API_VERSION(0, 1, minor - 1, 0));
-	}
-
-	GetVkInstance() = 0;
-	VkResult createInstanceResult = VK_ERROR_INITIALIZATION_FAILED;
-	for (const uint32_t fallbackApiVersion : apiVersionFallbacks)
-	{
-		appInfo.apiVersion = fallbackApiVersion;
-		createInstanceResult = vkCreateInstance(&createInfo, 0, &GetVkInstance());
-		SAILOR_LOG("vkCreateInstance(api=%u.%u.%u) -> %d",
-			VK_VERSION_MAJOR(fallbackApiVersion),
-			VK_VERSION_MINOR(fallbackApiVersion),
-			VK_VERSION_PATCH(fallbackApiVersion),
-			(int32_t)createInstanceResult);
-		if (createInstanceResult == VK_SUCCESS)
-		{
-			SAILOR_LOG("Created Vulkan instance with API version %u.%u.%u",
-				VK_VERSION_MAJOR(fallbackApiVersion),
-				VK_VERSION_MINOR(fallbackApiVersion),
-				VK_VERSION_PATCH(fallbackApiVersion));
-			break;
-		}
-
-		if (createInstanceResult != VK_ERROR_INCOMPATIBLE_DRIVER)
-		{
-			break;
-		}
-	}
+	const VkResult createInstanceResult = vkCreateInstance(&createInfo, nullptr, &GetVkInstance());
 
 	if (createInstanceResult != VK_SUCCESS)
 	{
+		s_pInstance->m_vkInstance = VK_NULL_HANDLE;
 #if defined(__APPLE__) && defined(SAILOR_VULKAN_DIRECT_MOLTENVK_FALLBACK)
 		if (createInstanceResult == VK_ERROR_INCOMPATIBLE_DRIVER)
 		{
@@ -355,6 +418,11 @@ void VulkanApi::Initialize(Platform::Window* viewport, RHI::EMsaaSamples msaaSam
 	SetupDebugCallback();
 
 	s_pInstance->m_device = VulkanDevicePtr::Make(viewport, msaaSamples);
+	if (*s_pInstance->m_device == VK_NULL_HANDLE)
+	{
+		VulkanApi::Shutdown();
+		return;
+	}
 
 	SAILOR_LOG("Vulkan initialized");
 }
@@ -423,13 +491,13 @@ bool VulkanApi::CheckValidationLayerSupport(const TVector<const char*>& validati
 
 VulkanApi::~VulkanApi()
 {
-	if (bIsEnabledValidationLayers)
+	m_device.Clear();
+	if (m_debugMessenger)
 	{
-		DestroyDebugUtilsMessengerEXT(GetVkInstance(), m_debugMessenger, nullptr);
+		DestroyDebugUtilsMessengerEXT(m_vkInstance, m_debugMessenger, nullptr);
 	}
 
-	m_device.Clear();
-	vkDestroyInstance(GetVkInstance(), nullptr);
+	if (m_vkInstance) vkDestroyInstance(m_vkInstance, nullptr);
 }
 
 bool VulkanApi::SetupDebugCallback()
@@ -675,57 +743,29 @@ TSet<string> VulkanApi::GetSupportedDeviceExtensions(VkPhysicalDevice device)
 	return supportedDeviceExtensions;
 }
 
-bool VulkanApi::CheckDeviceExtensionSupport(VkPhysicalDevice device)
-{
-	uint32_t extensionCount;
-	vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
-
-	TVector<VkExtensionProperties> availableExtensions(extensionCount);
-	VK_CHECK(vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.GetData()));
-
-	TVector<const char*> deviceExtensions;
-	TVector<const char*> instanceExtensions;
-	GetRequiredExtensions(deviceExtensions, instanceExtensions);
-
-	TSet<std::string> requiredExtensions;
-	for (const auto& extension : deviceExtensions)
-	{
-		requiredExtensions.Insert(extension);
-	}
-
-	for (const auto& extension : availableExtensions)
-	{
-		requiredExtensions.Remove(extension.extensionName);
-	}
-
-	VkPhysicalDeviceProperties deviceProperties;
-	vkGetPhysicalDeviceProperties(device, &deviceProperties);
-
-	for (const auto& extension : requiredExtensions)
-	{
-		SAILOR_LOG_ERROR("Physical device %s, doesn't support required device extension: %s", deviceProperties.deviceName, extension.c_str());
-	}
-
-	return requiredExtensions.IsEmpty();
-}
-
 bool VulkanApi::IsDeviceSuitable(VkPhysicalDevice device, VulkanSurfacePtr surface)
 {
-	VulkanQueueFamilyIndices indices = FindQueueFamilies(device, surface);
-
-	const bool extensionsSupported = CheckDeviceExtensionSupport(device);
-
-	bool swapChainFits = false;
-	if (extensionsSupported)
+	const auto extensions = GetSupportedDeviceExtensions(device);
+	VulkanDeviceFeatures features;
+	features.Query(device, extensions);
+	VkPhysicalDeviceProperties properties{};
+	vkGetPhysicalDeviceProperties(device, &properties);
+	if (const char* missing = features.GetMissingRequirement())
 	{
-		SwapChainSupportDetails swapChainSupport = QuerySwapChainSupport(device, surface);
-		swapChainFits = !swapChainSupport.m_formats.IsEmpty() && !swapChainSupport.m_presentModes.IsEmpty();
+		SAILOR_LOG_ERROR("Physical device %s lacks required feature: %s", properties.deviceName, missing);
+		return false;
 	}
-
-	VkPhysicalDeviceFeatures supportedFeatures;
-	vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
-
-	return indices.IsComplete() && extensionsSupported && swapChainFits && supportedFeatures.samplerAnisotropy;
+	for (const char* extension : GetRequiredDeviceExtensions(features.m_apiVersion))
+	{
+		if (!extensions.Contains(std::string(extension)))
+		{
+			SAILOR_LOG_ERROR("Physical device %s lacks required extension: %s", properties.deviceName, extension);
+			return false;
+		}
+	}
+	if (!FindQueueFamilies(device, surface).IsComplete()) return false;
+	const auto swapchain = QuerySwapChainSupport(device, surface);
+	return !swapchain.m_formats.IsEmpty() && !swapchain.m_presentModes.IsEmpty();
 }
 
 int VulkanApi::GetDeviceScore(VkPhysicalDevice device)
@@ -1059,26 +1099,24 @@ VulkanBufferPtr VulkanApi::CreateBuffer(VulkanDevicePtr device, VkDeviceSize siz
 	VulkanBufferPtr outBuffer = VulkanBufferPtr::Make(device, size, usage, sharingMode);
 	outBuffer->Compile();
 
-	// TODO: Pass into Allocate the correct allignment for memory device allocation
 	auto requirements = outBuffer->GetMemoryRequirements();
 
-	//requirements.size += device->GetBufferImageGranuality();
-	//requirements.alignment = std::max(requirements.alignment, device->GetBufferImageGranuality());
-
-	auto data = device->GetMemoryAllocator(properties, requirements).Allocate(requirements.size, requirements.alignment);
+	auto data = device->GetMemoryAllocator(properties, requirements, EVulkanMemoryClass::Linear)
+		.Allocate(requirements.size, requirements.alignment);
 	outBuffer->Bind(data);
 
 	return outBuffer;
 }
 
-VulkanBufferPtr VulkanApi::CreateBuffer(VulkanCommandBufferPtr& cmdBuffer, VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
+VulkanBufferPtr VulkanApi::CreateBuffer(VulkanCommandBufferPtr& cmdBuffer, VulkanDevicePtr device,
+	const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkSharingMode sharingMode)
 {
 	VulkanBufferPtr outbuffer = VulkanApi::CreateBuffer(
 		device,
 		size,
 		VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-		VK_SHARING_MODE_CONCURRENT);
+		properties,
+		sharingMode);
 
 	const auto requirements = outbuffer->GetMemoryRequirements();
 
@@ -1099,42 +1137,13 @@ VulkanCommandBufferPtr VulkanApi::UpdateBuffer(VulkanDevicePtr device, const Mem
 	(*stagingBufferManagedPtr).m_buffer->GetMemoryDevice()->Copy((**stagingBufferManagedPtr).m_offset, size, pData);
 
 	auto cmdBuffer = device->CreateCommandBuffer(RHI::ECommandListQueue::Transfer);
-	device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*cmdBuffer, "VulkanApi::UpdateBuffer");
+	device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*cmdBuffer, "VulkanApi::UpdateBuffer"_h);
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	cmdBuffer->CopyBuffer(*stagingBufferManagedPtr, dst, size, 0, 0);
 	cmdBuffer->EndCommandList();
 	cmdBuffer->AddDependency(stagingBufferManagedPtr, device->GetStagingBufferAllocator());
 
 	return cmdBuffer;
-}
-
-VulkanBufferPtr VulkanApi::CreateBuffer_Immediate(VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
-{
-	auto cmdBuffer = device->CreateCommandBuffer(RHI::ECommandListQueue::Transfer);
-	device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*cmdBuffer, "VulkanApi::CreateBuffer_Immediate");
-	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	VulkanBufferPtr resBuffer = CreateBuffer(cmdBuffer, device, pData, size, usage, sharingMode);
-	cmdBuffer->EndCommandList();
-
-	auto fence = VulkanFencePtr::Make(device);
-	device->SubmitCommandBuffer(cmdBuffer, fence);
-	fence->Wait();
-
-	return resBuffer;
-}
-
-void VulkanApi::CopyBuffer_Immediate(VulkanDevicePtr device, VulkanBufferMemoryPtr src, VulkanBufferMemoryPtr dst, VkDeviceSize size, VkDeviceSize srcOffset, VkDeviceSize dstOffset)
-{
-	auto fence = VulkanFencePtr::Make(device);
-
-	auto cmdBuffer = device->CreateCommandBuffer(RHI::ECommandListQueue::Transfer);
-	device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*cmdBuffer, "VulkanApi::CopyBuffer_Immediate");
-	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	cmdBuffer->CopyBuffer(src, dst, size, srcOffset, dstOffset);
-	cmdBuffer->EndCommandList();
-	device->SubmitCommandBuffer(cmdBuffer, fence);
-
-	fence->Wait();
 }
 
 VulkanImagePtr VulkanApi::CreateImageUpload(
@@ -1175,11 +1184,9 @@ VulkanImagePtr VulkanApi::CreateImageUpload(
 
 	auto requirements = outImage->GetMemoryRequirements();
 
-	// We must respect bufferImageGranuality
-	//requirements.size += device->GetBufferImageGranuality();
-	//requirements.alignment = std::max(requirements.alignment, device->GetBufferImageGranuality());
-
-	auto& imageMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), requirements);
+	const EVulkanMemoryClass memoryClass = outImage->m_tiling == VK_IMAGE_TILING_LINEAR ?
+		EVulkanMemoryClass::Linear : EVulkanMemoryClass::OptimalImage;
+	auto& imageMemoryAllocator = device->GetMemoryAllocator(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, requirements, memoryClass);
 	auto data = imageMemoryAllocator.Allocate(requirements.size, requirements.alignment);
 
 	outImage->Bind(data);
@@ -1190,7 +1197,8 @@ VulkanImagePtr VulkanApi::CreateImageUpload(
 		static_cast<uint32_t>(extent.width),
 		static_cast<uint32_t>(extent.height),
 		static_cast<uint32_t>(extent.depth),
-		(*stagingBufferManagedPtr).m_offset);
+		(*stagingBufferManagedPtr).m_offset,
+		arrayLayers);
 
 	cmdBuffer->AddDependency(stagingBufferManagedPtr, device->GetStagingBufferAllocator());
 
@@ -1239,11 +1247,9 @@ VulkanImagePtr VulkanApi::CreateImage(
 
 	auto requirements = outImage->GetMemoryRequirements();
 
-	// We must respect bufferImageGranuality
-	//requirements.size += device->GetBufferImageGranuality();
-	//requirements.alignment = std::max(requirements.alignment, device->GetBufferImageGranuality());
-
-	auto& imageMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), requirements);
+	const EVulkanMemoryClass memoryClass = outImage->m_tiling == VK_IMAGE_TILING_LINEAR ?
+		EVulkanMemoryClass::Linear : EVulkanMemoryClass::OptimalImage;
+	auto& imageMemoryAllocator = device->GetMemoryAllocator(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, requirements, memoryClass);
 	auto data = imageMemoryAllocator.Allocate(requirements.size, requirements.alignment);
 
 	outImage->Bind(data);
@@ -1340,35 +1346,6 @@ VulkanImagePtr VulkanApi::CreateExportableImage(
 	return outImage;
 }
 #endif
-
-VulkanImagePtr VulkanApi::CreateImage_Immediate(
-        VulkanDevicePtr device,
-        const void* pData,
-        VkDeviceSize size,
-        VkExtent3D extent,
-	uint32_t mipLevels,
-	VkImageType type,
-	VkFormat format,
-	VkImageTiling tiling,
-	VkImageUsageFlags usage,
-	VkSharingMode sharingMode,
-	VkImageLayout defaultLayout,
-	VkImageCreateFlags flags,
-	uint32_t arrayLayers)
-{
-
-	auto cmdBuffer = device->CreateCommandBuffer();
-	device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*cmdBuffer, "VulkanApi::CreateImage_Immediate");
-	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	VulkanImagePtr res = CreateImageUpload(cmdBuffer, device, pData, size, extent, mipLevels, type, format, tiling, usage, sharingMode, defaultLayout, flags, arrayLayers);
-	cmdBuffer->EndCommandList();
-
-	auto fence = VulkanFencePtr::Make(device);
-	device->SubmitCommandBuffer(cmdBuffer, fence);
-        fence->Wait();
-
-        return res;
-}
 
 #ifdef _WIN32
 void* VulkanApi::ExportImage(VulkanDevicePtr device, VulkanImagePtr image, VkExternalMemoryHandleTypeFlagBits handleType)

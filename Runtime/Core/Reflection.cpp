@@ -1,23 +1,12 @@
 #include "Reflection.h"
-#include "Utils.h"
+#include "Core/YamlUtils.h"
+#include "Engine/InstanceId.h"
 #include "Containers/Containers.h"
 #include "Components/Component.h"
 #include "Containers/ConcurrentMap.h"
 #include "RHI/Types.h"
 #include "Engine/GameObject.h"
 #include "AssetRegistry/AssetRegistry.h"
-#include "AssetRegistry/Animation/AnimationAssetInfo.h"
-#include "AssetRegistry/Animation/AnimationControllerAssetInfo.h"
-#include "AssetRegistry/Audio/AudioAssetInfo.h"
-#include "AssetRegistry/AssetInfo.h"
-#include "AssetRegistry/FrameGraph/FrameGraphAssetInfo.h"
-#include "AssetRegistry/GlobalIllumination/GIProbesAssetInfo.h"
-#include "AssetRegistry/Material/MaterialAssetInfo.h"
-#include "AssetRegistry/Model/ModelAssetInfo.h"
-#include "AssetRegistry/Prefab/PrefabAssetInfo.h"
-#include "AssetRegistry/Shader/ShaderAssetInfo.h"
-#include "AssetRegistry/Texture/TextureAssetInfo.h"
-#include "AssetRegistry/World/WorldPrefabAssetInfo.h"
 #include "RHI/SceneView.h"
 #include "Physics/PhysicsTypes.h"
 #include <algorithm>
@@ -30,82 +19,19 @@
 
 using namespace Sailor;
 
-namespace
+YAML::Node TypeInfo::SerializeAssetType() const
 {
-	template<typename TProperty>
-	std::string GetAssetPropertyTypeName()
-	{
-		using PropertyType = ::refl::trait::remove_qualifiers_t<TProperty>;
+	return m_serializeAssetType ? m_serializeAssetType() : YAML::Node(YAML::NodeType::Undefined);
+}
 
-		return TypeInfo::GetReflectedPropertyTypeName<PropertyType>();
-	}
+void TypeInfo::AppendValueTypes(YAML::Node& catalog, TSet<std::string>& types, TSet<std::string>& enums) const
+{
+	m_appendValueTypes(catalog, types, enums);
+}
 
-	YAML::Node MakeStringSequence(std::initializer_list<const char*> values)
-	{
-		YAML::Node node;
-		for (const char* value : values)
-		{
-			node.push_back(value);
-		}
-		return node;
-	}
-
-	template<typename TAssetInfo>
-	YAML::Node ExportAssetInfoType(const std::string& typeName, std::initializer_list<const char*> extensions)
-	{
-		YAML::Node node;
-		node["typename"] = typeName;
-		node["extensions"] = MakeStringSequence(extensions);
-
-		YAML::Node properties(YAML::NodeType::Sequence);
-		TVector<std::string> exportedPropertyNames;
-		TAssetInfo* empty = nullptr;
-		for_each(refl::reflect<TAssetInfo>().members, [&](auto member)
-			{
-				if constexpr (is_writable(member))
-				{
-					using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*empty))>;
-					const std::string propertyName = NormalizeAssetInfoFieldName(get_display_name(member));
-
-					if (exportedPropertyNames.Contains(propertyName))
-					{
-						return;
-					}
-
-					exportedPropertyNames.Add(propertyName);
-
-					YAML::Node propertyNode;
-					propertyNode["name"] = propertyName;
-					propertyNode["type"] = GetAssetPropertyTypeName<PropertyType>();
-					properties.push_back(propertyNode);
-				}
-			});
-
-		node["properties"] = properties;
-
-		return node;
-	}
-
-	TVector<YAML::Node> ExportAssetInfoTypes()
-	{
-		TVector<YAML::Node> nodes;
-
-		nodes.Add(ExportAssetInfoType<AssetInfo>("Sailor::AssetInfo", {}));
-		nodes.Add(ExportAssetInfoType<TextureAssetInfo>("Sailor::TextureAssetInfo", { "png", "bmp", "tga", "jpg", "gif", "psd", "dds", "hdr" }));
-		nodes.Add(ExportAssetInfoType<ModelAssetInfo>("Sailor::ModelAssetInfo", { "glb", "gltf" }));
-		nodes.Add(ExportAssetInfoType<AnimationAssetInfo>("Sailor::AnimationAssetInfo", { "anim" }));
-		nodes.Add(ExportAssetInfoType<AnimationControllerAssetInfo>("Sailor::AnimationControllerAssetInfo", { "animcontroller" }));
-		nodes.Add(ExportAssetInfoType<AnimationSetAssetInfo>("Sailor::AnimationSetAssetInfo", { "animset" }));
-		nodes.Add(ExportAssetInfoType<AudioAssetInfo>("Sailor::AudioAssetInfo", { "wav", "flac", "mp3" }));
-		nodes.Add(ExportAssetInfoType<MaterialAssetInfo>("Sailor::MaterialAssetInfo", { "mat" }));
-		nodes.Add(ExportAssetInfoType<ShaderAssetInfo>("Sailor::ShaderAssetInfo", { "shader", "glsl" }));
-		nodes.Add(ExportAssetInfoType<FrameGraphAssetInfo>("Sailor::FrameGraphAssetInfo", { "renderer" }));
-		nodes.Add(ExportAssetInfoType<GIProbesAssetInfo>("Sailor::GIProbesAssetInfo", { "probes" }));
-		nodes.Add(ExportAssetInfoType<PrefabAssetInfo>("Sailor::PrefabAssetInfo", { "prefab" }));
-		nodes.Add(ExportAssetInfoType<WorldPrefabAssetInfo>("Sailor::WorldPrefabAssetInfo", { "world" }));
-
-		return nodes;
-	}
+const YAML::Node* TypeInfo::GetDefaultValues() const
+{
+	return m_getDefaultValues ? m_getDefaultValues() : nullptr;
 }
 
 namespace Sailor::Internal
@@ -526,6 +452,9 @@ YAML::Node TypeInfo::Serialize() const
 	::Serialize(res, "typename", m_name);
 	::Serialize(res, "base", m_base);
 	::Serialize(res, "properties", m_props);
+	YAML::Node readOnlyProperties(YAML::NodeType::Sequence);
+	for (const auto& name : m_readOnlyProperties) readOnlyProperties.push_back(name);
+	res["readOnlyProperties"] = std::move(readOnlyProperties);
 
 	YAML::Node propertyRanges(YAML::NodeType::Map);
 	for (const auto& propertyRange : m_propertyRanges)
@@ -545,12 +474,13 @@ void TypeInfo::Deserialize(const YAML::Node& inData)
 	::Deserialize(inData, "typename", m_name);
 	::Deserialize(inData, "base", m_base);
 	::Deserialize(inData, "properties", m_props);
+	::Deserialize(inData, "readOnlyProperties", m_readOnlyProperties);
 
 	m_propertyRanges.Clear();
 	YAML::Node propertyRanges(YAML::NodeType::Undefined);
 	for (const auto& field : inData)
 	{
-		if (field.first.IsScalar() && field.first.as<std::string>() == "propertyRanges")
+		if (field.first.IsScalar() && field.first.Scalar() == "propertyRanges")
 		{
 			propertyRanges = field.second;
 			break;
@@ -575,7 +505,7 @@ void TypeInfo::Deserialize(const YAML::Node& inData)
 					continue;
 				}
 
-				const std::string fieldName = field.first.as<std::string>();
+				const std::string_view fieldName = field.first.Scalar();
 				if (fieldName == "min")
 				{
 					min = field.second;
@@ -597,11 +527,9 @@ void TypeInfo::Deserialize(const YAML::Node& inData)
 
 YAML::Node ReflectedData::Serialize() const
 {
-	assert(m_typeInfo);
-
 	YAML::Node res{};
 
-	::Serialize(res, "typename", m_typeInfo->Name());
+	::Serialize(res, "typename", GetTypeName());
 	::Serialize(res, "overrideProperties", m_properties);
 
 	return res;
@@ -615,11 +543,12 @@ void ReflectedData::Deserialize(const YAML::Node& inData)
 	::Deserialize(inData, "overrideProperties", m_properties);
 
 	m_typeInfo = Reflection::TryGetTypeByName(typeName);
+	m_unresolvedTypeName = m_typeInfo ? std::string{} : std::move(typeName);
 }
 
 bool ReflectedData::operator==(const ReflectedData& rhs) const
 {
-	if (m_typeInfo != rhs.m_typeInfo ||
+	if (GetTypeName() != rhs.GetTypeName() ||
 		m_properties.Num() != rhs.m_properties.Num())
 	{
 		return false;
@@ -641,6 +570,10 @@ bool ReflectedData::operator==(const ReflectedData& rhs) const
 
 TMap<std::string, YAML::Node> ReflectedData::GetOverrideProperties() const
 {
+	if (!m_typeInfo)
+	{
+		return m_properties;
+	}
 	const auto& cdo = Reflection::GetCDO(m_typeInfo->Name());
 	return DiffTo(cdo).m_properties;
 }
@@ -649,9 +582,10 @@ ReflectedData ReflectedData::DiffTo(const ReflectedData& rhs) const
 {
 	ReflectedData res;
 
-	check(rhs.GetTypeInfo() == GetTypeInfo());
+	check(rhs.GetTypeName() == GetTypeName());
 
-	res.m_typeInfo = &rhs.GetTypeInfo();
+	res.m_typeInfo = rhs.m_typeInfo;
+	res.m_unresolvedTypeName = rhs.m_unresolvedTypeName;
 
 	for (const auto& prop : GetProperties())
 	{
@@ -715,9 +649,81 @@ YAML::Node Reflection::ExportEngineTypes()
 	nodes.Add(ReflectEnumValues<RHI::EShadowType>());
 
 	yamlTypes["enums"] = nodes;
-	yamlTypes["assetTypes"] = ExportAssetInfoTypes();
+	YAML::Node assetTypes(YAML::NodeType::Sequence);
+	for (const TypeInfo* type : types)
+	{
+		YAML::Node asset = type->SerializeAssetType();
+		if (asset.IsDefined())
+		{
+			assetTypes.push_back(asset);
+		}
+	}
+	yamlTypes["assetTypes"] = assetTypes;
+
+	TSet<std::string> exportedTypes;
+	TSet<std::string> exportedEnums;
+	for (const auto* type : types) exportedTypes.Insert(type->Name());
+	for (const auto& entry : yamlTypes["enums"])
+		for (const auto& value : entry) exportedEnums.Insert(value.first.as<std::string>());
+	for (const auto* type : types) type->AppendValueTypes(yamlTypes, exportedTypes, exportedEnums);
 
 	return yamlTypes;
+}
+
+bool Utils::TryGetComponentInstanceId(
+	const ReflectedData& reflection,
+	InstanceId& outInstanceId,
+	std::string& outDiagnostic)
+{
+	outInstanceId = InstanceId::Invalid;
+	outDiagnostic.clear();
+
+	if (reflection.GetTypeName().empty())
+	{
+		outDiagnostic = "the reflected component is invalid";
+		return false;
+	}
+
+	const auto& properties = reflection.GetProperties();
+	if (!properties.ContainsKey("instanceId"))
+	{
+		outDiagnostic = "the reflected component has no instanceId";
+		return false;
+	}
+
+	const auto& instanceIdNode = properties["instanceId"];
+	if (!instanceIdNode.IsScalar())
+	{
+		outDiagnostic = "the reflected component has an invalid instanceId: expected a scalar value";
+		return false;
+	}
+
+	InstanceId instanceId;
+	std::string conversionDiagnostic;
+	if (!External::TryConvertYaml(
+			instanceIdNode,
+			instanceId,
+			conversionDiagnostic))
+	{
+		outDiagnostic = "the reflected component has an invalid instanceId";
+		if (!conversionDiagnostic.empty())
+		{
+			outDiagnostic += ": " + conversionDiagnostic;
+		}
+		return false;
+	}
+
+	if (instanceId.ComponentId() == InstanceId::Invalid ||
+		instanceId.GameObjectId() == InstanceId::Invalid)
+	{
+		outDiagnostic =
+			"the reflected component has an invalid instanceId: "
+			"both component and game-object IDs must be valid";
+		return false;
+	}
+
+	outInstanceId = instanceId;
+	return true;
 }
 
 ObjectPtr IReflectable::ResolveAssetDependency(const FileId& fileId, bool bImmediate)

@@ -1,6 +1,8 @@
 struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here" when using /permissive-
 
 #include <chrono>
+#include "Sailor.h"
+#include "Platform/Thread.h"
 #include "Containers/Containers.h"
 #include <cstdlib>
 #include <set>
@@ -14,6 +16,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include <vulkan/vulkan_win32.h>
 #endif
 #ifdef __APPLE__
+#include "Platform/Mac/Window.h"
 #include <vulkan/vulkan_metal.h>
 #include <vulkan/vulkan_macos.h>
 #endif
@@ -22,7 +25,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/Model/ModelImporter.h"
-#include "Platform/Win32/Window.h"
+#include "Platform/Window.h"
 #include "Math/Math.h"
 #include "VulkanDevice.h"
 #include "VulkanApi.h"
@@ -82,31 +85,30 @@ VkSampleCountFlagBits CalculateMaxAllowedMSAASamples(VkSampleCountFlags counts)
 }
 
 VulkanDevice::VulkanDevice(Platform::Window* pViewport, RHI::EMsaaSamples requestMsaa)
+	: m_maxFramesInFlight(App::GetGraphicsSettings().m_maxFramesInFlight)
 {
-	// Create Win32 surface
-	CreateWin32Surface(pViewport);
+	CreateSurface(pViewport);
 
 	// Pick & Create device
 	m_physicalDevice = VulkanApi::PickPhysicalDevice(m_surface);
 	if (m_physicalDevice == VK_NULL_HANDLE)
 	{
 		SAILOR_LOG_ERROR("Failed to pick a Vulkan physical device.");
-		std::abort();
+		return;
 	}
 
 	vkGetPhysicalDeviceProperties(m_physicalDevice, &m_physicalDeviceProperties);
 
 	m_maxAllowedMsaaSamples = CalculateMaxAllowedMSAASamples(m_physicalDeviceProperties.limits.framebufferColorSampleCounts & m_physicalDeviceProperties.limits.framebufferDepthSampleCounts);
 	m_currentMsaaSamples = (VkSampleCountFlagBits)(std::min((uint8_t)requestMsaa, (uint8_t)m_maxAllowedMsaaSamples));
-	m_bSupportsMultiDrawIndirect = m_physicalDeviceProperties.limits.maxDrawIndirectCount > 1;
-
-	CreateLogicalDevice(m_physicalDevice);
+	if (!CreateLogicalDevice(m_physicalDevice)) return;
 
 	SAILOR_LOG("maxDescriptorSetSampledImages = %d", (int32_t)m_physicalDeviceProperties.limits.maxDescriptorSetSampledImages);
 	SAILOR_LOG("maxSamplerAnisotropy = %.2f", m_physicalDeviceProperties.limits.maxSamplerAnisotropy);
 	SAILOR_LOG("bufferImageGranularity = %d", (int32_t)m_physicalDeviceProperties.limits.bufferImageGranularity);
 	SAILOR_LOG("m_maxAllowedMSAASamples = %d, requestedMSAASamples = %d", m_maxAllowedMsaaSamples, m_currentMsaaSamples);
 	SAILOR_LOG("m_bSupportsMultiDrawIndirect = %d", (int32_t)m_bSupportsMultiDrawIndirect);
+	SAILOR_LOG("maxFramesInFlight = %u", m_maxFramesInFlight);
 
 	// Cache samplers & states
 	m_samplers = TUniquePtr<VulkanSamplerCache>::Make(VulkanDevicePtr(this));
@@ -151,63 +153,26 @@ VulkanDevice::VulkanDevice(Platform::Window* pViewport, RHI::EMsaaSamples reques
 
 void VulkanDevice::vkCmdBeginRenderingKHR(VkCommandBuffer commandBuffer, const VkRenderingInfo* pRenderingInfo)
 {
-	if (pVkCmdBeginRenderingKHR)
-	{
-		pVkCmdBeginRenderingKHR(commandBuffer, pRenderingInfo);
-		return;
-	}
-
-	if (pVkCmdBeginRendering)
-	{
-		pVkCmdBeginRendering(commandBuffer, pRenderingInfo);
-		return;
-	}
-
-	if (!m_bLoggedMissingBeginRendering)
-	{
-		SAILOR_LOG_ERROR(
-			"Dynamic rendering begin is unavailable. Both vkCmdBeginRenderingKHR and vkCmdBeginRendering are null. "
-			"core13=%d, khrExtension=%d",
-			(int32_t)m_bSupportsDynamicRenderingCore13,
-			(int32_t)m_bSupportsDynamicRenderingKHR);
-		m_bLoggedMissingBeginRendering = true;
-	}
+	pVkCmdBeginRendering(commandBuffer, pRenderingInfo);
 }
 
 void VulkanDevice::vkCmdEndRenderingKHR(VkCommandBuffer commandBuffer)
 {
-	if (pVkCmdEndRenderingKHR)
-	{
-		pVkCmdEndRenderingKHR(commandBuffer);
-		return;
-	}
-
-	if (pVkCmdEndRendering)
-	{
-		pVkCmdEndRendering(commandBuffer);
-		return;
-	}
-
-	if (!m_bLoggedMissingEndRendering)
-	{
-		SAILOR_LOG_ERROR(
-			"Dynamic rendering end is unavailable. Both vkCmdEndRenderingKHR and vkCmdEndRendering are null. "
-			"core13=%d, khrExtension=%d",
-			(int32_t)m_bSupportsDynamicRenderingCore13,
-			(int32_t)m_bSupportsDynamicRenderingKHR);
-		m_bLoggedMissingEndRendering = true;
-	}
+	pVkCmdEndRendering(commandBuffer);
 }
 
 VulkanDevice::~VulkanDevice()
 {
-	vkDestroyDevice(m_device, nullptr);
+	if (m_device) vkDestroyDevice(m_device, nullptr);
 }
 
-void VulkanDevice::BeginConditionalDestroy()
+bool VulkanDevice::BeginConditionalDestroy()
 {
-	//Clear dependencies
-	WaitIdle();
+	// Keep device resources alive if pending work could not be drained.
+	if (!m_bIsDeviceLost && (!ConsumeAcquiredImage() || WaitIdle() != VK_SUCCESS) && !m_bIsDeviceLost)
+	{
+		return false;
+	}
 
 	CleanupSwapChain();
 
@@ -215,35 +180,26 @@ void VulkanDevice::BeginConditionalDestroy()
 	m_swapchain.Clear();
 	m_commandPool.Clear();
 
-	// Main, Render, and the dedicated Editor protocol worker may each
-	// allocate a Vulkan thread context in addition to the RHI workers.
-	size_t maxThreadContexts = App::GetSubmodule<Tasks::Scheduler>()->GetNumRHIThreads() + 3;
-#if defined(__APPLE__)
-	if (App::HasEditor())
-	{
-		// Same-process editor interop may allocate additional managed/render probe threads
-		// on top of main/graphics/RHI scheduling threads.
-		maxThreadContexts += 4;
-	}
-#endif
-	(void)maxThreadContexts;
-	check(m_threadContext.Num() <= maxThreadContexts);
+	check(m_threadContext.Num() <= App::GetSubmodule<Tasks::Scheduler>()->GetNumRHIThreads() + 2);
 
 	for (auto& pair : m_threadContext)
 	{
 		pair.m_second.Clear();
 	}
 
+	m_presentFences.Clear();
 	m_renderFinishedSemaphores.Clear();
 	m_imageAvailableSemaphores.Clear();
 	m_syncImages.Clear();
 	m_syncFences.Clear();
 
 	m_frameDeps.Clear();
+	m_acquiredImageFlight.reset();
 
 	m_samplers.Clear();
 	m_pipelineBuilder.Clear();
 	m_surface.Clear();
+	return true;
 }
 
 void VulkanDevice::Shutdown()
@@ -266,21 +222,9 @@ ThreadContext& VulkanDevice::GetOrAddThreadContext(DWORD threadId)
 
 #ifndef _SHIPPING
 		VkDescriptorPool pool = *res->m_descriptorPool;
-		SetDebugName(VkObjectType::VK_OBJECT_TYPE_DESCRIPTOR_POOL, (uint64_t)pool, Utils::GetCurrentThreadName());
-#endif 
-		// Same-process editor interop adds a managed engine thread and can touch Vulkan from
-		// MAUI-triggered viewport probing before work moves fully onto engine scheduler threads.
-		// Main, Render, and the dedicated Editor protocol worker may each
-		// allocate a Vulkan thread context in addition to the RHI workers.
-		size_t maxThreadContexts = App::GetSubmodule<Tasks::Scheduler>()->GetNumRHIThreads() + 3;
-#if defined(__APPLE__)
-		if (App::HasEditor())
-		{
-			maxThreadContexts += 4;
-		}
+		SetDebugName(VkObjectType::VK_OBJECT_TYPE_DESCRIPTOR_POOL, (uint64_t)pool, Utils::GetCurrentThreadName().ToString());
 #endif
-		(void)maxThreadContexts;
-		check(m_threadContext.Num() <= maxThreadContexts);
+		check(m_threadContext.Num() <= App::GetSubmodule<Tasks::Scheduler>()->GetNumRHIThreads() + 2);
 	}
 	m_threadContext.Unlock(threadId);
 
@@ -289,7 +233,14 @@ ThreadContext& VulkanDevice::GetOrAddThreadContext(DWORD threadId)
 
 ThreadContext& VulkanDevice::GetCurrentThreadContext()
 {
-	return GetOrAddThreadContext(GetCurrentThreadId());
+	auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+	check(scheduler->HasThread(GetCurrentThreadId()));
+	check(scheduler->IsMainThread() || scheduler->IsRendererThread() ||
+		scheduler->GetCurrentThreadType() == EThreadType::RHI);
+
+	// Main's pools follow its queue across bootstrap, engine-loop and shutdown threads.
+	const DWORD contextId = scheduler->IsMainThread() ? 0 : GetCurrentThreadId();
+	return GetOrAddThreadContext(contextId);
 }
 
 VulkanSurfacePtr VulkanDevice::GetSurface() const
@@ -312,12 +263,11 @@ VkFormat VulkanDevice::GetDepthFormat() const
 	);
 }
 
-TBlockAllocator<class GlobalVulkanMemoryAllocator, class VulkanMemoryPtr>& VulkanDevice::GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements)
+VulkanDeviceMemoryAllocator& VulkanDevice::GetMemoryAllocator(VkMemoryPropertyFlags properties,
+	VkMemoryRequirements requirements, EVulkanMemoryClass memoryClass)
 {
-	size_t hash{};
-	HashCombine(hash, properties, requirements.memoryTypeBits);
-
-	auto& pAllocator = m_memoryAllocators.At_Lock(hash);
+	const MemoryAllocatorKey key{ properties, requirements.memoryTypeBits, memoryClass };
+	auto& pAllocator = m_memoryAllocators.At_Lock(key);
 
 	if (!pAllocator)
 	{
@@ -326,13 +276,14 @@ TBlockAllocator<class GlobalVulkanMemoryAllocator, class VulkanMemoryPtr>& Vulka
 		const size_t ReservedSize = 64 * AverageElementSize;
 
 		pAllocator = TUniquePtr<VulkanDeviceMemoryAllocator>::Make(BlockSize, AverageElementSize, ReservedSize);
+
+		// Pool configuration stays immutable while allocations use their own lock.
+		auto& vulkanAllocator = pAllocator->GetGlobalAllocator();
+		vulkanAllocator.SetMemoryProperties(properties);
+		vulkanAllocator.SetMemoryRequirements(requirements);
 	}
 
-	auto& vulkanAllocator = pAllocator->GetGlobalAllocator();
-	vulkanAllocator.SetMemoryProperties(properties);
-	vulkanAllocator.SetMemoryRequirements(requirements);
-
-	m_memoryAllocators.Unlock(hash);
+	m_memoryAllocators.Unlock(key);
 
 	return *pAllocator;
 }
@@ -413,6 +364,8 @@ bool VulkanDevice::SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
 {
 	SAILOR_PROFILE_FUNCTION();
 
+	if (m_bIsDeviceLost) return false;
+
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submitInfo.pNext = submitNext;
@@ -441,36 +394,38 @@ bool VulkanDevice::SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
 	submitInfo.pWaitSemaphores = &waits[0];
 	submitInfo.pWaitDstStageMask = &waitStages[0];
 
-	VkResult submitResult = VK_SUCCESS;
+	auto* queue = m_graphicsQueue.GetRawPtr();
 
 	if (commandBuffer->GetCommandPool()->GetQueueFamilyIndex() == m_queueFamilies.m_computeFamily.value_or(-1))
 	{
-		submitResult = m_computeQueue->Submit(submitInfo, fence);
+		queue = m_computeQueue.GetRawPtr();
 	}
 	else if (commandBuffer->GetCommandPool()->GetQueueFamilyIndex() == m_queueFamilies.m_transferFamily.value_or(-1))
 	{
-		submitResult = m_transferQueue->Submit(submitInfo, fence);
+		queue = m_transferQueue.GetRawPtr();
 	}
-	else
-	{
-		submitResult = m_graphicsQueue->Submit(submitInfo, fence);
-	}
+	const VkResult submitResult = queue->Submit(submitInfo, fence);
 
 	_freea(waits);
 	_freea(signals);
 	_freea(waitStages);
 
-	m_numSubmittedCommandBuffersAcc++;
-
 	if (submitResult == VK_ERROR_DEVICE_LOST)
 	{
 		m_bIsDeviceLost = true;
+		// DEVICE_LOST may still have submitted work. Drain it before the caller
+		// releases the command's dependencies; a lost queue wait returns finitely.
+		queue->WaitIdle();
+	}
+
+	if (submitResult != VK_SUCCESS)
+	{
+		SAILOR_LOG_ERROR("VulkanDevice::SubmitCommandBuffer failed: %d", static_cast<int>(submitResult));
 		return false;
 	}
 
-	check(submitResult == VK_SUCCESS);
-
-	return submitResult == VK_SUCCESS;
+	m_numSubmittedCommandBuffersAcc.fetch_add(1u, std::memory_order_relaxed);
+	return true;
 }
 
 void VulkanDevice::CreateDefaultRenderPass()
@@ -484,9 +439,11 @@ TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 	TUniquePtr<ThreadContext> context = TUniquePtr<ThreadContext>::Make();
 
 	check(m_queueFamilies.IsComplete());
-	context->m_commandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), m_queueFamilies.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
-	context->m_transferCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), m_queueFamilies.m_transferFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
-	context->m_computeCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), m_queueFamilies.m_computeFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+	// Completed command buffers can be reset independently of other work in the pool.
+	constexpr VkCommandPoolCreateFlags poolFlags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	context->m_commandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), m_queueFamilies.m_graphicsFamily.value(), poolFlags);
+	context->m_transferCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), m_queueFamilies.m_transferFamily.value(), poolFlags);
+	context->m_computeCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), m_queueFamilies.m_computeFamily.value(), poolFlags);
 
 	auto descriptorSizes = TVector
 	{
@@ -508,24 +465,40 @@ TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 
 void VulkanDevice::CreateFrameSyncSemaphores()
 {
+	m_presentFences.Clear();
+	m_imageAvailableSemaphores.Clear();
+	m_renderFinishedSemaphores.Clear();
+	m_syncFences.Clear();
+	m_syncImages.Clear();
+	m_swapchainImagesInitialized.Clear();
 	m_syncImages.Resize(m_swapchain->GetImageViews().Num());
 
-	for (size_t i = 0; i < VulkanApi::MaxFramesInFlight; i++)
+	for (size_t i = 0; i < m_maxFramesInFlight; i++)
 	{
 		m_imageAvailableSemaphores.Add(VulkanSemaphorePtr::Make(VulkanDevicePtr(this)));
-		m_renderFinishedSemaphores.Add(VulkanSemaphorePtr::Make(VulkanDevicePtr(this)));
 		m_syncFences.Add(VulkanFencePtr::Make(VulkanDevicePtr(this), VK_FENCE_CREATE_SIGNALED_BIT));
 	}
+	// Reacquiring the same image proves that presentation consumed its semaphore.
+	for (size_t i = 0; i < m_syncImages.Num(); ++i)
+	{
+		m_renderFinishedSemaphores.Add(VulkanSemaphorePtr::Make(VulkanDevicePtr(this)));
+		m_swapchainImagesInitialized.Add(false);
+	}
+	m_currentFrame = 0;
+	m_currentSwapchainImageIndex = 0;
 }
 
 bool VulkanDevice::RecreateSwapchain(Platform::Window* pViewport)
 {
-	if (pViewport->GetWidth() == 0 || pViewport->GetHeight() == 0)
+	if (m_bIsDeviceLost || pViewport->GetWidth() == 0 || pViewport->GetHeight() == 0)
 	{
 		return false;
 	}
 
-	WaitIdle();
+	if (!ConsumeAcquiredImage() || WaitIdle() != VK_SUCCESS)
+	{
+		return false;
+	}
 
 	if (!CreateSwapchain(pViewport))
 	{
@@ -539,81 +512,39 @@ bool VulkanDevice::RecreateSwapchain(Platform::Window* pViewport)
 	m_frameDeps.Clear();
 
 	CreateFrameDependencies();
+	CreateFrameSyncSemaphores();
 
 	m_bIsSwapChainOutdated = false;
 	m_bIsSwapChainSuboptimal = false;
-
-	assert(m_swapchain);
-
-	const auto& depthView = m_swapchain->GetDepthBufferView();
-	const std::string name = "RecreateSwapchain: Initialize DepthStencil RenderTarget";
-
-	RHICommandListPtr cmdList = Sailor::RHI::Renderer::GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
-
-	Renderer::GetDriver()->SetDebugName(cmdList, name);
-	Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
-
-	for (const auto& sc : m_swapchain->GetImageViews())
-	{
-		cmdList->m_vulkan.m_commandBuffer->ImageMemoryBarrier(sc, sc->m_format, VK_IMAGE_LAYOUT_UNDEFINED, sc->GetImage()->m_defaultLayout);
-	}
-
-	assert(depthView);
-	cmdList->m_vulkan.m_commandBuffer->ImageMemoryBarrier(depthView, depthView->m_format, VK_IMAGE_LAYOUT_UNDEFINED, depthView->GetImage()->m_defaultLayout);
-
-	Renderer::GetDriverCommands()->EndCommandList(cmdList);
-
-	App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(name, [name, cmdList = std::move(cmdList)]()
-		{
-			auto fence = RHIFencePtr::Make();
-			Renderer::GetDriver()->SetDebugName(fence, name);
-			Renderer::GetDriver()->SubmitCommandList(cmdList, fence);
-		}, Sailor::EThreadType::Render));
+	m_frameSubmissionError = VK_SUCCESS;
+	m_bLastFrameSubmitSuccessful = false;
 
 	return true;
 }
 
-template<typename T>
-void AddFeature(TVector<TVector<uint8_t>>& bytes, typename TFunction<void, T&>::type init)
-{
-	T newFeature{};
-	newFeature.pNext = nullptr;
-
-	init(newFeature);
-
-	TVector<uint8_t> byteRepresentation(reinterpret_cast<uint8_t*>(&newFeature), sizeof(T));
-	bytes.Emplace(std::move(byteRepresentation));
-
-	if (bytes.Num() > 1)
-	{
-		// Link previous
-		((T*)(bytes[bytes.Num() - 2].GetData()))->pNext = bytes[bytes.Num() - 1].GetData();
-	}
-}
-
-
 void VulkanDevice::CreateFrameDependencies()
 {
-	const TVector<VulkanImageViewPtr>& swapChainImageViews = m_swapchain->GetImageViews();
-
-	if (m_frameDeps.Num() < swapChainImageViews.Num())
-	{
-		m_frameDeps.AddDefault(swapChainImageViews.Num() - m_frameDeps.Num());
-	}
+	m_frameDeps.Resize(m_maxFramesInFlight);
 }
 
-void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
+bool VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 {
-	m_queueFamilies = VulkanApi::FindQueueFamilies(physicalDevice, m_surface);
+	supportedDeviceExtensions = VulkanApi::GetSupportedDeviceExtensions(physicalDevice);
+	VulkanDeviceFeatures features;
+	features.Query(physicalDevice, supportedDeviceExtensions);
+	if (const char* missing = features.GetMissingRequirement())
+	{
+		SAILOR_LOG_ERROR("Cannot create Vulkan device: required feature %s is unavailable.", missing);
+		return false;
+	}
 
+	m_queueFamilies = VulkanApi::FindQueueFamilies(physicalDevice, m_surface);
 	TVector<VkDeviceQueueCreateInfo> queueCreateInfos;
 	TSet<uint32_t> uniqueQueueFamilies = { m_queueFamilies.m_graphicsFamily.value(),
 		m_queueFamilies.m_presentFamily.value(),
 		m_queueFamilies.m_transferFamily.value(),
 		m_queueFamilies.m_computeFamily.value() };
-
 	float queuePriority = 1.0f;
-
 	for (uint32_t queueFamily : uniqueQueueFamilies)
 	{
 		VkDeviceQueueCreateInfo queueCreateInfo{ VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
@@ -623,201 +554,103 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 		queueCreateInfos.Add(queueCreateInfo);
 	}
 
-	TVector<const char*> deviceExtensions;
-	TVector<const char*> instanceExtensions;
-	VulkanApi::GetRequiredExtensions(deviceExtensions, instanceExtensions);
-	supportedDeviceExtensions = VulkanApi::GetSupportedDeviceExtensions(physicalDevice);
-
-#ifndef _SHIPPING
-	if (supportedDeviceExtensions.Contains(std::string(VK_EXT_DEBUG_MARKER_EXTENSION_NAME)))
-	{
-		deviceExtensions.Add(VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
-	}
-#endif
-
-	TVector<TVector<uint8_t>> features;
+	auto deviceExtensions = VulkanApi::GetRequiredDeviceExtensions(features.m_apiVersion);
 	const auto hasDeviceExtension = [&](const char* extensionName)
 	{
 		return supportedDeviceExtensions.Contains(std::string(extensionName));
 	};
-
-	VkPhysicalDeviceFeatures2 supportedFeatures2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
-	VkPhysicalDeviceVulkan11Features supportedCore11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
-	VkPhysicalDeviceVulkan12Features supportedCore12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
-	VkPhysicalDeviceVulkan13Features supportedCore13{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
-	VkPhysicalDeviceShaderAtomicFloatFeaturesEXT supportedAtomicFloat{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT };
-	VkPhysicalDeviceProperties2 supportedProperties2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
-	VkPhysicalDeviceVulkan12Properties supportedCore12Properties{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES };
-
-	supportedFeatures2.pNext = &supportedCore11;
-	supportedCore11.pNext = &supportedCore12;
-	supportedCore12.pNext = &supportedCore13;
-	supportedCore13.pNext = &supportedAtomicFloat;
-	supportedAtomicFloat.pNext = nullptr;
-
-	supportedProperties2.pNext = &supportedCore12Properties;
-	supportedCore12Properties.pNext = nullptr;
-
-	vkGetPhysicalDeviceFeatures2(physicalDevice, &supportedFeatures2);
-	vkGetPhysicalDeviceProperties2(physicalDevice, &supportedProperties2);
-
-	m_bSupportsDynamicRenderingCore13 =
-		(VK_VERSION_MAJOR(m_physicalDeviceProperties.apiVersion) > 1 ||
-		(VK_VERSION_MAJOR(m_physicalDeviceProperties.apiVersion) == 1 && VK_VERSION_MINOR(m_physicalDeviceProperties.apiVersion) >= 3)) &&
-		(supportedCore13.dynamicRendering == VK_TRUE);
-	m_bSupportsDynamicRenderingKHR = hasDeviceExtension(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
-
-	SAILOR_LOG(
-		"Dynamic rendering capabilities: core13=%d (api=%u.%u.%u, feature=%d), extension VK_KHR_dynamic_rendering=%d",
-		(int32_t)m_bSupportsDynamicRenderingCore13,
-		VK_VERSION_MAJOR(m_physicalDeviceProperties.apiVersion),
-		VK_VERSION_MINOR(m_physicalDeviceProperties.apiVersion),
-		VK_VERSION_PATCH(m_physicalDeviceProperties.apiVersion),
-		(int32_t)supportedCore13.dynamicRendering,
-		(int32_t)m_bSupportsDynamicRenderingKHR);
-
-	if (!m_bSupportsDynamicRenderingCore13 && !m_bSupportsDynamicRenderingKHR)
+#ifndef _SHIPPING
+	if (hasDeviceExtension(VK_EXT_DEBUG_MARKER_EXTENSION_NAME)) deviceExtensions.Add(VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
+#endif
+#if defined(__APPLE__)
+	m_bSupportsMetalObjects = hasDeviceExtension(VK_EXT_METAL_OBJECTS_EXTENSION_NAME);
+	if (m_bSupportsMetalObjects) deviceExtensions.Add(VK_EXT_METAL_OBJECTS_EXTENSION_NAME);
+#endif
+	if (features.m_apiVersion < VK_API_VERSION_1_3)
 	{
-		SAILOR_LOG_ERROR("Dynamic rendering is not supported by the selected device. Rendering may fail.");
-	}
-
-	/*
-	AddFeature<VkPhysicalDeviceDynamicRenderingUnusedAttachmentsFeaturesEXT>(features, [](auto& unusedAttachments)
+		for (const char* extension : { VK_KHR_MAINTENANCE_4_EXTENSION_NAME, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME })
 		{
-			unusedAttachments.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_FEATURES_EXT;
-			unusedAttachments.dynamicRenderingUnusedAttachments = VK_TRUE;
-		});
-	*/
-
-	// We need multiply blending for clouds shadows
-	// The extension is not supported in DEBUG configuration for some reason
-	if (hasDeviceExtension(VK_EXT_BLEND_OPERATION_ADVANCED_EXTENSION_NAME))
-	{
-		AddFeature<VkPhysicalDeviceBlendOperationAdvancedFeaturesEXT>(features, [](auto& features)
-			{
-				features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BLEND_OPERATION_ADVANCED_FEATURES_EXT;
-				features.advancedBlendCoherentOperations = VK_TRUE;
-			});
-
-		deviceExtensions.Add(VK_EXT_BLEND_OPERATION_ADVANCED_EXTENSION_NAME);
+			if (hasDeviceExtension(extension)) deviceExtensions.Add(extension);
+		}
 	}
-
-	// Create device that supports VK_EXT_shader_atomic_float (GL_EXT_shader_atomic_float)
-	// this allows to perform atomic operations on storage buffers
 	if (hasDeviceExtension(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME))
 	{
-		AddFeature<VkPhysicalDeviceShaderAtomicFloatFeaturesEXT>(features, [&](auto& floatFeatures)
-			{
-				floatFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT;
-				floatFeatures.shaderBufferFloat32AtomicAdd = supportedAtomicFloat.shaderBufferFloat32AtomicAdd;
-			});
+		deviceExtensions.Add(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
+	}
+	VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT swapchainMaintenance{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT };
+	if (VulkanApi::GetInstance()->IsSurfaceMaintenance1Enabled() &&
+		hasDeviceExtension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME))
+	{
+		VkPhysicalDeviceFeatures2 presentFeatures{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &swapchainMaintenance };
+		vkGetPhysicalDeviceFeatures2(physicalDevice, &presentFeatures);
+		m_bSupportsPresentFences = swapchainMaintenance.swapchainMaintenance1 == VK_TRUE;
+		if (m_bSupportsPresentFences)
+		{
+			deviceExtensions.Add(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
+			swapchainMaintenance.pNext = features.m_base.pNext;
+			features.m_base.pNext = &swapchainMaintenance;
+		}
 	}
 
-	AddFeature<VkPhysicalDeviceFeatures2 >(features, [&](auto& physicalDeviceFeatures2)
-		{
-			physicalDeviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-			physicalDeviceFeatures2.features = supportedFeatures2.features;
-			physicalDeviceFeatures2.features.sampleRateShading = VK_FALSE;
-			physicalDeviceFeatures2.features.multiDrawIndirect = supportedFeatures2.features.multiDrawIndirect;
+	VkPhysicalDeviceVulkan12Properties core12Properties{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES };
+	VkPhysicalDeviceProperties2 properties{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, &core12Properties };
+	vkGetPhysicalDeviceProperties2(physicalDevice, &properties);
+	m_depthStencilResolveProperties.supportedDepthResolveModes = core12Properties.supportedDepthResolveModes;
+	m_depthStencilResolveProperties.supportedStencilResolveModes = core12Properties.supportedStencilResolveModes;
+	m_depthStencilResolveProperties.independentResolveNone = core12Properties.independentResolveNone;
+	m_depthStencilResolveProperties.independentResolve = core12Properties.independentResolve;
 
-#ifdef SAILOR_VULKAN_MSAA_IMPACTS_TEXTURE_SAMPLING
-			physicalDeviceFeatures2.features.sampleRateShading = supportedFeatures2.features.sampleRateShading;
-#endif
-		});
-
-	AddFeature<VkPhysicalDeviceVulkan13Features>(features, [&](auto& core13)
-		{
-			core13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-			core13.maintenance4 = supportedCore13.maintenance4;
-			core13.dynamicRendering = supportedCore13.dynamicRendering;
-			core13.synchronization2 = supportedCore13.synchronization2;
-		});
-
-	AddFeature<VkPhysicalDeviceVulkan11Features>(features, [&](auto& core11)
-		{
-			core11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
-			core11.shaderDrawParameters = supportedCore11.shaderDrawParameters;
-		});
-
+	features.Enable();
+	const auto& core12 = features.m_core12;
 	m_bSupportsDescriptorUpdateAfterBind =
-		supportedCore12.descriptorIndexing &&
-		supportedCore12.descriptorBindingPartiallyBound &&
-		supportedCore12.descriptorBindingUpdateUnusedWhilePending &&
-		supportedCore12.descriptorBindingSampledImageUpdateAfterBind &&
-		supportedCore12.descriptorBindingStorageBufferUpdateAfterBind &&
-		supportedCore12.descriptorBindingUniformBufferUpdateAfterBind &&
-		supportedCore12.descriptorBindingStorageImageUpdateAfterBind;
-	m_bSupportsHostQueryReset = supportedCore12.hostQueryReset == VK_TRUE;
-
-
-	AddFeature<VkPhysicalDeviceVulkan12Features>(features, [&](auto& core12)
-		{
-			core12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-			core12.samplerFilterMinmax = supportedCore12.samplerFilterMinmax;
-			core12.runtimeDescriptorArray = supportedCore12.runtimeDescriptorArray;
-			core12.shaderSampledImageArrayNonUniformIndexing = supportedCore12.shaderSampledImageArrayNonUniformIndexing;
-			core12.shaderStorageBufferArrayNonUniformIndexing = supportedCore12.shaderStorageBufferArrayNonUniformIndexing;
-			core12.shaderStorageImageArrayNonUniformIndexing = supportedCore12.shaderStorageImageArrayNonUniformIndexing;
-			core12.shaderUniformBufferArrayNonUniformIndexing = supportedCore12.shaderUniformBufferArrayNonUniformIndexing;
-			core12.descriptorBindingSampledImageUpdateAfterBind = supportedCore12.descriptorBindingSampledImageUpdateAfterBind;
-			core12.descriptorBindingPartiallyBound = supportedCore12.descriptorBindingPartiallyBound;
-			core12.descriptorBindingStorageBufferUpdateAfterBind = supportedCore12.descriptorBindingStorageBufferUpdateAfterBind;
-			core12.descriptorBindingUniformBufferUpdateAfterBind = supportedCore12.descriptorBindingUniformBufferUpdateAfterBind;
-			core12.descriptorBindingStorageImageUpdateAfterBind = supportedCore12.descriptorBindingStorageImageUpdateAfterBind;
-			core12.descriptorBindingVariableDescriptorCount = supportedCore12.descriptorBindingVariableDescriptorCount;
-			core12.descriptorIndexing = supportedCore12.descriptorIndexing;
-			core12.descriptorBindingUpdateUnusedWhilePending = supportedCore12.descriptorBindingUpdateUnusedWhilePending;
-			core12.hostQueryReset = supportedCore12.hostQueryReset;
-		});
-
-	SAILOR_LOG("m_bSupportsDescriptorUpdateAfterBind = %d", (int32_t)m_bSupportsDescriptorUpdateAfterBind);
-	SAILOR_LOG("m_bSupportsHostQueryReset = %d", (int32_t)m_bSupportsHostQueryReset);
-	SAILOR_LOG("maxDescriptorSetUpdateAfterBindSamplers = %d", (int32_t)supportedCore12Properties.maxDescriptorSetUpdateAfterBindSamplers);
+		core12.descriptorIndexing &&
+		core12.descriptorBindingPartiallyBound &&
+		core12.descriptorBindingUpdateUnusedWhilePending &&
+		core12.descriptorBindingSampledImageUpdateAfterBind &&
+		core12.descriptorBindingStorageBufferUpdateAfterBind &&
+		core12.descriptorBindingUniformBufferUpdateAfterBind &&
+		core12.descriptorBindingStorageImageUpdateAfterBind;
+	m_bSupportsHostQueryReset = core12.hostQueryReset == VK_TRUE;
+	m_bSupportsSamplerFilterMinmax = core12.samplerFilterMinmax == VK_TRUE;
+	m_bSupportsMultiDrawIndirect = features.m_base.features.multiDrawIndirect &&
+		m_physicalDeviceProperties.limits.maxDrawIndirectCount > 1;
 
 	VkDeviceCreateInfo createInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 	createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.Num());
 	createInfo.ppEnabledExtensionNames = deviceExtensions.GetData();
 	createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.Num());
 	createInfo.pQueueCreateInfos = queueCreateInfos.GetData();
-	createInfo.pEnabledFeatures = VK_NULL_HANDLE;
+	createInfo.pNext = &features.m_base;
 
-	createInfo.pNext = features[0].GetData();
-
-	// Compatibility with older Vulkan drivers
-	const TVector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
-	if (VulkanApi::GetInstance()->IsEnabledValidationLayers())
+	VkDevice device = VK_NULL_HANDLE;
+	const VkResult result = vkCreateDevice(physicalDevice, &createInfo, nullptr, &device);
+	if (result != VK_SUCCESS)
 	{
-		createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.Num());
-		createInfo.ppEnabledLayerNames = validationLayers.GetData();
-	}
-	else
-	{
-		createInfo.enabledLayerCount = 0;
+		SAILOR_LOG_ERROR("Failed to create Vulkan device: %d", static_cast<int32_t>(result));
+		return false;
 	}
 
-	VK_CHECK(vkCreateDevice(physicalDevice, &createInfo, nullptr, &m_device));
-
-	pVkCmdBeginRenderingKHR = (PFN_vkCmdBeginRenderingKHR)vkGetDeviceProcAddr(m_device, "vkCmdBeginRenderingKHR");
-	pVkCmdEndRenderingKHR = (PFN_vkCmdEndRenderingKHR)vkGetDeviceProcAddr(m_device, "vkCmdEndRenderingKHR");
-	pVkCmdBeginRendering = (PFN_vkCmdBeginRendering)vkGetDeviceProcAddr(m_device, "vkCmdBeginRendering");
-	pVkCmdEndRendering = (PFN_vkCmdEndRendering)vkGetDeviceProcAddr(m_device, "vkCmdEndRendering");
-
-	SAILOR_LOG(
-		"Dynamic rendering proc addresses: vkCmdBeginRenderingKHR=%d, vkCmdEndRenderingKHR=%d, vkCmdBeginRendering=%d, vkCmdEndRendering=%d",
-		(int32_t)(pVkCmdBeginRenderingKHR != nullptr),
-		(int32_t)(pVkCmdEndRenderingKHR != nullptr),
-		(int32_t)(pVkCmdBeginRendering != nullptr),
-		(int32_t)(pVkCmdEndRendering != nullptr));
-
-	if (!pVkCmdBeginRenderingKHR && !pVkCmdBeginRendering)
+	const bool coreRendering = features.m_apiVersion >= VK_API_VERSION_1_3;
+	const auto beginRendering = reinterpret_cast<PFN_vkCmdBeginRendering>(
+		vkGetDeviceProcAddr(device, coreRendering ? "vkCmdBeginRendering" : "vkCmdBeginRenderingKHR"));
+	const auto endRendering = reinterpret_cast<PFN_vkCmdEndRendering>(
+		vkGetDeviceProcAddr(device, coreRendering ? "vkCmdEndRendering" : "vkCmdEndRenderingKHR"));
+	if (!beginRendering || !endRendering)
 	{
-		SAILOR_LOG_ERROR("Failed to load Vulkan dynamic rendering begin function pointers.");
+		SAILOR_LOG_ERROR("Required Vulkan %s dynamic rendering commands are unavailable (begin=%d, end=%d).",
+			coreRendering ? "core" : "KHR", beginRendering != nullptr, endRendering != nullptr);
+		vkDestroyDevice(device, nullptr);
+		return false;
 	}
 
-	if (!pVkCmdEndRenderingKHR && !pVkCmdEndRendering)
-	{
-		SAILOR_LOG_ERROR("Failed to load Vulkan dynamic rendering end function pointers.");
-	}
+	m_device = device;
+	pVkCmdBeginRendering = beginRendering;
+	pVkCmdEndRendering = endRendering;
+	m_getFenceStatus = reinterpret_cast<PFN_vkGetFenceStatus>(vkGetDeviceProcAddr(m_device, "vkGetFenceStatus"));
+	m_waitForFences = reinterpret_cast<PFN_vkWaitForFences>(vkGetDeviceProcAddr(m_device, "vkWaitForFences"));
+	SAILOR_LOG("Vulkan dynamic rendering: %s", coreRendering ? "core 1.3" : "KHR 1.2");
+	SAILOR_LOG("m_bSupportsDescriptorUpdateAfterBind = %d", static_cast<int32_t>(m_bSupportsDescriptorUpdateAfterBind));
+	SAILOR_LOG("m_bSupportsHostQueryReset = %d", static_cast<int32_t>(m_bSupportsHostQueryReset));
 
 	// A VkQueue requires external synchronization. Queue families commonly alias
 	// the same family/index on MoltenVK, so all aliases must share one wrapper and
@@ -844,21 +677,24 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 
 			VkQueue queue = VK_NULL_HANDLE;
 			vkGetDeviceQueue(m_device, queueFamilyIndex, queueIndex, &queue);
-			return VulkanQueuePtr::Make(queue, queueFamilyIndex, queueIndex);
+			return VulkanQueuePtr::Make(queue, queueFamilyIndex, queueIndex,
+				reinterpret_cast<PFN_vkQueueSubmit>(vkGetDeviceProcAddr(m_device, "vkQueueSubmit")));
 		};
 
 	m_graphicsQueue = getOrCreateQueue(m_queueFamilies.m_graphicsFamily.value());
 	m_computeQueue = getOrCreateQueue(m_queueFamilies.m_computeFamily.value());
 	m_transferQueue = getOrCreateQueue(m_queueFamilies.m_transferFamily.value());
 	m_presentQueue = getOrCreateQueue(m_queueFamilies.m_presentFamily.value());
+	return true;
 }
 
-void VulkanDevice::CreateWin32Surface(const Platform::Window* viewport)
+void VulkanDevice::CreateSurface(const Platform::Window* viewport)
 {
 #if defined(_WIN32)
 	VkWin32SurfaceCreateInfoKHR createInfoWin32{ VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR };
-	createInfoWin32.hwnd = viewport->GetHWND();
-	createInfoWin32.hinstance = viewport->GetHINSTANCE();
+	createInfoWin32.hwnd = static_cast<HWND>(viewport->GetNativeHandle());
+	createInfoWin32.hinstance = reinterpret_cast<HINSTANCE>(
+		GetWindowLongPtrW(createInfoWin32.hwnd, GWLP_HINSTANCE));
 	VkSurfaceKHR surface;
 	VK_CHECK(vkCreateWin32SurfaceKHR(VulkanApi::GetVkInstance(), &createInfoWin32, nullptr, &surface));
 #elif defined(__APPLE__)
@@ -868,13 +704,13 @@ void VulkanDevice::CreateWin32Surface(const Platform::Window* viewport)
 	if (pfnCreateMacOSSurfaceMVK != nullptr)
 	{
 		VkMacOSSurfaceCreateInfoMVK createInfoMacOS{ VK_STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK };
-		createInfoMacOS.pView = viewport->GetNativeView();
+		createInfoMacOS.pView = Mac::GetNativeView(viewport->GetNativeHandle());
 		VK_CHECK(pfnCreateMacOSSurfaceMVK(VulkanApi::GetVkInstance(), &createInfoMacOS, nullptr, &surface));
 	}
 	else
 	{
 		VkMetalSurfaceCreateInfoEXT createInfoMetal{ VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT };
-		createInfoMetal.pLayer = viewport->GetMetalLayer();
+		createInfoMetal.pLayer = Mac::GetMetalLayer(viewport->GetNativeHandle(), viewport->IsVsyncRequested());
 		VK_CHECK(vkCreateMetalSurfaceEXT(VulkanApi::GetVkInstance(), &createInfoMetal, nullptr, &surface));
 	}
 #else
@@ -934,7 +770,7 @@ bool VulkanDevice::CreateSwapchain(Platform::Window* pViewport)
 	pViewport->SetRenderArea(ivec2(m_swapchain->GetExtent().width, m_swapchain->GetExtent().height));
 	m_pCurrentFrameViewport = CreateSwapchainViewport();
 
-	m_bNeedToTransitSwapchainToPresent = true;
+	m_bDepthBufferInitialized = false;
 	return true;
 }
 
@@ -948,13 +784,29 @@ void VulkanDevice::WaitIdlePresentQueue()
 	m_presentQueue->WaitIdle();
 }
 
-void VulkanDevice::WaitIdle()
+VkResult VulkanDevice::WaitIdle()
 {
-	m_graphicsQueue->WaitIdle();
-	m_computeQueue->WaitIdle();
-	m_transferQueue->WaitIdle();
-
-	vkDeviceWaitIdle(m_device);
+	VkResult result = VK_SUCCESS;
+	for (auto* queue : { m_graphicsQueue.GetRawPtr(), m_computeQueue.GetRawPtr(),
+		m_transferQueue.GetRawPtr(), m_presentQueue.GetRawPtr() })
+	{
+		const VkResult queueResult = queue->WaitIdle();
+		if (queueResult == VK_ERROR_DEVICE_LOST) m_bIsDeviceLost = true;
+		if (queueResult != VK_SUCCESS) result = queueResult;
+	}
+	// Queue idle alone does not release the presentation engine's resource references.
+	if (result == VK_SUCCESS && !m_bIsDeviceLost)
+	{
+		for (const auto& fence : m_presentFences)
+		{
+			result = fence->Wait();
+			if (result != VK_SUCCESS)
+			{
+				break;
+			}
+		}
+	}
+	return result;
 }
 
 bool VulkanDevice::ShouldFixLostDevice(const Platform::Window* pViewport)
@@ -996,9 +848,7 @@ bool VulkanDevice::ShouldFixLostDevice(const Platform::Window* pViewport)
 
 bool VulkanDevice::FixLostDevice(Platform::Window* pViewport)
 {
-	if (!RecreateSwapchain(pViewport)) return false;
-	m_bIsDeviceLost = false;
-	return true;
+	return !m_bIsDeviceLost && RecreateSwapchain(pViewport);
 }
 
 VulkanImageViewPtr VulkanDevice::GetBackBuffer() const
@@ -1020,7 +870,7 @@ bool VulkanDevice::AcquireNextImage()
 
 uint32_t VulkanDevice::GetMaxFramesInFlight() const
 {
-	return VulkanApi::MaxFramesInFlight;
+	return m_maxFramesInFlight;
 }
 
 bool VulkanDevice::BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSwapchainImage)
@@ -1028,7 +878,8 @@ bool VulkanDevice::BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSw
 	outFlightSlot = static_cast<uint32_t>(m_currentFrame);
 	outHasSwapchainImage = false;
 
-	if (m_currentFrame >= m_syncFences.Num() || !m_syncFences[m_currentFrame])
+	if (m_bIsDeviceLost || m_frameSubmissionError != VK_SUCCESS ||
+		m_currentFrame >= m_syncFences.Num() || !m_syncFences[m_currentFrame])
 	{
 		return false;
 	}
@@ -1062,16 +913,25 @@ bool VulkanDevice::BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSw
 	}
 	else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
 	{
+		if (result == VK_ERROR_DEVICE_LOST) m_bIsDeviceLost = true;
 		SAILOR_LOG("Failed to acquire swap chain image!");
 		return false;
 	}
 	if (result == VK_SUBOPTIMAL_KHR) m_bIsSwapChainSuboptimal = true;
+	m_acquiredImageFlight = static_cast<uint32_t>(m_currentFrame);
 
 	// Check if a previous frame is using this image (i.e. there is its fence to wait on)
 	if (m_syncImages[m_currentSwapchainImageIndex] && *m_syncImages[m_currentSwapchainImageIndex] != VK_NULL_HANDLE)
 	{
 		// Wait while previous frame frees the image
-		m_syncImages[m_currentSwapchainImageIndex]->Wait();
+		const VkResult imageResult = m_syncImages[m_currentSwapchainImageIndex]->Wait();
+		if (imageResult != VK_SUCCESS)
+		{
+			m_frameSubmissionError = imageResult;
+			m_bIsSwapChainOutdated = true;
+			if (imageResult == VK_ERROR_DEVICE_LOST) m_bIsDeviceLost = true;
+			return false;
+		}
 	}
 	// Mark the image as now being in use by this frame
 	m_syncImages[m_currentSwapchainImageIndex] = m_syncFences[m_currentFrame];
@@ -1080,10 +940,93 @@ bool VulkanDevice::BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSw
 	return true;
 }
 
+void VulkanDevice::PrepareFrameCommands(const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers,
+	bool hasSwapchainImage, TVector<VkCommandBuffer>& outCommands)
+{
+	m_frameDeps[m_currentFrame].Clear(false);
+	const bool initializeImage = hasSwapchainImage && !m_swapchainImagesInitialized[m_currentSwapchainImageIndex];
+	if (initializeImage || !m_bDepthBufferInitialized)
+	{
+		VulkanCommandBufferPtr transitCmd = CreateCommandBuffer(RHI::ECommandListQueue::Graphics);
+		SetDebugName(VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*transitCmd, "Initialize swapchain attachments"_h);
+		transitCmd->BeginCommandList();
+		if (initializeImage)
+		{
+			const auto image = GetBackBuffer();
+			transitCmd->ImageMemoryBarrier(image, image->m_format, VK_IMAGE_LAYOUT_UNDEFINED, image->GetImage()->m_defaultLayout);
+		}
+		if (!m_bDepthBufferInitialized)
+		{
+			const auto depth = GetDepthBuffer();
+			transitCmd->ImageMemoryBarrier(depth, depth->m_format, VK_IMAGE_LAYOUT_UNDEFINED, depth->GetImage()->m_defaultLayout);
+		}
+		transitCmd->EndCommandList();
+		outCommands.Add(*transitCmd);
+		m_frameDeps[m_currentFrame].Add(transitCmd);
+	}
+
+	for (const auto& command : primaryCommandBuffers)
+	{
+		outCommands.Add(*command);
+		m_frameDeps[m_currentFrame].Add(command);
+	}
+}
+
+bool VulkanDevice::SubmitFrame(const VkSubmitInfo& submitInfo)
+{
+	m_frameSubmissionError = m_syncFences[m_currentFrame]->Reset();
+	if (m_frameSubmissionError == VK_SUCCESS)
+	{
+		m_frameSubmissionError = m_graphicsQueue->Submit(submitInfo, m_syncFences[m_currentFrame]);
+	}
+	m_bLastFrameSubmitSuccessful = m_frameSubmissionError == VK_SUCCESS;
+	if (m_bLastFrameSubmitSuccessful)
+	{
+		m_numSubmittedCommandBuffersAcc.fetch_add(submitInfo.commandBufferCount, std::memory_order_relaxed);
+		m_bDepthBufferInitialized = true;
+		m_currentFrame = (m_currentFrame + 1) % m_maxFramesInFlight;
+	}
+	else
+	{
+		// No later frame can signal this slot's fence. Keep its dependencies until
+		// recovery drains the queues and replaces the complete synchronization set.
+		m_bIsSwapChainOutdated = true;
+		if (m_frameSubmissionError == VK_ERROR_DEVICE_LOST) m_bIsDeviceLost = true;
+		SAILOR_LOG_ERROR("Vulkan frame submission failed: %d", static_cast<int>(m_frameSubmissionError));
+	}
+	// RHI uploads can finish while Render publishes this frame's statistics.
+	m_numSubmittedCommandBuffers = m_numSubmittedCommandBuffersAcc.exchange(0u, std::memory_order_relaxed);
+	return m_bLastFrameSubmitSuccessful;
+}
+
+bool VulkanDevice::ConsumeAcquiredImage()
+{
+	if (!m_acquiredImageFlight) return true;
+
+	// A refused frame did not consume the acquire semaphore. Queue its wait
+	// before WaitIdle so recovery also drains the outstanding WSI acquisition.
+	VkSemaphore semaphore = *m_imageAvailableSemaphores[*m_acquiredImageFlight];
+	VkPipelineStageFlags stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+	VkSubmitInfo submitInfo{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
+	submitInfo.waitSemaphoreCount = 1;
+	submitInfo.pWaitSemaphores = &semaphore;
+	submitInfo.pWaitDstStageMask = &stage;
+	const VkResult result = m_graphicsQueue->Submit(submitInfo);
+	if (result != VK_SUCCESS)
+	{
+		m_frameSubmissionError = result;
+		if (result == VK_ERROR_DEVICE_LOST) m_bIsDeviceLost = true;
+		return false;
+	}
+	m_acquiredImageFlight.reset();
+	return true;
+}
+
 bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& semaphoresToWait)
 {
 	m_bLastFrameSubmitSuccessful = false;
-	//////////////////////////////////////////////////
+	if (m_bIsDeviceLost || m_frameSubmissionError != VK_SUCCESS) return false;
+
 	if (!m_pCurrentFrameViewport ||
 		(m_pCurrentFrameViewport->GetViewport().width != m_swapchain->GetExtent().width ||
 			abs(m_pCurrentFrameViewport->GetViewport().height) != m_swapchain->GetExtent().height))
@@ -1091,42 +1034,8 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 		m_pCurrentFrameViewport = CreateSwapchainViewport();
 	}
 
-	// Clear previous frame deps
-	m_frameDeps[m_currentFrame].Clear(false);
-
 	TVector<VkCommandBuffer> commandBuffers;
-
-	if (m_bNeedToTransitSwapchainToPresent)
-	{
-		VulkanCommandBufferPtr transitCmd = CreateCommandBuffer(RHI::ECommandListQueue::Graphics);
-
-		SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*transitCmd, "VulkanDevice::PresentFrame::TransitSwapchainToPresent");
-
-		transitCmd->BeginCommandList();
-		for (const auto& swapchain : m_swapchain->GetImageViews())
-		{
-			transitCmd->ImageMemoryBarrier(swapchain, swapchain->m_format, VK_IMAGE_LAYOUT_UNDEFINED, swapchain->GetImage()->m_defaultLayout);
-		}
-
-		transitCmd->ImageMemoryBarrier(m_swapchain->GetDepthBufferView(),
-			m_swapchain->GetDepthBufferView()->m_format, VK_IMAGE_LAYOUT_UNDEFINED,
-			m_swapchain->GetDepthBufferView()->GetImage()->m_defaultLayout);
-
-		transitCmd->EndCommandList();
-
-		commandBuffers.Add(*transitCmd);
-		m_frameDeps[m_currentFrame].Add(transitCmd);
-		m_bNeedToTransitSwapchainToPresent = false;
-	}
-
-	if (primaryCommandBuffers.Num() > 0)
-	{
-		for (const auto& cmdBuffer : primaryCommandBuffers)
-		{
-			commandBuffers.Add(*cmdBuffer);
-			m_frameDeps[m_currentFrame].Add(cmdBuffer);
-		}
-	}
+	PrepareFrameCommands(primaryCommandBuffers, true, commandBuffers);
 
 	TVector<VkSemaphore> waitSemaphores;
 	if (semaphoresToWait.Num() > 0)
@@ -1154,7 +1063,8 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 	{
 		waitStages[i] = semaphoresToWait[i]->PipelineStageFlags();
 	}
-	waitStages[waitSemaphores.Num() - 1] = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	// The first use can be a layout transition or transfer, not just color output.
+	waitStages[waitSemaphores.Num() - 1] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 
 	submitInfo.pWaitDstStageMask = waitStages;
 
@@ -1163,46 +1073,66 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 	submitInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.Num());
 	submitInfo.pCommandBuffers = commandBuffers.Num() > 0 ? &commandBuffers[0] : nullptr;
 
-	VkSemaphore signalSemaphores[] = { *m_renderFinishedSemaphores[m_currentFrame] };
+	VkSemaphore signalSemaphores[] = { *m_renderFinishedSemaphores[m_currentSwapchainImageIndex] };
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores = signalSemaphores;
 
-	m_syncFences[m_currentFrame]->Reset();
-
-	//TODO: Transfer queue for transfer family command lists
-	const VkResult submitResult = m_graphicsQueue->Submit(submitInfo, m_syncFences[m_currentFrame]);
-	m_bLastFrameSubmitSuccessful = submitResult == VK_SUCCESS;
-
-	m_numSubmittedCommandBuffersAcc += (uint32_t)commandBuffers.Num();
-
+	const bool submitted = SubmitFrame(submitInfo);
 	_freea(waitStages);
+	if (!submitted) return false;
+	m_acquiredImageFlight.reset();
+	m_swapchainImagesInitialized[m_currentSwapchainImageIndex] = true;
 
+	VkPresentInfoKHR presentInfo{};
+	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	presentInfo.waitSemaphoreCount = 1;
+	presentInfo.pWaitSemaphores = signalSemaphores;
+	VkSwapchainKHR swapChains[] = { *m_swapchain };
+	presentInfo.swapchainCount = 1;
+	presentInfo.pSwapchains = swapChains;
+	presentInfo.pImageIndices = &m_currentSwapchainImageIndex;
 	VkResult presentResult = VK_SUCCESS;
-	if (submitResult == VK_SUCCESS)
+	VulkanFencePtr presentFence;
+	VkSwapchainPresentFenceInfoEXT fenceInfo{ VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT };
+	if (m_bSupportsPresentFences)
 	{
-		VkPresentInfoKHR presentInfo{};
-		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-
-		presentInfo.waitSemaphoreCount = 1;
-		presentInfo.pWaitSemaphores = signalSemaphores;
-
-		VkSwapchainKHR swapChains[] = { *m_swapchain };
-		presentInfo.swapchainCount = 1;
-		presentInfo.pSwapchains = swapChains;
-		presentInfo.pImageIndices = &m_currentSwapchainImageIndex;
-		presentInfo.pResults = nullptr; // Optional
-
-		presentResult = m_presentQueue->Present(presentInfo);
+		// Reuse completed presents without stalling the next frame on presentation.
+		for (size_t i = 0; i < m_presentFences.Num(); ++i)
+		{
+			const VkResult status = m_presentFences[i]->Status();
+			if (status == VK_NOT_READY)
+			{
+				continue;
+			}
+			presentResult = status;
+			if (status == VK_SUCCESS)
+			{
+				presentFence = m_presentFences[i];
+				m_presentFences.RemoveAtSwap(i);
+				presentResult = presentFence->Reset();
+			}
+			break;
+		}
+		if (presentResult == VK_SUCCESS)
+		{
+			if (!presentFence)
+			{
+				presentFence = VulkanFencePtr::Make(VulkanDevicePtr(this));
+			}
+			fenceInfo.swapchainCount = 1;
+			fenceInfo.pFences = presentFence->GetHandle();
+			presentInfo.pNext = &fenceInfo;
+		}
 	}
-
-	m_currentFrame = (m_currentFrame + 1) % VulkanApi::MaxFramesInFlight;
-
-	m_numSubmittedCommandBuffers = m_numSubmittedCommandBuffersAcc;
-	m_numSubmittedCommandBuffersAcc = 0;
-
-	if (submitResult == VK_ERROR_DEVICE_LOST)
+	if (presentResult == VK_SUCCESS)
 	{
-		m_bIsDeviceLost = true;
+		presentResult = m_presentQueue->Present(presentInfo);
+		// OOM leaves presentation unqueued; its unsignaled fence must not be drained.
+		if (presentFence && presentResult != VK_ERROR_OUT_OF_HOST_MEMORY &&
+			presentResult != VK_ERROR_OUT_OF_DEVICE_MEMORY && presentResult != VK_ERROR_DEVICE_LOST)
+		{
+			m_presentFences.Add(std::move(presentFence));
+		}
 	}
 
 	if (presentResult == VK_ERROR_OUT_OF_DATE_KHR)
@@ -1215,15 +1145,21 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 	}
 	else if (presentResult != VK_SUCCESS)
 	{
-		SAILOR_LOG("Failed to present swap chain image!");
+		m_bIsSwapChainOutdated = true;
+		m_frameSubmissionError = presentResult;
+		if (presentResult == VK_ERROR_DEVICE_LOST) m_bIsDeviceLost = true;
+		SAILOR_LOG_ERROR("Failed to present swap chain image: %d", static_cast<int>(presentResult));
 		return false;
 	}
 
-	return submitResult == VK_SUCCESS && (presentResult == VK_SUCCESS || presentResult == VK_SUBOPTIMAL_KHR);
+	return presentResult == VK_SUCCESS || presentResult == VK_SUBOPTIMAL_KHR;
 }
 
 bool VulkanDevice::SubmitFrameWithoutPresent(const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& semaphoresToWait)
 {
+	m_bLastFrameSubmitSuccessful = false;
+	if (m_bIsDeviceLost || m_frameSubmissionError != VK_SUCCESS) return false;
+
 	// AcquireNextImage normally waits this fence before a frame slot is reused.
 	// When there is no swapchain image, preserve the same invariant before
 	// releasing the slot dependencies or resetting its fence.
@@ -1237,17 +1173,8 @@ bool VulkanDevice::SubmitFrameWithoutPresent(const TVector<VulkanCommandBufferPt
 		return false;
 	}
 
-	m_frameDeps[m_currentFrame].Clear(false);
-
 	TVector<VkCommandBuffer> commandBuffers;
-	if (primaryCommandBuffers.Num() > 0)
-	{
-		for (const auto& cmdBuffer : primaryCommandBuffers)
-		{
-			commandBuffers.Add(*cmdBuffer);
-			m_frameDeps[m_currentFrame].Add(cmdBuffer);
-		}
-	}
+	PrepareFrameCommands(primaryCommandBuffers, false, commandBuffers);
 
 	TVector<VkSemaphore> waitSemaphores;
 	if (semaphoresToWait.Num() > 0)
@@ -1278,25 +1205,14 @@ bool VulkanDevice::SubmitFrameWithoutPresent(const TVector<VulkanCommandBufferPt
 	submitInfo.signalSemaphoreCount = 0;
 	submitInfo.pSignalSemaphores = nullptr;
 
-	m_syncFences[m_currentFrame]->Reset();
-	const VkResult submitResult = m_graphicsQueue->Submit(submitInfo, m_syncFences[m_currentFrame]);
-	m_numSubmittedCommandBuffersAcc += static_cast<uint32_t>(commandBuffers.Num());
+	const bool submitted = SubmitFrame(submitInfo);
 
 	if (waitStages)
 	{
 		_freea(waitStages);
 	}
 
-	m_currentFrame = (m_currentFrame + 1) % VulkanApi::MaxFramesInFlight;
-	m_numSubmittedCommandBuffers = m_numSubmittedCommandBuffersAcc;
-	m_numSubmittedCommandBuffersAcc = 0;
-
-	if (submitResult == VK_ERROR_DEVICE_LOST)
-	{
-		m_bIsDeviceLost = true;
-	}
-
-	return submitResult == VK_SUCCESS;
+	return submitted;
 }
 
 void VulkanDevice::GetOccupiedVideoMemory(VkMemoryHeapFlags memFlags, size_t& outHeapBudget, size_t& outHeapUsage)

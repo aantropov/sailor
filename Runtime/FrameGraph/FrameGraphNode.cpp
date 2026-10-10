@@ -4,29 +4,25 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 
-#ifndef _SAILOR_IMPORT_
-const char* RHINodeDefault::m_name = "untitled";
-#endif
-
 namespace Sailor::Internal
 {
-	TUniquePtr<TMap<std::string, std::function<FrameGraphNodePtr(void)>>> g_pNodeFactoryMethods;
+	TUniquePtr<TMap<StringHash, std::function<FrameGraphNodePtr(void)>>> g_pNodeFactoryMethods;
 }
 
-void FrameGraphBuilder::RegisterFrameGraphNode(const std::string& nodeName, std::function<FrameGraphNodePtr(void)> factoryMethod)
+void FrameGraphBuilder::RegisterFrameGraphNode(StringHash nodeName, std::function<FrameGraphNodePtr(void)> factoryMethod)
 {
 	static std::once_flag s_once{};
 
 	std::call_once(s_once, [&]() {
 		if (!Internal::g_pNodeFactoryMethods)
 		{
-			Internal::g_pNodeFactoryMethods = TUniquePtr<TMap<std::string, std::function<FrameGraphNodePtr(void)>>>::Make();
+			Internal::g_pNodeFactoryMethods = TUniquePtr<TMap<StringHash, std::function<FrameGraphNodePtr(void)>>>::Make();
 		}});
 
 	(*Internal::g_pNodeFactoryMethods)[nodeName] = factoryMethod;
 }
 
-FrameGraphNodePtr FrameGraphBuilder::CreateNode(const std::string& nodeName) const
+FrameGraphNodePtr FrameGraphBuilder::CreateNode(StringHash nodeName) const
 {
 	if ((*Internal::g_pNodeFactoryMethods).ContainsKey(nodeName))
 	{

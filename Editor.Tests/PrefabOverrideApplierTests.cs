@@ -106,6 +106,8 @@ public sealed class PrefabOverrideApplierTests
             fileId: source-prefab
             instanceIds:
               source-object: live-object
+            gameObjectOverrides: {}
+            componentOverrides: {}
             gameObjects:
               - name: Edited Saxophone
                 position: [4, 5, 6, 1]

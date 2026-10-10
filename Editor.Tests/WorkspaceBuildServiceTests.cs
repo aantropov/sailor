@@ -1,4 +1,5 @@
 using SailorEditor.Workspace;
+using System.Text;
 
 namespace SailorEditor.Tests;
 
@@ -83,6 +84,25 @@ public sealed class WorkspaceBuildServiceTests : IDisposable
         Assert.False((await service.BuildAsync(session, "Release", true)).Succeeded);
         Assert.False((await service.ConfigureAsync(session, "Release")).Succeeded);
         Assert.Empty(runner.Invocations);
+    }
+
+    [Theory]
+    [InlineData(65001, "Skipper Я é 船 🚢")]
+    [InlineData(28591, "Skipper café")]
+    public async Task RunAsync_UsesRequestedOutputEncoding(int codePage, string message)
+    {
+        var encoding = Encoding.GetEncoding(codePage);
+        await File.WriteAllBytesAsync(Path.Combine(root, "output.bin"), encoding.GetBytes(message));
+        var invocation = OperatingSystem.IsWindows()
+            ? new WorkspaceProcessInvocation("cmd.exe", ["/d", "/c", "type output.bin & type output.bin 1>&2"], root)
+            : new WorkspaceProcessInvocation("/bin/sh", ["-c", "cat output.bin; cat output.bin >&2"], root);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+        var result = await new WorkspaceProcessRunner().RunAsync(
+            invocation with { OutputEncoding = encoding }, timeout.Token);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal($"{message}{Environment.NewLine}{message}{Environment.NewLine}", result.Output);
     }
 
     public void Dispose() => Directory.Delete(root, recursive: true);

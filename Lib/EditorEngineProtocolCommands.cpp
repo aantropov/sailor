@@ -1,4 +1,6 @@
 #include "EditorEngineProtocolInternal.h"
+#include "Editor/EditorInterop.h"
+#include "Editor/EditorRuntimeBridge.h"
 
 #include "Memory/UniquePtr.hpp"
 #include "Protocol/Generated/editor_engine.pb.h"
@@ -28,20 +30,19 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		Sailor::App::Stop();
 	}
 
-	static void ShutdownEngine(const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies)
+	static bool ShutdownEngine(const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies)
 	{
 		if (dependencies.m_shutdown)
 		{
-			dependencies.m_shutdown(dependencies.m_context);
-			return;
+			return dependencies.m_shutdown(dependencies.m_context);
 		}
-		Sailor::App::Shutdown();
+		return Sailor::App::Shutdown();
 	}
 
-	void SetError(ProtocolResponse& response, const std::string& error)
+	void SetError(ProtocolResponse& response, std::string_view error)
 	{
 		response.set_success(false);
-		response.set_error(error);
+		response.set_error(error.empty() ? "" : error.data(), error.size());
 		response.clear_result();
 	}
 
@@ -144,7 +145,8 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		return false;
 	}
 
-	static void DispatchInitialize(const sailor::editor::v1::InitializeRequest& request, ProtocolResponse& response)
+	static void DispatchInitialize(const sailor::editor::v1::InitializeRequest& request, ProtocolResponse& response,
+		const EditorEngineProtocolDependencies& dependencies)
 	{
 		const int numArguments = request.arguments_size();
 		Sailor::TUniquePtr<const char*[]> arguments{};
@@ -157,8 +159,21 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			}
 		}
 
-		Sailor::App::Initialize(arguments.GetRawPtr(), numArguments);
-		SetEmptyResult(response);
+		const auto result = dependencies.m_initialize ?
+			dependencies.m_initialize(dependencies.m_context, arguments.GetRawPtr(), numArguments) :
+			Sailor::App::Initialize(arguments.GetRawPtr(), numArguments);
+		switch (result)
+		{
+		case EAppInitializationResult::Ready:
+			SetEmptyResult(response);
+			break;
+		case EAppInitializationResult::Completed:
+			SetError(response, "The command completed without creating an interactive Engine session.");
+			break;
+		case EAppInitializationResult::Failed:
+			SetError(response, "Engine initialization failed. See the engine log for details.");
+			break;
+		}
 	}
 
 	static void DispatchMessages(const sailor::editor::v1::CountRequest& request, ProtocolResponse& response)
@@ -173,7 +188,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			requestedCount > 0 ? Sailor::TUniquePtr<char*[]>::Make(requestedCount) : Sailor::TUniquePtr<char*[]>{};
 		std::vector<Sailor::TUniquePtr<char[]>> ownedMessages;
 		ownedMessages.reserve(requestedCount);
-		const uint32_t numMessages = Sailor::App::PullEditorMessages(messages.GetRawPtr(), requestedCount);
+		const uint32_t numMessages = Sailor::EditorRuntime::PullEditorMessages(messages.GetRawPtr(), requestedCount);
 		for (uint32_t i = 0; i < requestedCount; ++i)
 		{
 			ownedMessages.emplace_back(messages[i]);
@@ -205,7 +220,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		switch (request.command_case())
 		{
 		case ProtocolRequest::kInitialize:
-			DispatchInitialize(request.initialize(), response);
+			DispatchInitialize(request.initialize(), response, dependencies);
 			break;
 
 		case ProtocolRequest::kStart:
@@ -218,8 +233,14 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			break;
 
 		case ProtocolRequest::kShutdown:
-			ShutdownEngine(dependencies);
-			SetEmptyResult(response);
+			if (ShutdownEngine(dependencies))
+			{
+				SetEmptyResult(response);
+			}
+			else
+			{
+				SetError(response, "Engine shutdown could not drain GPU work. Retry shutdown before initializing another session.");
+			}
 			break;
 
 		case ProtocolRequest::kRequestAssetReload:
@@ -227,7 +248,8 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			break;
 
 		case ProtocolRequest::kUpdateAsset:
-			SetBoolResult(response, Sailor::App::UpdateAsset(request.update_asset().file_id().c_str()));
+			SetBoolResult(response, Sailor::App::UpdateAsset(
+				request.update_asset().file_id().c_str(), request.update_asset().reimport()));
 			break;
 
 		case ProtocolRequest::kGetAssetReloadState:
@@ -257,11 +279,22 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 
 		case ProtocolRequest::kPreviewAudioAsset:
 			SetBoolResult(
-				response, Sailor::App::PreviewEditorAudioAsset(request.preview_audio_asset().file_id().c_str()));
+				response, Sailor::EditorRuntime::PreviewEditorAudioAsset(request.preview_audio_asset().file_id().c_str()));
+			break;
+
+		case ProtocolRequest::kRequestModelFingerprint:
+			SetBoolResult(response, Sailor::EditorRuntime::RequestModelFingerprint(request.request_model_fingerprint().file_id().c_str()));
+			break;
+
+		case ProtocolRequest::kGetModelFingerprintStatus:
+			SetSuccess(response);
+			response.mutable_model_fingerprint_status_result()->set_status(
+				static_cast<sailor::editor::v1::ModelFingerprintStatus>(
+					Sailor::EditorRuntime::GetModelFingerprintStatus(request.get_model_fingerprint_status().file_id().c_str())));
 			break;
 
 		case ProtocolRequest::kShowMainWindow:
-			Sailor::App::ShowMainWindow(request.show_main_window().show());
+			Sailor::EditorRuntime::ShowMainWindow(request.show_main_window().show());
 			SetEmptyResult(response);
 			break;
 
@@ -275,11 +308,4 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			break;
 		}
 	}
-}
-
-void Sailor::Protocol::DispatchEditorEngineProtocolRequest(const sailor::editor::v1::ProtocolRequest& request,
-	sailor::editor::v1::ProtocolResponse& response,
-	const EditorEngineProtocolDependencies& dependencies)
-{
-	EditorEngineProtocolCommands::DispatchRequest(request, response, dependencies);
 }

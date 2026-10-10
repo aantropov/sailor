@@ -14,6 +14,11 @@ void AudioAssetInfo::Deserialize(const YAML::Node& inData)
 	DeserializeReflectedAssetInfo(*this, inData);
 }
 
+void AudioAssetInfo::CopyMetadata(const AssetInfo& source)
+{
+	CopyReflectedAssetInfo(*this, static_cast<const AudioAssetInfo&>(source));
+}
+
 IAssetInfoHandler* AudioAssetInfo::GetHandler()
 {
 	return App::GetSubmodule<AudioAssetInfoHandler>();
@@ -21,10 +26,7 @@ IAssetInfoHandler* AudioAssetInfo::GetHandler()
 
 AudioAssetInfoHandler::AudioAssetInfoHandler(AssetRegistry* assetRegistry)
 {
-	m_supportedExtensions.Emplace("wav");
-	m_supportedExtensions.Emplace("flac");
-	m_supportedExtensions.Emplace("mp3");
-	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
+	assetRegistry->RegisterAssetInfoHandler(GetAssetInfoExtensions<AudioAssetInfo>(), this);
 }
 
 void AudioAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const

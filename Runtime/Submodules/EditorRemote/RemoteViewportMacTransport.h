@@ -2,8 +2,10 @@
 #include "Containers/Containers.h"
 #include "Memory/SharedPtr.hpp"
 #include "Memory/UniquePtr.hpp"
+#include "RHI/Readback.h"
 
 #include <algorithm>
+#include <chrono>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -15,12 +17,14 @@
 #include <IOSurface/IOSurface.h>
 #endif
 
-#include "EditorViewportSession.h"
+#include "RemoteViewportBinding.h"
 #include "RemoteViewportMacNativeBridge.h"
 #include "RemoteViewportRuntime.h"
 
 namespace Sailor::EditorRemote
 {
+	class IMacViewportPresenter;
+
 	inline constexpr uint32_t AlignMacIOSurfaceStride(const uint32_t value, const uint32_t alignment)
 	{
 		if (alignment <= 1u)
@@ -87,6 +91,7 @@ namespace Sailor::EditorRemote
 		PixelFormat m_pixelFormat = PixelFormat::Unknown;
 		CrossApiSyncKind m_crossApiSyncKind = CrossApiSyncKind::None;
 		TSharedPtr<std::vector<uint8_t>> m_cpuBytes{};
+		RHI::ReadbackFramePtr m_readback{};
 		std::string m_debugName{};
 		bool m_releaseTextureObjectAfterUse = false;
 		bool m_crossApiCpuWaited = false;
@@ -96,21 +101,43 @@ namespace Sailor::EditorRemote
 			return m_kind != MacRendererFrameSourceKind::Unknown && m_width != 0 && m_height != 0 && m_pixelFormat != PixelFormat::Unknown;
 		}
 
+		const uint8_t* GetCpuBytes() const
+		{
+			if (m_readback) return m_readback->GetBgraPixels();
+			return m_cpuBytes && !m_cpuBytes->empty() ? m_cpuBytes->data() : nullptr;
+		}
+
 		auto operator<=>(const MacRendererFrameSource&) const = default;
 	};
 
 	struct MacIOSurfaceAllocation
 	{
+		MacIOSurfaceAllocation() = default;
+#if defined(__APPLE__)
+		~MacIOSurfaceAllocation();
+#else
+		~MacIOSurfaceAllocation() = default;
+#endif
+		MacIOSurfaceAllocation(const MacIOSurfaceAllocation&) = delete;
+		MacIOSurfaceAllocation& operator=(const MacIOSurfaceAllocation&) = delete;
+
 		uint32_t m_surfaceId = 0;
 		uint64_t m_registryId = 0;
 		uintptr_t m_surfaceObject = 0;
 		uintptr_t m_producerDeviceObject = 0;
 		uintptr_t m_producerTextureObject = 0;
-		uintptr_t m_rendererIntermediateTextureObject = 0;
+		uintptr_t m_producerCommandQueueObject = 0;
+		uintptr_t m_copyCommandBufferObject = 0;
+		// Reader completion belongs to the surface, even when its host is rebound.
+		uintptr_t m_presentCommandBufferObject = 0;
 		uint64_t m_allocationToken = 0;
 		uint64_t m_lastWrittenFrameIndex = 0;
 		uint64_t m_lastRendererTextureToken = 0;
 		uint64_t m_lastProducerCopyToken = 0;
+		// Native writes can be newer than the last exported frame.
+		uint64_t m_currentCopyToken = 0;
+		// Uploaded pixel payload, excluding row padding.
+		uint64_t m_cpuUploadedBytes = 0;
 		uint64_t m_lastCrossApiAcquireValue = 0;
 		PixelFormat m_pixelFormat = PixelFormat::Unknown;
 		ColorSpace m_colorSpace = ColorSpace::Unknown;
@@ -132,12 +159,9 @@ namespace Sailor::EditorRemote
 	{
 		MacIOSurfaceHandle m_handle{};
 		uint64_t m_exportToken = 0;
-		uint64_t m_lastAcquireValue = 0;
-		uint64_t m_lastReleaseValue = 0;
 		uint64_t m_lastCrossApiAcquireValue = 0;
 		uintptr_t m_sharedEventObject = 0;
 		CrossApiSyncKind m_crossApiSyncKind = CrossApiSyncKind::None;
-		bool m_requiresHostRelease = false;
 		bool m_crossApiCpuWaited = false;
 
 		bool IsValid() const
@@ -158,12 +182,16 @@ namespace Sailor::EditorRemote
 		uint64_t m_nativeLayerToken = 0;
 		uint64_t m_currentDrawableToken = 0;
 		uint64_t m_presentedFrameCount = 0;
+		FrameIndex m_lastPresentedFrameIndex = 0;
+		FrameIndex m_evidenceFrameIndex = 0;
+		uint64_t m_evidenceCaptureCount = 0;
 		uint32_t m_width = 0;
 		uint32_t m_height = 0;
 		PixelFormat m_pixelFormat = PixelFormat::Unknown;
 		bool m_framebufferOnly = false;
 		MacNativeHostHandle m_hostHandle{};
-		std::optional<MacNativeLayerBinding> m_layerBinding{};
+		TUniquePtr<MacNativeLayerBinding> m_layerBinding{};
+		TSharedPtr<MacIOSurfaceAllocation> m_nativeAllocation{};
 		std::optional<MacIOSurfaceHandle> m_importedSurface{};
 		MacNativeSurfaceFrameEvidence m_lastFrameEvidence{};
 		bool m_hasFrameEvidence = false;
@@ -174,8 +202,6 @@ namespace Sailor::EditorRemote
 			return m_viewportId != 0 && m_epoch != 0 && m_generation != 0 && m_registryId != 0 && m_importToken != 0 &&
 				m_nativeLayerToken != 0 && m_width != 0 && m_height != 0 && m_pixelFormat != PixelFormat::Unknown;
 		}
-
-		auto operator<=>(const MacNativePresentationState&) const = default;
 	};
 
 	struct MacViewportSurfaceState
@@ -186,7 +212,9 @@ namespace Sailor::EditorRemote
 		FrameIndex m_lastExportedFrameIndex = 0;
 		bool m_frameBegun = false;
 		bool m_needsHostReset = false;
-		std::optional<MacIOSurfaceAllocation> m_nativeAllocation{};
+		MacRendererFrameSource m_pendingRendererSource{};
+		MacNativeBridgeRendererFrameInfo m_pendingFrameInfo{};
+		TSharedPtr<MacIOSurfaceAllocation> m_nativeAllocation{};
 		std::optional<MacIOSurfaceExportMetadata> m_lastExport{};
 	};
 
@@ -202,7 +230,9 @@ namespace Sailor::EditorRemote
 	public:
 		virtual ~IMacIOSurfaceProvider() = default;
 		virtual Failure CreateOrResizeSurface(const ViewportDescriptor& viewport, ConnectionEpoch epoch, SurfaceGeneration generation, MacViewportSurfaceState& inOutState) = 0;
+		// No renderer frame leaves m_frameBegun false and is retried on the next pump.
 		virtual Failure BeginFrame(MacViewportSurfaceState& state) = 0;
+		virtual Failure PollFrameReady(MacViewportSurfaceState& state, bool& outReady) = 0;
 		virtual Failure ExportFrame(MacViewportSurfaceState& state, FramePacket& outFrame) = 0;
 		virtual Failure ReleaseSurface(const MacViewportSurfaceState& state) = 0;
 		virtual Failure GetLastFailure() const = 0;
@@ -218,24 +248,24 @@ namespace Sailor::EditorRemote
 
 		Failure CreateOrResizeSurface(const ViewportDescriptor& viewport, ConnectionEpoch epoch, SurfaceGeneration generation, MacViewportSurfaceState& inOutState) override
 		{
-			MacIOSurfaceAllocation allocation{};
-			allocation.m_registryId = (epoch << 32ull) | generation;
-			allocation.m_allocationToken = ++m_nextAllocationToken;
-			allocation.m_pixelFormat = viewport.m_pixelFormat;
-			allocation.m_colorSpace = viewport.m_colorSpace;
-			allocation.m_usageFlags = viewport.m_usageFlags;
-			allocation.m_framebufferOnly = false;
-			allocation.m_debugLabel = viewport.m_debugName;
-			allocation.m_plane.m_planeIndex = 0;
-			allocation.m_plane.m_planeCount = 1;
-			allocation.m_plane.m_width = viewport.m_width;
-			allocation.m_plane.m_height = viewport.m_height;
-			allocation.m_plane.m_bytesPerElement = 4u;
+			auto allocation = TSharedPtr<MacIOSurfaceAllocation>::Make();
+			allocation->m_registryId = (epoch << 32ull) | generation;
+			allocation->m_allocationToken = ++m_nextAllocationToken;
+			allocation->m_pixelFormat = viewport.m_pixelFormat;
+			allocation->m_colorSpace = viewport.m_colorSpace;
+			allocation->m_usageFlags = viewport.m_usageFlags;
+			allocation->m_framebufferOnly = false;
+			allocation->m_debugLabel = viewport.m_debugName;
+			allocation->m_plane.m_planeIndex = 0;
+			allocation->m_plane.m_planeCount = 1;
+			allocation->m_plane.m_width = viewport.m_width;
+			allocation->m_plane.m_height = viewport.m_height;
+			allocation->m_plane.m_bytesPerElement = 4u;
 #if defined(__APPLE__)
-			const uint32_t minimumStrideAlignment = std::max(GetMacIOSurfaceBytesPerRowAlignment(viewport.m_pixelFormat), allocation.m_plane.m_bytesPerElement);
-			allocation.m_plane.m_bytesPerRow = AlignMacIOSurfaceStride(viewport.m_width * allocation.m_plane.m_bytesPerElement, minimumStrideAlignment);
+			const uint32_t minimumStrideAlignment = std::max(GetMacIOSurfaceBytesPerRowAlignment(viewport.m_pixelFormat), allocation->m_plane.m_bytesPerElement);
+			allocation->m_plane.m_bytesPerRow = AlignMacIOSurfaceStride(viewport.m_width * allocation->m_plane.m_bytesPerElement, minimumStrideAlignment);
 #else
-			allocation.m_plane.m_bytesPerRow = viewport.m_width * allocation.m_plane.m_bytesPerElement;
+			allocation->m_plane.m_bytesPerRow = viewport.m_width * allocation->m_plane.m_bytesPerElement;
 #endif
 
 #if defined(__APPLE__)
@@ -268,9 +298,9 @@ namespace Sailor::EditorRemote
 
 			setIntProperty(kIOSurfaceWidth, static_cast<int32_t>(viewport.m_width));
 			setIntProperty(kIOSurfaceHeight, static_cast<int32_t>(viewport.m_height));
-			setIntProperty(kIOSurfaceBytesPerElement, static_cast<int32_t>(allocation.m_plane.m_bytesPerElement));
-			setIntProperty(kIOSurfaceBytesPerRow, static_cast<int32_t>(allocation.m_plane.m_bytesPerRow));
-			setIntProperty(kIOSurfaceAllocSize, static_cast<int32_t>(allocation.m_plane.m_bytesPerRow * allocation.m_plane.m_height));
+			setIntProperty(kIOSurfaceBytesPerElement, static_cast<int32_t>(allocation->m_plane.m_bytesPerElement));
+			setIntProperty(kIOSurfaceBytesPerRow, static_cast<int32_t>(allocation->m_plane.m_bytesPerRow));
+			setIntProperty(kIOSurfaceAllocSize, static_cast<int32_t>(allocation->m_plane.m_bytesPerRow * allocation->m_plane.m_height));
 			setIntProperty(kIOSurfacePixelFormat, static_cast<int32_t>('BGRA'));
 
 			IOSurfaceRef surface = IOSurfaceCreate(properties);
@@ -281,45 +311,32 @@ namespace Sailor::EditorRemote
 				return m_lastFailure;
 			}
 
-			allocation.m_surfaceObject = reinterpret_cast<uintptr_t>(surface);
-			allocation.m_surfaceId = IOSurfaceGetID(surface);
-			auto producerTextureResult = CreateMacIOSurfaceProducerTexture(allocation.m_surfaceObject, allocation.m_plane.m_width, allocation.m_plane.m_height, allocation.m_pixelFormat, allocation.m_plane.m_planeIndex, allocation.m_producerDeviceObject, allocation.m_producerTextureObject);
+			allocation->m_surfaceObject = reinterpret_cast<uintptr_t>(surface);
+			allocation->m_surfaceId = IOSurfaceGetID(surface);
+			auto producerTextureResult = CreateMacIOSurfaceProducerTexture(*allocation);
 			if (!producerTextureResult.IsOk())
 			{
-				CFRelease(surface);
 				m_lastFailure = producerTextureResult;
 				return producerTextureResult;
 			}
-
-			auto rendererTextureResult = CreateMacRendererIntermediateTexture(allocation.m_producerDeviceObject, allocation.m_plane.m_width, allocation.m_plane.m_height, allocation.m_pixelFormat, allocation.m_rendererIntermediateTextureObject);
-			if (!rendererTextureResult.IsOk())
-			{
-				ReleaseMacIOSurfaceProducerTexture(allocation.m_producerDeviceObject, allocation.m_producerTextureObject);
-				CFRelease(surface);
-				m_lastFailure = rendererTextureResult;
-				return rendererTextureResult;
-			}
 #else
-			allocation.m_surfaceObject = allocation.m_registryId;
-			allocation.m_surfaceId = ++m_nextSurfaceId;
+			allocation->m_surfaceObject = allocation->m_registryId;
+			allocation->m_surfaceId = ++m_nextSurfaceId;
 #endif
 
 			MacIOSurfaceExportMetadata exportMetadata{};
-			exportMetadata.m_handle.m_surfaceId = allocation.m_surfaceId;
-			exportMetadata.m_handle.m_registryId = allocation.m_registryId;
-			exportMetadata.m_handle.m_surfaceObject = allocation.m_surfaceObject;
+			exportMetadata.m_handle.m_surfaceId = allocation->m_surfaceId;
+			exportMetadata.m_handle.m_registryId = allocation->m_registryId;
+			exportMetadata.m_handle.m_surfaceObject = allocation->m_surfaceObject;
 			exportMetadata.m_handle.m_sharedEventObject = 0;
-			exportMetadata.m_handle.m_planeIndex = allocation.m_plane.m_planeIndex;
-			exportMetadata.m_handle.m_planeCount = allocation.m_plane.m_planeCount;
-			exportMetadata.m_handle.m_bytesPerRow = allocation.m_plane.m_bytesPerRow;
-			exportMetadata.m_handle.m_bytesPerElement = allocation.m_plane.m_bytesPerElement;
-			exportMetadata.m_handle.m_framebufferOnly = allocation.m_framebufferOnly;
+			exportMetadata.m_handle.m_planeIndex = allocation->m_plane.m_planeIndex;
+			exportMetadata.m_handle.m_planeCount = allocation->m_plane.m_planeCount;
+			exportMetadata.m_handle.m_bytesPerRow = allocation->m_plane.m_bytesPerRow;
+			exportMetadata.m_handle.m_bytesPerElement = allocation->m_plane.m_bytesPerElement;
+			exportMetadata.m_handle.m_framebufferOnly = allocation->m_framebufferOnly;
 			exportMetadata.m_exportToken = ++m_nextExportToken;
-			exportMetadata.m_lastAcquireValue = 0;
-			exportMetadata.m_lastReleaseValue = 0;
-			exportMetadata.m_requiresHostRelease = false;
 
-			if (!allocation.IsValid() || !exportMetadata.IsValid())
+			if (!allocation->IsValid() || !exportMetadata.IsValid())
 			{
 				m_lastFailure = Failure::FromDomain(ErrorDomain::Transport, 1001, "Failed to materialize macOS IOSurface allocation metadata");
 				return m_lastFailure;
@@ -328,7 +345,7 @@ namespace Sailor::EditorRemote
 			inOutState.m_key = { viewport.m_viewportId, epoch, generation };
 			inOutState.m_viewport = viewport;
 			inOutState.m_transport.m_transportType = TransportType::MacIOSurface;
-			inOutState.m_transport.m_syncMode = SyncMode::ExplicitFence;
+			inOutState.m_transport.m_syncMode = SyncMode::Implicit;
 			inOutState.m_transport.m_protocolVersion = 1;
 			inOutState.m_transport.m_width = viewport.m_width;
 			inOutState.m_transport.m_height = viewport.m_height;
@@ -339,144 +356,146 @@ namespace Sailor::EditorRemote
 			inOutState.m_frameBegun = false;
 			inOutState.m_nativeAllocation = allocation;
 			inOutState.m_lastExport = exportMetadata;
-			StoreAllocation(inOutState.m_key, allocation);
+			m_liveAllocations[inOutState.m_key] = std::move(allocation);
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
 		}
 
 		Failure BeginFrame(MacViewportSurfaceState& state) override
 		{
-			if (!state.m_nativeAllocation.has_value() || !state.m_nativeAllocation->IsValid())
+			if (state.m_frameBegun)
+			{
+				m_lastFailure = Failure::Ok();
+				return m_lastFailure;
+			}
+			if (!state.m_nativeAllocation || !state.m_nativeAllocation->IsValid())
 			{
 				m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1002, "macOS frame begin requires a live IOSurface allocation");
 				return m_lastFailure;
 			}
 
-			const auto nextFrameIndex = state.m_lastExportedFrameIndex + 1;
-			MacRendererFrameSource rendererSource{};
-			bool bHasCpuPayload = false;
-			if (m_rendererFrameSourceProvider != nullptr)
+			bool readCompleted = false;
+			m_lastFailure = PollMacIOSurfaceReadCompletion(*state.m_nativeAllocation, readCompleted);
+			if (!m_lastFailure.IsOk()) return m_lastFailure;
+			if (!readCompleted)
 			{
-				auto sourceResult = m_rendererFrameSourceProvider->AcquireFrameSource(state, nextFrameIndex, rendererSource);
-				if (!sourceResult.IsOk())
-				{
-					ReleaseRendererFrameSourceResources(rendererSource);
-					m_lastFailure = sourceResult;
-					return sourceResult;
-				}
+				m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1034, "macOS IOSurface is still being read by the presenter");
+				return m_lastFailure;
+			}
 
-				if (rendererSource.IsValid())
-				{
-					bHasCpuPayload = rendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata &&
-						rendererSource.m_cpuBytes && !rendererSource.m_cpuBytes->empty();
-					const bool bHasCopyableSource =
-						rendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedMetalTexture || bHasCpuPayload;
-					if (bHasCopyableSource &&
-						(rendererSource.m_width != state.m_nativeAllocation->m_plane.m_width ||
-						rendererSource.m_height != state.m_nativeAllocation->m_plane.m_height))
-					{
-						ReleaseRendererFrameSourceResources(rendererSource);
-						rendererSource = {};
-						bHasCpuPayload = false;
-					}
-					else if (bHasCpuPayload &&
-						rendererSource.m_bytesPerRow < state.m_nativeAllocation->m_plane.m_width * state.m_nativeAllocation->m_plane.m_bytesPerElement)
-					{
-						ReleaseRendererFrameSourceResources(rendererSource);
-						m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1006, "macOS renderer source row stride is smaller than the current IOSurface row");
-						return m_lastFailure;
-					}
-				}
-				else
-				{
-					ReleaseRendererFrameSourceResources(rendererSource);
-					rendererSource = {};
-				}
+			if (!m_rendererFrameSourceProvider)
+			{
+				m_lastFailure = Failure::Ok();
+				return m_lastFailure;
+			}
+
+			MacRendererFrameSource rendererSource{};
+			m_lastFailure = m_rendererFrameSourceProvider->AcquireFrameSource(state, state.m_lastExportedFrameIndex + 1, rendererSource);
+			if (!m_lastFailure.IsOk())
+			{
+				ReleaseRendererFrameSourceResources(rendererSource);
+				return m_lastFailure;
+			}
+
+			const bool bHasMetalTexture = rendererSource.m_textureObject != 0 &&
+				(rendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedMetalTexture ||
+				 rendererSource.m_kind == MacRendererFrameSourceKind::SyntheticIntermediate);
+			const bool bHasCpuPayload = rendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata &&
+				rendererSource.GetCpuBytes() != nullptr;
+			if (!rendererSource.IsValid() || (!bHasMetalTexture && !bHasCpuPayload) ||
+				rendererSource.m_width != state.m_viewport.m_width || rendererSource.m_height != state.m_viewport.m_height)
+			{
+				ReleaseRendererFrameSourceResources(rendererSource);
+				return Failure::Ok();
+			}
+
+			if (bHasCpuPayload && rendererSource.m_bytesPerRow < state.m_nativeAllocation->m_plane.m_width * state.m_nativeAllocation->m_plane.m_bytesPerElement)
+			{
+				ReleaseRendererFrameSourceResources(rendererSource);
+				m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1006, "macOS renderer source row stride is smaller than the current IOSurface row");
+				return m_lastFailure;
 			}
 
 			MacNativeBridgeRendererFrameInfo rendererFrameInfo{};
-			Failure copyResult = Failure::Ok();
-			uintptr_t sourceTextureObject = state.m_nativeAllocation->m_rendererIntermediateTextureObject;
-			if (rendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedMetalTexture)
+			const auto& allocation = *state.m_nativeAllocation;
+			const auto& previousSource = allocation.m_lastRendererSource;
+			if (bHasCpuPayload && rendererSource.m_readback && rendererSource.m_readback == previousSource.m_readback &&
+				rendererSource.m_bytesPerRow == previousSource.m_bytesPerRow && rendererSource.m_pixelFormat == previousSource.m_pixelFormat &&
+				allocation.m_currentCopyToken != 0 && allocation.m_currentCopyToken == allocation.m_lastProducerCopyToken)
 			{
-				sourceTextureObject = rendererSource.m_textureObject;
-				copyResult = CopyMacRendererIntermediateToProducerTexture(state.m_nativeAllocation->m_producerDeviceObject, sourceTextureObject, state.m_nativeAllocation->m_producerTextureObject, state.m_nativeAllocation->m_plane.m_width, state.m_nativeAllocation->m_plane.m_height, rendererFrameInfo, rendererSource.m_crossApiSharedEventObject, rendererSource.m_crossApiAcquireValue);
-			}
-			else if (bHasCpuPayload)
-			{
-				copyResult = UploadMacRendererBytesToProducerTexture(state.m_nativeAllocation->m_producerTextureObject, state.m_nativeAllocation->m_plane.m_width, state.m_nativeAllocation->m_plane.m_height, rendererSource.m_cpuBytes->data(), rendererSource.m_bytesPerRow, rendererFrameInfo);
+				// Re-present immutable pixels, unless a later unexported write replaced them.
+				rendererFrameInfo.m_rendererTextureToken = allocation.m_lastRendererTextureToken;
+				rendererFrameInfo.m_producerCopyToken = allocation.m_lastProducerCopyToken;
 			}
 			else
 			{
-				MacNativeBridgeProducerPattern pattern{};
-				pattern.m_viewportId = state.m_key.m_viewportId;
-				pattern.m_epoch = state.m_key.m_epoch;
-				pattern.m_generation = state.m_key.m_generation;
-				pattern.m_frameIndex = nextFrameIndex;
-				pattern.m_width = state.m_viewport.m_width;
-				pattern.m_height = state.m_viewport.m_height;
-				auto uploadResult = UploadMacRendererPatternToIntermediateTexture(state.m_nativeAllocation->m_rendererIntermediateTextureObject, state.m_nativeAllocation->m_plane.m_width, state.m_nativeAllocation->m_plane.m_height, pattern);
-				if (!uploadResult.IsOk())
-				{
-					ReleaseRendererFrameSourceResources(rendererSource);
-					m_lastFailure = uploadResult;
-					return uploadResult;
-				}
-				if (!rendererSource.IsValid())
-				{
-					rendererSource.m_kind = MacRendererFrameSourceKind::SyntheticIntermediate;
-					rendererSource.m_textureObject = state.m_nativeAllocation->m_rendererIntermediateTextureObject;
-					rendererSource.m_sourceToken = nextFrameIndex;
-					rendererSource.m_width = state.m_viewport.m_width;
-					rendererSource.m_height = state.m_viewport.m_height;
-					rendererSource.m_pixelFormat = state.m_viewport.m_pixelFormat;
-					rendererSource.m_debugName = "SyntheticIntermediate";
-				}
-				copyResult = CopyMacRendererIntermediateToProducerTexture(state.m_nativeAllocation->m_producerDeviceObject, state.m_nativeAllocation->m_rendererIntermediateTextureObject, state.m_nativeAllocation->m_producerTextureObject, state.m_nativeAllocation->m_plane.m_width, state.m_nativeAllocation->m_plane.m_height, rendererFrameInfo);
+				m_lastFailure = bHasMetalTexture ?
+					CopyMacRendererIntermediateToProducerTexture(*state.m_nativeAllocation, rendererSource.m_textureObject, rendererFrameInfo,
+						rendererSource.m_crossApiSharedEventObject, rendererSource.m_crossApiAcquireValue) :
+					UploadMacRendererBytesToProducerTexture(*state.m_nativeAllocation, rendererSource.GetCpuBytes(),
+						rendererSource.m_bytesPerRow, rendererFrameInfo);
 			}
 			ReleaseRendererFrameSourceResources(rendererSource);
-			if (!copyResult.IsOk())
-			{
-				m_lastFailure = copyResult;
-				return copyResult;
-			}
+			if (!m_lastFailure.IsOk()) return m_lastFailure;
 
-			state.m_nativeAllocation->m_lastWrittenFrameIndex = nextFrameIndex;
-			state.m_nativeAllocation->m_lastRendererTextureToken = rendererSource.m_sourceToken != 0 ? rendererSource.m_sourceToken : rendererFrameInfo.m_rendererTextureToken;
-			state.m_nativeAllocation->m_lastProducerCopyToken = rendererFrameInfo.m_producerCopyToken;
-			state.m_nativeAllocation->m_lastCrossApiAcquireValue = rendererSource.m_crossApiAcquireValue;
-			state.m_nativeAllocation->m_lastRendererSource = rendererSource;
-			if (state.m_lastExport.has_value())
-			{
-				state.m_lastExport->m_lastCrossApiAcquireValue = rendererSource.m_crossApiAcquireValue;
-				state.m_lastExport->m_sharedEventObject = rendererSource.m_crossApiSharedEventObject;
-				state.m_lastExport->m_handle.m_sharedEventObject = rendererSource.m_crossApiSharedEventObject;
-				state.m_lastExport->m_crossApiSyncKind = rendererSource.m_crossApiSyncKind;
-				state.m_lastExport->m_crossApiCpuWaited = rendererSource.m_crossApiCpuWaited;
-			}
-			if (!state.m_transport.m_macSurfaces.empty())
-			{
-				state.m_transport.m_macSurfaces.front().m_sharedEventObject = rendererSource.m_crossApiSharedEventObject;
-			}
+			state.m_pendingRendererSource = std::move(rendererSource);
+			state.m_pendingFrameInfo = rendererFrameInfo;
 			state.m_frameBegun = true;
-			StoreAllocation(state.m_key, *state.m_nativeAllocation);
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
 		}
 
+		Failure PollFrameReady(MacViewportSurfaceState& state, bool& outReady) override
+		{
+			outReady = false;
+			if (!state.m_frameBegun)
+			{
+				m_lastFailure = Failure::FromDomain(ErrorDomain::Protocol, 1, "macOS frame readiness requires BeginFrame first");
+				return m_lastFailure;
+			}
+			m_lastFailure = PollMacIOSurfaceCopyCompletion(*state.m_nativeAllocation, outReady);
+			if (!m_lastFailure.IsOk())
+			{
+				state.m_frameBegun = false;
+				state.m_pendingRendererSource = {};
+				state.m_pendingFrameInfo = {};
+			}
+			return m_lastFailure;
+		}
+
 		Failure ExportFrame(MacViewportSurfaceState& state, FramePacket& outFrame) override
 		{
-			if (!state.m_nativeAllocation.has_value() || !state.m_lastExport.has_value())
+			if (!state.m_nativeAllocation || !state.m_lastExport.has_value())
 			{
 				m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1003, "macOS frame export requires IOSurface ownership metadata");
 				return m_lastFailure;
 			}
 
+			bool ready = false;
+			auto result = PollFrameReady(state, ready);
+			if (!result.IsOk()) return result;
+			if (!ready)
+			{
+				m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1036, "macOS producer copy is still pending");
+				return m_lastFailure;
+			}
+
 			auto& exportMetadata = *state.m_lastExport;
 			const auto frameIndex = ++state.m_lastExportedFrameIndex;
-			const uint64_t timelineValue = ++m_nextTimelineValue;
-			exportMetadata.m_lastAcquireValue = timelineValue;
-			exportMetadata.m_lastReleaseValue = timelineValue;
+			auto& rendererSource = state.m_pendingRendererSource;
+			state.m_nativeAllocation->m_lastWrittenFrameIndex = frameIndex;
+			state.m_nativeAllocation->m_lastRendererTextureToken = rendererSource.m_sourceToken != 0 ? rendererSource.m_sourceToken : state.m_pendingFrameInfo.m_rendererTextureToken;
+			state.m_nativeAllocation->m_lastProducerCopyToken = state.m_pendingFrameInfo.m_producerCopyToken;
+			state.m_nativeAllocation->m_lastCrossApiAcquireValue = rendererSource.m_crossApiAcquireValue;
+			exportMetadata.m_lastCrossApiAcquireValue = rendererSource.m_crossApiAcquireValue;
+			exportMetadata.m_sharedEventObject = rendererSource.m_crossApiSharedEventObject;
+			exportMetadata.m_handle.m_sharedEventObject = rendererSource.m_crossApiSharedEventObject;
+			exportMetadata.m_crossApiSyncKind = rendererSource.m_crossApiSyncKind;
+			exportMetadata.m_crossApiCpuWaited = rendererSource.m_crossApiCpuWaited;
+			state.m_transport.m_macSurfaces.front().m_sharedEventObject = rendererSource.m_crossApiSharedEventObject;
+			state.m_nativeAllocation->m_lastRendererSource = std::move(rendererSource);
+			state.m_pendingRendererSource = {};
+			state.m_pendingFrameInfo = {};
 
 			outFrame.m_viewportId = state.m_key.m_viewportId;
 			outFrame.m_connectionEpoch = state.m_key.m_epoch;
@@ -484,12 +503,12 @@ namespace Sailor::EditorRemote
 			outFrame.m_frameIndex = frameIndex;
 			outFrame.m_width = state.m_viewport.m_width;
 			outFrame.m_height = state.m_viewport.m_height;
-			outFrame.m_timestampNs = timelineValue;
-			outFrame.m_sync.m_acquireValue = exportMetadata.m_lastAcquireValue;
-			outFrame.m_sync.m_releaseValue = exportMetadata.m_lastReleaseValue;
+			outFrame.m_timestampNs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+			outFrame.m_sync.m_acquireValue = 0;
+			outFrame.m_sync.m_releaseValue = 0;
 			outFrame.m_sync.m_crossApiAcquireValue = exportMetadata.m_lastCrossApiAcquireValue;
 			outFrame.m_sync.m_crossApiSyncKind = exportMetadata.m_crossApiSyncKind;
-			outFrame.m_sync.m_requiresExplicitRelease = exportMetadata.m_requiresHostRelease;
+			outFrame.m_sync.m_requiresExplicitRelease = false;
 			outFrame.m_sync.m_crossApiCpuWaited = exportMetadata.m_crossApiCpuWaited;
 			state.m_frameBegun = false;
 			m_lastFailure = Failure::Ok();
@@ -498,18 +517,11 @@ namespace Sailor::EditorRemote
 
 		Failure ReleaseSurface(const MacViewportSurfaceState& state) override
 		{
-#if defined(__APPLE__)
-			if (auto it = m_liveAllocations.Find(state.m_key); it != m_liveAllocations.end())
+			const auto it = m_liveAllocations.Find(state.m_key);
+			if (it != m_liveAllocations.end() && it.Value() == state.m_nativeAllocation)
 			{
-				ReleaseMacRendererIntermediateTexture(it.Value()->m_rendererIntermediateTextureObject);
-				ReleaseMacIOSurfaceProducerTexture(it.Value()->m_producerDeviceObject, it.Value()->m_producerTextureObject);
-				if (it.Value()->m_surfaceObject != 0)
-				{
-					CFRelease(reinterpret_cast<IOSurfaceRef>(it.Value()->m_surfaceObject));
-				}
+				m_liveAllocations.Remove(state.m_key);
 			}
-#endif
-			m_liveAllocations.Remove(state.m_key);
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
 		}
@@ -544,31 +556,21 @@ namespace Sailor::EditorRemote
 			}
 		}
 
-		void StoreAllocation(const MacViewportSurfaceKey& key, const MacIOSurfaceAllocation& allocation)
-		{
-			auto& storedAllocation = m_liveAllocations[key];
-			if (storedAllocation)
-			{
-				*storedAllocation = allocation;
-			}
-			else
-			{
-				storedAllocation = TUniquePtr<MacIOSurfaceAllocation>::Make(allocation);
-			}
-		}
-
-		TMap<MacViewportSurfaceKey, TUniquePtr<MacIOSurfaceAllocation>> m_liveAllocations{};
+		TMap<MacViewportSurfaceKey, TSharedPtr<MacIOSurfaceAllocation>> m_liveAllocations{};
 		IMacRendererFrameSourceProvider* m_rendererFrameSourceProvider = nullptr;
 		Failure m_lastFailure = Failure::Ok();
 		uint32_t m_nextSurfaceId = 100;
 		uint64_t m_nextAllocationToken = 0;
 		uint64_t m_nextExportToken = 0;
-		uint64_t m_nextTimelineValue = 0;
 	};
 
 	class MacViewportTransportBackend : public IViewportTransportBackend
 	{
 	public:
+		using Provider = IMacIOSurfaceProvider;
+		Failure ImportSurface(IMacViewportPresenter& presenter, const ViewportDescriptor& viewport,
+			const TransportDescriptor& transport, ConnectionEpoch epoch, SurfaceGeneration generation);
+
 		explicit MacViewportTransportBackend(IMacIOSurfaceProvider& provider) :
 			m_provider(provider)
 		{
@@ -576,7 +578,12 @@ namespace Sailor::EditorRemote
 
 		Failure EnsureSurface(const ViewportDescriptor& viewport, ConnectionEpoch epoch, SurfaceGeneration generation, TransportDescriptor& outTransport) override
 		{
-			MacViewportSurfaceState state{};
+			auto release = ReleaseSurface(viewport.m_viewportId, epoch, generation);
+			if (!release.IsOk()) return release;
+			const MacViewportSurfaceKey key{ viewport.m_viewportId, epoch, generation };
+			auto& storedState = m_surfaces[key];
+			storedState = TUniquePtr<MacViewportSurfaceState>::Make();
+			auto& state = *storedState;
 			state.m_key = { viewport.m_viewportId, epoch, generation };
 			state.m_viewport = viewport;
 			state.m_transport.m_transportType = TransportType::MacIOSurface;
@@ -591,29 +598,27 @@ namespace Sailor::EditorRemote
 			auto result = m_provider.CreateOrResizeSurface(viewport, epoch, generation, state);
 			if (!result.IsOk())
 			{
-				m_lastFailure = m_provider.GetLastFailure();
+				ReleaseSurface(viewport.m_viewportId, epoch, generation);
+				m_lastFailure = result;
 				return result;
 			}
 
 			state.m_transport.m_transportType = TransportType::MacIOSurface;
 			state.m_transport.m_ready = true;
 			result = state.m_transport.Validate();
+			if (result.IsOk() && (state.m_transport.m_width != viewport.m_width ||
+				state.m_transport.m_height != viewport.m_height || state.m_transport.m_pixelFormat != viewport.m_pixelFormat))
+			{
+				result = Failure::FromDomain(ErrorDomain::Protocol, 1, "Transport does not match its viewport");
+			}
 			if (!result.IsOk())
 			{
+				ReleaseSurface(viewport.m_viewportId, epoch, generation);
 				m_lastFailure = result;
 				return result;
 			}
 
 			outTransport = state.m_transport;
-			auto& storedState = m_surfaces[state.m_key];
-			if (storedState)
-			{
-				*storedState = state;
-			}
-			else
-			{
-				storedState = TUniquePtr<MacViewportSurfaceState>::Make(state);
-			}
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
 		}
@@ -627,6 +632,12 @@ namespace Sailor::EditorRemote
 				return m_lastFailure;
 			}
 
+			if (state->m_frameBegun)
+			{
+				m_lastFailure = Failure::Ok();
+				return m_lastFailure;
+			}
+
 			auto result = m_provider.BeginFrame(*state);
 			if (!result.IsOk())
 			{
@@ -634,7 +645,6 @@ namespace Sailor::EditorRemote
 				return result;
 			}
 
-			state->m_frameBegun = true;
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
 		}
@@ -702,6 +712,39 @@ namespace Sailor::EditorRemote
 
 		size_t GetSurfaceCount() const { return m_surfaces.Num(); }
 
+		Failure ReleaseSurfaces(ViewportId viewportId, ConnectionEpoch keepEpoch = 0, SurfaceGeneration keepGeneration = 0)
+		{
+			Failure failure = Failure::Ok();
+			for (const auto& key : m_surfaces.GetKeys())
+			{
+				if (key.m_viewportId == viewportId && (key.m_epoch != keepEpoch || key.m_generation != keepGeneration))
+				{
+					auto result = ReleaseSurface(key.m_viewportId, key.m_epoch, key.m_generation);
+					if (!result.IsOk()) failure = result;
+				}
+			}
+			m_lastFailure = failure;
+			return failure;
+		}
+
+		Failure PrepareFrame(const ViewportDescriptor& viewport, ConnectionEpoch epoch, SurfaceGeneration generation, bool& outReady)
+		{
+			outReady = false;
+			auto* state = FindSurface(viewport.m_viewportId, epoch, generation);
+			if (!state)
+			{
+				m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 2, "Missing macOS transport surface for frame begin");
+				return m_lastFailure;
+			}
+			bool readCompleted = true;
+			m_lastFailure = state->m_nativeAllocation ? PollMacIOSurfaceReadCompletion(*state->m_nativeAllocation, readCompleted) : Failure::Ok();
+			if (!m_lastFailure.IsOk() || !readCompleted) return m_lastFailure;
+			auto result = BeginFrame(viewport, epoch, generation);
+			if (!result.IsOk() || !state->m_frameBegun) return result;
+			m_lastFailure = m_provider.PollFrameReady(*state, outReady);
+			return m_lastFailure;
+		}
+
 	private:
 		MacViewportSurfaceState* FindSurface(ViewportId viewportId, ConnectionEpoch epoch, SurfaceGeneration generation)
 		{
@@ -720,7 +763,7 @@ namespace Sailor::EditorRemote
 	public:
 		virtual ~IMacViewportPresenter() = default;
 		virtual void BindHostHandle(ViewportId viewportId, const MacNativeHostHandle& hostHandle) = 0;
-		virtual Failure ImportSurface(const ViewportDescriptor& viewport, const TransportDescriptor& transport, ConnectionEpoch epoch, SurfaceGeneration generation) = 0;
+		virtual Failure ImportSurface(const ViewportDescriptor& viewport, const TransportDescriptor& transport, ConnectionEpoch epoch, SurfaceGeneration generation, const TSharedPtr<MacIOSurfaceAllocation>& allocation = {}) = 0;
 		virtual Failure PresentFrame(ViewportId viewportId, const FramePacket& frame) = 0;
 		virtual void ResetViewport(ViewportId viewportId) = 0;
 		virtual Failure GetLastFailure() const = 0;
@@ -731,6 +774,7 @@ namespace Sailor::EditorRemote
 	public:
 		void BindHostHandle(ViewportId viewportId, const MacNativeHostHandle& hostHandle) override
 		{
+			m_lastFailure = Failure::Ok();
 			const auto currentHandle = m_hostHandles.Find(viewportId);
 			const auto currentState = m_importedStates.Find(viewportId);
 			if (currentHandle != m_hostHandles.end() &&
@@ -744,10 +788,10 @@ namespace Sailor::EditorRemote
 				const auto& state = *currentState.Value();
 				const bool bHasExpectedLayer =
 					hostHandle.IsValid()
-						? state.m_layerBinding.has_value() &&
+						? state.m_layerBinding &&
 							state.m_layerBinding->IsValid() &&
 							state.m_usesRealCAMetalLayer
-						: !state.m_layerBinding.has_value();
+						: !state.m_layerBinding;
 				if (state.m_hostHandle == hostHandle &&
 					bHasExpectedLayer)
 				{
@@ -767,12 +811,11 @@ namespace Sailor::EditorRemote
 			auto it = m_importedStates.Find(viewportId);
 			if (it != m_importedStates.end())
 			{
-				it.Value()->m_hostHandle = hostHandle;
-				RefreshNativeLayerBinding(*it.Value());
+				m_lastFailure = RefreshNativeLayerBinding(*it.Value(), hostHandle);
 			}
 		}
 
-		Failure ImportSurface(const ViewportDescriptor& viewport, const TransportDescriptor& transport, ConnectionEpoch epoch, SurfaceGeneration generation) override
+		Failure ImportSurface(const ViewportDescriptor& viewport, const TransportDescriptor& transport, ConnectionEpoch epoch, SurfaceGeneration generation, const TSharedPtr<MacIOSurfaceAllocation>& allocation = {}) override
 		{
 			if (transport.m_transportType != TransportType::MacIOSurface || transport.m_macSurfaces.empty())
 			{
@@ -795,9 +838,10 @@ namespace Sailor::EditorRemote
 			state.m_pixelFormat = transport.m_pixelFormat;
 			state.m_framebufferOnly = handle.m_framebufferOnly;
 			state.m_importedSurface = handle;
+			state.m_nativeAllocation = allocation;
 			if (auto hostIt = m_hostHandles.Find(viewport.m_viewportId); hostIt != m_hostHandles.end())
 			{
-					state.m_hostHandle = hostIt.Value();
+				state.m_hostHandle = hostIt.Value();
 			}
 			if (!state.IsValid())
 			{
@@ -805,7 +849,7 @@ namespace Sailor::EditorRemote
 				return m_lastFailure;
 			}
 
-			auto bindingResult = RefreshNativeLayerBinding(state);
+			auto bindingResult = RefreshNativeLayerBinding(state, state.m_hostHandle);
 			if (!bindingResult.IsOk())
 			{
 				m_lastFailure = bindingResult;
@@ -815,11 +859,11 @@ namespace Sailor::EditorRemote
 			auto& storedState = m_importedStates[viewport.m_viewportId];
 			if (storedState)
 			{
-				*storedState = state;
+				*storedState = std::move(state);
 			}
 			else
 			{
-				storedState = TUniquePtr<MacNativePresentationState>::Make(state);
+				storedState = TUniquePtr<MacNativePresentationState>::Make(std::move(state));
 			}
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
@@ -835,16 +879,16 @@ namespace Sailor::EditorRemote
 			}
 
 			auto& state = *it.Value();
-			if (state.m_epoch != frame.m_connectionEpoch || state.m_generation != frame.m_generation)
+			if (frame.m_viewportId != viewportId || state.m_epoch != frame.m_connectionEpoch || state.m_generation != frame.m_generation)
 			{
 				m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 2004, "macOS presenter rejected frame for stale imported generation");
 				return m_lastFailure;
 			}
 
-			if (state.m_layerBinding.has_value())
+			if (state.m_layerBinding)
 			{
 				MacNativeBridgePresentResult nativePresent{};
-				auto nativeResult = PresentMacNativeLayerFrame(*state.m_layerBinding, state.m_importedSurface.value_or(MacIOSurfaceHandle{}), frame, nativePresent);
+				auto nativeResult = PresentMacNativeLayerFrame(*state.m_layerBinding, state.m_importedSurface.value_or(MacIOSurfaceHandle{}), frame, nativePresent, state.m_nativeAllocation.GetRawPtr());
 				if (!nativeResult.IsOk())
 				{
 					m_lastFailure = nativeResult;
@@ -862,29 +906,42 @@ namespace Sailor::EditorRemote
 			}
 
 			state.m_presentedFrameCount++;
-			const bool shouldCaptureEvidence = !state.m_hasFrameEvidence || state.m_presentedFrameCount <= 3 || (state.m_presentedFrameCount % 60u) == 0u;
-			if (shouldCaptureEvidence && state.m_importedSurface.has_value())
-			{
-				MacNativeSurfaceFrameEvidence evidence{};
-				auto evidenceResult = CaptureMacIOSurfaceFrameEvidence(*state.m_importedSurface, state.m_width, state.m_height, evidence);
-				if (evidenceResult.IsOk())
-				{
-					state.m_lastFrameEvidence = evidence;
-					state.m_hasFrameEvidence = true;
-				}
-			}
+			state.m_lastPresentedFrameIndex = frame.m_frameIndex;
 			m_lastPresentedFrame = frame;
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
 		}
 
-		void ResetViewport(ViewportId viewportId) override
+		Failure CaptureFrameEvidence(ViewportId viewportId)
 		{
 			auto it = m_importedStates.Find(viewportId);
-			if (it != m_importedStates.end() && it.Value()->m_layerBinding.has_value())
+			if (it == m_importedStates.end() || !it.Value()->m_importedSurface || it.Value()->m_lastPresentedFrameIndex == 0)
 			{
-				ResetMacNativeLayerBinding(*it.Value()->m_layerBinding);
+				return Failure::FromDomain(ErrorDomain::Session, 2125, "macOS viewport has no presented frame to capture");
 			}
+			auto& state = *it.Value();
+			if (state.m_nativeAllocation && (state.m_nativeAllocation->m_copyCommandBufferObject != 0 ||
+				state.m_nativeAllocation->m_currentCopyToken != state.m_nativeAllocation->m_lastProducerCopyToken ||
+				state.m_nativeAllocation->m_lastWrittenFrameIndex != state.m_lastPresentedFrameIndex))
+			{
+				return Failure::FromDomain(ErrorDomain::Session, 2126, "macOS viewport producer frame is pending presentation");
+			}
+
+			MacNativeSurfaceFrameEvidence evidence;
+			++state.m_evidenceCaptureCount;
+			auto result = CaptureMacIOSurfaceFrameEvidence(*state.m_importedSurface, state.m_width, state.m_height,
+				state.m_pixelFormat, evidence);
+			if (result.IsOk())
+			{
+				state.m_lastFrameEvidence = evidence;
+				state.m_evidenceFrameIndex = state.m_lastPresentedFrameIndex;
+				state.m_hasFrameEvidence = true;
+			}
+			return result;
+		}
+
+		void ResetViewport(ViewportId viewportId) override
+		{
 			m_importedStates.Remove(viewportId);
 			if (m_lastPresentedFrame.has_value() && m_lastPresentedFrame->m_viewportId == viewportId)
 			{
@@ -916,6 +973,7 @@ namespace Sailor::EditorRemote
 			ss << "nativeLayer=" << (state.m_usesRealCAMetalLayer ? 1 : 0)
 				<< " host=" << static_cast<uint32_t>(state.m_hostHandle.m_kind)
 				<< " presentCount=" << state.m_presentedFrameCount
+				<< " captureCount=" << state.m_evidenceCaptureCount
 				<< " drawableToken=" << state.m_currentDrawableToken
 				<< " size=" << state.m_width << "x" << state.m_height;
 			if (state.m_hasFrameEvidence)
@@ -923,7 +981,10 @@ namespace Sailor::EditorRemote
 				const auto& evidence = state.m_lastFrameEvidence;
 				const bool hasNonBlackEvidence = evidence.m_nonBlackPixelCount != 0;
 				const uint32_t nonBlackPct = evidence.m_sampledPixelCount != 0 ? (evidence.m_nonBlackPixelCount * 100u) / evidence.m_sampledPixelCount : 0u;
-				ss << " readable=" << (evidence.m_hasReadablePixels ? 1 : 0)
+				ss << " captureFrame=" << state.m_evidenceFrameIndex
+					<< " captureEpoch=" << state.m_epoch
+					<< " captureGen=" << state.m_generation
+					<< " readable=" << (evidence.m_hasReadablePixels ? 1 : 0)
 					<< " nonBlack=" << (hasNonBlackEvidence ? 1 : 0)
 					<< " variance=" << (evidence.m_hasVisualVariance ? 1 : 0)
 					<< " avgLuma=" << evidence.m_averageLuma
@@ -940,28 +1001,24 @@ namespace Sailor::EditorRemote
 		const std::optional<FramePacket>& GetLastPresentedFrame() const { return m_lastPresentedFrame; }
 
 	private:
-		Failure RefreshNativeLayerBinding(MacNativePresentationState& state)
+		Failure RefreshNativeLayerBinding(MacNativePresentationState& state, const MacNativeHostHandle& hostHandle)
 		{
-			if (!state.m_hostHandle.IsValid())
+			if (!hostHandle.IsValid())
 			{
-				if (state.m_layerBinding.has_value())
-				{
-					ResetMacNativeLayerBinding(*state.m_layerBinding);
-					state.m_layerBinding.reset();
-				}
+				state.m_layerBinding.Clear();
+				state.m_hostHandle = hostHandle;
 				state.m_usesRealCAMetalLayer = false;
 				return Failure::Ok();
 			}
 
-			MacNativeLayerBinding binding = state.m_layerBinding.value_or(MacNativeLayerBinding{});
-			auto result = BindMacNativeLayer(state.m_hostHandle, state.m_width, state.m_height, state.m_pixelFormat, binding);
+			auto result = BindMacNativeLayer(hostHandle, state.m_width, state.m_height, state.m_pixelFormat, state.m_layerBinding);
 			if (!result.IsOk())
 			{
 				return result;
 			}
 
-			state.m_layerBinding = binding;
-			state.m_nativeLayerToken = binding.m_bindingToken;
+			state.m_hostHandle = hostHandle;
+			state.m_nativeLayerToken = state.m_layerBinding->m_bindingToken;
 			state.m_usesRealCAMetalLayer = true;
 			return Failure::Ok();
 		}
@@ -975,278 +1032,12 @@ namespace Sailor::EditorRemote
 		uint64_t m_nextDrawableToken = 0;
 	};
 
-	class MacViewportNativeHost : public IEditorViewportHost
+	inline Failure MacViewportTransportBackend::ImportSurface(IMacViewportPresenter& presenter,
+		const ViewportDescriptor& viewport, const TransportDescriptor& transport, ConnectionEpoch epoch, SurfaceGeneration generation)
 	{
-	public:
-		explicit MacViewportNativeHost(IMacViewportPresenter& presenter) :
-			m_presenter(presenter)
-		{
-		}
+		const auto* surface = std::as_const(*this).FindSurface(viewport.m_viewportId, epoch, generation);
+		return presenter.ImportSurface(viewport, transport, epoch, generation, surface->m_nativeAllocation);
+	}
 
-		void BindNativeHostHandle(ViewportId viewportId, const MacNativeHostHandle& hostHandle)
-		{
-			m_presenter.BindHostHandle(viewportId, hostHandle);
-		}
-
-		Failure ImportTransport(const ViewportDescriptor& viewport, const TransportDescriptor& transport, ConnectionEpoch epoch, SurfaceGeneration generation) override
-		{
-			if (transport.m_transportType != TransportType::MacIOSurface)
-			{
-				m_lastFailure = Failure::FromDomain(ErrorDomain::Capability, 1, "macOS host supports MacIOSurface transport only");
-				return m_lastFailure;
-			}
-
-			auto validation = transport.Validate();
-			if (!validation.IsOk())
-			{
-				m_lastFailure = validation;
-				return validation;
-			}
-
-			auto result = m_presenter.ImportSurface(viewport, transport, epoch, generation);
-			if (!result.IsOk())
-			{
-				m_lastFailure = m_presenter.GetLastFailure();
-				return result;
-			}
-
-			m_importedViewport = viewport.m_viewportId;
-			m_importedEpoch = epoch;
-			m_importedGeneration = generation;
-			m_lastAcceptedFrame.reset();
-			m_lastFailure = Failure::Ok();
-			return Failure::Ok();
-		}
-
-		Failure AcceptFrame(const FramePacket& frame) override
-		{
-			if (!m_importedViewport.has_value() || *m_importedViewport != frame.m_viewportId)
-			{
-				m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 2, "Frame rejected because no matching macOS viewport is imported");
-				return m_lastFailure;
-			}
-			if (frame.m_connectionEpoch != m_importedEpoch || frame.m_generation != m_importedGeneration)
-			{
-				m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 2, "Frame rejected because imported macOS transport generation is stale");
-				return m_lastFailure;
-			}
-
-			m_lastAcceptedFrame = frame;
-			m_lastFailure = Failure::Ok();
-			return Failure::Ok();
-		}
-
-		Failure PresentLatestFrame(ViewportId viewportId) override
-		{
-			if (!m_lastAcceptedFrame.has_value() || m_lastAcceptedFrame->m_viewportId != viewportId)
-			{
-				m_lastFailure = Failure::FromDomain(ErrorDomain::Transport, 1, "No accepted macOS frame is available for presentation");
-				return m_lastFailure;
-			}
-
-			auto result = m_presenter.PresentFrame(viewportId, *m_lastAcceptedFrame);
-			if (!result.IsOk())
-			{
-				m_lastFailure = m_presenter.GetLastFailure();
-				return result;
-			}
-
-			m_lastFailure = Failure::Ok();
-			return Failure::Ok();
-		}
-
-		void ResetViewport(ViewportId viewportId) override
-		{
-			if (m_importedViewport.has_value() && *m_importedViewport == viewportId)
-			{
-				m_importedViewport.reset();
-				m_importedEpoch = 0;
-				m_importedGeneration = 0;
-				m_lastAcceptedFrame.reset();
-			}
-			m_presenter.ResetViewport(viewportId);
-		}
-
-		Failure GetLastFailure() const override
-		{
-			return m_lastFailure;
-		}
-
-	private:
-		IMacViewportPresenter& m_presenter;
-		std::optional<ViewportId> m_importedViewport{};
-		ConnectionEpoch m_importedEpoch = 0;
-		SurfaceGeneration m_importedGeneration = 0;
-		std::optional<FramePacket> m_lastAcceptedFrame{};
-		Failure m_lastFailure = Failure::Ok();
-	};
-
-	class MacViewportLoopbackBinding
-	{
-	public:
-		MacViewportLoopbackBinding(ViewportDescriptor descriptor, IMacIOSurfaceProvider& provider, IMacViewportPresenter& presenter, ConnectionEpoch epoch = 1) :
-			m_transportBackend(provider),
-			m_host(presenter),
-			m_runtimeSession(std::move(descriptor), epoch)
-		{
-		}
-
-		RemoteViewportSession& GetRuntimeSession() { return m_runtimeSession; }
-		const RemoteViewportSession& GetRuntimeSession() const { return m_runtimeSession; }
-		MacViewportTransportBackend& GetTransportBackend() { return m_transportBackend; }
-		const MacViewportTransportBackend& GetTransportBackend() const { return m_transportBackend; }
-		MacViewportNativeHost& GetHost() { return m_host; }
-		const MacViewportNativeHost& GetHost() const { return m_host; }
-
-		Failure Create()
-		{
-			auto result = m_runtimeSession.BeginNegotiation();
-			if (!result.IsOk())
-			{
-				return result;
-			}
-
-			m_visible = true;
-			m_focused = false;
-			m_created = true;
-			return EnsureTransportImported();
-		}
-
-		Failure Resize(uint32_t width, uint32_t height)
-		{
-			const auto previousEpoch = m_runtimeSession.GetConnectionEpoch();
-			const auto previousGeneration = m_runtimeSession.GetGeneration();
-			auto descriptor = m_runtimeSession.GetDescriptor();
-			descriptor.m_width = std::max(width, 1u);
-			descriptor.m_height = std::max(height, 1u);
-			auto result = m_runtimeSession.HandleResize(descriptor);
-			if (!result.IsOk())
-			{
-				return result;
-			}
-
-			result = EnsureTransportImported();
-			if (!result.IsOk())
-			{
-				return result;
-			}
-
-			return m_transportBackend.ReleaseSurface(m_runtimeSession.GetViewportId(), previousEpoch, previousGeneration);
-		}
-
-		Failure SetVisible(bool visible)
-		{
-			m_visible = visible;
-			return m_runtimeSession.SetVisible(visible);
-		}
-
-		Failure SetFocused(bool focused)
-		{
-			m_focused = focused;
-			InputPacket input{};
-			input.m_viewportId = m_runtimeSession.GetViewportId();
-			input.m_connectionEpoch = m_runtimeSession.GetConnectionEpoch();
-			input.m_generation = m_runtimeSession.GetGeneration();
-			input.m_kind = InputKind::Focus;
-			input.m_focused = focused;
-			input.m_timestampNs = ++m_inputTimestampNs;
-			return m_runtimeSession.HandleInput(input);
-		}
-
-		Failure PumpFrame()
-		{
-			if (!m_created)
-			{
-				return Failure::FromDomain(ErrorDomain::Session, 1, "macOS loopback binding must be created before pumping frames");
-			}
-			if (m_runtimeSession.GetState() != SessionState::Active)
-			{
-				return Failure::Ok();
-			}
-
-			auto result = m_runtimeSession.PublishFrameFromBackend(m_transportBackend);
-			if (!result.IsOk())
-			{
-				return result;
-			}
-
-			result = m_host.AcceptFrame(m_runtimeSession.GetLastFrame());
-			if (!result.IsOk())
-			{
-				return result;
-			}
-
-			return m_host.PresentLatestFrame(m_runtimeSession.GetDescriptor().m_viewportId);
-		}
-
-		Failure Destroy()
-		{
-			if (!m_created)
-			{
-				return Failure::Ok();
-			}
-
-			auto release = m_runtimeSession.ReleaseBackendTransport(m_transportBackend);
-			m_host.ResetViewport(m_runtimeSession.GetDescriptor().m_viewportId);
-			auto destroy = m_runtimeSession.Destroy();
-			m_created = false;
-			return !release.IsOk() ? release : destroy;
-		}
-
-	private:
-		Failure EnsureTransportImported()
-		{
-			auto result = m_runtimeSession.EnsureBackendTransport(m_transportBackend);
-			if (!result.IsOk())
-			{
-				return result;
-			}
-
-			const auto* surface = std::as_const(m_transportBackend).FindSurface(
-				m_runtimeSession.GetViewportId(),
-				m_runtimeSession.GetConnectionEpoch(),
-				m_runtimeSession.GetGeneration());
-			if (!surface)
-			{
-				return Failure::FromDomain(ErrorDomain::Transport, 1, "macOS loopback binding could not resolve imported surface");
-			}
-
-			result = m_host.ImportTransport(
-				m_runtimeSession.GetDescriptor(),
-				surface->m_transport,
-				m_runtimeSession.GetConnectionEpoch(),
-				m_runtimeSession.GetGeneration());
-			if (!result.IsOk())
-			{
-				return result;
-			}
-
-			if (!m_visible)
-			{
-				result = m_runtimeSession.SetVisible(false);
-				if (!result.IsOk())
-				{
-					return result;
-				}
-			}
-			if (m_focused)
-			{
-				result = SetFocused(true);
-				if (!result.IsOk())
-				{
-					return result;
-				}
-			}
-
-			return Failure::Ok();
-		}
-
-		MacViewportTransportBackend m_transportBackend;
-		MacViewportNativeHost m_host;
-		RemoteViewportSession m_runtimeSession;
-		uint64_t m_inputTimestampNs = 0;
-		bool m_created = false;
-		bool m_visible = true;
-		bool m_focused = false;
-	};
+	using MacViewportLoopbackBinding = TViewportLoopbackBinding<MacViewportTransportBackend, IMacViewportPresenter>;
 }

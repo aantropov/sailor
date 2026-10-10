@@ -1,0 +1,18 @@
+name: TextureBindingPublication
+prefabs:
+  - gameObjects:
+      - name: Texture binding publication validation
+        mobilityType: Stationary
+        position: [0, 0, 0, 1]
+        rotation: [0, 0, 0, 1]
+        scale: [1, 1, 1, 1]
+        parentIndex: 4294967295
+        instanceId: 18190000000000000001
+        components: [0]
+    components:
+      - typename: Sailor::TextureBindingPublicationTestComponent
+        overrideProperties:
+          testName: TextureBindingPublication
+          quitAfterFinish: true
+          fileId: NullFileId
+          instanceId: 1819000000000001_18190000000000000001

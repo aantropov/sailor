@@ -8,6 +8,7 @@
 #include "FrameGraph/FrameGraphNode.h"
 #include "FrameGraph/SkyNode.h"
 #include "FrameGraph/LocalReflection.h"
+#include <array>
 #include <atomic>
 
 namespace Sailor::Framegraph
@@ -24,7 +25,7 @@ namespace Sailor::Framegraph
 		static constexpr uint32_t IrradianceMapSize = 32;
 		static constexpr uint32_t BrdfLutSize = 256;
 
-		SAILOR_API static const char* GetName() { return m_name; }
+		SAILOR_API static StringHash GetName() { return "Environment"_h; }
 
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override;
@@ -48,6 +49,24 @@ namespace Sailor::Framegraph
 		LocalReflectionParameters GetLocalReflectionParameters() const { return m_localParameters; }
 
 	protected:
+		struct EnvironmentMaps
+		{
+			RHI::RHICubemapPtr m_specular;
+			RHI::RHICubemapPtr m_irradiance;
+			RHI::RHICubemapPtr m_sheen;
+		};
+
+		struct CachedEnvironment
+		{
+			SkyEnvironmentKey m_key;
+			EnvironmentMaps m_maps;
+		};
+
+		SAILOR_SHARED_API bool TryRestoreEnvironment(RHI::RHIFrameGraphPtr frameGraph,
+			const SkyEnvironmentKey& key, RHI::RHICubemapPtr rawCubemap);
+		// Called after a miss, once the complete bundle has been filtered.
+		SAILOR_SHARED_API void CacheEnvironment(const SkyEnvironmentKey& key, EnvironmentMaps maps);
+
 		void ProcessLocalReflection(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr commandList);
 		TSharedPtr<const LocalReflectionImage> m_localReflection;
 		bool m_bLocalReflectionDirty = false;
@@ -66,18 +85,20 @@ namespace Sailor::Framegraph
 		RHI::RHIShaderBindingSetPtr m_computeSheenBindings{};
 		RHI::RHIShaderBindingSetPtr m_computeBrdfBindings{};
 
-		TMap<SkyEnvironmentKey, RHI::RHICubemapPtr> m_envCubemaps{};
-		TMap<SkyEnvironmentKey, RHI::RHICubemapPtr> m_irradianceCubemaps{};
-		TMap<SkyEnvironmentKey, RHI::RHICubemapPtr> m_sheenEnvCubemaps{};
+		// Render-owned, oldest first. Consumers retain their own references after eviction.
+		std::array<CachedEnvironment, 4u> m_environmentCache{};
+		uint32_t m_numCachedEnvironments = 0u;
 		RHI::RHITexturePtr m_brdfSampler{};
 
 		TexturePtr m_envMapTexture;
+		RHI::RHITexturePtr m_authoredSource;
+		RHI::RHICubemapPtr m_staticRawCubemap;
 		SkyParameters m_environmentSkyParams{};
 		bool m_environmentUsesSky = false;
 
 		// Authored HDR environments must initialize without a Sky node to trigger them.
 		bool m_bIsDirty = true;
-		SAILOR_SHARED_API static const char* m_name;
+
 	};
 
 	template class TFrameGraphNode<EnvironmentNode>;

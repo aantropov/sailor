@@ -10,10 +10,24 @@
 
 using namespace Sailor;
 
+YAML::Node MaterialAssetInfo::Serialize() const
+{
+	return SerializeReflectedAssetInfo(*this);
+}
+
+void MaterialAssetInfo::Deserialize(const YAML::Node& inData)
+{
+	DeserializeReflectedAssetInfo(*this, inData);
+}
+
+void MaterialAssetInfo::CopyMetadata(const AssetInfo& source)
+{
+	CopyReflectedAssetInfo(*this, static_cast<const MaterialAssetInfo&>(source));
+}
+
 MaterialAssetInfoHandler::MaterialAssetInfoHandler(AssetRegistry* assetRegistry)
 {
-	m_supportedExtensions.Emplace("mat");
-	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
+	assetRegistry->RegisterAssetInfoHandler(GetAssetInfoExtensions<MaterialAssetInfo>(), this);
 }
 
 void MaterialAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const

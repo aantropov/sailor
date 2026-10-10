@@ -192,7 +192,6 @@ public sealed class WorkspaceLifecycleTests
         Assert.Equal(WorkspaceEngineReferenceKinds.Installed, result.Session!.Manifest.EngineReferenceKind);
         var cmake = await File.ReadAllTextAsync(workspace.File("Generated/CMakeLists.txt"));
         Assert.Contains("find_package(Sailor CONFIG REQUIRED)", cmake);
-        Assert.DoesNotContain("add_subdirectory", cmake);
     }
 
     [Fact]

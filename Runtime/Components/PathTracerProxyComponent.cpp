@@ -1,7 +1,5 @@
 #include "Components/PathTracerProxyComponent.h"
 #include "Engine/GameObject.h"
-#include "AssetRegistry/Material/MaterialImporter.h"
-#include "Raytracing/PathTracer.h"
 
 using namespace Sailor;
 

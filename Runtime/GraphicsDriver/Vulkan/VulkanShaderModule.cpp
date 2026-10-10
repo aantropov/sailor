@@ -5,42 +5,14 @@
 using namespace Sailor;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
-// from https://github.com/KhronosGroup/SPIRV-Reflect/blob/main/spirv_reflect.c
-static int SortCompareUint32(const void* a, const void* b) {
-	const uint32_t* p_a = (const uint32_t*)a;
-	const uint32_t* p_b = (const uint32_t*)b;
-
-	return (int)*p_a - (int)*p_b;
-}
-
-static SpvReflectResult EnumerateAllPushConstants(SpvReflectShaderModule* p_module, size_t* p_push_constant_count,
-	uint32_t** p_push_constants) {
-	*p_push_constant_count = p_module->push_constant_block_count;
-	if (*p_push_constant_count == 0) {
-		return SPV_REFLECT_RESULT_SUCCESS;
-	}
-	*p_push_constants = (uint32_t*)calloc(*p_push_constant_count, sizeof(**p_push_constants));
-
-	if ((*p_push_constants) == nullptr) {
-		return SPV_REFLECT_RESULT_ERROR_ALLOC_FAILED;
-	}
-
-	for (size_t i = 0; i < *p_push_constant_count; ++i) {
-		(*p_push_constants)[i] = p_module->push_constant_blocks[i].spirv_id;
-	}
-	qsort(*p_push_constants, *p_push_constant_count, sizeof(**p_push_constants), SortCompareUint32);
-	return SPV_REFLECT_RESULT_SUCCESS;
-}
-//
-
-VulkanShaderStage::VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, VulkanShaderModulePtr shaderModule) :
+VulkanShaderStage::VulkanShaderStage(VkShaderStageFlagBits stage, StringHash entryPointName, VulkanShaderModulePtr shaderModule) :
 	m_stage(stage),
 	m_module(shaderModule),
 	m_entryPointName(entryPointName)
 {
 }
 
-VulkanShaderStage::VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, VulkanDevicePtr pDevice, const RHI::ShaderByteCode& spirv) :
+VulkanShaderStage::VulkanShaderStage(VkShaderStageFlagBits stage, StringHash entryPointName, VulkanDevicePtr pDevice, const RHI::ShaderByteCode& spirv) :
 	m_stage(stage),
 	m_entryPointName(entryPointName)
 {
@@ -75,7 +47,7 @@ void VulkanShaderStage::Apply(VkPipelineShaderStageCreateInfo& stageInfo) const
 	stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	stageInfo.stage = m_stage;
 	stageInfo.module = *m_module;
-	stageInfo.pName = m_entryPointName.c_str();
+	stageInfo.pName = m_entryPointName.ToString().c_str();
 }
 
 void VulkanShaderStage::Compile()
@@ -155,7 +127,7 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 			layoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
 
 			// Fill data
-			rhiBinding.m_name = reflBinding.name ? std::string(reflBinding.name) : "";
+			rhiBinding.m_name = StringHash::Runtime(reflBinding.name ? reflBinding.name : "");
 			rhiBinding.m_type = (RHI::EShaderBindingType)reflBinding.descriptor_type;
 			rhiBinding.m_binding = reflBinding.binding;
 			rhiBinding.m_size = reflBinding.block.size;
@@ -182,7 +154,7 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 			{
 				RHI::ShaderLayoutBindingMember member;
 
-				member.m_name = blockContent[i].name ? std::string(blockContent[i].name) : "";
+				member.m_name = StringHash::Runtime(blockContent[i].name ? blockContent[i].name : "");
 				member.m_absoluteOffset = blockContent[i].offset;
 				member.m_size = blockContent[i].size;
 				member.m_type = (RHI::EShaderBindingMemberType)(blockContent[i].type_description->op);
@@ -235,15 +207,12 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 		}
 	}
 
-	size_t pushConstantsCount = 0;
-	uint32_t* pRawPushConstants = nullptr;
-	result = EnumerateAllPushConstants(&module, &pushConstantsCount, &pRawPushConstants);
-	check(result == SPV_REFLECT_RESULT_SUCCESS);
-
-	m_pushConstants.Resize(pushConstantsCount);
-	for (uint32_t i = 0; i < pushConstantsCount; i++)
+	m_pushConstants.Resize(module.push_constant_block_count);
+	for (uint32_t i = 0; i < module.push_constant_block_count; ++i)
 	{
-		m_pushConstants[i] = pRawPushConstants[i];
+		const auto& block = module.push_constant_blocks[i];
+		// SPIRV-Reflect reports the absolute end, including any leading offset.
+		m_pushConstants[i] = { static_cast<VkShaderStageFlags>(m_stage), block.offset, block.size - block.offset };
 	}
 
 	spvReflectDestroyShaderModule(&module);

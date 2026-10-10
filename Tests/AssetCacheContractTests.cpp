@@ -1,7 +1,11 @@
+#include "Support/TaskTestApp.h"
 #include "AssetRegistry/AssetCache.h"
+#include "Core/FileRevision.h"
+#include "Platform/AtomicFile.h"
 #include "AssetRegistry/AssetScanSourceRevisionCache.h"
 #include "AssetRegistry/Animation/AnimationAssetInfo.h"
 #include "AssetRegistry/Animation/AnimationControllerAssetInfo.h"
+#include "AssetRegistry/Audio/AudioAssetInfo.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/FrameGraph/FrameGraphAssetInfo.h"
@@ -13,6 +17,7 @@
 #include "AssetRegistry/Texture/TextureAssetInfo.h"
 #include "AssetRegistry/World/WorldPrefabAssetInfo.h"
 #include "Tasks/Scheduler.h"
+#include "Support/TempDirectory.h"
 
 #include <chrono>
 #include <ctime>
@@ -23,12 +28,15 @@
 #include <iterator>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <thread>
 #include <vector>
 #include <yaml-cpp/yaml.h>
 
 namespace
 {
 	using namespace Sailor;
+	using Tests::TempDirectory;
 
 	class TestAssetCache final : public AssetCache
 	{
@@ -48,7 +56,7 @@ namespace
 		bool Update(
 			const FileId& id,
 			std::time_t assetImportTime,
-			const std::string& sourcePath,
+			std::string_view sourcePath,
 			const FileRevision& sourceRevision)
 		{
 			return AssetCache::Update(
@@ -60,33 +68,6 @@ namespace
 				sourceRevision,
 				"Sailor::AssetInfo");
 		}
-	};
-
-	class TempDirectory final
-	{
-	public:
-		explicit TempDirectory(const char* label)
-		{
-			static uint64_t counter = 0;
-			m_path = std::filesystem::temp_directory_path() /
-				("sailor-asset-cache-" + std::string(label) + "-" + std::to_string(++counter));
-			std::filesystem::remove_all(m_path);
-			std::filesystem::create_directories(m_path);
-		}
-
-		~TempDirectory()
-		{
-			std::error_code error;
-			std::filesystem::remove_all(m_path, error);
-		}
-
-		std::filesystem::path Path(const std::filesystem::path& relative) const
-		{
-			return m_path / relative;
-		}
-
-	private:
-		std::filesystem::path m_path;
 	};
 
 	class LazyAssetInfoLoadingScope final
@@ -134,19 +115,28 @@ namespace
 			return m_metaLoadTime;
 		}
 
+		const FileRevision& GetMetadataRevision() const { return m_metadataRevision; }
+		const FileRevision& GetImportedSourceRevision() const { return m_importedSourceRevision; }
+		void SetWritable(bool bWritable) { m_bWritable = bWritable; }
+
 		void SetPendingUpdate(bool bWasExpired)
 		{
 			m_bPendingUpdateNotification = true;
 			m_bPendingWasExpired = bWasExpired;
 		}
 
-		void SaveMetaFile() override
+		bool SaveMetaFile() override
 		{
 			++m_numMetaSaves;
+			return true;
 		}
 
 		YAML::Node Serialize() const override
 		{
+			if (m_bThrowOnSerialize)
+			{
+				throw std::runtime_error("Metadata serialization failed in the test fixture");
+			}
 			YAML::Node result(YAML::NodeType::Map);
 			result["fileId"] = m_fileId;
 			result["testValue"] = m_testValue;
@@ -168,7 +158,15 @@ namespace
 
 		uint32_t m_numMetaSaves = 0;
 		int32_t m_testValue = 0;
+		bool m_bThrowOnSerialize = false;
 		std::function<void()> m_onDeserialize;
+
+	protected:
+		void CopyMetadata(const AssetInfo& source) override
+		{
+			AssetInfo::CopyMetadata(source);
+			m_testValue = static_cast<const TestAssetInfo&>(source).m_testValue;
+		}
 	};
 
 	class RecordingAssetListener final : public IAssetInfoHandlerListener
@@ -183,13 +181,18 @@ namespace
 			}
 		}
 
-		void OnImportAsset(AssetInfoPtr) override
+		void OnImportAsset(AssetInfoPtr assetInfo) override
 		{
 			m_events.emplace_back("import");
+			if (m_onImport)
+			{
+				m_onImport(assetInfo);
+			}
 		}
 
 		std::vector<std::string> m_events;
 		std::function<void(AssetInfoPtr)> m_onExpiredUpdate;
+		std::function<void(AssetInfoPtr)> m_onImport;
 	};
 
 	class TestAssetInfoHandler final : public IAssetInfoHandler
@@ -208,6 +211,7 @@ namespace
 			bool,
 			bool) const override
 		{
+			++m_numLoads;
 			auto* info = new TestAssetInfo();
 			const std::filesystem::path metadataPath(metaFilepath);
 			std::filesystem::path sourcePath(metaFilepath);
@@ -226,12 +230,16 @@ namespace
 			return info;
 		}
 
+		mutable uint32_t m_numLoads = 0;
 		mutable std::function<void()> m_onLoad;
+		mutable std::function<void()> m_onDeserialize;
 
 	protected:
 		AssetInfoPtr CreateAssetInfo() const override
 		{
-			return new TestAssetInfo();
+			auto* info = new TestAssetInfo();
+			info->m_onDeserialize = std::move(m_onDeserialize);
+			return info;
 		}
 
 	private:
@@ -277,9 +285,17 @@ namespace
 			return m_testValue;
 		}
 
+		void SetPendingExpiration(bool bExpired) { m_bPendingWasExpired = bExpired; }
+
 	private:
 		IAssetInfoHandler* m_handler = nullptr;
 		int32_t m_testValue = 0;
+
+		void CopyMetadata(const AssetInfo& source) override
+		{
+			AssetInfo::CopyMetadata(source);
+			m_testValue = static_cast<const TargetedUpdateAssetInfo&>(source).m_testValue;
+		}
 	};
 
 	class TargetedUpdateAssetInfoHandler final : public IAssetInfoHandler
@@ -289,6 +305,21 @@ namespace
 		{
 			outDefaultYaml = YAML::Node(YAML::NodeType::Map);
 		}
+
+		AssetInfoPtr LoadAssetInfo(const std::string& path, const std::string& virtualPath,
+			EAssetMountKind kind, bool bWritable, bool bNotify, bool bCache) const override
+		{
+			auto* info = static_cast<TargetedUpdateAssetInfo*>(
+				IAssetInfoHandler::LoadAssetInfo(path, virtualPath, kind, bWritable, bNotify, bCache));
+			if (info != nullptr && m_registry != nullptr)
+			{
+				// Standalone registry fixtures do not install an App singleton.
+				info->SetPendingExpiration(m_registry->IsAssetExpired(info));
+			}
+			return info;
+		}
+
+		AssetRegistry* m_registry = nullptr;
 
 	protected:
 		AssetInfoPtr CreateAssetInfo() const override
@@ -332,7 +363,7 @@ namespace
 	{
 	public:
 		explicit TestMainThreadTask(std::function<void()> callback) :
-			ITask("Asset cache pre-commit metadata mutation", EThreadType::Main),
+			ITask("Asset cache pre-commit metadata mutation"_h, EThreadType::Main),
 			m_callback(std::move(callback))
 		{
 		}
@@ -351,11 +382,24 @@ namespace
 		std::function<void()> m_callback;
 	};
 
-	void Require(bool condition, const std::string& message)
+	class ScanContentListener final : public IAssetRegistryContentListener
+	{
+	public:
+		void OnAssetScanStarted() override { m_onStarted(); }
+		Tasks::TaskPtr<bool> OnAssetScanFinished() override { return m_onFinished(); }
+		Tasks::TaskPtr<bool> OnEffectiveContentChanged(const std::string&) override
+		{
+			return Tasks::TaskPtr<bool>::Make(true);
+		}
+		std::function<void()> m_onStarted;
+		std::function<Tasks::TaskPtr<bool>()> m_onFinished;
+	};
+
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -364,6 +408,47 @@ namespace
 		FileId result;
 		result.Deserialize(YAML::Node(value));
 		return result;
+	}
+
+	void TestTemporaryDirectoriesHaveIndependentOwnership()
+	{
+		TempDirectory first("directory-ownership");
+		const auto marker = first.Path("keep.txt");
+		{
+			std::ofstream stream(marker);
+			stream << "first fixture";
+		}
+		std::filesystem::path secondPath;
+		{
+			TempDirectory second("directory-ownership");
+			secondPath = second.Get();
+			Require(first.Get() != secondPath && std::filesystem::is_directory(secondPath) &&
+				std::filesystem::is_regular_file(marker),
+				"fixtures with the same label must own distinct directories");
+		}
+		Require(!std::filesystem::exists(secondPath) && std::filesystem::is_regular_file(marker),
+			"fixture cleanup must remove only the directory it created");
+
+		struct FixtureFailure {};
+		std::filesystem::path failedPath;
+		try
+		{
+			TempDirectory failed("directory-ownership");
+			failedPath = failed.Get();
+			std::ofstream stream(failed.Path("keep.txt"));
+			stream << "failed fixture";
+			Require(static_cast<bool>(stream), "the failing fixture must create its own same-named file");
+			throw FixtureFailure{};
+		}
+		catch (const FixtureFailure&)
+		{
+		}
+		std::ifstream survivingFile(marker);
+		std::string text;
+		std::getline(survivingFile, text);
+		Require(!failedPath.empty() && !std::filesystem::exists(failedPath) && text == "first fixture",
+			"exception cleanup must remove the failed fixture without changing another owner's file");
+		std::cout << "Temporary directory ownership: first=" << first.Get() << " unwound=" << failedPath << '\n';
 	}
 
 	void TestNewFileIdsUseCrossPlatformGuidFormatting()
@@ -389,15 +474,10 @@ namespace
 			"new FileIds must use the same unbraced GUID representation on every platform");
 	}
 
-	FileRevision MakeRevision(
-		int64_t modificationTimeNanoseconds = 123456789,
-		uint64_t fileSize = 64,
-		uint64_t contentHash = 14695981039346656037ull)
+	FileRevision MakeRevision(int64_t modificationTimeNanoseconds = 123456789)
 	{
 		FileRevision result;
 		result.m_modificationTimeNanoseconds = modificationTimeNanoseconds;
-		result.m_fileSize = fileSize;
-		result.m_contentHash = contentHash;
 		result.m_bIsValid = true;
 		return result;
 	}
@@ -491,16 +571,25 @@ namespace
 		return result;
 	}
 
-	void WriteFile(const std::filesystem::path& path, const std::string& content)
+	void WriteFile(const std::filesystem::path& path, std::string_view content)
 	{
 		std::filesystem::create_directories(path.parent_path());
 		std::ofstream stream(path, std::ios::binary);
 		stream << content;
 	}
 
+	std::string ReadFile(const std::filesystem::path& path)
+	{
+		std::ifstream stream(path, std::ios::binary);
+		Require(stream.is_open(), "the fixture file must be readable");
+		const std::string contents((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+		Require(!stream.bad(), "the complete fixture file must be read");
+		return contents;
+	}
+
 	void RewriteFileWithNewRevision(
 		const std::filesystem::path& path,
-		const std::string& content)
+		std::string_view content)
 	{
 		const std::filesystem::file_time_type previousWriteTime =
 			std::filesystem::last_write_time(path);
@@ -515,11 +604,120 @@ namespace
 			"the targeted update fixture must advance the file revision");
 	}
 
+	void TestMetadataSavePublishesCompleteState()
+	{
+		TempDirectory directory("metadata-save");
+		const auto sourcePath = directory.Path("Content/Ship.raw");
+		const auto metadataPath = directory.Path("Content/Ship.raw.asset");
+		WriteFile(sourcePath, "source");
+		WriteFile(metadataPath, "previous metadata");
+		std::filesystem::last_write_time(metadataPath,
+			std::filesystem::last_write_time(metadataPath) - std::chrono::hours(1));
+		TestAssetInfo info;
+		info.Configure(MakeFileId("{METADATA-SAVE}"), sourcePath, metadataPath);
+		info.SetProcessingTimes(11, 13);
+		info.m_testValue = 42;
+		const FileRevision previousMetadata = info.GetMetadataRevision();
+		const FileRevision importedSource = info.GetImportedSourceRevision();
+
+		Require(info.AssetInfo::SaveMetaFile(), "saving complete metadata must report success");
+		TestAssetInfo restored;
+		restored.Deserialize(YAML::Load(ReadFile(metadataPath)));
+		Require(restored.GetFileId() == info.GetFileId() && restored.m_testValue == 42,
+			"saved metadata must round-trip its identity and values");
+		FileRevision savedRevision;
+		Require(Utils::TryGetFileRevision(metadataPath.string(), savedRevision) &&
+			info.GetMetadataRevision() == savedRevision && savedRevision != previousMetadata && !info.IsMetaExpired(),
+			"successful save must acknowledge the newly published metadata revision");
+		Require(info.GetRuntimeMetadataLoadTime() == info.GetMetaLastModificationTime() &&
+			info.GetRuntimeMetadataLoadTime() != 13 && info.GetAssetImportTime() == 11 &&
+			info.GetImportedSourceRevision() == importedSource,
+			"metadata save must update its load time without acknowledging source processing");
+	}
+
+	void TestMetadataSerializationFailurePreservesTheFile()
+	{
+		TempDirectory directory("metadata-serialization-failure");
+		const auto sourcePath = directory.Path("Content/Ship.raw");
+		const auto metadataPath = directory.Path("Content/Ship.raw.asset");
+		WriteFile(sourcePath, "source");
+		TestAssetInfo info;
+		info.Configure(MakeFileId("{METADATA-SERIALIZATION-FAILURE}"), sourcePath, metadataPath);
+		info.m_testValue = 7;
+		const std::string previousContents = YAML::Dump(info.Serialize());
+		WriteFile(metadataPath, previousContents);
+		info.SetProcessingTimes(11, 13);
+		const FileRevision previousRevision = info.GetMetadataRevision();
+		info.m_testValue = 99;
+		info.m_bThrowOnSerialize = true;
+
+		Require(!info.AssetInfo::SaveMetaFile(), "serialization failure must be returned, not thrown");
+		FileRevision preservedRevision;
+		Require(ReadFile(metadataPath) == previousContents && info.GetMetadataRevision() == previousRevision &&
+			Utils::TryGetFileRevision(metadataPath.string(), preservedRevision) && preservedRevision == previousRevision &&
+			info.GetRuntimeMetadataLoadTime() == 13 && info.m_testValue == 99,
+			"serialization failure must preserve the file revision and acknowledgement while retaining unsaved edits");
+		info.m_bThrowOnSerialize = false;
+		Require(info.AssetInfo::SaveMetaFile() && YAML::Load(ReadFile(metadataPath))["testValue"].as<int32_t>() == 99,
+			"the same metadata object must be saveable after serialization recovers");
+	}
+
+	void TestBlockedMetadataSaveCanBeRetried()
+	{
+		TempDirectory directory("metadata-blocked-save");
+		const auto sourcePath = directory.Path("Content/Ship.raw");
+		const auto metadataPath = directory.Path("Content/Ship.raw.asset");
+		const auto previousPath = directory.Path("Content/Previous.asset");
+		const auto markerPath = metadataPath / "keep.txt";
+		WriteFile(sourcePath, "source");
+		TestAssetInfo info;
+		info.Configure(MakeFileId("{METADATA-BLOCKED-SAVE}"), sourcePath, metadataPath);
+		const std::string previousContents = YAML::Dump(info.Serialize());
+		WriteFile(metadataPath, previousContents);
+		info.SetProcessingTimes(11, 13);
+		const FileRevision previousRevision = info.GetMetadataRevision();
+		std::filesystem::rename(metadataPath, previousPath);
+		WriteFile(markerPath, "keep");
+		info.m_testValue = 99;
+
+		Require(!info.AssetInfo::SaveMetaFile(), "a directory blocking the metadata destination must reject publication");
+		Require(ReadFile(markerPath) == "keep" && ReadFile(previousPath) == previousContents &&
+			info.GetMetadataRevision() == previousRevision && info.GetRuntimeMetadataLoadTime() == 13,
+			"failed publication must preserve the blocker and previous acknowledgement");
+		Require(std::filesystem::remove(markerPath) && std::filesystem::remove(metadataPath),
+			"the fixture must remove only its own blocking directory");
+		std::filesystem::rename(previousPath, metadataPath);
+		Require(info.AssetInfo::SaveMetaFile(), "restoring the destination must allow the same save to succeed");
+		FileRevision savedRevision;
+		Require(YAML::Load(ReadFile(metadataPath))["testValue"].as<int32_t>() == 99 &&
+			Utils::TryGetFileRevision(metadataPath.string(), savedRevision) && info.GetMetadataRevision() == savedRevision &&
+			info.GetRuntimeMetadataLoadTime() == info.GetMetaLastModificationTime(),
+			"retry must publish the retained edits and acknowledge the actual file");
+	}
+
+	void TestReadOnlyMetadataCannotBeSaved()
+	{
+		TempDirectory directory("metadata-read-only");
+		const auto sourcePath = directory.Path("Content/Ship.raw");
+		const auto metadataPath = directory.Path("Content/Ship.raw.asset");
+		WriteFile(sourcePath, "source");
+		WriteFile(metadataPath, "read-only metadata");
+		TestAssetInfo info;
+		info.Configure(MakeFileId("{METADATA-READ-ONLY}"), sourcePath, metadataPath);
+		info.SetProcessingTimes(11, 13);
+		const FileRevision previousRevision = info.GetMetadataRevision();
+		info.SetWritable(false);
+		Require(!info.AssetInfo::SaveMetaFile() && ReadFile(metadataPath) == "read-only metadata" &&
+			info.GetMetadataRevision() == previousRevision && info.GetRuntimeMetadataLoadTime() == 13,
+			"read-only metadata must report failure without changing bytes or acknowledgement");
+	}
+
 	Workspace::WorkspaceContext CreateWorkspaceContext(
-		const TempDirectory& directory)
+		const TempDirectory& directory,
+		const std::filesystem::path& folder = "Workspace")
 	{
 		const std::filesystem::path workspaceRoot =
-			directory.Path("Workspace");
+			directory.Path(folder);
 		std::filesystem::create_directories(
 			directory.Path("Engine/Content"));
 		std::filesystem::create_directories(
@@ -549,9 +747,219 @@ namespace
 		return result.m_context;
 	}
 
+	void TestUtf8FileAccess()
+	{
+		using namespace Workspace;
+		TempDirectory directory("utf8-file-access");
+		const auto path = directory.Get() / PathFromUtf8("file \xD0\xAF \xC3\xA9 \xE8\x88\xB9 \xF0\x9F\x9A\xA2.bin");
+		const std::string filename = PathToUtf8(path);
+		const std::string boundedStorage = filename + ".not-the-file";
+		const auto boundedPath = std::string_view(boundedStorage).substr(0, filename.size());
+		const std::string payload("first\0second", 12);
+		AssetRegistry::WriteTextFile(boundedPath, std::string_view(payload));
+		Require(ReadFile(path) == payload && !std::filesystem::exists(PathFromUtf8(boundedStorage)),
+			"UTF-8 path views must stop at their bound and preserve embedded zeros in file contents");
+		std::string text;
+		Require(AssetRegistry::ReadAllTextFile(filename, text) && text == payload &&
+			AssetRegistry::ReadTextFile(boundedPath, text) && text == payload &&
+			AssetRegistry::ReadTextFile(filename.c_str(), text) && text == payload &&
+			AssetRegistry::ReadTextFile(path, text) && text == payload &&
+			AssetRegistry::ReadTextFile(path.native(), text) && text == payload,
+			"owned text, bounded views, C strings and native paths must address the same Unicode file");
+
+		TVector<uint8_t> bytes, restored;
+		bytes.Add(0); bytes.Add(0x7f); bytes.Add(0xff);
+		AssetRegistry::WriteBinaryFile(filename, bytes);
+		Require(AssetRegistry::ReadBinaryFile(boundedPath, restored) && restored == bytes &&
+			AssetRegistry::ReadBinaryFile(path, restored) && restored == bytes,
+			"binary helpers must use the same UTF-8 boundary as text helpers");
+		AssetRegistry::WriteBinaryFile(path, bytes);
+		Require(ReadFile(path) == std::string("\0\x7f\xff", 3), "native binary writes must preserve all bytes");
+		std::string diagnostic;
+		Require(!Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(path, "replacement", diagnostic,
+			Platform::EAtomicWriteMode::FailIfExists)) && diagnostic.find(filename) != std::string::npos &&
+			ReadFile(path) == std::string("\0\x7f\xff", 3),
+			"failed atomic writes must report the Unicode path without replacing the file");
+
+		FileRevision first, changed;
+		Require(Utils::TryGetFileRevision(filename, first) && first.m_bIsValid,
+			"a Unicode file must have an observable source revision");
+		const auto timestamp = Utils::GetFileModificationTime(filename);
+		Require(timestamp > 0, "the timestamp API must open the Unicode file");
+		std::filesystem::last_write_time(path, std::filesystem::last_write_time(path) + std::chrono::seconds(2));
+		Require(Utils::TryGetFileRevision(filename, changed) && changed != first &&
+			Utils::GetFileModificationTime(filename) == timestamp + 2,
+			"UTF-8 conversion must not change revision or time_t semantics");
+		Require(!Utils::TryGetFileRevision(filename + ".missing", changed) && !changed.m_bIsValid &&
+			Utils::GetFileModificationTime(filename + ".missing") == 0,
+			"missing Unicode files must preserve the existing failure contract");
+	}
+
+	void TestUtf8RegistryPaths(bool bLazy)
+	{
+		using namespace Workspace;
+		LazyAssetInfoLoadingScope lazyLoading(bLazy);
+		TempDirectory directory("utf8-registry");
+		const std::string unicode = "\xD0\xAF \xC3\xA9 \xE8\x88\xB9 \xF0\x9F\x9A\xA2";
+		const auto context = CreateWorkspaceContext(directory, PathFromUtf8("workspace " + unicode));
+		const std::string virtualPath = "ships " + unicode + "/sail " + unicode + ".raw";
+		const auto sourcePath = context.GetContent() / PathFromUtf8(virtualPath);
+		const auto metadataPath = PathFromUtf8(PathToUtf8(sourcePath) + ".asset");
+		const FileId primaryId = MakeFileId("{UTF8-PRIMARY}");
+		const FileId secondaryId = MakeFileId("{UTF8-SECONDARY}");
+		WriteFile(sourcePath, "workspace source");
+		WriteFile(metadataPath, YAML::Dump(CreateAssetInfoMetadata<AssetInfo>(primaryId, PathToUtf8(sourcePath.filename()))));
+		const auto engineSource = context.GetEngineContent() / PathFromUtf8(virtualPath);
+		WriteFile(engineSource, "engine source");
+		WriteFile(PathFromUtf8(PathToUtf8(engineSource) + ".asset"),
+			YAML::Dump(CreateAssetInfoMetadata<AssetInfo>(MakeFileId("{UTF8-ENGINE}"), PathToUtf8(engineSource.filename()))));
+
+		FileId importedId;
+		for (int cycle = 0; cycle < 2; ++cycle)
+		{
+			AssetRegistry registry(context);
+			DefaultAssetInfoHandler handler(&registry);
+			TVector<std::string> extensions;
+			extensions.Add("raw"); extensions.Add("raw2");
+			Require(registry.RegisterAssetInfoHandler(extensions, &handler), "register the actual default metadata handler");
+			Require(registry.ScanContentFolder() && registry.CompleteScanProcessing(),
+				"both fresh and cached Unicode registries must scan successfully");
+			const std::string storage = virtualPath + ":not-part-of-path";
+			const auto view = std::string_view(storage).substr(0, virtualPath.size());
+			Require(registry.GetOrLoadFile(view) == primaryId && registry.GetOrLoadFile(PathToUtf8(sourcePath)) == primaryId,
+				"absolute and virtual Unicode paths must select the workspace override");
+			auto* info = registry.GetAssetInfoPtr(primaryId);
+			Require(info && std::filesystem::equivalent(PathFromUtf8(info->GetAssetFilepath()), sourcePath) &&
+				info->GetAssetFilename() == PathToUtf8(sourcePath.filename()),
+				"metadata must retain a UTF-8 source filename and resolve its native file");
+			AssetRegistry::AssetReadLocation location;
+			std::string contents;
+			std::filesystem::path writable;
+			Require(registry.ResolveContentFile(view, location) && location.m_virtualPath == virtualPath &&
+				registry.ReadContentText(view, contents) && contents == "workspace source" &&
+				registry.ResolveWorkspaceContentPathForWrite(view, writable) &&
+				std::filesystem::equivalent(writable, sourcePath),
+				"Unicode discovery, content reads and write resolution must agree");
+			Require(info->SaveMetaFile() && YAML::Load(ReadFile(metadataPath))["filename"].as<std::string>() ==
+				PathToUtf8(sourcePath.filename()), "metadata save must preserve the UTF-8 filename");
+			const auto token = registry.BeginAssetProcessing(info);
+			Require(static_cast<bool>(token), "processing must capture native source and metadata revisions");
+			registry.CompleteAssetProcessing(token, true);
+			Require(!registry.IsAssetExpired(info), "successful processing must acknowledge the same Unicode files");
+
+			const auto directPath = sourcePath.parent_path() / PathFromUtf8("new " + unicode + ".raw");
+			if (cycle == 0)
+			{
+				WriteFile(directPath, "new source");
+				importedId = registry.GetOrLoadFile(PathToUtf8(directPath));
+				Require(static_cast<bool>(importedId), "direct Unicode import must create its metadata");
+				const auto secondaryPath = sourcePath.parent_path() / PathFromUtf8("detail " + unicode + ".raw2.asset");
+				WriteFile(secondaryPath, YAML::Dump(CreateAssetInfoMetadata<AssetInfo>(secondaryId, PathToUtf8(sourcePath.filename()))));
+				Require(registry.ScanContentFolder() && registry.CompleteScanProcessing(),
+					"a warm registry must discover new Unicode secondary metadata");
+			}
+			Require(registry.GetOrLoadFile(PathToUtf8(directPath)) == importedId,
+				"direct import identity must survive cache reload");
+			const auto* secondary = registry.GetAssetInfoPtr(secondaryId);
+			Require(secondary && std::filesystem::equivalent(PathFromUtf8(secondary->GetAssetFilepath()), sourcePath),
+				"secondary metadata must retain its Unicode source in eager and lazy loading");
+		}
+		Require(std::filesystem::is_regular_file(context.GetCache() / "AssetCache.yaml"),
+			"the asset cache must remain in the Unicode workspace's own Cache folder");
+	}
+
+	void TestFileRevisionUsesOnlyTheFilesystemTimestamp()
+	{
+		TempDirectory directory("file-revision");
+		const auto sourcePath = directory.Path("Source.raw");
+		WriteFile(sourcePath, "first");
+		const auto timestamp = std::filesystem::last_write_time(sourcePath);
+		FileRevision first;
+		Require(Utils::TryGetFileRevision(sourcePath.string(), first) && first.m_bIsValid,
+			"an existing source should have a valid filesystem revision");
+
+		WriteFile(sourcePath, "different contents and a different size");
+		std::filesystem::last_write_time(sourcePath, timestamp);
+		FileRevision next;
+		Require(Utils::TryGetFileRevision(sourcePath.string(), next) && next == first,
+			"content and size changes with the same timestamp must not change the revision");
+		for (const auto delta : { std::chrono::seconds(2), std::chrono::seconds(-2) })
+		{
+			std::filesystem::last_write_time(sourcePath, timestamp + delta);
+			Require(Utils::TryGetFileRevision(sourcePath.string(), next) && next != first,
+				"both later and backdated writes must change the source revision");
+		}
+
+		FileRevision restored;
+		restored.Deserialize(first.Serialize());
+		Require(restored == first, "the timestamp and validity must round-trip through YAML");
+		YAML::Node expanded = first.Serialize();
+		expanded["fileSize"] = 0;
+		expanded["contentHash"] = 0;
+		restored.Deserialize(expanded);
+		Require(!restored.m_bIsValid,
+			"an expanded revision from an older cache layout must require regeneration");
+		restored.Deserialize(YAML::Load("modificationTimeNanoseconds: invalid"));
+		Require(!restored.m_bIsValid, "a revision must contain an integer timestamp");
+		Require(!Utils::TryGetFileRevision(directory.Path("Missing.raw").string(), next) &&
+			!next.m_bIsValid && next.m_modificationTimeNanoseconds == 0,
+			"a missing source must clear a previously valid output revision");
+		Require(!Utils::TryGetFileRevision(sourcePath.parent_path().string(), first) && !first.m_bIsValid,
+			"directories must not have source-file revisions");
+	}
+
+	void TestExpandedRevisionCacheIsRegeneratedAtVersionOne()
+	{
+		TempDirectory directory("expanded-revision");
+		const auto context = CreateWorkspaceContext(directory);
+		const FileId fileId = MakeFileId("{ASSET-CACHE-EXPANDED-REVISION}");
+		const auto sourcePath = context.GetContent() / "Model.glb";
+		YAML::Node oldPayload = YAML::Load(TestAssetCache::SerializeAssetCachePayload(
+			MakeCache(fileId.ToString(), sourcePath.string(), 10)));
+		YAML::Node oldEntry = oldPayload["assetCache"]["assets"][fileId.ToString()];
+		for (const char* field : { "sourceRevision", "metadataRevision" })
+		{
+			oldEntry[field]["fileSize"] = 0;
+			oldEntry[field]["contentHash"] = 0;
+		}
+		const auto identity = Workspace::MakeWorkspaceCacheIdentity(
+			"asset-cache", "asset-cache-v1", 1, context);
+		std::string envelope;
+		std::string diagnostic;
+		Require(Workspace::SerializeWorkspaceCacheEnvelope(identity, YAML::Dump(oldPayload), envelope, diagnostic),
+			"the stale revision fixture should have a valid version-one envelope");
+		const auto cachePath = context.GetCache() / "AssetCache.yaml";
+		WriteFile(cachePath, envelope);
+
+		TestAssetCache cache;
+		cache.Initialize(context);
+		Require(cache.GetLastLoadResult().m_status == Workspace::EWorkspaceCacheLoadStatus::Corrupt &&
+			!cache.Contains(fileId),
+			"an old revision layout must not publish entries even in a matching v1 envelope");
+		const auto reset = Workspace::LoadWorkspaceCacheEnvelope(cachePath, identity);
+		Require(reset.IsLoaded() && YAML::Load(reset.m_payload)["assetCache"]["assets"].size() == 0,
+			"the stale layout must be replaced by an empty current v1 cache");
+
+		Require(cache.Update(fileId, 11, sourcePath.string(), MakeRevision()) && cache.SaveCache(),
+			"normal import completion must repopulate the regenerated cache");
+		TestAssetCache reloaded;
+		reloaded.Initialize(context);
+		Require(reloaded.GetLastLoadResult().IsLoaded() && reloaded.Contains(fileId),
+			"a regenerated cache must load without another reset");
+		const auto saved = Workspace::LoadWorkspaceCacheEnvelope(cachePath, identity);
+		Require(saved.IsLoaded(), "the rewritten envelope must retain its version-one identity");
+		const YAML::Node savedEntry = YAML::Load(saved.m_payload)["assetCache"]["assets"][fileId.ToString()];
+		for (const char* field : { "sourceRevision", "metadataRevision" })
+		{
+			Require(savedEntry[field].IsMap() && savedEntry[field].size() == 1 &&
+				savedEntry[field]["modificationTimeNanoseconds"].as<int64_t>() == MakeRevision().m_modificationTimeNanoseconds,
+				"regenerated revision maps must contain only the timestamp");
+		}
+	}
+
 	void WriteScanAssetFixture(
 		const Workspace::WorkspaceContext& workspaceContext,
-		const std::string& source = "source-v1")
+		std::string_view source = "source-v1")
 	{
 		WriteFile(
 			workspaceContext.GetContent() / "Retry.raw",
@@ -605,6 +1013,379 @@ namespace
 			"the targeted update handler should register for raw assets");
 	}
 
+	void TestBorrowedContentPaths(bool bLazy)
+	{
+		LazyAssetInfoLoadingScope lazyLoading(bLazy);
+		TempDirectory directory("borrowed-content-paths");
+		const auto context = CreateWorkspaceContext(directory);
+		WriteScanAssetFixture(context);
+		AssetRegistry registry(context);
+		TestAssetInfoHandler handler;
+		RegisterRawHandler(registry, handler);
+		Require(registry.ScanContentFolder() && registry.CompleteScanProcessing(), "scan the borrowed-path fixture");
+
+		std::string source = "prefix:Retry.raw:not-part-of-the-path";
+		const auto path = std::string_view(source).substr(7, 9);
+		const FileId id = registry.GetOrLoadFile(path);
+		Require(id && id == registry.GetOrLoadFile("Retry.raw"),
+			"bounded and literal paths must resolve the same asset identity");
+		Require(registry.GetAssetInfoPtr(path) == registry.GetAssetInfoPtr(id),
+			"asset lookup must stop at the view boundary in eager and lazy registries");
+		AssetRegistry::AssetReadLocation location;
+		Require(registry.ResolveContentFile(path, location) && location.m_virtualPath == "Retry.raw",
+			"content resolution must copy the bounded path into the result");
+		std::string contents;
+		Require(registry.ReadContentText(path, contents) && contents == "source-v1",
+			"content text reads must accept paths without a trailing zero");
+		TVector<char> bytes;
+		Require(registry.ReadContentBinary(path, bytes) &&
+			std::string_view(bytes.GetData(), bytes.Num()) == "source-v1",
+			"binary content reads must use the same borrowed path contract");
+		std::time_t timestamp = 0;
+		Require(registry.GetContentFileModificationTime(path, timestamp) &&
+			timestamp == Utils::GetFileModificationTime(location.m_physicalPath.string()),
+			"content revision queries must resolve exactly the borrowed path");
+		std::filesystem::path writable;
+		Require(registry.ResolveWorkspaceContentPathForWrite(path, writable) &&
+			writable == location.m_physicalPath,
+			"write-path resolution must not include bytes following the view");
+		Require(AssetRegistry::GetMetaFilePath(path) == "Retry.raw.asset",
+			"metadata paths must append the suffix to the bounded input");
+		source.assign(1024, 'x');
+		Require(location.m_virtualPath == "Retry.raw" && registry.GetAssetInfoPtr(id),
+			"resolved paths and registry records must own text after the input buffer changes");
+		Require(!registry.ResolveContentFile({}, location) && !registry.GetAssetInfoPtr(std::string_view{}),
+			"default-constructed empty views must not resolve an asset");
+	}
+
+	void TestScanListenerBatchBoundary(bool bLazy)
+	{
+		LazyAssetInfoLoadingScope lazyLoading(bLazy);
+		TempDirectory directory("scan-listener-boundary");
+		const auto context = CreateWorkspaceContext(directory);
+		WriteScanAssetFixture(context);
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
+		scheduler.AttachCurrentThreadAsMainThread();
+		AssetRegistry registry(context, &scheduler);
+		TargetedUpdateAssetInfoHandler handler;
+		handler.m_registry = &registry;
+		RegisterTargetedUpdateHandler(registry, handler);
+		Require(registry.ScanContentFolder() && registry.CompleteScanProcessing(), "seed listener batch fixture");
+		RecordingAssetListener assets;
+		ScanContentListener content;
+		std::vector<std::string> events;
+		AssetRegistry::AssetProcessingToken token;
+		bool bSucceed = false;
+		content.m_onStarted = [&]() { events.emplace_back("begin"); };
+		assets.m_onExpiredUpdate = [&](AssetInfoPtr info)
+		{
+			events.emplace_back("update");
+			token = registry.BeginAssetProcessing(info);
+			Require(static_cast<bool>(token), "batch listener must capture the changed revision");
+		};
+		content.m_onFinished = [&]()
+		{
+			events.emplace_back("end");
+			auto task = Tasks::CreateTask<bool>("Finish scan listener batch"_h, [&, captured = token, bSucceed]()
+			{
+				registry.CompleteAssetProcessing(captured, bSucceed);
+				return bSucceed;
+			});
+			task->Run();
+			return task;
+		};
+		handler.Subscribe(&assets);
+		registry.SubscribeContentChanges(&content);
+		RewriteFileWithNewRevision(context.GetContent() / "Retry.raw", "changed source");
+		for (bool succeed : { false, true })
+		{
+			bSucceed = succeed;
+			events.clear();
+			Require(registry.ScanContentFolder(), "batch listeners must not block registry publication");
+			Require(events == std::vector<std::string>{ "begin", "update", "end" },
+				"scan notifications must be enclosed by exactly one begin/end pair");
+			Require(!registry.CompleteScanProcessing(), "the scan must wait for the end-listener task");
+			Tasks::ITaskPtr task;
+			while (scheduler.TryFetchNextAvailiableTask(task, EThreadType::Worker))
+			{
+				task->Execute();
+			}
+			Require(registry.CompleteScanProcessing() == bSucceed, "end-listener failures must propagate and be retryable");
+		}
+		bool bCompletionQueued = false;
+		bool bCompleted = false;
+		bool bCompletedBeforeNextScan = false;
+		content.m_onStarted = [&]()
+		{
+			if (bCompletionQueued) bCompletedBeforeNextScan = bCompleted;
+		};
+		content.m_onFinished = [&]()
+		{
+			if (bCompletionQueued) return Tasks::TaskPtr<bool>::Make(true);
+			bCompletionQueued = true;
+			auto task = Tasks::CreateTask<bool>("Acknowledge previous scan"_h, [&, captured = token]()
+			{
+				registry.CompleteAssetProcessing(captured, true);
+				bCompleted = true;
+				return true;
+			}, EThreadType::Main);
+			task->Run();
+			return task;
+		};
+		RewriteFileWithNewRevision(context.GetContent() / "Retry.raw", "next source revision");
+		Require(registry.ScanContentFolder() && !bCompleted, "leave a previous scan acknowledgement pending");
+		std::jthread pump([&](std::stop_token stop)
+		{
+			while (!stop.stop_requested())
+			{
+				Tasks::ITaskPtr task;
+				if (scheduler.TryFetchNextAvailiableTask(task, EThreadType::Worker)) task->Execute();
+				else std::this_thread::yield();
+			}
+		});
+		const bool bNextScan = registry.ScanContentFolder();
+		scheduler.ProcessTasksOnMainThread();
+		scheduler.WaitIdle(EThreadType::Worker);
+		pump.request_stop();
+		pump.join();
+		Require(bNextScan && bCompletedBeforeNextScan && registry.CompleteScanProcessing(),
+			"a new scan must finish the previous listener batch before resetting processing state");
+		const size_t eventCount = events.size();
+		bool bWorkerScan = true;
+		std::thread worker([&]() { bWorkerScan = registry.ScanContentFolder(); });
+		worker.join();
+		Require(!bWorkerScan && events.size() == eventCount, "non-owner scans must not enter main-thread listener batches");
+		registry.UnsubscribeContentChanges(&content);
+		handler.Unsubscribe(&assets);
+	}
+
+	void TestScanBatchesProcessingCheckpoints(bool bLazy, bool bAsync)
+	{
+		LazyAssetInfoLoadingScope lazyLoading(bLazy);
+		TempDirectory directory(bLazy ? "lazy-processing-batch" : "eager-processing-batch");
+		const auto context = CreateWorkspaceContext(directory);
+		std::vector<FileId> ids;
+		std::vector<std::filesystem::path> paths;
+		for (uint32_t i = 0; i < 8; ++i)
+		{
+			ids.push_back(MakeFileId("{SCAN-BATCH-" + std::to_string(i) + "}"));
+			paths.push_back(context.GetContent() / ("Ship" + std::to_string(i) + ".raw"));
+			WriteFile(paths.back(), "source-v1");
+			WriteFile(paths.back().string() + ".asset",
+				"fileId: '" + ids.back().ToString() + "'\nfilename: " +
+				paths.back().filename().string() + "\ntestValue: 1\n");
+		}
+		TargetedUpdateAssetInfoHandler handler;
+		{
+			AssetRegistry seed(context);
+			RegisterTargetedUpdateHandler(seed, handler);
+			Require(seed.ScanContentFolder() && seed.CompleteScanProcessing(), "seed all scan watermarks");
+		}
+		for (uint32_t i = 0; i < 3; ++i)
+		{
+			RewriteFileWithNewRevision(paths[i], "source-v2");
+		}
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
+		scheduler.AttachCurrentThreadAsMainThread();
+		AssetRegistry registry(context, bAsync ? &scheduler : nullptr);
+		handler.m_registry = &registry;
+		RegisterTargetedUpdateHandler(registry, handler);
+		RecordingTargetedUpdateListener listener;
+		uint32_t processed = 0;
+		bool bRetryCheckpointVisible = true;
+		listener.m_onUpdate = [&](AssetInfoPtr info, bool bExpired)
+		{
+			if (!bExpired)
+			{
+				return;
+			}
+			++processed;
+			AssetCache restarted;
+			restarted.Initialize(context);
+			for (uint32_t i = 0; i < ids.size(); ++i)
+			{
+				bRetryCheckpointVisible &= restarted.Contains(ids[i]) == (i >= 3);
+			}
+			auto token = registry.BeginAssetProcessing(info);
+			Require(static_cast<bool>(token), "changed scan asset should start processing");
+			if (processed == 1)
+			{
+				const auto obsolete = token;
+				token = registry.BeginAssetProcessing(info);
+				registry.CompleteAssetProcessing(obsolete, true);
+			}
+			if (bAsync)
+			{
+				auto acknowledge = Tasks::CreateTask<bool>("Acknowledge scan fixture"_h, [&, token]()
+				{
+					registry.CompleteAssetProcessing(token, true);
+					return true;
+				});
+				registry.TrackScanProcessingTask(acknowledge);
+				acknowledge->Run();
+			}
+			else
+			{
+				registry.CompleteAssetProcessing(token, true);
+			}
+		};
+		handler.Subscribe(&listener);
+		registry.TakeManifestWritesForTests();
+		Require(registry.ScanContentFolder(), "scan batch should publish its registry generation");
+		uint64_t writes = registry.TakeManifestWritesForTests();
+		if (bAsync)
+		{
+			Require(writes == 1 && !registry.CompleteScanProcessing(), "unfinished scan must retain its retry checkpoint");
+			Tasks::ITaskPtr task;
+			while (scheduler.TryFetchNextAvailiableTask(task, EThreadType::Worker))
+			{
+				task->Execute();
+			}
+			Require(scheduler.GetNumTasks(EThreadType::Worker) == 0, "acknowledgements must release the scan commit task");
+			writes += registry.TakeManifestWritesForTests();
+		}
+		Require(writes == 2, "three changed assets require two scan checkpoints, got " + std::to_string(writes));
+		Require(processed == 3, "only the changed assets should need processing");
+		Require(bRetryCheckpointVisible, "restart during any callback must retry every unfinished asset only");
+		AssetCache restarted;
+		restarted.Initialize(context);
+		for (const FileId& id : ids)
+		{
+			Require(restarted.Contains(id), "completed scan results must survive restart");
+		}
+		Require(registry.CompleteScanProcessing(), "scan completion should observe the already committed result");
+		Require(registry.ScanContentFolder() && registry.CompleteScanProcessing(), "unchanged scan should succeed");
+		Require(registry.TakeManifestWritesForTests() == 0 && processed == 3, "unchanged scan must not rewrite the manifest");
+		for (uint32_t i = 0; i < 3; ++i)
+		{
+			RewriteFileWithNewRevision(paths[i], "source-v3");
+		}
+		Require(registry.ScanContentFolder(), "repeat the batch with already loaded metadata");
+		if (bAsync)
+		{
+			Tasks::ITaskPtr task;
+			while (scheduler.TryFetchNextAvailiableTask(task, EThreadType::Worker))
+			{
+				task->Execute();
+			}
+		}
+		Require(registry.CompleteScanProcessing() && registry.TakeManifestWritesForTests() == 2 &&
+			processed == 6 && bRetryCheckpointVisible, "loaded assets must use the same two scan checkpoints");
+		handler.Unsubscribe(&listener);
+	}
+
+	void TestCompletedScanRevisionMustStillMatch(bool bLazy, bool bChangeMetadata)
+	{
+		LazyAssetInfoLoadingScope lazyLoading(bLazy);
+		TempDirectory directory("completed-scan-revision");
+		const auto context = CreateWorkspaceContext(directory);
+		WriteScanAssetFixture(context);
+		TargetedUpdateAssetInfoHandler handler;
+		AssetRegistry registry(context);
+		handler.m_registry = &registry;
+		RegisterTargetedUpdateHandler(registry, handler);
+		Require(registry.ScanContentFolder() && registry.CompleteScanProcessing(), "seed the revision fixture");
+		RewriteFileWithNewRevision(context.GetContent() / "Retry.raw", "changed-source");
+		RecordingAssetListener listener;
+		bool bChangeAfterCompletion = true;
+		listener.m_onExpiredUpdate = [&](AssetInfoPtr info)
+		{
+			const auto token = registry.BeginAssetProcessing(info);
+			Require(static_cast<bool>(token), "revision fixture should start processing");
+			registry.CompleteAssetProcessing(token, true);
+			if (bChangeAfterCompletion)
+			{
+				bChangeAfterCompletion = false;
+				const auto path = bChangeMetadata ? info->GetMetaFilepath() : info->GetAssetFilepath();
+				RewriteFileWithNewRevision(path, ReadFile(path) + "\n");
+			}
+		};
+		handler.Subscribe(&listener);
+		registry.ScanContentFolder();
+		Require(!registry.CompleteScanProcessing(),
+			"a revision changed after processing but before the checkpoint must fail completion");
+		AssetCache restarted;
+		restarted.Initialize(context);
+		Require(!restarted.Contains(MakeFileId("{ASSET-CACHE-IMPORT-CONTRACT}")),
+			"the changed result must remain unacknowledged after restart");
+		Require(registry.ScanContentFolder() && registry.CompleteScanProcessing(), "the newer revision must be retryable");
+		handler.Unsubscribe(&listener);
+	}
+
+	void TestScanCheckpointFailureCanBeRetried(bool bLazy, bool bFailBeforeWork)
+	{
+		LazyAssetInfoLoadingScope lazyLoading(bLazy);
+		TempDirectory directory("scan-checkpoint-failure");
+		const auto context = CreateWorkspaceContext(directory);
+		WriteTargetedUpdateFixture(context);
+		WriteFile(context.GetContent() / "Healthy.raw", "unchanged source");
+		WriteFile(context.GetContent() / "Healthy.raw.asset",
+			"fileId: '{SCAN-RETRY-HEALTHY}'\nfilename: Healthy.raw\ntestValue: 1\n");
+		TargetedUpdateAssetInfoHandler handler;
+		{
+			AssetRegistry seed(context);
+			RegisterTargetedUpdateHandler(seed, handler);
+			Require(seed.ScanContentFolder() && seed.CompleteScanProcessing(), "seed the failed scan fixture");
+		}
+		RewriteFileWithNewRevision(context.GetContent() / "Shared.raw", "changed source");
+		const auto manifest = context.GetCache() / "AssetCache.yaml";
+		const auto saved = directory.Path("saved-manifest.yaml");
+		const auto marker = manifest / "keep";
+		auto blockManifest = [&]()
+		{
+			std::filesystem::rename(manifest, saved);
+			WriteFile(marker, "fixture-owned blocker");
+		};
+		AssetRegistry registry(context);
+		handler.m_registry = &registry;
+		RegisterTargetedUpdateHandler(registry, handler);
+		RecordingTargetedUpdateListener listener;
+		uint32_t processed = 0;
+		bool bBlockCompletion = !bFailBeforeWork;
+		listener.m_onUpdate = [&](AssetInfoPtr info, bool bExpired)
+		{
+			if (!bExpired)
+			{
+				return;
+			}
+			++processed;
+			const auto token = registry.BeginAssetProcessing(info);
+			Require(static_cast<bool>(token), "processing requires a persisted retry checkpoint");
+			registry.CompleteAssetProcessing(token, true);
+			if (bBlockCompletion)
+			{
+				bBlockCompletion = false;
+				blockManifest();
+			}
+		};
+		handler.Subscribe(&listener);
+		if (bFailBeforeWork)
+		{
+			blockManifest();
+		}
+		Require(registry.ScanContentFolder() == !bFailBeforeWork, "only the pre-work failure should reject scan publication");
+		Require(!registry.CompleteScanProcessing(), "either checkpoint failure must fail the scan result");
+		Require(processed == (bFailBeforeWork ? 0u : 2u), "failed invalidation must not start any processing");
+		Require(ReadFile(marker) == "fixture-owned blocker", "cache failure must preserve the blocking file");
+		Require(std::filesystem::remove(marker) && std::filesystem::remove(manifest), "remove only fixture-owned blockers");
+		std::filesystem::rename(saved, manifest);
+		AssetCache restarted;
+		restarted.Initialize(context);
+		for (const char* id : { "{TARGETED-UPDATE-PRIMARY}", "{TARGETED-UPDATE-SECONDARY}" })
+		{
+			Require(restarted.Contains(MakeFileId(id)) == bFailBeforeWork,
+				"failed completion must retain the pre-work retry checkpoint for both assets");
+		}
+		const uint32_t beforeRetry = processed;
+		Require(registry.ScanContentFolder() && registry.CompleteScanProcessing(), "checkpoint failure must be retryable");
+		Require(processed == beforeRetry + 2, "retry must process both unacknowledged assets");
+		Require(!registry.IsAssetExpired(registry.GetAssetInfoPtr(context.GetContent().string() + "/Healthy.raw")),
+			"retry must preserve the healthy entry which keeps the lazy index active");
+		handler.Unsubscribe(&listener);
+	}
+
 	void TestLazyScanDefersUnchangedMetadataMaterialization()
 	{
 		LazyAssetInfoLoadingScope lazyLoading(true);
@@ -632,24 +1413,37 @@ namespace
 			cacheContents.find("asset-cache-v2") == std::string::npos,
 			"the rebuilt cache must use only the strict asset-cache-v1 identity");
 
-		uint32_t numMetadataLoads = 0;
 		TestAssetInfoHandler handler;
+		RecordingAssetListener listener;
+		handler.Subscribe(&listener);
 		AssetRegistry registry(workspaceContext);
-		handler.m_onLoad = [&]() { ++numMetadataLoads; };
 		RegisterRawHandler(registry, handler);
 		Require(registry.ScanContentFolder() &&
 			registry.CompleteScanProcessing(),
 			"the current v1 cache should initialize the lazy registry index");
-		Require(numMetadataLoads == 0,
+		Require(handler.m_numLoads == 0,
 			"an unchanged lazy scan must not read asset metadata");
 
 		AssetInfoPtr materialized = registry.GetAssetInfoPtr(
 			(workspaceContext.GetContent() / "Retry.raw").string());
-		Require(materialized != nullptr && numMetadataLoads == 1,
+		Require(materialized != nullptr && handler.m_numLoads == 1,
 			"the first concrete lookup should materialize exactly one AssetInfo proxy");
 		Require(registry.GetAssetInfoPtr(materialized->GetFileId()) == materialized &&
-			numMetadataLoads == 1,
+			handler.m_numLoads == 1,
 			"subsequent lookups should reuse the materialized AssetInfo");
+
+		AssetRegistry secondRegistry(workspaceContext);
+		RegisterRawHandler(secondRegistry, handler);
+		Require(secondRegistry.ScanContentFolder() &&
+			secondRegistry.CompleteScanProcessing() && handler.m_numLoads == 1,
+			"a second unchanged lazy registry must also defer metadata reads");
+		const auto second = secondRegistry.GetAssetInfoPtr(materialized->GetFileId());
+		Require(second && second != materialized && handler.m_numLoads == 2,
+			"a fresh registry must materialize its own proxy and count the second read");
+		Require(listener.m_events.empty(), "metadata lookups must not dispatch Content-writing import callbacks");
+		Require(secondRegistry.GetOrLoadFile("Retry.raw") == second->GetFileId() &&
+			listener.m_events == std::vector<std::string>{ "update:true" },
+			"explicit import must dispatch the deferred notification exactly once");
 	}
 
 	void TestV2EnvelopeIsResetInsteadOfMigrated()
@@ -794,8 +1588,9 @@ namespace
 		Require(serializedEntry.IsMap() && serializedEntry.size() == 7,
 			"persisted asset cache v1 entries must contain the watermark and lazy index fields");
 		const YAML::Node serializedRevision = serializedEntry["sourceRevision"];
-		Require(serializedRevision.IsMap() && serializedRevision.size() == 3,
-			"persisted source revisions must contain mtime, size, and content hash");
+		Require(serializedRevision.IsMap() && serializedRevision.size() == 1 &&
+			serializedRevision["modificationTimeNanoseconds"].as<int64_t>() == MakeRevision().m_modificationTimeNanoseconds,
+			"persisted source revisions must contain only the filesystem timestamp");
 		Require(payload.find("metadataLoadTime") == std::string::npos &&
 			payload.find("metadataPath") == std::string::npos &&
 			serializedEntry["metadataFilename"].as<std::string>() == "Test.mat.asset",
@@ -815,8 +1610,6 @@ namespace
 		Require(
 			entry.m_sourceRevision.m_modificationTimeNanoseconds ==
 				expectedRevision.m_modificationTimeNanoseconds &&
-			entry.m_sourceRevision.m_fileSize == expectedRevision.m_fileSize &&
-			entry.m_sourceRevision.m_contentHash == expectedRevision.m_contentHash &&
 			entry.m_sourceRevision.m_bIsValid == expectedRevision.m_bIsValid,
 			"round-tripped serialized source revision fields should be preserved");
 	}
@@ -871,13 +1664,9 @@ namespace
 			"      sourcePath: ''\n"
 			"      sourceRevision:\n"
 			"        modificationTimeNanoseconds: 1\n"
-			"        fileSize: 2\n"
-			"        contentHash: 3\n"
 			"      metadataFilename: Test.mat.asset\n"
 			"      metadataRevision:\n"
 			"        modificationTimeNanoseconds: 1\n"
-			"        fileSize: 2\n"
-			"        contentHash: 3\n"
 			"      assetInfoType: Sailor::MaterialAssetInfo\n";
 		std::string diagnostic;
 		Require(
@@ -899,13 +1688,9 @@ namespace
 			"      sourcePath: '/workspace/Content/Test.mat'\n"
 			"      sourceRevision:\n"
 			"        modificationTimeNanoseconds: 1\n"
-			"        fileSize: 2\n"
-			"        contentHash: 3\n"
 			"      metadataFilename: Test.mat.asset\n"
 			"      metadataRevision:\n"
 			"        modificationTimeNanoseconds: 1\n"
-			"        fileSize: 2\n"
-			"        contentHash: 3\n"
 			"      assetInfoType: Sailor::MaterialAssetInfo\n";
 
 		TestAssetCache::CacheData destination;
@@ -933,13 +1718,9 @@ namespace
 			"      sourcePath: '/workspace/Content/Test.mat'\n"
 			"      sourceRevision:\n"
 			"        modificationTimeNanoseconds: 1\n"
-			"        fileSize: 2\n"
-			"        contentHash: 3\n"
 			"      metadataFilename: Test.mat.asset\n"
 			"      metadataRevision:\n"
 			"        modificationTimeNanoseconds: 1\n"
-			"        fileSize: 2\n"
-			"        contentHash: 3\n"
 			"      assetInfoType: Sailor::MaterialAssetInfo\n";
 		const YAML::Node node = YAML::Load(corruptPayload)["assetCache"];
 
@@ -995,12 +1776,19 @@ namespace
 		Require(imported != nullptr, "a new raw asset should be imported");
 		Require(listener.m_events == std::vector<std::string>({ "update:false", "import" }),
 			"a new raw asset must dispatch Update(false) followed by exactly one Import callback");
-		Require(static_cast<TestAssetInfo*>(imported)->m_numMetaSaves == 1,
-			"the import callback should finalize metadata exactly once");
+		Require(static_cast<TestAssetInfo*>(imported)->m_numMetaSaves == 0,
+			"notification must not rewrite the default metadata already saved by import");
 		const YAML::Node importedMetadata = YAML::LoadFile(
 			AssetRegistry::GetMetaFilePath(sourcePath.string()));
 		Require(importedMetadata["assetInfoType"].as<std::string>() == "Sailor::AssetInfo",
 			"the shared import path must add its handler's canonical AssetInfo type");
+		listener.m_onImport = [](AssetInfoPtr info)
+		{
+			Require(info->SaveMetaFile(), "a listener may persist its intentional metadata changes");
+		};
+		handler.NotifyImportAsset(imported);
+		Require(static_cast<TestAssetInfo*>(imported)->m_numMetaSaves == 1,
+			"notification must not repeat a metadata save performed by its listener");
 		delete imported;
 
 		listener.m_events.clear();
@@ -1087,6 +1875,151 @@ namespace
 			"a rejected metadata reload must restore the previous live object state");
 		Require(listener.m_events.empty(),
 			"a rejected metadata reload must not notify importers");
+		bool bLiveDeserializeCalled = false;
+		info.m_onDeserialize = [&]() { bLiveDeserializeCalled = true; };
+		info.m_bThrowOnSerialize = true;
+		RewriteFileWithNewRevision(metadataPath,
+			"fileId: '{ASSET-CACHE-RELOAD-ROLLBACK}'\ntestValue: 99\nlateValue: 1\n");
+		Require(handler.ReloadAssetInfo(&info, true, false) && info.m_testValue == 99 &&
+			!bLiveDeserializeCalled && info.m_bThrowOnSerialize && info.m_onDeserialize && info.m_numMetaSaves == 0,
+			"reload must not serialize/decode the live object or replace its runtime-only state");
+		Require(listener.m_events == std::vector<std::string>{ "update:true" },
+			"the repaired metadata must publish once without a YAML snapshot of the live object");
+	}
+
+	void TestModelMetadataReloadMatchesFreshLoad()
+	{
+		TempDirectory directory("model-metadata-reload");
+		const auto context = CreateWorkspaceContext(directory);
+		AssetRegistry registry(context);
+		ModelAssetInfoHandler handler(&registry);
+		const auto source = context.GetContent() / "Ship.glb";
+		const auto metadataPath = std::filesystem::path(source.string() + ".asset");
+		WriteFile(source, "model source");
+		const FileId id = MakeFileId("{MODEL-METADATA-RELOAD}");
+		auto metadata = CreateAssetInfoMetadata<ModelAssetInfo>(id, "Ship.glb");
+		metadata["unitScale"] = 2.0f;
+		metadata["numGeneratedLods"] = 5u;
+		metadata["bGenerateLods"] = false;
+		metadata["materials"] = TVector<FileId>{ MakeFileId("{MODEL-MATERIAL}") };
+		WriteFile(metadataPath, YAML::Dump(metadata));
+		TUniquePtr<AssetInfo> owned(handler.LoadAssetInfo(metadataPath.string(), "Ships/Ship.glb.asset",
+			EAssetMountKind::Engine, false, false, false));
+		auto* live = owned.DynamicCast<ModelAssetInfo>();
+		Require(live && live->GetUnitScale() == 2.0f && !live->ShouldGenerateLods(), "load authored model metadata");
+		metadata.remove("unitScale");
+		metadata.remove("numGeneratedLods");
+		metadata.remove("bGenerateLods");
+		metadata.remove("materials");
+		metadata["folder"] = "/must-not-be-used/";
+		metadata["assetImportTime"] = -100;
+		metadata["bWritable"] = true;
+		RewriteFileWithNewRevision(metadataPath, YAML::Dump(metadata));
+		RecordingAssetListener listener;
+		listener.m_onExpiredUpdate = [&](AssetInfoPtr updated)
+		{
+			Require(updated == live && live->GetUnitScale() == 1.0f && live->ShouldGenerateLods() &&
+				live->GetDefaultMaterials().IsEmpty(), "listeners must observe complete typed defaults at the original address");
+		};
+		handler.Subscribe(&listener);
+		Require(handler.ReloadAssetInfo(live, true, false), "full metadata reload must succeed");
+		TUniquePtr<AssetInfo> cold(handler.LoadAssetInfo(metadataPath.string(), "Ships/Ship.glb.asset",
+			EAssetMountKind::Engine, false, false, false));
+		Require(cold && YAML::Dump(live->Serialize()) == YAML::Dump(cold->Serialize()),
+			"removed model properties must reset to the same defaults as a fresh load");
+		Require(live == owned.GetRawPtr() && live->GetFileId() == id &&
+			live->GetAssetFilepath() == Workspace::PathToUtf8(source) && live->GetMetaFilepath() == metadataPath.string() &&
+			live->GetVirtualAssetFilepath() == "Ships/Ship.glb" &&
+			live->GetMountKind() == EAssetMountKind::Engine && !live->IsWritable() &&
+			!live->IsMetaExpired() && !live->IsAssetExpired(),
+			"reload must preserve identity and runtime path/mount state instead of accepting runtime YAML keys");
+		Require(listener.m_events == std::vector<std::string>{ "update:true" },
+			"a successful full reload must notify existing listeners exactly once");
+		const auto retained = YAML::Dump(live->Serialize());
+		metadata["numGeneratedLods"] = 7u;
+		metadata["unitScale"] = "invalid";
+		RewriteFileWithNewRevision(metadataPath, YAML::Dump(metadata));
+		Require(!handler.ReloadAssetInfo(live, true, false) && YAML::Dump(live->Serialize()) == retained &&
+			listener.m_events.size() == 1 && live->IsMetaExpired(),
+			"a late invalid property must leave every live metadata field and notification unchanged");
+		metadata.remove("unitScale");
+		metadata["fileId"] = MakeFileId("{OTHER-MODEL}");
+		RewriteFileWithNewRevision(metadataPath, YAML::Dump(metadata));
+		Require(!handler.ReloadAssetInfo(live, true, false) && YAML::Dump(live->Serialize()) == retained,
+			"in-place metadata reload must reject a different FileId");
+		metadata["fileId"] = id;
+		WriteFile(context.GetContent() / "Other.glb", "different source");
+		metadata["filename"] = "Other.glb";
+		RewriteFileWithNewRevision(metadataPath, YAML::Dump(metadata));
+		Require(!handler.ReloadAssetInfo(live, true, false) && YAML::Dump(live->Serialize()) == retained &&
+			live->GetAssetFilepath() == Workspace::PathToUtf8(source) && listener.m_events.size() == 1,
+			"in-place metadata reload must not silently retarget the registered source path");
+		metadata["filename"] = "Ship.glb";
+		RewriteFileWithNewRevision(metadataPath, YAML::Dump(metadata));
+		const auto missingSource = context.GetContent() / "Ship.hidden";
+		std::filesystem::rename(source, missingSource);
+		Require(!handler.ReloadAssetInfo(live, true, false) && YAML::Dump(live->Serialize()) == retained &&
+			live->GetVirtualAssetFilepath() == "Ships/Ship.glb" && listener.m_events.size() == 1,
+			"a missing source must reject complete parsed metadata without changing the live object");
+		std::filesystem::rename(missingSource, source);
+		Require(handler.ReloadAssetInfo(live, true, false) && live->GetNumGeneratedLods() == 7u &&
+			listener.m_events.size() == 2, "restoring the source must allow the rejected revision to retry");
+		handler.Unsubscribe(&listener);
+	}
+
+	template<typename TAssetInfo, typename THandler>
+	void TestTypedMetadataReloadDefaults(const std::string& filename, const std::string& metadataFilename,
+		const YAML::Node& authoredFields)
+	{
+		TempDirectory directory("typed-metadata-reload");
+		const auto context = CreateWorkspaceContext(directory);
+		AssetRegistry registry(context);
+		THandler handler(&registry);
+		WriteFile(context.GetContent() / filename, "source");
+		const auto path = context.GetContent() / metadataFilename;
+		const FileId id = FileId::CreateNewFileId();
+		auto metadata = CreateAssetInfoMetadata<TAssetInfo>(id, filename);
+		for (const auto& field : authoredFields) metadata[field.first.as<std::string>()] = field.second;
+		WriteFile(path, YAML::Dump(metadata));
+		TUniquePtr<AssetInfo> live(handler.LoadAssetInfo(path.string(), metadataFilename,
+			EAssetMountKind::Workspace, true, false, false));
+		Require(live && dynamic_cast<TAssetInfo*>(live.GetRawPtr()), "cold load must retain the concrete metadata type");
+		for (const auto& field : authoredFields)
+		{
+			const auto key = field.first.as<std::string>();
+			Require(YAML::Dump(live->Serialize()[key]) == YAML::Dump(field.second), "authored typed field must load: " + key);
+			metadata.remove(key);
+		}
+		RewriteFileWithNewRevision(path, YAML::Dump(metadata));
+		Require(handler.ReloadAssetInfo(live.GetRawPtr(), false, false), "typed metadata reload must succeed");
+		TUniquePtr<AssetInfo> cold(handler.LoadAssetInfo(path.string(), metadataFilename,
+			EAssetMountKind::Workspace, true, false, false));
+		Require(cold && YAML::Dump(live->Serialize()) == YAML::Dump(cold->Serialize()),
+			"all removed typed metadata properties must match a fresh load");
+		Require(live->GetFileId() == id && live->GetAssetFilename() == filename &&
+			live->GetMetaFilepath() == path.string() && live->GetVirtualAssetFilepath() == filename,
+			"secondary metadata must retain the shared source filename independently of its sidecar name");
+		if (metadataFilename != filename + ".asset")
+		{
+			metadata.remove("filename");
+			RewriteFileWithNewRevision(path, YAML::Dump(metadata));
+			Require(!handler.ReloadAssetInfo(live.GetRawPtr(), false, false) && live->GetAssetFilename() == filename,
+				"removing a secondary source binding must not silently reuse the previous filename");
+			TUniquePtr<AssetInfo> missing(handler.LoadAssetInfo(path.string(), metadataFilename,
+				EAssetMountKind::Workspace, true, false, false));
+			Require(!missing, "cold loading the same unbound secondary metadata must also fail");
+		}
+		else
+		{
+			metadata.remove("filename");
+			RewriteFileWithNewRevision(path, YAML::Dump(metadata));
+			Require(handler.ReloadAssetInfo(live.GetRawPtr(), false, false),
+				"primary metadata may still derive its source filename from the sidecar");
+			TUniquePtr<AssetInfo> implicit(handler.LoadAssetInfo(path.string(), metadataFilename,
+				EAssetMountKind::Workspace, true, false, false));
+			Require(implicit && YAML::Dump(implicit->Serialize()) == YAML::Dump(live->Serialize()),
+				"implicit primary filenames must match in cold load and reload");
+		}
 	}
 
 	void TestRawEditDispatchesExpiredUpdateWithoutImport()
@@ -1203,14 +2136,14 @@ namespace
 		info.m_testValue = 7;
 		const std::filesystem::file_time_type initialMetaTime =
 			std::filesystem::last_write_time(metadataPath);
-		info.m_onDeserialize = [&]()
+		TestAssetInfoHandler handler;
+		handler.m_onDeserialize = [&]()
 		{
 			std::filesystem::last_write_time(
 				metadataPath,
 				initialMetaTime + std::chrono::seconds(2));
 		};
 
-		TestAssetInfoHandler handler;
 		RecordingAssetListener listener;
 		handler.Subscribe(&listener);
 		Require(!handler.ReloadAssetInfo(&info, true, false),
@@ -1238,12 +2171,44 @@ namespace
 		Require(cache.IsDirty(), "a no-op update must not clear an already dirty cache");
 		Require(cache.Update(fileId, 91, sourcePath, sourceRevision),
 			"a later successful asset import should change the source watermark");
-		Require(!cache.Update(fileId, 91, sourcePath, MakeRevision(123456789, 64, 42)),
-			"content hash changes must not affect timestamp-based source revisions");
-		Require(!cache.Update(fileId, 91, sourcePath, MakeRevision(123456789, 128, 42)),
-			"file size changes must not affect timestamp-based source revisions");
-		Require(cache.Update(fileId, 91, sourcePath + ".moved", MakeRevision(123456789, 128, 42)),
+		Require(cache.Update(fileId, 91, sourcePath, MakeRevision(123456790)),
+			"a changed source timestamp should change the source watermark");
+		Require(!cache.Update(fileId, 91, sourcePath, MakeRevision(123456790)),
+			"the acknowledged source timestamp should not change the cache again");
+		Require(cache.Update(fileId, 91, sourcePath + ".moved", MakeRevision(123456790)),
 			"a source path change should change the cache");
+	}
+
+	void TestUpdateCopiesBorrowedText()
+	{
+		TestAssetCache cache;
+		const FileId fileId = MakeFileId("{ASSET-CACHE-BORROWED-TEXT}");
+		const FileRevision revision = MakeRevision();
+		constexpr std::string_view sourcePath = "/workspace/Content/Borrowed.mat";
+		constexpr std::string_view metadataFilename = "Borrowed.mat.asset";
+		constexpr std::string_view assetInfoType = "Sailor::MaterialAssetInfo";
+		{
+			std::string source = "prefix:" + std::string(sourcePath) + ":suffix";
+			std::string metadata = "prefix:" + std::string(metadataFilename) + ":suffix";
+			std::string type = "prefix:" + std::string(assetInfoType) + ":suffix";
+			Require(cache.Update(fileId, 90,
+				std::string_view(source).substr(7, sourcePath.size()), revision,
+				std::string_view(metadata).substr(7, metadataFilename.size()), revision,
+				std::string_view(type).substr(7, assetInfoType.size())),
+				"cache updates must accept bounded text without a terminating zero");
+			source.assign(source.size(), 'x');
+			metadata.assign(metadata.size(), 'x');
+			type.assign(type.size(), 'x');
+		}
+		Require(!cache.Update(fileId, 90, sourcePath, revision, metadataFilename, revision, assetInfoType),
+			"cache entries must own their text after the input buffers change and expire");
+		Require(cache.Update(fileId, 91, std::string(sourcePath), revision,
+			std::string(metadataFilename), revision, std::string(assetInfoType)),
+			"temporary text must be copied into the updated cache entry");
+		Require(!cache.Update(fileId, 91, sourcePath, revision, metadataFilename, revision, assetInfoType),
+			"temporary owners must not affect a subsequent identical update");
+		Require(!cache.Update(fileId, 91, {}, revision, metadataFilename, revision, assetInfoType) &&
+			!cache.Contains(fileId), "an empty source view must retain invalid-update removal behavior");
 	}
 
 	void TestPruneRemovesOnlyEntriesOutsideTheCommittedGeneration()
@@ -1671,6 +2636,77 @@ namespace
 			"the retry must publish one new processing generation");
 	}
 
+	void TestTargetedAssetUpdateCompletion()
+	{
+		TempDirectory directory("targeted-update-completion");
+		const auto context = CreateWorkspaceContext(directory);
+		WriteTargetedUpdateFixture(context);
+		AssetRegistry registry(context);
+		TargetedUpdateAssetInfoHandler handler;
+		RegisterTargetedUpdateHandler(registry, handler);
+		Require(registry.ScanContentFolder() && registry.CompleteScanProcessing(), "seed targeted completion fixture");
+
+		const FileId primaryId = MakeFileId("{TARGETED-UPDATE-PRIMARY}");
+		const FileId secondaryId = MakeFileId("{TARGETED-UPDATE-SECONDARY}");
+		const auto primary = registry.GetAssetInfoPtr(primaryId);
+		const auto secondary = registry.GetAssetInfoPtr(secondaryId);
+		TMap<FileId, AssetRegistry::AssetProcessingToken> tokens;
+		RecordingTargetedUpdateListener listener;
+		listener.m_onUpdate = [&](AssetInfoPtr info, bool expired)
+		{
+			Require(expired, "updated fixture assets must require processing");
+			tokens[info->GetFileId()] = registry.BeginAssetProcessing(info);
+			Require(static_cast<bool>(tokens[info->GetFileId()]), "targeted work must capture its source revision");
+		};
+		handler.Subscribe(&listener);
+
+		TVector<AssetInfoPtr> affectedAssets;
+		RewriteFileWithNewRevision(context.GetContent() / "Shared.raw.asset",
+			"fileId: '{TARGETED-UPDATE-PRIMARY}'\nfilename: Shared.raw\ntestValue: 11\n");
+		Require(registry.UpdateAsset(primaryId, affectedAssets) && affectedAssets.Num() == 1 &&
+			affectedAssets[0] == primary && !registry.CompleteAssetUpdate(affectedAssets),
+			"accepting a metadata update must not report its pending importer work as complete");
+		registry.CompleteAssetProcessing(tokens[primaryId], false);
+		Require(!registry.CompleteAssetUpdate(affectedAssets), "a failure after acceptance must fail update completion");
+		const auto rejected = tokens[primaryId];
+		Require(registry.UpdateAsset(primaryId, affectedAssets) && tokens[primaryId].m_generation != rejected.m_generation,
+			"a rejected targeted update must start fresh importer work on retry");
+		registry.CompleteAssetProcessing(tokens[primaryId], true);
+		Require(registry.CompleteAssetUpdate(affectedAssets), "successful retry must complete the original update scope");
+
+		RewriteFileWithNewRevision(context.GetContent() / "Shared.raw", "shared-source-v2");
+		Require(registry.UpdateAsset(primaryId, affectedAssets) && affectedAssets.Num() == 2 &&
+			affectedAssets[0] == primary && affectedAssets[1] == secondary,
+			"a source update must retain both affected AssetInfos until completion");
+		registry.CompleteAssetProcessing(tokens[primaryId], true);
+		Require(!registry.IsAssetExpired(primary) && !registry.CompleteAssetUpdate(affectedAssets),
+			"finishing the primary asset must not hide pending work for its shared-source sibling");
+		registry.CompleteAssetProcessing(tokens[secondaryId], false);
+		Require(!registry.CompleteAssetUpdate(affectedAssets), "a failed sibling must fail the whole source update");
+
+		TVector<AssetInfoPtr> metadataAssets;
+		RewriteFileWithNewRevision(context.GetContent() / "Shared.raw.asset",
+			"fileId: '{TARGETED-UPDATE-PRIMARY}'\nfilename: Shared.raw\ntestValue: 12\n");
+		Require(registry.UpdateAsset(primaryId, metadataAssets) && metadataAssets.Num() == 1,
+			"a later metadata-only update must not inherit an unrelated sibling failure");
+		registry.CompleteAssetProcessing(tokens[primaryId], true);
+		Require(registry.CompleteAssetUpdate(metadataAssets) && !registry.CompleteAssetUpdate(affectedAssets),
+			"completion must use the affected assets from its own request");
+		Require(registry.UpdateAsset(secondaryId, metadataAssets), "the failed sibling must remain retryable");
+		registry.CompleteAssetProcessing(tokens[secondaryId], true);
+		Require(registry.CompleteAssetUpdate(affectedAssets), "the shared source must become current after sibling repair");
+
+		const size_t notifications = listener.m_updatedFileIds.size();
+		Require(registry.UpdateAsset(primaryId, metadataAssets) && registry.CompleteAssetUpdate(metadataAssets) &&
+			listener.m_updatedFileIds.size() == notifications, "a current asset must still complete without another reload");
+		RewriteFileWithNewRevision(context.GetContent() / "Shared.raw", "changed after acknowledgement");
+		Require(!registry.CompleteAssetUpdate(affectedAssets), "a later source edit must not be reported as processed");
+		Require(!registry.UpdateAsset(MakeFileId("{TARGETED-UPDATE-UNKNOWN}"), affectedAssets) &&
+			affectedAssets.IsEmpty() && !registry.CompleteAssetUpdate(affectedAssets),
+			"an unknown target must clear the preceding update scope and cannot complete");
+		handler.Unsubscribe(&listener);
+	}
+
 	void TestScanSourceRevisionCacheIsPhysicalAndPerScan()
 	{
 		TempDirectory directory("scan-source-revision-cache");
@@ -1909,7 +2945,8 @@ namespace
 			workspaceContext.GetContent() / "Retry.raw.asset";
 
 		bool bMetadataMutatedDuringWait = false;
-		Tasks::Scheduler scheduler;
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
 		scheduler.AttachCurrentThreadAsMainThread();
 		{
 			AssetRegistry registry(workspaceContext, &scheduler);
@@ -2061,13 +3098,9 @@ namespace
 			"      sourcePath: '/workspace/Content/Test.mat'\n"
 			"      sourceRevision:\n"
 			"        modificationTimeNanoseconds: 1\n"
-			"        fileSize: 2\n"
-			"        contentHash: 3\n"
 			"      metadataFilename: Test.mat.asset\n"
 			"      metadataRevision:\n"
 			"        modificationTimeNanoseconds: 1\n"
-			"        fileSize: 2\n"
-			"        contentHash: 3\n"
 			"      assetInfoType: Sailor::MaterialAssetInfo\n";
 		const std::string payloads[] =
 		{
@@ -2129,7 +3162,7 @@ namespace
 	{
 		AssetRegistry::AssetProcessingToken current;
 		current.m_fileId = MakeFileId("{ASSET-PROCESSING-TOKEN}");
-		current.m_sourceRevision = MakeRevision(123, 64, 456);
+		current.m_sourceRevision = MakeRevision(123);
 		current.m_sourcePath = "/workspace/Content/Retry.shader";
 		current.m_assetImportTime = 10;
 		current.m_generation = 2;
@@ -2142,7 +3175,7 @@ namespace
 			"an older async completion must not acknowledge a newer generation");
 
 		AssetRegistry::AssetProcessingToken staleRevision = current;
-		staleRevision.m_sourceRevision = MakeRevision(124, 64, 789);
+		staleRevision.m_sourceRevision = MakeRevision(124);
 		Require(!current.Matches(staleRevision),
 			"a completion for another source revision must remain pending for retry");
 
@@ -2162,11 +3195,27 @@ int main()
 {
 	try
 	{
+		TestTemporaryDirectoriesHaveIndependentOwnership();
 		TestNewFileIdsUseCrossPlatformGuidFormatting();
+		TestFileRevisionUsesOnlyTheFilesystemTimestamp();
+		TestUtf8FileAccess();
+		TestExpandedRevisionCacheIsRegeneratedAtVersionOne();
 		TestPayloadRoundTrip();
 		TestEmptyPayloadRoundTrip();
 		TestPreV1PayloadIsRejected();
 		TestV2EnvelopeIsResetInsteadOfMigrated();
+		for (bool bLazy : { false, true })
+		{
+			TestBorrowedContentPaths(bLazy);
+			TestUtf8RegistryPaths(bLazy);
+			TestScanListenerBatchBoundary(bLazy);
+			TestScanBatchesProcessingCheckpoints(bLazy, false);
+			TestScanBatchesProcessingCheckpoints(bLazy, true);
+			TestScanCheckpointFailureCanBeRetried(bLazy, true);
+			TestScanCheckpointFailureCanBeRetried(bLazy, false);
+			TestCompletedScanRevisionMustStillMatch(bLazy, false);
+			TestCompletedScanRevisionMustStillMatch(bLazy, true);
+		}
 		TestLazyScanDefersUnchangedMetadataMaterialization();
 		TestLazyScanLoadsOnlyNewSecondaryMetadata();
 		TestScanCanonicalizesUuidMetadataIdentity();
@@ -2176,13 +3225,25 @@ int main()
 		TestEntryDeserializeDoesNotThrow();
 		TestEveryAssetInfoSerializerWritesItsConcreteType();
 		TestGeneratedGlbMetadataUsesTypedDefaults();
+		TestMetadataSavePublishesCompleteState();
+		TestMetadataSerializationFailurePreservesTheFile();
+		TestBlockedMetadataSaveCanBeRetried();
+		TestReadOnlyMetadataCannotBeSaved();
 		TestImportAndUpdateCallbackContract();
 		TestImportNeverOverwritesExistingMetadata();
 		TestRejectedReloadRestoresTheLiveAsset();
+		TestModelMetadataReloadMatchesFreshLoad();
+		TestTypedMetadataReloadDefaults<TextureAssetInfo, TextureAssetInfoHandler>("Ship.glb", "Ship.color.asset",
+			YAML::Load("glbTextureIndex: 4\nbShouldGenerateMips: false\nbShouldKeepCpuBuffers: true\n"));
+		TestTypedMetadataReloadDefaults<AnimationAssetInfo, AnimationAssetInfoHandler>("Ship.glb", "Ship.crew.asset",
+			YAML::Load("animationIndex: 3\nskinIndex: 2\n"));
+		TestTypedMetadataReloadDefaults<AudioAssetInfo, AudioAssetInfoHandler>("Sea.wav", "Sea.wav.asset",
+			YAML::Load("stream: true\n"));
 		TestRawEditDispatchesExpiredUpdateWithoutImport();
 		TestMetadataEditDispatchesExpiredUpdateWithoutImport();
 		TestConcurrentMetadataEditDoesNotAdvanceTheWatermark();
 		TestUpdateTracksAssetImportStateAndPreservesDirtyState();
+		TestUpdateCopiesBorrowedText();
 		TestPruneRemovesOnlyEntriesOutsideTheCommittedGeneration();
 		TestRestoreChangesOnlyAssetImportTime();
 		TestRemovingFailedProcessingWatermarkForcesRetry();
@@ -2190,6 +3251,7 @@ int main()
 		TestAssetProcessingSuccessAndStaleCompletionContract();
 		TestTargetedAssetUpdateScopeAndFailureContract();
 		TestTargetedAssetUpdateCoalescesCurrentProcessing();
+		TestTargetedAssetUpdateCompletion();
 		TestScanSourceRevisionCacheIsPhysicalAndPerScan();
 		TestPostCallbackSourceMismatchInvalidatesPriorWatermark();
 		TestSourceMutationDuringStagingPreservesPreviousGeneration();

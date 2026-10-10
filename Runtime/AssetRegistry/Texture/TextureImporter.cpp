@@ -1,4 +1,5 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "Core/FileRevision.h"
 #include "Containers/Containers.h"
 #include "AssetRegistry/FileId.h"
 #include "AssetRegistry/AssetRegistry.h"
@@ -19,6 +20,7 @@
 #ifndef STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_MSC_SECURE_CRT
+#define STBI_WINDOWS_UTF8
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image.h>
 #endif
@@ -40,7 +42,7 @@ bool ExtractTextureFromGLB(const std::string& filePath, int32_t textureIndex, Sa
 		uint32_t chunkType;
 	};
 
-	std::ifstream file(filePath, std::ios::binary);
+	std::ifstream file(Workspace::PathFromUtf8(filePath), std::ios::binary);
 	if (!file.is_open())
 	{
 		SAILOR_LOG_ERROR("Failed to open file");
@@ -184,6 +186,34 @@ bool ExtractTextureFromGLB(const std::string& filePath, int32_t textureIndex, Sa
 
 namespace
 {
+	TextureImporter::CpuDecodeRequest DescribeCpuTexture(const TextureAssetInfo& assetInfo)
+	{
+		TextureImporter::CpuDecodeRequest request;
+		request.m_fileId = assetInfo.GetFileId();
+		request.m_filepath = assetInfo.GetAssetFilepath();
+		request.m_glbTextureIndex = assetInfo.GetGlbTextureIndex();
+		request.m_bDecodeAsFloat = RHI::IsFloatFormat(assetInfo.GetFormat());
+		request.m_bGenerateMips = assetInfo.ShouldGenerateMips();
+		return request;
+	}
+
+	bool HasCurrentTextureSources(const TextureImporter::CpuDecodeRequest& request)
+	{
+		if (request.m_sourceRevisions.IsEmpty())
+		{
+			return false;
+		}
+		for (const auto& source : request.m_sourceRevisions)
+		{
+			FileRevision current;
+			if (!Utils::TryGetFileRevision(source.m_first, current) || current != *source.m_second)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
 	int32_t ResolveGltfTextureImageIndex(const tinygltf::Texture& texture)
 	{
 		if (texture.source >= 0)
@@ -283,6 +313,94 @@ namespace
 	}
 }
 
+bool TextureImporter::CaptureCpuDecodeRequest(const TextureAssetInfo& assetInfo,
+	CpuDecodeRequest& outRequest)
+{
+	outRequest = {};
+	auto request = DescribeCpuTexture(assetInfo);
+	FileRevision revision;
+	if (!Utils::TryGetFileRevision(request.m_filepath, revision))
+	{
+		return false;
+	}
+	request.m_sourceRevisions.Add(request.m_filepath, revision);
+	if (request.m_glbTextureIndex >= 0 && Utils::GetFileExtension(request.m_filepath) == "gltf")
+	{
+		// TinyGLTF reads external images and buffers while extracting an image.
+		// Capture their revisions too; the document timestamp alone is insufficient.
+		std::ifstream input(Workspace::PathFromUtf8(request.m_filepath), std::ios::binary);
+		const auto document = nlohmann::json::parse(input, nullptr, false);
+		if (document.is_discarded() || !document.is_object())
+		{
+			return false;
+		}
+		const auto folder = Workspace::PathFromUtf8(request.m_filepath).parent_path();
+		for (const char* collection : { "buffers", "images" })
+		{
+			const auto entries = document.find(collection);
+			if (entries == document.end() || !entries->is_array())
+			{
+				continue;
+			}
+			for (const auto& entry : *entries)
+			{
+				if (!entry.is_object())
+				{
+					continue;
+				}
+				const auto uri = entry.find("uri");
+				if (uri == entry.end() || !uri->is_string())
+				{
+					continue;
+				}
+				const auto encoded = uri->get<std::string>();
+				if (encoded.empty() || encoded.starts_with("data:"))
+				{
+					continue;
+				}
+				std::string decoded;
+				if (!tinygltf::URIDecode(encoded, &decoded, nullptr))
+				{
+					return false;
+				}
+				const auto path = Workspace::PathToUtf8((folder / Workspace::PathFromUtf8(decoded)).lexically_normal());
+				if (!Utils::TryGetFileRevision(path, revision))
+				{
+					return false;
+				}
+				request.m_sourceRevisions[path] = revision;
+			}
+		}
+	}
+	if (!HasCurrentTextureSources(request))
+	{
+		return false;
+	}
+	outRequest = std::move(request);
+	return true;
+}
+
+bool TextureImporter::DecodeTextureCpu(const CpuDecodeRequest& request, ByteCode& decodedData,
+	int32_t& width, int32_t& height, uint32_t& mipLevels)
+{
+	decodedData.Clear();
+	width = height = 0;
+	mipLevels = 1u;
+	if (!HasCurrentTextureSources(request))
+	{
+		return false;
+	}
+	const bool decoded = ImportTexture(request, decodedData, width, height, mipLevels);
+	if (!decoded || !HasCurrentTextureSources(request))
+	{
+		decodedData.Clear();
+		width = height = 0;
+		mipLevels = 1u;
+		return false;
+	}
+	return true;
+}
+
 bool Texture::IsReady() const
 {
 	return m_rhiTexture && m_rhiTexture->IsReady();
@@ -303,7 +421,22 @@ TextureImporter::TextureImporter(TextureAssetInfoHandler* infoHandler)
 
 	m_textureSamplersCurrentIndex = 1;
 
-	auto textures = driver->AddSamplerToShaderBindings(m_textureSamplersBindings, "textureSamplers", defaultTextures, 0, true, static_cast<uint32_t>(MaxTexturesInScene));
+#if defined(__APPLE__)
+	// Keep global indices on the CPU. Metal draws bind dense, batch-local arrays.
+	RHI::ShaderLayoutBinding layout;
+	layout.m_name = "textureSamplers"_h;
+	layout.m_binding = 0;
+	layout.m_type = RHI::EShaderBindingType::CombinedImageSampler;
+	layout.m_arrayCount = static_cast<uint32_t>(MaxTexturesInScene);
+	layout.m_bVariableDescriptorCount = true;
+	auto binding = m_textureSamplersBindings->GetOrAddShaderBinding(layout.m_name);
+	binding->SetLayout(layout);
+	binding->SetTextureBindings(defaultTextures);
+	m_textureSamplersBindings->UpdateLayoutShaderBinding(layout);
+	m_textureSamplersBindings->AdvanceDescriptorRevision();
+#else
+	driver->AddSamplerToShaderBindings(m_textureSamplersBindings, "textureSamplers"_h, defaultTextures, 0, true, static_cast<uint32_t>(MaxTexturesInScene));
+#endif
 	m_textureSamplersBindings->RecalculateCompatibility();
 
 	m_textureSamplerSlotRevisions.Resize(1);
@@ -312,32 +445,94 @@ TextureImporter::TextureImporter(TextureAssetInfoHandler* infoHandler)
 
 TextureImporter::~TextureImporter()
 {
-	for (auto& instance : m_loadedTextures)
+	for (auto& instance : m_textures)
 	{
-		instance.m_second.DestroyObject(m_allocator);
+		instance.m_second.m_texture.DestroyObject(m_allocator);
 	}
 }
 
 TexturePtr TextureImporter::GetLoadedTexture(FileId uid)
 {
-	// Check loaded materials
-	auto it = m_loadedTextures.Find(uid);
-	if (it != m_loadedTextures.end())
-	{
-		return (*it).m_second;
-	}
-	return TexturePtr();
+	TextureEntry entry;
+	m_textures.TryGet(uid, entry);
+	return entry.m_texture;
 }
 
 Tasks::TaskPtr<TexturePtr> TextureImporter::GetLoadPromise(FileId uid)
 {
-	auto it = m_promises.Find(uid);
-	if (it != m_promises.end())
+	TextureEntry entry;
+	m_textures.TryGet(uid, entry);
+	return entry.m_load;
+}
+
+Tasks::TaskPtr<TVector<TextureImporter::CpuTextureSnapshot>> TextureImporter::CaptureCpuTextures(
+	const TVector<TexturePtr>& textures)
+{
+	if (textures.IsEmpty())
 	{
-		return (*it).m_second;
+		return Tasks::TaskPtr<TVector<CpuTextureSnapshot>>::Make(TVector<CpuTextureSnapshot>{});
 	}
 
-	return Tasks::TaskPtr<TexturePtr>();
+	m_textures.LockAll();
+	TVector<TexturePtr> loaded;
+	TVector<Tasks::ITaskPtr> previous;
+	loaded.Reserve(textures.Num());
+	for (const auto& texture : textures)
+	{
+		TextureEntry* entry = nullptr;
+		if (texture && m_textures.Find(texture->GetFileId(), entry))
+		{
+			loaded.Add(entry->m_texture);
+			previous.Add(entry->m_lastAccess);
+		}
+		else
+		{
+			loaded.Add({});
+		}
+	}
+	auto capture = Tasks::CreateTask<TVector<CpuTextureSnapshot>>("Capture texture CPU state"_h,
+		[textures, loaded]()
+		{
+			TVector<CpuTextureSnapshot> snapshots;
+			snapshots.Reserve(textures.Num());
+			for (size_t i = 0; i < textures.Num(); ++i)
+			{
+				auto texture = textures[i];
+				if (loaded[i] && (loaded[i]->HasCpuData() || !texture || !texture->HasCpuData()))
+				{
+					texture = loaded[i];
+				}
+				CpuTextureSnapshot snapshot;
+				if (texture)
+				{
+					snapshot.m_pixels = texture->m_decodedData;
+					snapshot.m_width = texture->m_width;
+					snapshot.m_height = texture->m_height;
+					snapshot.m_source = texture->m_cpuSource;
+					if (texture->m_rhiTexture)
+					{
+						snapshot.m_clamping = texture->m_rhiTexture->GetClamping();
+					}
+				}
+				snapshots.Add(std::move(snapshot));
+			}
+			return snapshots;
+		}, EThreadType::RHI);
+	for (const auto& task : previous)
+	{
+		capture->Join(task);
+	}
+	for (const auto& texture : textures)
+	{
+		TextureEntry* entry = nullptr;
+		if (texture && m_textures.Find(texture->GetFileId(), entry))
+		{
+			entry->m_lastAccess = capture;
+		}
+	}
+	m_textures.UnlockAll();
+	capture->Run();
+	return capture;
 }
 
 TextureImporter::TextureSamplersSnapshot TextureImporter::GetTextureSamplersSnapshot(const TVector<uint32_t>& requestedIndices) const
@@ -349,7 +544,7 @@ TextureImporter::TextureSamplersSnapshot TextureImporter::GetTextureSamplersSnap
 	if (m_textureSamplersBindings)
 	{
 		const auto& shaderBindings = m_textureSamplersBindings->GetShaderBindings();
-		const auto textureSamplers = shaderBindings.Find("textureSamplers");
+		const auto textureSamplers = shaderBindings.Find("textureSamplers"_h);
 		const TVector<RHI::RHITexturePtr>* textures = nullptr;
 		if (textureSamplers != shaderBindings.end() && textureSamplers->m_second)
 		{
@@ -426,8 +621,7 @@ bool TextureImporter::RegisterTextureSamplerBinding(RHI::RHITexturePtr texture, 
 			static_cast<uint32_t>(nextIndex));
 		if (bRegistered)
 		{
-			// Publish the next free slot only after the native descriptor write and slot
-			// revision have both succeeded. A failed write can therefore be retried.
+			// Failed publication leaves the slot available for retry.
 			m_textureSamplersCurrentIndex.store(nextIndex + 1, std::memory_order_release);
 		}
 	}
@@ -451,14 +645,24 @@ bool TextureImporter::UpdateTextureSamplerBinding(RHI::RHITexturePtr texture, ui
 
 bool TextureImporter::UpdateTextureSamplerBindingLocked(RHI::RHITexturePtr texture, uint32_t index)
 {
+#if defined(__APPLE__)
+	if (!texture->m_vulkan.m_imageView)
+	{
+		return false;
+	}
+	m_textureSamplersBindings->GetOrAddShaderBinding("textureSamplers"_h)->SetTextureBinding(index, std::move(texture));
+	m_textureSamplersBindings->AdvanceDescriptorRevision();
+	const uint64_t currentRevision = m_textureSamplersBindings->GetDescriptorRevision();
+#else
 	const uint64_t previousRevision = m_textureSamplersBindings->GetDescriptorRevision();
-	RHI::Renderer::GetDriver()->UpdateShaderBinding(m_textureSamplersBindings, "textureSamplers", texture, index);
+	RHI::Renderer::GetDriver()->UpdateShaderBinding(m_textureSamplersBindings, "textureSamplers"_h, texture, index);
 	const uint64_t currentRevision = m_textureSamplersBindings->GetDescriptorRevision();
 
 	if (currentRevision == previousRevision)
 	{
 		return false;
 	}
+#endif
 
 	if (m_textureSamplerSlotRevisions.Num() <= index)
 	{
@@ -471,53 +675,45 @@ bool TextureImporter::UpdateTextureSamplerBindingLocked(RHI::RHITexturePtr textu
 void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpired)
 {
 	SAILOR_PROFILE_FUNCTION();
-	SAILOR_PROFILE_TEXT(inAssetInfo->GetAssetFilepath().c_str());
-
-	TexturePtr pTexture = GetLoadedTexture(inAssetInfo->GetFileId());
-	if (bWasExpired && pTexture)
+	auto* assetInfo = dynamic_cast<TextureAssetInfo*>(inAssetInfo);
+	if (!bWasExpired || !assetInfo)
 	{
-		if (TextureAssetInfoPtr assetInfo = dynamic_cast<TextureAssetInfo*>(inAssetInfo))
-		{
-			auto newPromise = Tasks::CreateTaskWithResult<bool>("Update Texture",
-				[pTexture, assetInfo, this]() mutable
-				{
-					ByteCode decodedData;
-					int32_t width;
-					int32_t height;
-					uint32_t mipLevels;
-
-					if (ImportTexture(assetInfo->GetFileId(), decodedData, width, height, mipLevels))
-					{
-						pTexture->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&decodedData[0], decodedData.Num(), glm::vec3(width, height, 1.0f),
-							mipLevels, RHI::ETextureType::Texture2D, assetInfo->GetFormat(), assetInfo->GetFiltration(),
-							assetInfo->GetClamping(),
-							assetInfo->ShouldSupportStorageBinding() ? TextureImporter::DefaultTextureUsage | RHI::ETextureUsageBit::Storage_Bit : TextureImporter::DefaultTextureUsage,
-							assetInfo->GetSamplerReduction());
-						pTexture->m_width = width;
-						pTexture->m_height = height;
-						pTexture->m_mipLevels = mipLevels;
-						if (assetInfo->ShouldKeepCpuBuffers())
-						{
-							pTexture->m_decodedData = std::move(decodedData);
-						}
-						else
-						{
-							pTexture->m_decodedData.Clear();
-						}
-
-						RHI::Renderer::GetDriver()->SetDebugName(pTexture->m_rhiTexture, assetInfo->GetAssetFilepath());
-
-						size_t index = m_textureSamplersIndices.At_Lock(assetInfo->GetFileId());
-						m_textureSamplersIndices.Unlock(assetInfo->GetFileId());
-
-						return UpdateTextureSamplerBinding(pTexture->m_rhiTexture, static_cast<uint32_t>(index));
-					}
-					return false;
-				}, EThreadType::RHI)->Run();
-
-			pTexture->TraceHotReload(newPromise);
-		}
+		return;
 	}
+	auto texture = GetLoadedTexture(assetInfo->GetFileId());
+	if (!texture)
+	{
+		return;
+	}
+
+	auto* registry = App::GetSubmodule<AssetRegistry>();
+	const auto token = registry->BeginAssetProcessing(assetInfo);
+	const auto uid = assetInfo->GetFileId();
+	auto& entry = m_textures.At_Lock(uid);
+	entry.m_bCpuBuffersRequested = assetInfo->ShouldKeepCpuBuffers();
+	if (token)
+	{
+		entry.m_load = CreateTextureTask(texture, *assetInfo, false, true, entry.m_lastAccess);
+	}
+	else
+	{
+		// Rejected reloads still preserve the publication/read ordering for this texture.
+		entry.m_load = Tasks::CreateTask<TexturePtr>("Reject texture reload"_h, []() { return TexturePtr{}; }, EThreadType::RHI);
+		entry.m_load->Join(entry.m_lastAccess);
+	}
+	entry.m_lastAccess = entry.m_load;
+	auto task = entry.m_load;
+	m_textures.Unlock(uid);
+	auto acknowledge = Tasks::CreateTask<bool>("Acknowledge texture reload"_h, [registry, token, task]()
+		{
+			const bool succeeded = task->GetResult().IsValid();
+			registry->CompleteAssetProcessing(token, succeeded);
+			return succeeded;
+		});
+	acknowledge->Join(task);
+	registry->TrackScanProcessingTask(acknowledge);
+	task->Run();
+	acknowledge->Run();
 }
 
 void TextureImporter::OnImportAsset(AssetInfoPtr assetInfo)
@@ -526,121 +722,125 @@ void TextureImporter::OnImportAsset(AssetInfoPtr assetInfo)
 
 bool TextureImporter::IsTextureLoaded(FileId uid) const
 {
-	return m_loadedTextures.ContainsKey(uid);
+	return m_textures.ContainsKey(uid);
 }
 
 bool TextureImporter::ImportTexture(FileId uid, ByteCode& decodedData, int32_t& width, int32_t& height, uint32_t& mipLevels)
 {
-	SAILOR_PROFILE_FUNCTION();
-
-	if (TextureAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
+	if (auto* assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
 	{
-		const bool bDecodeAsFloat = RHI::IsFloatFormat(assetInfo->GetFormat());
+		return ImportTexture(DescribeCpuTexture(*assetInfo), decodedData, width, height, mipLevels);
+	}
+	return false;
+}
 
-		if (assetInfo->StoredInGlb())
+bool TextureImporter::ImportTexture(const CpuDecodeRequest& request, ByteCode& decodedData,
+	int32_t& width, int32_t& height, uint32_t& mipLevels)
+{
+	SAILOR_PROFILE_FUNCTION();
+	const bool bDecodeAsFloat = request.m_bDecodeAsFloat;
+
+	if (request.m_glbTextureIndex != -1)
+	{
+		const std::string extension =
+			Utils::GetFileExtension(request.m_filepath.c_str());
+		const bool bIsGlb = extension == "glb";
+		const bool bIsGltf = extension == "gltf";
+
+		if (!bIsGlb && !bIsGltf)
 		{
-			const std::string extension =
-				Utils::GetFileExtension(assetInfo->GetAssetFilepath().c_str());
-			const bool bIsGlb = extension == "glb";
-			const bool bIsGltf = extension == "gltf";
-
-			if ((!bIsGlb && !bIsGltf) ||
-				assetInfo->GetGlbTextureIndex() == -1)
-			{
-				return false;
-			}
-
-			ByteCode rawBuffer;
-			std::string extractionDiagnostic;
-			const bool bExtracted = bIsGlb ?
-				ExtractTextureFromGLB(
-					assetInfo->GetAssetFilepath().c_str(),
-					assetInfo->GetGlbTextureIndex(),
-					rawBuffer) :
-				ExtractTextureFromGltf(
-					assetInfo->GetAssetFilepath(),
-					assetInfo->GetGlbTextureIndex(),
-					rawBuffer,
-					extractionDiagnostic);
-			if (!bExtracted && extractionDiagnostic.empty())
-			{
-				extractionDiagnostic = bIsGlb ?
-					"GLB extraction failed" :
-					"glTF extraction failed";
-			}
-
-			if (bExtracted)
-			{
-				int32_t texChannels = 0;
-				const std::string filepath = assetInfo->GetAssetFilepath();
-
-				if (bDecodeAsFloat)
-				{
-					if (float* pPixels = stbi_loadf_from_memory(&rawBuffer[0], (uint32_t)rawBuffer.Num(), &width, &height, &texChannels, STBI_rgb_alpha))
-					{
-						const uint32_t imageSize = (uint32_t)width * height * sizeof(float) * 4;
-						decodedData.Resize(imageSize);
-						memcpy(decodedData.GetData(), pPixels, imageSize);
-
-						mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
-						stbi_image_free(pPixels);
-						return true;
-					}
-				}
-				else if (stbi_uc* pPixels = stbi_load_from_memory(&rawBuffer[0], (uint32_t)rawBuffer.Num(), &width, &height, &texChannels, STBI_rgb_alpha))
-				{
-					const uint32_t imageSize = (uint32_t)width * height * 4;
-					decodedData.Resize(imageSize);
-					memcpy(decodedData.GetData(), pPixels, imageSize);
-
-					mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
-					stbi_image_free(pPixels);
-					return true;
-				}
-			}
-			else
-			{
-				SAILOR_LOG_ERROR(
-					"Cannot extract texture %d from model source '%s' for asset %s: %s",
-					assetInfo->GetGlbTextureIndex(),
-					assetInfo->GetAssetFilepath().c_str(),
-					uid.ToString().c_str(),
-					extractionDiagnostic.c_str());
-			}
-
 			return false;
 		}
-		else
+
+		ByteCode rawBuffer;
+		std::string extractionDiagnostic;
+		const bool bExtracted = bIsGlb ?
+			ExtractTextureFromGLB(
+				request.m_filepath.c_str(),
+				request.m_glbTextureIndex,
+				rawBuffer) :
+			ExtractTextureFromGltf(
+				request.m_filepath,
+				request.m_glbTextureIndex,
+				rawBuffer,
+				extractionDiagnostic);
+		if (!bExtracted && extractionDiagnostic.empty())
+		{
+			extractionDiagnostic = bIsGlb ?
+				"GLB extraction failed" :
+				"glTF extraction failed";
+		}
+
+		if (bExtracted)
 		{
 			int32_t texChannels = 0;
-			const std::string filepath = assetInfo->GetAssetFilepath();
+			const std::string filepath = request.m_filepath;
 
 			if (bDecodeAsFloat)
 			{
-				if (float* pPixels = stbi_loadf(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
+				if (float* pPixels = stbi_loadf_from_memory(&rawBuffer[0], (uint32_t)rawBuffer.Num(), &width, &height, &texChannels, STBI_rgb_alpha))
 				{
 					const uint32_t imageSize = (uint32_t)width * height * sizeof(float) * 4;
 					decodedData.Resize(imageSize);
 					memcpy(decodedData.GetData(), pPixels, imageSize);
 
-					mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
+					mipLevels = request.m_bGenerateMips ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
 					stbi_image_free(pPixels);
 					return true;
 				}
 			}
-			else if (stbi_uc* pPixels = stbi_load(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
+			else if (stbi_uc* pPixels = stbi_load_from_memory(&rawBuffer[0], (uint32_t)rawBuffer.Num(), &width, &height, &texChannels, STBI_rgb_alpha))
 			{
 				const uint32_t imageSize = (uint32_t)width * height * 4;
 				decodedData.Resize(imageSize);
 				memcpy(decodedData.GetData(), pPixels, imageSize);
 
-				mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
+				mipLevels = request.m_bGenerateMips ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
 				stbi_image_free(pPixels);
 				return true;
 			}
 		}
-	}
+		else
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot extract texture %d from model source '%s' for asset %s: %s",
+				request.m_glbTextureIndex,
+				request.m_filepath.c_str(),
+				request.m_fileId.ToString().c_str(),
+				extractionDiagnostic.c_str());
+		}
 
+		return false;
+	}
+	else
+	{
+		int32_t texChannels = 0;
+		const std::string filepath = request.m_filepath;
+
+		if (bDecodeAsFloat)
+		{
+			if (float* pPixels = stbi_loadf(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
+			{
+				const uint32_t imageSize = (uint32_t)width * height * sizeof(float) * 4;
+				decodedData.Resize(imageSize);
+				memcpy(decodedData.GetData(), pPixels, imageSize);
+
+				mipLevels = request.m_bGenerateMips ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
+				stbi_image_free(pPixels);
+				return true;
+			}
+		}
+		else if (stbi_uc* pPixels = stbi_load(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
+		{
+			const uint32_t imageSize = (uint32_t)width * height * 4;
+			decodedData.Resize(imageSize);
+			memcpy(decodedData.GetData(), pPixels, imageSize);
+
+			mipLevels = request.m_bGenerateMips ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
+			stbi_image_free(pPixels);
+			return true;
+		}
+	}
 	return false;
 }
 
@@ -648,6 +848,45 @@ bool TextureImporter::DecodeTextureCpu(FileId uid, ByteCode& decodedData,
 	int32_t& width, int32_t& height, uint32_t& mipLevels)
 {
 	return ImportTexture(uid, decodedData, width, height, mipLevels);
+}
+
+Tasks::TaskPtr<TextureImporter::CpuTextureSnapshot> TextureImporter::LoadCpuTexture(FileId uid)
+{
+	auto* info = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid);
+	CpuDecodeRequest source;
+	if (!info || !CaptureCpuDecodeRequest(*info, source)) return {};
+	const auto clamping = info->GetClamping();
+	auto& entry = m_cpuTextures.At_Lock(uid);
+	if (entry.m_load && entry.m_source == source && entry.m_clamping == clamping)
+	{
+		auto task = entry.m_load;
+		m_cpuTextures.Unlock(uid);
+		return task;
+	}
+	entry.m_source = source;
+	entry.m_clamping = clamping;
+	entry.m_load = Tasks::CreateTask<CpuTextureSnapshot>("Decode CPU texture"_h,
+		[source = std::move(source), clamping, decode = m_decodeTexture]()
+		{
+			CpuTextureSnapshot result;
+			result.m_source = source;
+			result.m_clamping = clamping;
+			ByteCode pixels;
+			uint32_t mipLevels = 1;
+			if (decode(source, pixels, result.m_width, result.m_height, mipLevels) && HasCurrentTextureSources(source))
+			{
+				result.m_pixels = TSharedPtr<ByteCode>::Make(std::move(pixels));
+			}
+			else
+			{
+				SAILOR_LOG_ERROR("Cannot decode CPU texture '%s': decoding failed or the source changed.", source.m_filepath.c_str());
+			}
+			return result;
+		});
+	auto task = entry.m_load;
+	m_cpuTextures.Unlock(uid);
+	task->Run();
+	return task;
 }
 
 bool TextureImporter::LoadTexture_Immediate(FileId uid, TexturePtr& outTexture)
@@ -663,125 +902,175 @@ bool TextureImporter::LoadTexture_Immediate(FileId uid, TexturePtr& outTexture)
 	return task->GetResult().IsValid();
 }
 
+Tasks::TaskPtr<TexturePtr> TextureImporter::CreateTextureTask(
+	TexturePtr texture, const TextureAssetInfo& assetInfo, bool bCpuOnly, bool bHotReload,
+	const Tasks::ITaskPtr& previous)
+{
+	CpuDecodeRequest source;
+	if (!CaptureCpuDecodeRequest(assetInfo, source))
+	{
+		// A failed request still joins the preceding publication.
+		source = DescribeCpuTexture(assetInfo);
+	}
+	const auto format = assetInfo.GetFormat();
+	const auto filtration = assetInfo.GetFiltration();
+	const auto clamping = assetInfo.GetClamping();
+	const auto reduction = assetInfo.GetSamplerReduction();
+	const auto usage = assetInfo.ShouldSupportStorageBinding() ?
+		DefaultTextureUsage | RHI::ETextureUsageBit::Storage_Bit : DefaultTextureUsage;
+	const bool bKeepCpu = assetInfo.ShouldKeepCpuBuffers();
+
+	struct Data
+	{
+		ByteCode m_pixels;
+		int32_t m_width = 0, m_height = 0;
+		uint32_t m_mipLevels = 1;
+		bool m_bDecoded = false;
+	};
+	auto decode = Tasks::CreateTask<TSharedPtr<Data>>("Decode texture"_h,
+		[source, decodeTexture = m_decodeTexture]()
+		{
+			auto data = TSharedPtr<Data>::Make();
+			data->m_bDecoded = decodeTexture(source, data->m_pixels, data->m_width,
+				data->m_height, data->m_mipLevels);
+			return data;
+		}, EThreadType::Worker);
+	auto ready = decode->Then<TSharedPtr<Data>>(
+		[source](TSharedPtr<Data> data)
+		{
+			if (!data->m_bDecoded || data->m_pixels.IsEmpty() || !HasCurrentTextureSources(source))
+			{
+				data.Clear();
+			}
+			return data;
+		}, "Check texture sources"_h, EThreadType::Worker);
+	// Decodes may overlap; check freshness after the preceding publication without doing file I/O on RHI.
+	if (previous)
+	{
+		ready->Join(previous);
+	}
+	auto publish = ready->Then<TexturePtr>(
+		[this, texture, source, format, filtration, clamping, reduction, usage,
+			bCpuOnly, bKeepCpu, bHotReload](TSharedPtr<Data> data) mutable
+		{
+			if (!data)
+			{
+				SAILOR_LOG_ERROR("Cannot load texture '%s': decoding failed or the source changed.",
+					source.m_filepath.c_str());
+				return TexturePtr{};
+			}
+
+			if (bCpuOnly)
+			{
+				if (texture->m_cpuSource != source)
+				{
+					SAILOR_LOG_ERROR("Cannot retain CPU texture '%s': reload its changed GPU source first.",
+						source.m_filepath.c_str());
+					return TexturePtr{};
+				}
+				if (!texture->HasCpuData())
+				{
+					texture->SetDecodedData(std::move(data->m_pixels));
+				}
+				return texture;
+			}
+
+			auto& driver = RHI::Renderer::GetDriver();
+			auto rhi = driver->CreateTexture(data->m_pixels.GetData(), data->m_pixels.Num(),
+				glm::vec3(data->m_width, data->m_height, 1), data->m_mipLevels,
+				RHI::ETextureType::Texture2D, format, filtration, clamping, usage, reduction);
+			if (!rhi)
+			{
+				return TexturePtr{};
+			}
+			driver->SetDebugName(rhi, source.m_filepath);
+
+			size_t index = 0;
+			m_textureSamplersIndices.TryGet(source.m_fileId, index);
+			if (IsUserTextureSamplerIndexValid(index))
+			{
+				if (!UpdateTextureSamplerBinding(rhi, static_cast<uint32_t>(index)))
+				{
+					return TexturePtr{};
+				}
+			}
+			else
+			{
+				if (!RegisterTextureSamplerBinding(rhi, index))
+				{
+					SAILOR_LOG_ERROR("Cannot register texture sampler '%s'.", source.m_filepath.c_str());
+					return TexturePtr{};
+				}
+				m_textureSamplersIndices.At_Lock(source.m_fileId) = index;
+				m_textureSamplersIndices.Unlock(source.m_fileId);
+			}
+
+			texture->m_rhiTexture = std::move(rhi);
+			texture->m_width = data->m_width;
+			texture->m_height = data->m_height;
+			texture->m_mipLevels = data->m_mipLevels;
+			texture->m_cpuSource = source;
+			texture->SetDecodedData(bKeepCpu ? std::move(data->m_pixels) : ByteCode{});
+			if (bHotReload)
+			{
+				texture->TraceHotReload(nullptr);
+			}
+			return texture;
+		}, "Publish texture"_h, EThreadType::RHI);
+	return publish->ToTaskWithResult();
+}
+
 Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& outTexture)
 {
 	SAILOR_PROFILE_FUNCTION();
-	TextureAssetInfoPtr pAssetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid);
-
-	// Check promises first
-	auto& promise = m_promises.At_Lock(uid, nullptr);
-	auto& loadedTexture = m_loadedTextures.At_Lock(uid, TexturePtr());
-
-	// Check loaded textures
-	if (loadedTexture)
+	auto* assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid);
+	if (!assetInfo)
 	{
-		const bool bNeedCpuBuffers = pAssetInfo && pAssetInfo->ShouldKeepCpuBuffers() && !loadedTexture->HasCpuData();
-		if (bNeedCpuBuffers && !promise)
-		{
-			loadedTexture = nullptr;
-		}
-		else
-		{
-			outTexture = loadedTexture;
-			auto res = promise ? promise : Tasks::TaskPtr<TexturePtr>::Make(outTexture);
-
-			m_loadedTextures.Unlock(uid);
-			m_promises.Unlock(uid);
-
-			return res;
-		}
+		outTexture = nullptr;
+		return {};
 	}
 
-	if (pAssetInfo)
+	auto& entry = m_textures.At_Lock(uid);
+	auto& promise = entry.m_load;
+	auto& texture = entry.m_texture;
+	const bool bKeepCpu = assetInfo->ShouldKeepCpuBuffers();
+	const bool bPending = promise && !promise->IsFinished();
+	bool bCpuOnly = false;
+	if (bPending)
 	{
-		SAILOR_PROFILE_TEXT(pAssetInfo->GetAssetFilepath().c_str());
-
-		TexturePtr pTexture = TexturePtr::Make(m_allocator, uid);
-
-		struct Data
+		if (!bKeepCpu || entry.m_bCpuBuffersRequested)
 		{
-			ByteCode decodedData;
-			int32_t width;
-			int32_t height;
-			uint32_t mipLevels;
-			bool bIsImported;
-			bool bShouldKeepCpuBuffers;
-		};
-
-		promise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load Texture",
-			[pAssetInfo]() mutable
-			{
-				TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
-				pData->bIsImported = ImportTexture(pAssetInfo->GetFileId(), pData->decodedData, pData->width, pData->height, pData->mipLevels);
-				pData->bShouldKeepCpuBuffers = pAssetInfo->ShouldKeepCpuBuffers();
-
-				if (!pData->bIsImported)
-				{
-					SAILOR_LOG("Cannot Load texture: %s, with uid: %s", pAssetInfo->GetAssetFilepath().c_str(), pAssetInfo->GetFileId().ToString().c_str());
-				}
-
-				return pData;
-			})->Then<TexturePtr>([pTexture, pAssetInfo, this](TSharedPtr<Data> pData) mutable
-				{
-					if (pData->bIsImported && pData->decodedData.Num() > 0)
-					{
-						pTexture->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&pData->decodedData[0], pData->decodedData.Num(), glm::vec3(pData->width, pData->height, 1.0f),
-							pData->mipLevels, RHI::ETextureType::Texture2D, pAssetInfo->GetFormat(), pAssetInfo->GetFiltration(),
-							pAssetInfo->GetClamping(),
-							pAssetInfo->ShouldSupportStorageBinding() ? (TextureImporter::DefaultTextureUsage | RHI::ETextureUsageBit::Storage_Bit) : TextureImporter::DefaultTextureUsage,
-							pAssetInfo->GetSamplerReduction());
-						pTexture->m_width = pData->width;
-						pTexture->m_height = pData->height;
-						pTexture->m_mipLevels = pData->mipLevels;
-						if (pData->bShouldKeepCpuBuffers)
-						{
-							pTexture->m_decodedData = std::move(pData->decodedData);
-						}
-						else
-						{
-							pTexture->m_decodedData.Clear();
-						}
-
-						RHI::Renderer::GetDriver()->SetDebugName(pTexture->m_rhiTexture, pAssetInfo->GetAssetFilepath());
-
-						size_t index = 0;
-						if (RegisterTextureSamplerBinding(pTexture->m_rhiTexture, index))
-						{
-							m_textureSamplersIndices.At_Lock(pAssetInfo->GetFileId()) = index;
-							m_textureSamplersIndices.Unlock(pAssetInfo->GetFileId());
-						}
-						else if (index == 0)
-						{
-							SAILOR_LOG_ERROR("Cannot register texture sampler '%s': the scene texture capacity of %zu user textures is exhausted.",
-								pAssetInfo->GetAssetFilepath().c_str(),
-								MaxUserTexturesInScene);
-						}
-						else
-						{
-							SAILOR_LOG_ERROR("Cannot register texture sampler '%s' at index %zu: descriptor update failed.",
-								pAssetInfo->GetAssetFilepath().c_str(),
-								index);
-						}
-					}
-
-					return pTexture;
-				}, "Create RHI texture", EThreadType::RHI)->ToTaskWithResult();
-
-			outTexture = loadedTexture = pTexture;
-			promise->Run();
-
-			m_promises.Unlock(uid);
-			m_loadedTextures.Unlock(uid);
-
-			return promise;
+			outTexture = texture;
+			auto task = promise;
+			m_textures.Unlock(uid);
+			return task;
+		}
+		bCpuOnly = true;
+	}
+	else if (texture && texture->GetRHI())
+	{
+		if (!bKeepCpu || texture->HasCpuData())
+		{
+			outTexture = texture;
+			auto task = Tasks::TaskPtr<TexturePtr>::Make(texture);
+			m_textures.Unlock(uid);
+			return task;
+		}
+		bCpuOnly = true;
+	}
+	else if (!texture)
+	{
+		texture = TexturePtr::Make(m_allocator, uid);
 	}
 
-	outTexture = nullptr;
-	m_promises.Unlock(uid);
-	m_loadedTextures.Unlock(uid);
-
-	SAILOR_LOG("Cannot find texture with uid: %s", uid.ToString().c_str());
-	return Tasks::TaskPtr<TexturePtr>();
+	entry.m_bCpuBuffersRequested = bKeepCpu;
+	promise = CreateTextureTask(texture, *assetInfo, bCpuOnly, false, entry.m_lastAccess);
+	entry.m_lastAccess = promise;
+	outTexture = texture;
+	auto task = promise;
+	m_textures.Unlock(uid);
+	task->Run();
+	return task;
 }
 
 size_t TextureImporter::GetTextureIndex(FileId uid)
@@ -810,27 +1099,17 @@ bool TextureImporter::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmed
 
 void TextureImporter::CollectGarbage()
 {
-	TVector<FileId> uidsToRemove;
-
-	m_promises.LockAll();
-	auto ids = m_promises.GetKeys();
-	m_promises.UnlockAll();
-
-	for (const auto& id : ids)
+	m_textures.LockAll();
+	for (auto& entry : m_textures)
 	{
-		auto promise = m_promises.At_Lock(id);
-
-		if (!promise.IsValid() || (promise.IsValid() && promise->IsFinished()))
+		if (entry.m_second.m_load && entry.m_second.m_load->IsFinished())
 		{
-			FileId uid = id;
-			uidsToRemove.Emplace(uid);
+			entry.m_second.m_load.Clear();
 		}
-
-		m_promises.Unlock(id);
+		if (entry.m_second.m_lastAccess && entry.m_second.m_lastAccess->IsFinished())
+		{
+			entry.m_second.m_lastAccess.Clear();
+		}
 	}
-
-	for (auto& uid : uidsToRemove)
-	{
-		m_promises.Remove(uid);
-	}
+	m_textures.UnlockAll();
 }

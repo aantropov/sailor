@@ -47,14 +47,20 @@ namespace Sailor
 		SAILOR_API FrameGraphAssetPtr LoadFrameGraphAsset(FileId uid);
 		SAILOR_API bool LoadFrameGraph_Immediate(FileId uid, FrameGraphPtr& outFrameGraph);
 		SAILOR_API bool Instantiate_Immediate(FileId uid, FrameGraphPtr& outFrameGraph);
-
-		SAILOR_API static void RegisterFrameGraphNode(const std::string& nodeName, std::function<FrameGraphNodePtr(void)> factoryMethod);
+		SAILOR_API static const char* GetRendererAssetPath();
+		// Main-thread configuration lookup; does not instantiate GPU resources or resolve viewport sizes.
+		SAILOR_API bool GetEnvironmentMap(std::string& outPath, std::string& outDiagnostic);
 
 	protected:
+
+		friend class FrameGraphImporterTestAccess;
 
 		SAILOR_API FrameGraphPtr BuildFrameGraph(const FileId& uid, const FrameGraphAssetPtr& frameGraphAsset) const;
 
 		TConcurrentMap<FileId, FrameGraphPtr> m_loadedFrameGraphs{};
 		Memory::ObjectAllocatorPtr m_allocator{};
+		FileId m_environmentRenderer;
+		FileRevision m_environmentRendererRevision;
+		std::string m_environmentMap;
 	};
 }

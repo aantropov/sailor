@@ -52,7 +52,7 @@ std::string ShaderCacheTestAccess::GetGeneration(const ShaderCache& cache, const
 std::filesystem::path ShaderCacheTestAccess::GetArtifactPath(const ShaderCache& cache,
 	const FileId& uid,
 	uint32_t permutation,
-	const char* stage,
+	std::string_view stage,
 	bool bIsDebug)
 {
 	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
@@ -109,19 +109,27 @@ bool ShaderCacheTestAccess::PublishWithArtifactFailure(ShaderCache& cache,
 bool ShaderCacheTestAccess::RemoveWithEnvelopeFailure(ShaderCache& cache, const FileId& uid, std::string& outDiagnostic)
 {
 	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
-	return cache.RemoveLocked(uid, Workspace::EWorkspaceCacheAtomicWriteFailurePoint::BeforeReplace, outDiagnostic);
+	cache.m_saveFailureCountdownForTests = 0;
+	return cache.RemoveLocked(uid, outDiagnostic);
 }
 
 bool ShaderCacheTestAccess::ClearExpiredWithEnvelopeFailure(ShaderCache& cache, std::string& outDiagnostic)
 {
 	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
-	return cache.ClearExpiredLocked(Workspace::EWorkspaceCacheAtomicWriteFailurePoint::BeforeReplace, outDiagnostic);
+	cache.m_saveFailureCountdownForTests = 0;
+	return cache.ClearExpiredLocked(outDiagnostic);
 }
 
-void ShaderCacheTestAccess::FailNextSaveBeforeReplace(ShaderCache& cache)
+void ShaderCacheTestAccess::FailNextSaveBeforeReplace(ShaderCache& cache, uint32_t writesToSkip)
 {
 	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
-	cache.m_nextSaveFailureForTests = Workspace::EWorkspaceCacheAtomicWriteFailurePoint::BeforeReplace;
+	cache.m_saveFailureCountdownForTests = writesToSkip;
+}
+
+void ShaderCacheTestAccess::FailNextSaveAfterPublish(ShaderCache& cache)
+{
+	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
+	cache.m_bSaveSyncFailureForTests = true;
 }
 
 void ShaderCacheTestAccess::SetArtifactReadIoFailure(ShaderCache& cache, bool bEnabled)
@@ -130,10 +138,33 @@ void ShaderCacheTestAccess::SetArtifactReadIoFailure(ShaderCache& cache, bool bE
 	cache.m_bArtifactReadIoFailureForTests = bEnabled;
 }
 
-void ShaderCacheTestAccess::FailNextArtifactSweep(ShaderCache& cache)
+void ShaderCacheTestAccess::FailNextArtifactCleanup(ShaderCache& cache)
 {
 	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
-	cache.m_bArtifactSweepFailureForTests = true;
+	cache.m_bArtifactCleanupFailureForTests = true;
+}
+
+uint64_t ShaderCacheTestAccess::TakeArtifactReadCount(ShaderCache& cache)
+{
+	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
+	const auto reads = cache.m_artifactReadsForTests;
+	cache.m_artifactReadsForTests = 0;
+	return reads;
+}
+
+uint64_t ShaderCacheTestAccess::TakeManifestWriteCount(ShaderCache& cache)
+{
+	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
+	const auto writes = cache.m_manifestWritesForTests;
+	cache.m_manifestWritesForTests = 0;
+	return writes;
+}
+
+void ShaderCacheTestAccess::AfterNextSave(ShaderCache& cache, void (*callback)(void*), void* context)
+{
+	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
+	cache.m_afterSaveForTests = callback;
+	cache.m_afterSaveContextForTests = context;
 }
 
 std::string ShaderCacheTestAccess::PayloadWithUnknownFields(const ShaderCache& cache)

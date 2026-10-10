@@ -1,0 +1,4 @@
+#pragma once
+
+// Generated from the engine headers and build settings. Rebuild logic after an interface change.
+#define SAILOR_WORKSPACE_INTERFACE_ID "@SAILOR_WORKSPACE_INTERFACE_ID@"

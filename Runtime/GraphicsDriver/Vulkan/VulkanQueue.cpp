@@ -6,9 +6,16 @@ using namespace Sailor;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
 VulkanQueue::VulkanQueue(VkQueue queue, uint32_t queueFamilyIndex, uint32_t queueIndex) :
+	VulkanQueue(queue, queueFamilyIndex, queueIndex, vkQueueSubmit)
+{
+}
+
+VulkanQueue::VulkanQueue(VkQueue queue, uint32_t queueFamilyIndex, uint32_t queueIndex,
+	PFN_vkQueueSubmit queueSubmit) :
 	m_queue(queue),
 	m_queueFamilyIndex(queueFamilyIndex),
-	m_queueIndex(queueIndex)
+	m_queueIndex(queueIndex),
+	m_queueSubmit(queueSubmit)
 {
 }
 
@@ -19,7 +26,7 @@ VulkanQueue::~VulkanQueue()
 VkResult VulkanQueue::Submit(const TVector<VkSubmitInfo>& submitInfos, VulkanFencePtr fence) const
 {
 	m_lock.Lock();
-	auto res = vkQueueSubmit(m_queue, static_cast<uint32_t>(submitInfos.Num()), submitInfos.GetData(), fence ? (VkFence)*fence : VK_NULL_HANDLE);
+	auto res = m_queueSubmit(m_queue, static_cast<uint32_t>(submitInfos.Num()), submitInfos.GetData(), fence ? (VkFence)*fence : VK_NULL_HANDLE);
 	m_lock.Unlock();
 
 	return res;
@@ -28,7 +35,7 @@ VkResult VulkanQueue::Submit(const TVector<VkSubmitInfo>& submitInfos, VulkanFen
 VkResult VulkanQueue::Submit(const VkSubmitInfo& submitInfo, VulkanFencePtr fence) const
 {
 	m_lock.Lock();
-	auto res = vkQueueSubmit(m_queue, 1, &submitInfo, fence ? (VkFence)*fence : VK_NULL_HANDLE);
+	auto res = m_queueSubmit(m_queue, 1, &submitInfo, fence ? (VkFence)*fence : VK_NULL_HANDLE);
 	m_lock.Unlock();
 
 	return res;
@@ -37,7 +44,7 @@ VkResult VulkanQueue::Submit(const VkSubmitInfo& submitInfo, VulkanFencePtr fenc
 VkResult VulkanQueue::Present(const VkPresentInfoKHR& info)
 {
 	m_lock.Lock();
-	auto res = vkQueuePresentKHR(m_queue, &info);
+	auto res = m_queuePresent(m_queue, &info);
 	m_lock.Unlock();
 
 	return res;
@@ -46,7 +53,7 @@ VkResult VulkanQueue::Present(const VkPresentInfoKHR& info)
 VkResult VulkanQueue::WaitIdle()
 {
 	m_lock.Lock();
-	auto res = vkQueueWaitIdle(m_queue);
+	auto res = m_queueWaitIdle(m_queue);
 	m_lock.Unlock();
 
 	return res;

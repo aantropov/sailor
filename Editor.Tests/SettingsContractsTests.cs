@@ -80,6 +80,61 @@ public class SettingsContractsTests
         }
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public async Task FramesInFlight_RoundTripsAndRestartsOnlyWhenChanged(int frames)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "SailorFrameSettings-" + Guid.NewGuid().ToString("N"));
+        var paths = GraphicsSettingsPaths.Create(directory, Path.Combine(directory, "Cache"));
+        Directory.CreateDirectory(paths.CacheDirectory);
+        try
+        {
+            await File.WriteAllTextAsync(paths.ProjectSettingsPath,
+                GraphicsSettingsYamlCodec.SerializeProject(GraphicsSettingsDefaults.Project));
+            await File.WriteAllTextAsync(paths.EditorSettingsPath,
+                GraphicsSettingsYamlCodec.SerializeEditor(GraphicsSettingsDefaults.Editor));
+            var restarts = 0;
+            var service = new GraphicsSettingsService(() => paths, _ =>
+            {
+                restarts++;
+                return Task.FromResult(true);
+            });
+            var before = await service.EnsureLoadedAsync();
+            Assert.Equal(2, before.Project.Graphics.MaxFramesInFlight);
+            var draft = new GraphicsSettingsDraftSession().GetOrCreate(before);
+            draft.SetMaxFramesInFlight(frames);
+            Assert.True(draft.TryBuild(out var project, out var editor, out var issues));
+            Assert.Empty(issues);
+            var result = await service.ApplyAsync(project, editor, before);
+            Assert.Equal(frames != 2, result.EngineRestarted);
+            Assert.Equal(frames != 2 ? 1 : 0, restarts);
+            var after = await service.ReloadAsync();
+            Assert.Empty(after.Diagnostics);
+            Assert.Equal(frames, after.Project.Graphics.MaxFramesInFlight);
+            Assert.False((await service.ApplyAsync(after.Project, after.Editor, after)).EngineRestarted);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(5)]
+    public void FramesInFlight_RejectsUnsupportedCounts(int frames)
+    {
+        var source = GraphicsSettingsDefaults.Project with
+        {
+            Graphics = GraphicsSettingsDefaults.Project.Graphics with { MaxFramesInFlight = frames }
+        };
+        Assert.Contains(GraphicsSettingsValidator.Validate(source).Issues,
+            issue => issue.Path == "graphics.maxFramesInFlight");
+    }
+
     [Fact]
     public void ShadowDistance_RoundTripsThroughYamlAndEditorDraft()
     {

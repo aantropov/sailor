@@ -57,19 +57,3 @@ void BuoyancyComponent::SetWaterDrag(float value)
 {
 	m_waterDrag = SanitizeNonNegative(value, m_waterDrag);
 }
-
-void BuoyancyComponent::SetWaveAmplitude(float value)
-{
-	m_waveAmplitude = SanitizeNonNegative(value, m_waveAmplitude);
-}
-
-void BuoyancyComponent::SetWaveLength(float value)
-{
-	m_waveLength = std::max(0.01f,
-		SanitizeNonNegative(value, m_waveLength));
-}
-
-void BuoyancyComponent::SetWaveSpeed(float value)
-{
-	m_waveSpeed = SanitizeNonNegative(value, m_waveSpeed);
-}

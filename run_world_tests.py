@@ -2,13 +2,18 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import platform
 import subprocess
 import sys
+import tempfile
 import time
+import uuid
 from pathlib import Path
+
+from build_engine import default_build_dir
 
 REPO_ROOT = Path(__file__).resolve().parent
 CONTENT_ROOT = REPO_ROOT / "Content"
@@ -72,11 +77,47 @@ def relative_to_content(path: Path) -> str:
 def find_worlds(test_root: Path) -> list[Path]:
     if not test_root.exists():
         raise FileNotFoundError(f"World tests root does not exist: {test_root}")
+    if test_root.is_file():
+        return [test_root] if test_root.suffix == ".world" else []
     return sorted(path for path in test_root.rglob("*.world") if path.is_file())
 
 
-def engine_library_path(config: str) -> Path:
-    return REPO_ROOT / "build-mac-vcpkg" / "Lib" / config / f"Sailor-{config}.dylib"
+def engine_library_path(build_dir: Path, config: str) -> Path:
+    return build_dir / "Lib" / config / f"Sailor-{config}.dylib"
+
+
+def test_module_path(build_dir: Path, config: str, engine: Path) -> Path:
+    host_os = detect_os()
+    if host_os == "windows":
+        return engine.parent / "WorkspaceFixture.dll"
+    if host_os == "mac":
+        return build_dir / "Tests" / config / "libWorkspaceFixture.dylib"
+    return build_dir / "Tests" / "libWorkspaceFixture.so"
+
+
+def prepare_test_workspace(workspace: Path, module: Path, config: str) -> None:
+    (workspace / "Content" / "Tests").mkdir(parents=True)
+    binaries = workspace / "Binaries" / config
+    binaries.mkdir(parents=True)
+    shutil.copy2(module, binaries / module.name)
+    settings = REPO_ROOT / "ProjectSettings.yaml"
+    if settings.exists():
+        shutil.copy2(settings, workspace / settings.name)
+    manifest = {
+        "manifestVersion": 1,
+        "workspaceId": str(uuid.uuid4()),
+        "name": "Sailor world tests",
+        "enginePath": str(REPO_ROOT),
+        "engineReferenceKind": "source",
+        "contentPath": "Content",
+        "cachePath": "Cache",
+        "sourcePath": "Source",
+        "generatedProjectPath": "Generated",
+        "buildPath": "Cache/Build",
+        "logicOutputPath": "Binaries",
+        "logicModuleName": "WorkspaceFixture",
+    }
+    (workspace / "workspace.sailor").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
 
 def write_mac_info_plist(app: Path, executable_name: str, bundle_identifier: str) -> None:
@@ -107,7 +148,7 @@ def write_mac_info_plist(app: Path, executable_name: str, bundle_identifier: str
     )
 
 
-def prepare_mac_app_bundle(engine: Path, config: str) -> Path:
+def prepare_mac_app_bundle(engine: Path, build_dir: Path, config: str) -> Path:
     bundle_suffix = f"{config.lower()}.{os.getpid()}.{time.monotonic_ns()}"
     app = DEFAULT_MAC_APP_ROOT / f"SailorEngineWorldTests-{config}-{os.getpid()}-{time.monotonic_ns()}.app"
     contents = app / "Contents"
@@ -119,7 +160,7 @@ def prepare_mac_app_bundle(engine: Path, config: str) -> Path:
     bundled_engine = macos / executable_name
     shutil.copy2(engine, bundled_engine)
 
-    library = engine_library_path(config)
+    library = engine_library_path(build_dir, config)
     if library.exists():
         shutil.copy2(library, macos / library.name)
 
@@ -131,11 +172,11 @@ def prepare_mac_app_bundle(engine: Path, config: str) -> Path:
     return app
 
 
-def build_engine_args(world: Path, extra_args: list[str]) -> list[str]:
+def build_engine_args(world: Path, workspace: Path, extra_args: list[str]) -> list[str]:
     world_arg = relative_to_content(world)
     return [
         "--workspace",
-        str(REPO_ROOT),
+        str(workspace),
         "--world",
         world_arg,
         "--noconsole",
@@ -143,17 +184,17 @@ def build_engine_args(world: Path, extra_args: list[str]) -> list[str]:
     ]
 
 
-def run_world_direct(engine: Path, world: Path, timeout: float, extra_args: list[str]) -> tuple[int | None, float, str]:
+def run_world_direct(engine: Path, world: Path, workspace: Path, timeout: float, extra_args: list[str]) -> tuple[int | None, float, str]:
     cmd = [
         str(engine),
-        *build_engine_args(world, extra_args),
+        *build_engine_args(world, workspace, extra_args),
     ]
 
     start = time.monotonic()
     try:
         result = subprocess.run(
             cmd,
-            cwd=REPO_ROOT,
+            cwd=workspace,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -168,21 +209,21 @@ def run_world_direct(engine: Path, world: Path, timeout: float, extra_args: list
         return None, time.monotonic() - start, output
 
 
-def run_world_mac_app(app: Path, world: Path, timeout: float, extra_args: list[str]) -> tuple[int | None, float, str]:
+def run_world_mac_app(app: Path, world: Path, workspace: Path, timeout: float, extra_args: list[str]) -> tuple[int | None, float, str]:
     cmd = [
         "open",
         "-W",
         "-n",
         str(app),
         "--args",
-        *build_engine_args(world, extra_args),
+        *build_engine_args(world, workspace, extra_args),
     ]
 
     start = time.monotonic()
     try:
         result = subprocess.run(
             cmd,
-            cwd=REPO_ROOT,
+            cwd=workspace,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -193,7 +234,7 @@ def run_world_mac_app(app: Path, world: Path, timeout: float, extra_args: list[s
             time.sleep(0.5)
             result = subprocess.run(
                 cmd,
-                cwd=REPO_ROOT,
+                cwd=workspace,
                 text=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -212,9 +253,10 @@ def main() -> int:
     host_os = detect_os()
     parser = argparse.ArgumentParser(description="Run built SailorEngine Release against all Content/Tests/**/*.world files.")
     parser.add_argument("--config", default="Release", help="Built engine config to run, default: Release")
+    parser.add_argument("--build-dir", type=Path, default=default_build_dir(host_os), help="CMake build directory containing WorkspaceModuleFixture")
     parser.add_argument("--engine", type=Path, default=None, help="Path to built SailorEngine executable")
     parser.add_argument("--direct-exec", action="store_true", help="Run the executable directly instead of using a macOS .app bundle")
-    parser.add_argument("--tests-root", type=Path, default=DEFAULT_TEST_ROOT, help="Root folder containing .world tests")
+    parser.add_argument("--tests-root", type=Path, default=DEFAULT_TEST_ROOT, help="Folder containing .world tests, or one .world file")
     parser.add_argument("--timeout", type=float, default=180.0, help="Per-world timeout in seconds")
     parser.add_argument("--stop-on-failure", action="store_true", help="Stop after the first failed world")
     parser.add_argument("--verbose", action="store_true", help="Print full engine output for every world")
@@ -236,53 +278,84 @@ def main() -> int:
     extra_args = args.engine_args
     if extra_args and extra_args[0] == "--":
         extra_args = extra_args[1:]
+    if any(arg == "--workspace" or arg.startswith("--workspace=") for arg in extra_args):
+        parser.error("World tests own their isolated workspace; do not override --workspace.")
+
+    build_dir = args.build_dir.resolve()
+    module = test_module_path(build_dir, args.config, engine)
+    if not module.is_file():
+        print(f"World test module was not found: {module}", file=sys.stderr)
+        print("Configure with -DSAILOR_BUILD_TESTS=ON and build WorkspaceModuleFixture first.", file=sys.stderr)
+        return 2
 
     print(f"Engine: {engine}")
     app = None
     if host_os == "mac" and not args.direct_exec:
-        app = prepare_mac_app_bundle(engine, args.config)
+        app = prepare_mac_app_bundle(engine, build_dir, args.config)
         print(f"App: {app}")
     print(f"Worlds: {len(worlds)}")
     print(f"Timeout: {args.timeout:.1f}s per world")
 
-    failures: list[tuple[Path, str]] = []
-    completed = 0
-    for index, world in enumerate(worlds, start=1):
-        completed += 1
-        label = relative_to_repo(world)
-        print(f"\n[{index}/{len(worlds)}] {label}")
-        if app:
-            return_code, elapsed, output = run_world_mac_app(app, world, args.timeout, extra_args)
-        else:
-            return_code, elapsed, output = run_world_direct(engine, world, args.timeout, extra_args)
+    workspace = Path(tempfile.mkdtemp(prefix="sailor-world-tests-")).resolve()
+    keep_workspace = False
+    try:
+        prepare_test_workspace(workspace, module, args.config)
+        print(f"Workspace: {workspace}")
+        failures: list[tuple[Path, str]] = []
+        completed = 0
+        for index, world in enumerate(worlds, start=1):
+            completed += 1
+            label = relative_to_repo(world)
+            print(f"\n[{index}/{len(worlds)}] {label}")
+            if app:
+                # Losing the `open -W` launcher does not terminate the app it started.
+                keep_workspace = True
+                return_code, elapsed, output = run_world_mac_app(app, world, workspace, args.timeout, extra_args)
+                keep_workspace = return_code is None
+            else:
+                return_code, elapsed, output = run_world_direct(engine, world, workspace, args.timeout, extra_args)
 
-        if args.verbose and output:
-            print(output.rstrip())
-
-        if return_code is None:
-            reason = f"timeout after {elapsed:.2f}s"
-            print(f"FAIL: {reason}")
-            failures.append((world, reason))
-        elif return_code != 0:
-            reason = f"exit code {return_code} after {elapsed:.2f}s"
-            print(f"FAIL: {reason}")
-            if not args.verbose and output:
+            if args.verbose and output:
                 print(output.rstrip())
-            failures.append((world, reason))
+
+            if return_code is None:
+                reason = f"timeout after {elapsed:.2f}s"
+                print(f"FAIL: {reason}")
+                failures.append((world, reason))
+            elif return_code != 0:
+                reason = f"exit code {return_code} after {elapsed:.2f}s"
+                print(f"FAIL: {reason}")
+                if not args.verbose and output:
+                    print(output.rstrip())
+                failures.append((world, reason))
+            else:
+                print(f"OK: {elapsed:.2f}s")
+
+            if keep_workspace or (failures and args.stop_on_failure):
+                break
+
+        print(f"\nResult: {completed - len(failures)}/{completed} passed")
+        if failures:
+            print("Failures:")
+            for world, reason in failures:
+                print(f"- {relative_to_repo(world)}: {reason}")
+            return 1
+
+        return 0
+    finally:
+        if keep_workspace:
+            print(f"App completion is unknown; retained workspace: {workspace}")
         else:
-            print(f"OK: {elapsed:.2f}s")
-
-        if failures and args.stop_on_failure:
-            break
-
-    print(f"\nResult: {completed - len(failures)}/{completed} passed")
-    if failures:
-        print("Failures:")
-        for world, reason in failures:
-            print(f"- {relative_to_repo(world)}: {reason}")
-        return 1
-
-    return 0
+            journal = workspace / "Cache" / "Tests" / "testJournal.yaml"
+            if journal.is_file():
+                reports = REPO_ROOT / "Cache" / "Tests"
+                reports.mkdir(parents=True, exist_ok=True)
+                with journal.open("rb") as source, tempfile.NamedTemporaryFile(
+                    dir=reports, prefix="world-tests-", suffix=".yaml", delete=False
+                ) as report:
+                    shutil.copyfileobj(source, report)
+                print(f"Journal: {report.name}")
+            shutil.rmtree(workspace)
 
 
 if __name__ == "__main__":

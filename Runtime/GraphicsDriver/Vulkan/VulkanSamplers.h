@@ -31,9 +31,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 	struct VulkanSamplerCache
 	{
-		VulkanSamplerCache(VulkanDevicePtr pDevice);
+		SAILOR_API VulkanSamplerCache(VulkanDevicePtr pDevice);
 
-		VulkanSamplerPtr GetSampler(RHI::ETextureFiltration filtration, 
+		SAILOR_API VulkanSamplerPtr GetSampler(RHI::ETextureFiltration filtration,
 			RHI::ETextureClamping clampingMode, 
 			bool bHasMipMaps,
 			RHI::ESamplerReductionMode reduction) const;

@@ -1,0 +1,81 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- Compile the production macOS service path, replacing only UI dependencies. -->
+    <DefineConstants>$(DefineConstants);MACCATALYST</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="YamlDotNet" Version="15.1.1" />
+    <ProjectReference Include="../../Editor/Protocol/SailorEditor.Protocol.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="GlobalUsings.cs" />
+    <Compile Include="HeadlessUi.cs" />
+    <Compile Include="AssetRefreshTests.cs" />
+    <Compile Include="EngineModuleReloadTests.cs" />
+    <Compile Include="../AssetReimportIntegrationTests.cs" Link="AssetReimportIntegrationTests.cs" />
+    <Compile Include="../Support/NativeEditorHost.cs" Link="Support/NativeEditorHost.cs" />
+    <Compile Include="../../Editor/Services/EngineService.cs" Link="Services/EngineService.cs" />
+    <Compile Include="../../Editor/Services/AssetsService.cs" Link="Services/AssetsService.cs" />
+    <Compile Include="../../Editor/Services/SelectionService.cs" Link="Services/SelectionService.cs" />
+    <Compile Include="../../Editor/Services/AssetCacheIndexStore.cs" Link="Services/AssetCacheIndexStore.cs" />
+    <Compile Include="../../Editor/ViewModels/AssetFile.cs" Link="ViewModels/AssetFile.cs" />
+    <Compile Include="../../Editor/ViewModels/AssetFolder.cs" Link="ViewModels/AssetFolder.cs" />
+    <Compile Include="../../Editor/ViewModels/ProjectRoot.cs" Link="ViewModels/ProjectRoot.cs" />
+    <Compile Include="../../Editor/Content/AssetSourcePathContract.cs" Link="Content/AssetSourcePathContract.cs" />
+    <Compile Include="../../Editor/Content/ProjectContentFileOperations.cs" Link="Content/ProjectContentFileOperations.cs" />
+    <Compile Include="../../Editor/Content/ProjectContentModels.cs" Link="Content/ProjectContentModels.cs" />
+    <Compile Include="../../Editor/Content/ProjectContentFolderIds.cs" Link="Content/ProjectContentFolderIds.cs" />
+    <Compile Include="../../Editor/Content/ProjectContentPathPolicy.cs" Link="Content/ProjectContentPathPolicy.cs" />
+    <Compile Include="../../Editor/Content/ProjectContentFolderRebindPolicy.cs" Link="Content/ProjectContentFolderRebindPolicy.cs" />
+    <Compile Include="../../Editor/Content/ProjectContentAssetResolutionPolicy.cs" Link="Content/ProjectContentAssetResolutionPolicy.cs" />
+    <Compile Include="../../Editor/Content/ProjectContentStore.cs" Link="Content/ProjectContentStore.cs" />
+    <Compile Include="../../Editor/Content/PrefabOverrideApplier.cs" Link="Content/PrefabOverrideApplier.cs" />
+    <Compile Include="../../Editor/Workflow/WorkflowProjections.cs" Link="Workflow/WorkflowProjections.cs" />
+    <Compile Include="../../Editor/Services/EngineLaunchContract.cs" Link="Services/EngineLaunchContract.cs" />
+    <Compile Include="../../Editor/Services/EditorTypeCacheStore.cs" Link="Services/EditorTypeCacheStore.cs" />
+    <Compile Include="../../Editor/Services/GlobalIlluminationContracts.cs" Link="Services/GlobalIlluminationContracts.cs" />
+    <Compile Include="../../Editor/Services/LatestQueuedCommand.cs" Link="Services/LatestQueuedCommand.cs" />
+    <Compile Include="../../Editor/Services/LatestSceneViewportState.cs" Link="Services/LatestSceneViewportState.cs" />
+    <Compile Include="../../Editor/Services/WorldSnapshotPublicationGate.cs" Link="Services/WorldSnapshotPublicationGate.cs" />
+    <Compile Include="../../Editor/Scene/SceneViewportToolState.cs" Link="Scene/SceneViewportToolState.cs" />
+    <Compile Include="../../Editor/Scene/EditorViewportEventContract.cs" Link="Scene/EditorViewportEventContract.cs" />
+    <Compile Include="../../Editor/Settings/SettingsContracts.cs" Link="Settings/SettingsContracts.cs" />
+    <Compile Include="../../Editor/Settings/GraphicsSettings.cs" Link="Settings/GraphicsSettings.cs" />
+    <Compile Include="../../Editor/Workspace/*.cs" Link="Workspace/%(Filename)%(Extension)" />
+    <Compile Include="../../Editor/Protocol/EngineProtocolClient.cs" Link="Protocol/EngineProtocolClient.cs" />
+    <Compile Include="../../Editor/Protocol/EngineProtocolNative.cs" Link="Protocol/EngineProtocolNative.cs" />
+    <Compile Include="../../Editor/Protocol/EngineProtocolTransport.cs" Link="Protocol/EngineProtocolTransport.cs" />
+    <Compile Include="../../Editor/Protocol/LocalEngineProtocolTransport.cs" Link="Protocol/LocalEngineProtocolTransport.cs" />
+    <Compile Include="../../Editor/Protocol/ClientWebSocketEngineProtocolTransport.cs" Link="Protocol/ClientWebSocketEngineProtocolTransport.cs" />
+    <Compile Include="../../Editor/Protocol/MacEngineLibraryLoader.cs" Link="Protocol/MacEngineLibraryLoader.cs" />
+    <Compile Include="../../Editor/Utility/EngineTypes.cs" Link="Utility/EngineTypes.cs" />
+    <Compile Include="../../Editor/Utility/EngineTypeMetadataContract.cs" Link="Utility/EngineTypeMetadataContract.cs" />
+    <Compile Include="../../Editor/Utility/EditorComponentScalarCodec.cs" Link="Utility/EditorComponentScalarCodec.cs" />
+    <Compile Include="../../Editor/Utility/EditorComponentPropertyContract.cs" Link="Utility/EditorComponentPropertyContract.cs" />
+    <Compile Include="../../Editor/Utility/EditorComponentYamlContract.cs" Link="Utility/EditorComponentYamlContract.cs" />
+    <Compile Include="../../Editor/Utility/Math.cs" Link="Utility/Math.cs" />
+    <Compile Include="../../Editor/Utility/SerializationUtils.cs" Link="Utility/SerializationUtils.cs" />
+    <Compile Include="../../Editor/Utility/Observable.cs" Link="Utility/Observable.cs" />
+    <Compile Include="../../Editor/Utility/ObservableList.cs" Link="Utility/ObservableList.cs" />
+    <Compile Include="../../Editor/Utility/ObservableDictionary.cs" Link="Utility/ObservableDictionary.cs" />
+    <Compile Include="../../Editor/Utility/ObservableRecord.cs" Link="Utility/ObservableRecord.cs" />
+    <Compile Include="../../Editor/Utility/ReflectedValueCodec.cs" Link="Utility/ReflectedValueCodec.cs" />
+    <Compile Include="../../Editor/Utility/EditorPerf.cs" Link="Utility/EditorPerf.cs" />
+    <Compile Include="../../Editor/ViewModels/ObservableScalarLists.cs" Link="ViewModels/ObservableScalarLists.cs" />
+    <Compile Include="../../Editor/Utility/YamlHelper.cs" Link="Utility/YamlHelper.cs" />
+  </ItemGroup>
+</Project>

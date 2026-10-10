@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <string_view>
 
 namespace Sailor::Workspace
 {
@@ -24,18 +25,6 @@ namespace Sailor::Workspace
 		Corrupt,
 		UnsupportedVersion,
 		IoFailure
-	};
-
-	enum class EWorkspaceCacheAtomicWriteFailurePoint : uint32_t
-	{
-		None,
-		BeforeReplace
-	};
-
-	enum class EWorkspaceCacheAtomicWriteMode : uint32_t
-	{
-		ReplaceExisting,
-		FailIfExists
 	};
 
 	struct SAILOR_SHARED_API WorkspaceCacheIdentity final
@@ -62,62 +51,39 @@ namespace Sailor::Workspace
 	};
 
 	SAILOR_SHARED_API std::string ResolveWorkspaceCacheIdentity(
-		const std::string& workspaceId,
+		std::string_view workspaceId,
 		const std::filesystem::path& canonicalWorkspaceRoot);
 
 	SAILOR_SHARED_API const std::string& GetWorkspaceCacheEngineVersion();
 	SAILOR_SHARED_API const std::string& GetWorkspaceCacheBuildIdentity();
 
 	SAILOR_SHARED_API WorkspaceCacheIdentity MakeWorkspaceCacheIdentity(
-		const std::string& cacheKind,
-		const std::string& producerIdentity,
+		std::string_view cacheKind,
+		std::string_view producerIdentity,
 		uint32_t payloadVersion,
 		const WorkspaceContext& workspaceContext);
 
 	SAILOR_SHARED_API WorkspaceCacheIdentity MakeWorkspaceCacheIdentity(
-		const std::string& cacheKind,
-		const std::string& producerIdentity,
+		std::string_view cacheKind,
+		std::string_view producerIdentity,
 		uint32_t payloadVersion,
-		const std::string& workspaceId,
+		std::string_view workspaceId,
 		const std::filesystem::path& canonicalWorkspaceRoot);
 
 	SAILOR_SHARED_API bool SerializeWorkspaceCacheEnvelope(
 		const WorkspaceCacheIdentity& identity,
-		const std::string& payload,
+		std::string_view payload,
 		std::string& outEnvelope,
 		std::string& outDiagnostic) noexcept;
 
 	SAILOR_SHARED_API WorkspaceCacheLoadResult ParseWorkspaceCacheEnvelope(
 		const std::string& envelope,
 		const WorkspaceCacheIdentity& expectedIdentity,
-		const std::string& sourceName = "workspace cache") noexcept;
+		std::string_view sourceName = "workspace cache") noexcept;
 
 	SAILOR_SHARED_API WorkspaceCacheLoadResult LoadWorkspaceCacheEnvelope(
 		const std::filesystem::path& path,
 		const WorkspaceCacheIdentity& expectedIdentity) noexcept;
-
-	SAILOR_SHARED_API bool AtomicReplaceWorkspaceCacheBinary(
-		const std::filesystem::path& target,
-		const void* data,
-		uint64_t size,
-		std::string& outDiagnostic,
-		EWorkspaceCacheAtomicWriteFailurePoint failurePoint =
-			EWorkspaceCacheAtomicWriteFailurePoint::None) noexcept;
-
-	SAILOR_SHARED_API bool AtomicReplaceWorkspaceCacheBinary(
-		const std::filesystem::path& target,
-		const void* data,
-		uint64_t size,
-		std::string& outDiagnostic,
-		EWorkspaceCacheAtomicWriteFailurePoint failurePoint,
-		EWorkspaceCacheAtomicWriteMode writeMode) noexcept;
-
-	SAILOR_SHARED_API bool AtomicReplaceWorkspaceCacheText(
-		const std::filesystem::path& target,
-		const std::string& text,
-		std::string& outDiagnostic,
-		EWorkspaceCacheAtomicWriteFailurePoint failurePoint =
-			EWorkspaceCacheAtomicWriteFailurePoint::None) noexcept;
 
 #if defined(_MSC_VER)
 #pragma warning(pop)

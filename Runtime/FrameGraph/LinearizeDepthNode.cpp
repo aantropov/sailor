@@ -2,22 +2,14 @@
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
-#include "RHI/Surface.h"
 #include "RHI/Texture.h"
-#include "RHI/RenderTarget.h"
 #include "RHI/Types.h"
 #include "RHI/VertexDescription.h"
-#include "Engine/World.h"
-#include "Engine/GameObject.h"
 #include "AssetRegistry/AssetRegistry.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
-
-#ifndef _SAILOR_IMPORT_
-const char* LinearizeDepthNode::m_name = "LinearizeDepth";
-#endif
 
 void LinearizeDepthNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
@@ -26,39 +18,22 @@ void LinearizeDepthNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandLis
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdGraphics);
-
-	auto depthAttachment = GetResolvedAttachment("depthStencil");
-	for (const auto& r : m_unresolvedResourceParams)
-	{
-		if (r.First() == "depthStencil")
-		{
-			depthAttachment = frameGraph->GetRenderTarget(*r.Second());
-			break;
-		}
-	}
+	auto depthAttachment = GetResolvedAttachment("depthStencil"_h, frameGraph.GetRawPtr());
 
 	if (!m_pLinearizeDepthShader)
 	{
-		auto computeShaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/LinearizeDepth.shader");
-		App::GetSubmodule<ShaderCompiler>()->LoadShader(computeShaderInfo->GetFileId(), m_pLinearizeDepthShader);
+		auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/LinearizeDepth.shader");
+		App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pLinearizeDepthShader);
 	}
 
-	auto target = GetResolvedAttachment("target");
+	auto target = GetResolvedAttachment("target"_h, frameGraph.GetRawPtr());
 
 	if (!m_pLinearizeDepthShader || !depthAttachment || !target || !m_pLinearizeDepthShader->IsReady())
 	{
 		return;
 	}
 
-	RHI::RHITexturePtr sampledDepthAttachment = depthAttachment;
-	if (auto depthRenderTarget = depthAttachment.DynamicCast<RHI::RHIRenderTarget>())
-	{
-		if (auto depthAspect = depthRenderTarget->GetDepthAspect())
-		{
-			sampledDepthAttachment = depthAspect;
-		}
-	}
+	auto sampledDepthAttachment = GetSampledAttachment("depthStencil"_h, frameGraph.GetRawPtr());
 
 	if (!m_linearizeDepth || m_boundDepthAttachment != sampledDepthAttachment)
 	{
@@ -67,7 +42,7 @@ void LinearizeDepthNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandLis
 			m_linearizeDepth = driver->CreateShaderBindings();
 		}
 
-		driver->AddSamplerToShaderBindings(m_linearizeDepth, "depthSampler", sampledDepthAttachment, 0);
+		driver->AddSamplerToShaderBindings(m_linearizeDepth, "depthSampler"_h, sampledDepthAttachment, 0);
 		m_linearizeDepth->RecalculateCompatibility();
 		m_boundDepthAttachment = sampledDepthAttachment;
 	}
@@ -79,19 +54,7 @@ void LinearizeDepthNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandLis
 		m_postEffectMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pLinearizeDepthShader);
 	}
 
-
-	// How to correctly handle linearization
-	// https://thxforthefish.com/posts/reverse_z/
-	
-	// struct PushConstants { mat4 m_invProjection; vec4 m_cameraParams; } constants;
-	// constants.m_invProjection = sceneView.m_camera->GetInvProjection();
-	
-	// Standard projection matrix or ReverseZ projection with infinity far plane
-	//constants.m_cameraParams = glm::vec4(sceneView.m_camera->GetZFar(), sceneView.m_camera->GetZNear(), 0, 0);
-
-	// ReverseZ projection matrix
-	//constants.m_cameraParams = glm::vec4(sceneView.m_camera->GetZFar(), sceneView.m_camera->GetZNear(), 0, 0);
-
+	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdGraphics);
 	commands->ImageMemoryBarrier(commandList, depthAttachment, EImageLayout::ShaderReadOnlyOptimal);
 	commands->ImageMemoryBarrier(commandList, target, EImageLayout::ColorAttachmentOptimal);
 
@@ -116,15 +79,14 @@ void LinearizeDepthNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandLis
 		0, 1.0f);
 	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
-	commands->BindShaderBindings(commandList, m_postEffectMaterial, { sceneView.m_frameBindings,  m_linearizeDepth });
-	
-	//commands->PushConstants(commandList, m_postEffectMaterial, sizeof(PushConstants), &constants);
-	
-	const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
-	const uint32_t vertexOffset = (uint32_t)mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
+	if (commands->BindShaderBindings(commandList, m_postEffectMaterial, { sceneView.m_frameBindings, m_linearizeDepth }))
+	{
+		const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
+		const uint32_t vertexOffset = (uint32_t)mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
 
-	commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
-	RecordDrawCallStats(1);
+		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+		RecordDrawCallStats(1);
+	}
 	commands->EndRenderPass(commandList);
 
 	commands->EndDebugRegion(commandList);

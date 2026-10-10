@@ -1,9 +1,15 @@
 #include "Physics/JoltRuntime.h"
 #include "Physics/PhysicsWorld.h"
+#include "Support/ScopeExit.h"
+#include "Support/TaskTestApp.h"
+#include "Tasks/Tasks.h"
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#include <thread>
 
 using namespace Sailor;
 
@@ -58,6 +64,126 @@ namespace
 			targets.Add(desc.m_position + desc.m_rotation * vertex);
 		}
 		return targets;
+	}
+
+	void ScheduledClothLifecycle()
+	{
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
+		scheduler.Initialize();
+		Require(App::GetSubmodule<Tasks::Scheduler>() == &scheduler && scheduler.GetNumWorkerThreads() > 0,
+			"Cloth integration must use the registered scheduler with live workers");
+		TVector<TWeakPtr<Tasks::ITask>> finishedSteps;
+		for (uint32_t generation = 0; generation < 2; ++generation)
+		{
+			// Use the normal constructor so a lost App lookup cannot silently select inline Jolt jobs.
+			Physics::PhysicsWorld world;
+			for (uint32_t reuse = 0; reuse < 2; ++reuse)
+			{
+				auto cloth = MakeSheet();
+				const auto targets = MakeTargets(cloth);
+				Physics::RigidBodyDesc rigid;
+				rigid.m_instanceId = InstanceId::GenerateNewInstanceId();
+				rigid.m_position = { -4.0f, 4.0f, 0.0f };
+				rigid.m_shapes.Add(Physics::CollisionShapeDesc{});
+				uint32_t clothId = ~0u;
+				uint32_t rigidId = ~0u;
+				Require(world.CreateSoftBody(cloth, clothId) && world.CreateBody(rigid, rigidId),
+					"Scheduled world must create both cloth and a rigid body");
+
+				std::atomic<uint32_t> workersStarted = 0;
+				std::atomic<bool> bReleaseWorkers = false;
+				TVector<Tasks::ITaskPtr> blockers;
+				Tasks::TaskPtr<bool> firstStep;
+				Tests::ScopeExit release([&]()
+				{
+					bReleaseWorkers.store(true, std::memory_order_release);
+					bReleaseWorkers.notify_all();
+					for (auto& blocker : blockers) blocker->Wait();
+					if (firstStep) firstStep->Wait();
+				});
+				const auto waitUntil = [](auto condition)
+				{
+					const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+					while (!condition())
+					{
+						if (std::chrono::steady_clock::now() >= deadline) return false;
+						std::this_thread::yield();
+					}
+					return true;
+				};
+				const auto workerCount = scheduler.GetNumWorkerThreads();
+				for (uint32_t worker = 0; worker < workerCount; ++worker)
+				{
+					auto blocker = Tasks::CreateTask("Hold worker for cloth step"_h, [&]()
+					{
+						workersStarted.fetch_add(1, std::memory_order_release);
+						bReleaseWorkers.wait(false, std::memory_order_acquire);
+					});
+					blockers.Add(blocker);
+					blocker->Run();
+				}
+				Require(waitUntil([&]() { return workersStarted.load(std::memory_order_acquire) == workerCount; }) &&
+					scheduler.GetNumTasks(EThreadType::Worker) == 0,
+					"Every worker must be held before observing cloth's Jolt queue");
+				firstStep = Tasks::CreateTask<bool>("Step scheduled cloth"_h,
+					[&]() { return world.Step(c_fixedDeltaTime); }, EThreadType::Physics);
+				firstStep->Run();
+				const bool bObservedStep = waitUntil([&]()
+				{
+					return scheduler.GetNumTasks(EThreadType::Worker) > 0 || firstStep->IsFinished();
+				});
+				const bool bQueuedJobs = scheduler.GetNumTasks(EThreadType::Worker) > 0;
+				const bool bStepWaits = !firstStep->IsFinished();
+				release.Run();
+				Require(bObservedStep && bQueuedJobs && bStepWaits && firstStep->GetResult(),
+					"Cloth's first step must enqueue Jolt jobs and wait for Worker progress");
+				Require(scheduler.GetNumTasks(EThreadType::Worker) == 0,
+					"Completed cloth step must leave no queued Jolt wrappers");
+				finishedSteps.Add(firstStep);
+
+				for (uint32_t stepIndex = 0; stepIndex < 30; ++stepIndex)
+				{
+					Require(world.SetSoftBodyTargets(clothId, targets) &&
+						world.ApplySoftBodyWind(clothId, { 0.0f, 0.0f, 8.0f }, 1.225f, 1.2f, c_fixedDeltaTime),
+						"Scheduled cloth must accept its attachments and wind");
+					auto step = Tasks::CreateTask<bool>("Advance scheduled cloth"_h,
+						[&]() { return world.Step(c_fixedDeltaTime); }, EThreadType::Physics);
+					step->Run();
+					step->Wait();
+					Require(step->GetResult(), "Scheduled cloth simulation must complete each step");
+					finishedSteps.Add(step);
+				}
+				TVector<Physics::SoftBodyVertex> vertices;
+				Require(world.GetSoftBodyVertices(clothId, vertices) && vertices.Num() == targets.Num(),
+					"Scheduled cloth must publish all simulated vertices");
+				for (size_t index = 0; index < vertices.Num(); ++index)
+				{
+					const auto& vertex = vertices[index];
+					Require(std::isfinite(glm::length(vertex.m_position)) && std::isfinite(glm::length(vertex.m_velocity)) &&
+						std::abs(glm::length(vertex.m_normal) - 1.0f) < 0.001f,
+						"Worker-simulated cloth must have finite positions, velocities and unit normals");
+					if (index < 9) Require(glm::length(vertex.m_position - targets[index]) < 0.002f,
+						"Scheduled wind must not detach pinned cloth vertices");
+				}
+				Require(vertices[40].m_position.z > targets[40].z + 0.02f,
+					"Worker simulation must actually deform cloth under wind");
+				Physics::PhysicsBodyPose pose;
+				Require(world.GetBodyPose(rigidId, pose) && pose.m_position.y < rigid.m_position.y - 0.5f &&
+					pose.m_linearVelocity.y < -1.0f,
+					"The same scheduled world must advance rigid-body gravity");
+				// Clear immediately after the joined step, before an additional scheduler drain.
+				world.Clear();
+				Require(!world.GetSoftBodyVertices(clothId, vertices) && !world.GetBodyPose(rigidId, pose),
+					"Clear must invalidate both body types before reusing the world");
+			}
+		}
+		scheduler.WaitIdle({ EThreadType::Physics, EThreadType::Worker });
+		Require(scheduler.GetNumTasks(EThreadType::Physics) == 0 && scheduler.GetNumTasks(EThreadType::Worker) == 0,
+			"Destroyed physics worlds must leave no pending work at scheduler teardown");
+		for (const auto& step : finishedSteps)
+			Require(!step.TryLock(), "The scheduler must release completed steps before its own destruction");
+		std::cout << "Scheduled cloth: Worker queue, rigid motion, wind/pins, Clear/reuse and two world lifetimes passed\n";
 	}
 
 	void NormalScaleAndTransform()
@@ -489,6 +615,7 @@ int main()
 		InvalidInputs();
 		WindOverflow();
 		BodyTypesAndLifetime();
+		ScheduledClothLifecycle();
 		std::cout << "Soft-body simulation, attachments, rest poses, collisions and lifetime tests passed.\n";
 		return 0;
 	}

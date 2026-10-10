@@ -1,0 +1,18 @@
+name: TextureUpload
+prefabs:
+  - gameObjects:
+      - name: GPU texture upload validation
+        mobilityType: Stationary
+        position: [0, 0, 0, 1]
+        rotation: [0, 0, 0, 1]
+        scale: [1, 1, 1, 1]
+        parentIndex: 4294967295
+        instanceId: 18300000000000000001
+        components: [0]
+    components:
+      - typename: Sailor::TextureUploadTestComponent
+        overrideProperties:
+          testName: TextureUpload
+          quitAfterFinish: true
+          fileId: NullFileId
+          instanceId: 1830000000000001_18300000000000000001

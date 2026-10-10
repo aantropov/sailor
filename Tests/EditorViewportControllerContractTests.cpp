@@ -17,6 +17,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 
 using namespace Sailor;
@@ -25,11 +26,11 @@ namespace
 {
 	constexpr float c_tolerance = 0.001f;
 
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -86,6 +87,7 @@ namespace
 	{
 	public:
 		BoundsTestWorld() : World("EditorViewportBoundsTests", 0, CreateEcs()) {}
+		using World::DestroyPendingGameObjects;
 
 	private:
 		static TVector<ECS::TBaseSystemPtr> CreateEcs()
@@ -96,6 +98,67 @@ namespace
 			return systems;
 		}
 	};
+
+	void TestPrimarySelectionKeepsWorldOrder()
+	{
+		BoundsTestWorld world;
+		Require(!world.GetPrimaryEditorSelection(), "an empty world has no primary selection");
+		auto editorOnly = world.Instantiate("Editor only");
+		editorOnly->AddComponent<EditorComponent>();
+		auto first = world.Instantiate("First", ParseInstanceId("0000000000000020"));
+		auto last = world.Instantiate("Last", ParseInstanceId("0000000000000010"));
+		const auto componentId = InstanceId::GenerateNewComponentId(first->GetInstanceId());
+		world.SetEditorSelection({ last->GetInstanceId(), InstanceId::Invalid, componentId,
+			editorOnly->GetInstanceId(), first->GetInstanceId(), ParseInstanceId("0000000000000099") });
+		Require(world.GetPrimaryEditorSelection() == first,
+			"primary selection uses world order, not click order, ID sorting or duplicates");
+		first->SetParent(last);
+		Require(world.GetPrimaryEditorSelection() == first, "reparenting must not change primary selection");
+		first->SetParent({});
+		auto editorMarker = first->AddComponent<EditorComponent>();
+		Require(world.GetPrimaryEditorSelection() == last, "adding an editor-only component must change eligibility immediately");
+		Require(first->RemoveComponent(editorMarker) && world.GetPrimaryEditorSelection() == first,
+			"removing an editor-only component must restore the original world order");
+		world.SetEditorSelection({ editorOnly->GetInstanceId() });
+		Require(!world.GetPrimaryEditorSelection(), "editor infrastructure alone is not an editable selection");
+		world.SetEditorSelection({});
+		Require(!world.GetPrimaryEditorSelection(), "clearing selection must not retain a primary object");
+		world.Clear();
+	}
+
+	void TestPrimarySelectionTracksObjectLifetime()
+	{
+		BoundsTestWorld world;
+		auto first = world.Instantiate("First");
+		auto last = world.Instantiate("Last");
+		const auto firstId = first->GetInstanceId();
+		const auto lastId = last->GetInstanceId();
+		world.SetEditorSelection({ lastId, firstId });
+		world.Destroy(first);
+		Require(world.GetPrimaryEditorSelection() == first,
+			"deferred destruction must preserve the existing selection until the world removes the object");
+		world.DestroyPendingGameObjects();
+		Require(world.GetPrimaryEditorSelection() == last, "removing the primary object must advance to the next selection");
+		auto restored = world.Instantiate("Restored", firstId);
+		world.SetEditorSelection({ firstId, lastId });
+		Require(world.GetPrimaryEditorSelection() == last, "a restored ID must use its new world insertion order");
+		world.DestroyImmediate(last);
+		Require(world.GetPrimaryEditorSelection() == restored, "immediate deletion must not leave a stale primary");
+		world.Clear();
+		Require(!world.GetPrimaryEditorSelection(), "clearing the world must clear selection");
+		world.SetEditorSelection({ lastId });
+		Require(!world.GetPrimaryEditorSelection(), "a not-yet-created selected ID must not resolve");
+		auto late = world.Instantiate("Late", lastId);
+		Require(world.GetPrimaryEditorSelection() == late, "creation after selection must resolve without a stale cache");
+
+		BoundsTestWorld other;
+		auto sameId = other.Instantiate("Other world", lastId);
+		other.SetEditorSelection({ lastId });
+		Require(other.GetPrimaryEditorSelection() == sameId && world.GetPrimaryEditorSelection() == late && sameId != late,
+			"worlds sharing a serialized ID must resolve their own selected object");
+		other.Clear();
+		world.Clear();
+	}
 
 	void TestBuildWorldRayUsesReversedZAtViewportCenter()
 	{
@@ -397,6 +460,23 @@ namespace
 			"invalid target bounds must be rejected");
 	}
 
+	void TestCameraFramingUsesCanonicalRotation()
+	{
+		const Math::AABB bounds(glm::vec3(1, 2, 3), glm::vec3(4));
+		const auto rotation = glm::angleAxis(0.7f, glm::normalize(glm::vec3(1, 2, 3)));
+		for (float magnitude : { 5.0f, -3.0f, 1.0e30f, 0.0f })
+		{
+			const Math::Transform authored(glm::vec4(0), rotation * magnitude);
+			const Math::Transform reference(glm::vec4(0), magnitude == 0.0f ? Math::quat_Identity : rotation);
+			glm::vec3 actualPosition, expectedPosition;
+			Require(EditorViewport::TryCalculateFramedCameraPosition(bounds, authored, 60.0f, 1.5f, 0.1f, actualPosition) &&
+				EditorViewport::TryCalculateFramedCameraPosition(bounds, reference, 60.0f, 1.5f, 0.1f, expectedPosition),
+				"camera framing must accept normalized and recovered authored rotations");
+			Require(AreVectorsNear(actualPosition, expectedPosition),
+				"camera framing must use the canonical orientation independent of authored magnitude");
+		}
+	}
+
 	void TestTransformToolStateIsAppliedAtomically()
 	{
 		EditorViewport::EditorViewportController controller{};
@@ -417,28 +497,29 @@ namespace
 	{
 		EditorViewport::EditorViewportController controller{};
 		controller.SetManagedMutationRevisions(17, 0);
-		Require(controller.QueueAssetDropEvent(
-			"00000000000000ab",
-			0.25f,
-			0.75f),
-			"a finite normalized native asset drop must enter the viewport queue");
+		{
+			std::string fileId = "00000000000000ab:ignored suffix";
+			Require(controller.QueueAssetDropEvent(std::string_view(fileId).substr(0, 16), 0.25f, 0.75f),
+				"a finite normalized native asset drop must enter the viewport queue");
+			fileId.assign(1024, 'x');
+		}
 
-		std::string serializedEvent{};
-		Require(controller.PullEvent(serializedEvent),
+		EditorViewport::Event event;
+		Require(controller.PullEvent(event),
 			"a queued native asset drop must be observable by the protocol bridge");
-		const YAML::Node event = YAML::Load(serializedEvent);
-		Require(event["kind"].as<std::string>() == "assetDrop",
+		const auto* drop = std::get_if<EditorViewport::AssetDropEvent>(&event.m_payload);
+		Require(drop != nullptr,
 			"the viewport queue must identify native asset-drop events");
-		Require(event["revision"].as<uint64_t>() == 1,
+		Require(event.m_revision == 1,
 			"the first native asset drop must receive the first event revision");
-		Require(event["managedMutationRevision"].as<uint64_t>() == 17,
+		Require(event.m_managedMutationRevision == 17,
 			"native asset drops must carry the current managed mutation revision");
-		Require(event["fileId"].as<std::string>() == "00000000000000ab",
-			"native asset drops must preserve their source FileId");
-		Require(std::abs(event["normalizedX"].as<float>() - 0.25f) <= c_tolerance &&
-			std::abs(event["normalizedY"].as<float>() - 0.75f) <= c_tolerance,
+		Require(drop->m_fileId == "00000000000000ab",
+			"queued asset drops must own the bounded source FileId after its input buffer is destroyed");
+		Require(std::abs(drop->m_position.x - 0.25f) <= c_tolerance &&
+			std::abs(drop->m_position.y - 0.75f) <= c_tolerance,
 			"native asset drops must preserve normalized viewport coordinates");
-		Require(!controller.PullEvent(serializedEvent),
+		Require(!controller.PullEvent(event),
 			"pulling the only native asset drop must empty the viewport queue");
 
 		const float nan = std::numeric_limits<float>::quiet_NaN();
@@ -449,14 +530,14 @@ namespace
 		Require(!controller.QueueAssetDropEvent("asset", -0.01f, 0.5f) &&
 			!controller.QueueAssetDropEvent("asset", 0.5f, 1.01f),
 			"native asset-drop coordinates outside the viewport must be rejected");
-		Require(!controller.PullEvent(serializedEvent),
+		Require(!controller.PullEvent(event),
 			"rejected native asset drops must not enter the viewport queue");
 
 		Require(controller.QueueAssetDropEvent("asset", 0.0f, 1.0f),
 			"native asset drops on inclusive viewport edges must be accepted");
-		Require(controller.PullEvent(serializedEvent),
+		Require(controller.PullEvent(event),
 			"a second valid native asset drop must enter the queue");
-		Require(YAML::Load(serializedEvent)["revision"].as<uint64_t>() == 2,
+		Require(event.m_revision == 2,
 			"rejected native asset drops must not consume event revisions");
 	}
 
@@ -474,22 +555,22 @@ namespace
 			!controller.QueueToolShortcutEvent('w'),
 			"unknown and non-canonical viewport shortcuts must be rejected");
 
-		std::string serializedEvent{};
+		EditorViewport::Event event;
 		for (size_t index = 0; index < std::size(supportedKeys); ++index)
 		{
-			Require(controller.PullEvent(serializedEvent),
+			Require(controller.PullEvent(event),
 				"every queued viewport shortcut must remain observable");
-			const YAML::Node event = YAML::Load(serializedEvent);
-			Require(event["kind"].as<std::string>() == "toolShortcut",
+			const auto* shortcut = std::get_if<EditorViewport::ToolShortcutEvent>(&event.m_payload);
+			Require(shortcut != nullptr,
 				"viewport shortcut events must use their dedicated event kind");
-			Require(event["revision"].as<uint64_t>() == index + 1,
+			Require(event.m_revision == index + 1,
 				"viewport shortcuts must share the ordered event revision stream");
-			Require(event["managedMutationRevision"].as<uint64_t>() == 23,
+			Require(event.m_managedMutationRevision == 23,
 				"viewport shortcuts must carry the current managed mutation revision");
-			Require(event["keyCode"].as<uint32_t>() == supportedKeys[index],
+			Require(shortcut->m_keyCode == supportedKeys[index],
 				"viewport shortcut events must preserve the detected key code");
 		}
-		Require(!controller.PullEvent(serializedEvent),
+		Require(!controller.PullEvent(event),
 			"rejected viewport shortcuts must not enter the event queue");
 	}
 
@@ -676,6 +757,8 @@ namespace
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "PrimarySelectionKeepsWorldOrder", TestPrimarySelectionKeepsWorldOrder },
+		{ "PrimarySelectionTracksObjectLifetime", TestPrimarySelectionTracksObjectLifetime },
 		{ "BuildWorldRayUsesReversedZAtViewportCenter", TestBuildWorldRayUsesReversedZAtViewportCenter },
 		{ "BuildWorldRayMapsViewportCorners", TestBuildWorldRayMapsViewportCorners },
 		{ "BuildWorldRayRejectsInvalidViewport", TestBuildWorldRayRejectsInvalidViewport },
@@ -688,6 +771,7 @@ int main()
 		{ "CalculateFramedCameraPositionPreservesViewDirection", TestCalculateFramedCameraPositionPreservesViewDirection },
 		{ "CalculateFramedCameraPositionAccountsForViewportAspect", TestCalculateFramedCameraPositionAccountsForViewportAspect },
 		{ "CalculateFramedCameraPositionRejectsInvalidInput", TestCalculateFramedCameraPositionRejectsInvalidInput },
+		{ "CameraFramingUsesCanonicalRotation", TestCameraFramingUsesCanonicalRotation },
 			{ "TransformToolStateIsAppliedAtomically", TestTransformToolStateIsAppliedAtomically },
 			{ "AssetDropEventUsesValidatedViewportQueue", TestAssetDropEventUsesValidatedViewportQueue },
 			{ "ToolShortcutEventUsesValidatedViewportQueue", TestToolShortcutEventUsesValidatedViewportQueue },

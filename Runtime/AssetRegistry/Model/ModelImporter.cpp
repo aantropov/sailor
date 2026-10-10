@@ -2,6 +2,7 @@
 #include "GltfImporterUtils.h"
 
 #include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/Animation/AnimationAssetInfo.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Model/ModelLodGeneration.h"
 #include "ModelAssetInfo.h"
@@ -18,7 +19,9 @@
 
 using namespace Sailor;
 
-ModelImporter::ModelImporter(ModelAssetInfoHandler* infoHandler)
+ModelImporter::ModelImporter(ModelAssetInfoHandler* infoHandler, Tasks::Scheduler* scheduler, AssetRegistry* assetRegistry) :
+	m_scheduler(scheduler),
+	m_assetRegistry(assetRegistry)
 {
 	SAILOR_PROFILE_FUNCTION();
 	m_allocator = ObjectAllocatorPtr::Make(EAllocationPolicy::SharedMemory_MultiThreaded);
@@ -40,8 +43,8 @@ std::string ModelImporter::GetLodCacheFilename(const FileId& fileId, uint32_t lo
 		return {};
 	}
 
-	const std::filesystem::path filename = fileId.ToString() + "_lod" + std::to_string(lodLevel) + ".bin";
-	return filename == filename.filename() ? filename.string() : std::string{};
+	const auto filename = Workspace::PathFromUtf8(fileId.ToString() + "_lod" + std::to_string(lodLevel) + ".bin");
+	return filename == filename.filename() ? Workspace::PathToUtf8(filename) : std::string{};
 }
 
 void ModelImporter::GenerateLods(TVector<MeshContext>& meshes, uint32_t numLods, float reductionFactor)
@@ -52,20 +55,36 @@ void ModelImporter::GenerateLods(TVector<MeshContext>& meshes, uint32_t numLods,
 void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 {
 	SAILOR_PROFILE_FUNCTION();
-	SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
-	auto areGeneratedAssetsValid = [](const TVector<FileId>& fileIds, bool bRequireUniqueFileIds)
+	SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath());
+	if (ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo))
 	{
-		AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
-		if (assetRegistry == nullptr)
-		{
-			return false;
-		}
+		UpdateGeneratedAssets(modelAssetInfo, bWasExpired);
+	}
+}
 
+void ModelImporter::OnImportAsset(AssetInfoPtr assetInfo)
+{
+	if (ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo))
+	{
+		UpdateGeneratedAssets(modelAssetInfo, true);
+	}
+}
+
+bool ModelImporter::UpdateGeneratedAssets(ModelAssetInfoPtr assetInfo, bool bWasExpired)
+{
+	if (!assetInfo->IsWritable())
+	{
+		return true;
+	}
+
+	AssetRegistry& assetRegistry = *m_assetRegistry;
+	auto areGeneratedAssetsValid = [&assetRegistry](const TVector<FileId>& fileIds, bool bRequireUniqueFileIds)
+	{
 		TSet<FileId> uniqueFileIds;
 		for (const FileId& fileId : fileIds)
 		{
 			if (!fileId || (bRequireUniqueFileIds && uniqueFileIds.Contains(fileId)) ||
-				assetRegistry->GetAssetInfoPtr(fileId) == nullptr)
+				assetRegistry.GetAssetInfoPtr(fileId) == nullptr)
 			{
 				return false;
 			}
@@ -74,64 +93,57 @@ void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 		return true;
 	};
 
-	if (ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo))
+	const TVector<FileId>& materials = assetInfo->GetDefaultMaterials();
+	const bool bMaterialsNeedRepair = !materials.IsEmpty() &&
+		!areGeneratedAssetsValid(materials, false);
+	const bool bGenerateMaterials = assetInfo->ShouldGenerateMaterials() &&
+		(bWasExpired || bMaterialsNeedRepair);
+
+	const TVector<FileId>& animations = assetInfo->GetAnimations();
+	bool bAnimationsNeedRepair = !areGeneratedAssetsValid(animations, true);
+	for (const FileId& fileId : animations)
 	{
-		if (modelAssetInfo->IsWritable())
-		{
-			const TVector<FileId>& materials = modelAssetInfo->GetDefaultMaterials();
-			const bool bMaterialsNeedRepair =
-				materials.Num() > 0 && !areGeneratedAssetsValid(materials, modelAssetInfo->ShouldBatchByMaterial());
-			const bool bShouldRegenerateMaterials = modelAssetInfo->ShouldGenerateMaterials() &&
-													((bWasExpired && materials.Num() == 0) || bMaterialsNeedRepair);
-			if (bShouldRegenerateMaterials && GenerateMaterialAssets(modelAssetInfo))
-			{
-				assetInfo->SaveMetaFile();
-			}
-			else if (modelAssetInfo->ShouldGenerateMaterials() && bWasExpired && materials.Num() > 0 &&
-					 !bMaterialsNeedRepair)
-			{
-				UpdateGeneratedMaterialProperties(modelAssetInfo);
-			}
-
-			const TVector<FileId>& animations = modelAssetInfo->GetAnimations();
-			const bool bAnimationsNeedRepair = animations.Num() > 0 && !areGeneratedAssetsValid(animations, true);
-			if (((bWasExpired && animations.Num() == 0) || bAnimationsNeedRepair) &&
-				GenerateAnimationAssets(modelAssetInfo))
-			{
-				assetInfo->SaveMetaFile();
-			}
-		}
-
-		if (bWasExpired)
-		{
-			GenerateFingerprintAsync(modelAssetInfo);
-		}
+		const auto* animation = assetRegistry.GetAssetInfoPtr<AnimationAssetInfoPtr>(fileId);
+		std::error_code error;
+		bAnimationsNeedRepair |= animation == nullptr ||
+			!std::filesystem::is_regular_file(Workspace::PathFromUtf8(animation->GetMetaFilepath()), error);
 	}
-}
-
-void ModelImporter::OnImportAsset(AssetInfoPtr assetInfo)
-{
-	ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo);
-	if (!modelAssetInfo)
+	const bool bGenerateAnimations = bWasExpired || bAnimationsNeedRepair;
+	if (!bGenerateMaterials && !bGenerateAnimations)
 	{
-		return;
+		return true;
 	}
 
-	if (modelAssetInfo->IsWritable())
+	const auto token = assetRegistry.BeginAssetProcessing(assetInfo);
+	if (!token)
 	{
-		if (modelAssetInfo->ShouldGenerateMaterials() && modelAssetInfo->GetDefaultMaterials().Num() == 0 &&
-			GenerateMaterialAssets(modelAssetInfo))
-		{
-			assetInfo->SaveMetaFile();
-		}
-
-		if (modelAssetInfo->GetAnimations().Num() == 0 && GenerateAnimationAssets(modelAssetInfo))
-		{
-			assetInfo->SaveMetaFile();
-		}
+		return false;
 	}
 
-	GenerateFingerprintAsync(modelAssetInfo);
+	TVector<FileId> previousMaterials = materials;
+	TVector<FileId> previousAnimations = animations;
+	bool bSucceeded = true;
+	if (bGenerateMaterials)
+	{
+		bSucceeded = GenerateMaterialAssets(assetInfo);
+	}
+	bool bAnimationsChanged = false;
+	if (bSucceeded && bGenerateAnimations)
+	{
+		bSucceeded = GenerateAnimationAssets(assetInfo, bAnimationsChanged);
+	}
+	if (bSucceeded && (previousMaterials != assetInfo->GetDefaultMaterials() || bAnimationsChanged))
+	{
+		bSucceeded = assetInfo->SaveMetaFile();
+	}
+	if (!bSucceeded)
+	{
+		assetInfo->GetDefaultMaterials() = std::move(previousMaterials);
+		assetInfo->GetAnimations() = std::move(previousAnimations);
+	}
+
+	assetRegistry.CompleteAssetProcessing(token, bSucceeded);
+	return bSucceeded;
 }
 
 void ModelImporter::PopulateModelSceneHierarchy(Model& model, TVector<GltfImporterUtils::SceneNode>& sourceNodes)
@@ -179,19 +191,35 @@ void ModelImporter::PopulateModelSceneHierarchy(Model& model, TVector<GltfImport
 Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel)
 {
 	SAILOR_PROFILE_FUNCTION();
-	ModelAssetInfoPtr pAssetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid);
+	ModelAssetInfoPtr pAssetInfo = m_assetRegistry->GetAssetInfoPtr<ModelAssetInfoPtr>(uid);
 
 	// Check promises first
 	auto& promise = m_promises.At_Lock(uid, nullptr);
 	auto& loadedModel = m_loadedModels.At_Lock(uid, ModelPtr());
 
+	if (promise && !promise->IsFinished())
+	{
+		// Loading tasks may still be writing the model, including its CPU meshes.
+		outModel = loadedModel;
+		auto result = promise;
+		m_loadedModels.Unlock(uid);
+		m_promises.Unlock(uid);
+		return result;
+	}
+	if (promise && !promise->GetResult())
+	{
+		loadedModel = nullptr;
+		promise = nullptr;
+	}
+
 	// Check loaded assets
 	if (loadedModel)
 	{
 		const bool bNeedCpuBuffers = pAssetInfo && pAssetInfo->ShouldKeepCpuBuffers() && !loadedModel->HasCpuMeshes();
-		if (bNeedCpuBuffers && !promise)
+		if (bNeedCpuBuffers)
 		{
 			loadedModel = nullptr;
+			promise = nullptr;
 		}
 		else
 		{
@@ -208,76 +236,92 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 	// There is no promise, we need to load model
 	if (pAssetInfo)
 	{
-		SAILOR_PROFILE_TEXT(pAssetInfo->GetAssetFilepath().c_str());
+		SAILOR_PROFILE_TEXT(pAssetInfo->GetAssetFilepath());
 
 		ModelPtr pModel = ModelPtr::Make(m_allocator, uid);
-
-		// The way to drop qualifiers inside lambda
-		auto& boundsSphere = pModel->m_boundsSphere;
-		auto& boundsAabb = pModel->m_boundsAabb;
 
 		struct Data
 		{
 			TVector<MeshContext> m_parsedMeshes;
-			TVector<glm::mat4> m_inverseBind;
-			TVector<GltfImporterUtils::SceneNode> m_sceneNodes;
-			TVector<std::string> m_sourceMeshNames;
-			tinygltf::Model m_gltfModel;
 			bool m_bIsImported = false;
-			bool m_bShouldKeepCpuBuffers = false;
-			bool m_bShouldGenerateBLAS = false;
 		};
 
-		auto loadDataTask = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load model",
-			[pAssetInfo, &boundsAabb, &boundsSphere]()
+		auto loadDataTask = Tasks::CreateTask<TSharedPtr<Data>>("Load model"_h,
+			[pAssetInfo, pModel
+#if defined(SAILOR_MODEL_IMPORT_TEST_HOOKS)
+			, this
+#endif
+			]() mutable
 			{
 				TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
-				pData->m_bShouldKeepCpuBuffers = pAssetInfo->ShouldKeepCpuBuffers();
-				pData->m_bShouldGenerateBLAS = pAssetInfo->ShouldGenerateBLAS();
+				tinygltf::Model gltfModel;
+				const bool bKeepCpuBuffers = pAssetInfo->ShouldKeepCpuBuffers();
+				const bool bGenerateBLAS = pAssetInfo->ShouldGenerateBLAS();
 				pData->m_bIsImported = ImportModel(pAssetInfo->GetAssetFilepath(),
 					pAssetInfo->GetUnitScale(),
 					pAssetInfo->ShouldBatchByMaterial(),
 					pAssetInfo->ShouldFlipTexcoordY(),
 					pData->m_parsedMeshes,
-					boundsAabb,
-					boundsSphere,
-					pData->m_inverseBind,
-					&pData->m_gltfModel);
-				if (pData->m_bIsImported)
+					pModel->m_boundsAabb,
+					pModel->m_boundsSphere,
+					pModel->m_inverseBind,
+					&gltfModel);
+				if (!pData->m_bIsImported)
 				{
-					ModelLodGeneration::Prepare(*pAssetInfo, pData->m_parsedMeshes);
+					return pData;
 				}
-				if (pData->m_bIsImported)
+
+				ModelLodGeneration::Prepare(*pAssetInfo, pData->m_parsedMeshes);
+				TVector<GltfImporterUtils::SceneNode> sceneNodes;
+				pData->m_bIsImported = GltfImporterUtils::CollectSceneNodes(
+					gltfModel, pAssetInfo->GetUnitScale(), sceneNodes);
+				if (!pData->m_bIsImported)
 				{
-					pData->m_bIsImported = GltfImporterUtils::CollectSceneNodes(
-						pData->m_gltfModel, pAssetInfo->GetUnitScale(), pData->m_sceneNodes);
+					return pData;
 				}
-				if (pData->m_bIsImported)
+
+#if defined(SAILOR_MODEL_IMPORT_TEST_HOOKS)
+				if (m_beforeCpuPreparationForTests) m_beforeCpuPreparationForTests();
+#endif
+				pModel->m_sourceMeshes.Resize(gltfModel.meshes.size());
+				for (size_t meshIndex = 0; meshIndex < gltfModel.meshes.size(); ++meshIndex)
 				{
-					pData->m_sourceMeshNames.Reserve(pData->m_gltfModel.meshes.size());
-					for (size_t meshIndex = 0; meshIndex < pData->m_gltfModel.meshes.size(); ++meshIndex)
+					const auto& name = gltfModel.meshes[meshIndex].name;
+					pModel->m_sourceMeshes[meshIndex].m_name = name.empty() ? "Mesh_" + std::to_string(meshIndex) : name;
+				}
+				if (bKeepCpuBuffers || bGenerateBLAS)
+				{
+					pModel->m_cpuMeshes.Reserve(pData->m_parsedMeshes.Num());
+				}
+
+				uint32_t renderMeshIndex = 0;
+				for (const auto& mesh : pData->m_parsedMeshes)
+				{
+					if (!mesh.HasGeometry())
 					{
-						const std::string& sourceName = pData->m_gltfModel.meshes[meshIndex].name;
-						pData->m_sourceMeshNames.Add(
-							sourceName.empty() ? "Mesh_" + std::to_string(meshIndex) : sourceName);
+						continue;
+					}
+					if (mesh.sourceMeshIndex >= 0 && static_cast<size_t>(mesh.sourceMeshIndex) < pModel->m_sourceMeshes.Num())
+					{
+						auto& sourceMesh = pModel->m_sourceMeshes[static_cast<size_t>(mesh.sourceMeshIndex)];
+						sourceMesh.m_renderMeshIndices.Add(renderMeshIndex);
+						sourceMesh.m_bounds.Extend(mesh.bounds);
+					}
+					++renderMeshIndex;
+					if (bKeepCpuBuffers || bGenerateBLAS)
+					{
+						Model::MeshCpuData cpuMesh{};
+						cpuMesh.m_vertices = mesh.outVertices;
+						cpuMesh.m_indices = mesh.outIndices;
+						cpuMesh.m_bounds = mesh.bounds;
+						cpuMesh.m_materialIndex = static_cast<int32_t>(mesh.materialSlot);
+						pModel->m_cpuMeshes.Add(std::move(cpuMesh));
 					}
 				}
+				PopulateModelSceneHierarchy(*pModel, sceneNodes);
+				pModel->ProceedCpuMeshes(bGenerateBLAS, bKeepCpuBuffers);
 				return pData;
 			});
-		auto migrationTask = loadDataTask->Then(
-			[this, pAssetInfo, uid](TSharedPtr<Data> pData)
-			{
-				if (pData->m_bIsImported)
-				{
-					UpdateGeneratedMaterialPropertiesOnDemand(pAssetInfo, pData->m_gltfModel);
-				}
-				pData->m_gltfModel = tinygltf::Model();
-				m_generatedMaterialMigrationTasks.Remove(uid);
-			},
-			"Migrate generated model materials",
-			EThreadType::Main);
-		m_generatedMaterialMigrationTasks.At_Lock(uid, nullptr) = migrationTask;
-		m_generatedMaterialMigrationTasks.Unlock(uid);
 
 		promise =
 			loadDataTask
@@ -286,24 +330,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 					{
 						if (pData->m_bIsImported)
 						{
-							pModel->m_meshes.Clear();
-							pModel->m_cpuMeshes.Clear();
-							pModel->m_nodes.Clear();
-							pModel->m_sourceMeshes.Clear();
-							pModel->m_renderInstances.Clear();
-							pModel->m_bSupportsEditableHierarchy = true;
 							pModel->m_meshes.Reserve(pData->m_parsedMeshes.Num());
-							pModel->m_sourceMeshes.Resize(pData->m_sourceMeshNames.Num());
-							for (size_t sourceMeshIndex = 0; sourceMeshIndex < pData->m_sourceMeshNames.Num();
-								++sourceMeshIndex)
-							{
-								pModel->m_sourceMeshes[sourceMeshIndex].m_name =
-									std::move(pData->m_sourceMeshNames[sourceMeshIndex]);
-							}
-							if (pData->m_bShouldKeepCpuBuffers || pData->m_bShouldGenerateBLAS)
-							{
-								pModel->m_cpuMeshes.Reserve(pData->m_parsedMeshes.Num());
-							}
 
 							for (size_t meshIndex = 0; meshIndex < pData->m_parsedMeshes.Num(); ++meshIndex)
 							{
@@ -322,90 +349,67 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 															 ? mesh.materialSlot
 															 : static_cast<uint32_t>(meshIndex);
 								pMesh->m_bakedVolumeScale = mesh.bakedVolumeScale;
-								TVector<RHI::VertexP3N3T3B3UV2C4I4W4> uploadVertices = mesh.outVertices;
-								TVector<uint32_t> uploadIndices = mesh.outIndices;
-								TVector<uint32_t> lodVertexOffsets;
-								TVector<uint32_t> lodFirstIndices;
-								lodVertexOffsets.Reserve(mesh.lods.Num());
-								lodFirstIndices.Reserve(mesh.lods.Num());
-								for (const auto& lod : mesh.lods)
-								{
-									lodVertexOffsets.Add(static_cast<uint32_t>(uploadVertices.Num()));
-									lodFirstIndices.Add(static_cast<uint32_t>(uploadIndices.Num()));
-									uploadVertices.AddRange(lod.m_vertices);
-									uploadIndices.AddRange(lod.m_indices);
-								}
 								pMesh->m_indexCount = static_cast<uint32_t>(mesh.outIndices.Num());
+								TVector<RHI::VertexP3N3T3B3UV2C4I4W4> uploadVertices = std::move(mesh.outVertices);
+								TVector<uint32_t> uploadIndices = std::move(mesh.outIndices);
 								pMesh->m_firstIndex = 0u;
 								pMesh->m_vertexOffset = 0u;
+								pMesh->m_lods.Reserve(mesh.lods.Num());
+								for (const auto& lodGeometry : mesh.lods)
+								{
+									RHI::RHIMeshPtr lodMesh = RHI::Renderer::GetDriver()->CreateMesh();
+									lodMesh->m_vertexDescription = pMesh->m_vertexDescription;
+									lodMesh->m_bounds = pMesh->m_bounds;
+									lodMesh->m_materialIndex = pMesh->m_materialIndex;
+									lodMesh->m_bakedVolumeScale = pMesh->m_bakedVolumeScale;
+									if (lodGeometry.m_indices.IsEmpty())
+									{
+										const auto& previous = pMesh->m_lods.IsEmpty() ? pMesh : *pMesh->m_lods.Last();
+										lodMesh->m_indexCount = previous->m_indexCount;
+										lodMesh->m_firstIndex = previous->m_firstIndex;
+										lodMesh->m_vertexOffset = previous->m_vertexOffset;
+									}
+									else
+									{
+										lodMesh->m_indexCount = static_cast<uint32_t>(lodGeometry.m_indices.Num());
+										lodMesh->m_firstIndex = static_cast<uint32_t>(uploadIndices.Num());
+										lodMesh->m_vertexOffset = static_cast<uint32_t>(uploadVertices.Num());
+										uploadVertices.AddRange(lodGeometry.m_vertices);
+										uploadIndices.AddRange(lodGeometry.m_indices);
+									}
+									pMesh->m_lods.Add(std::move(lodMesh));
+								}
 								RHI::Renderer::GetDriver()->UpdateMesh(pMesh,
 									uploadVertices.GetData(),
 									sizeof(RHI::VertexP3N3T3B3UV2C4I4W4) * uploadVertices.Num(),
 									uploadIndices.GetData(),
 									sizeof(uint32_t) * uploadIndices.Num());
-								pMesh->m_lods.Reserve(mesh.lods.Num());
-								for (size_t lodIndex = 0; lodIndex < mesh.lods.Num(); ++lodIndex)
+								if (pMesh->HasInitializationFailed()) return ModelPtr{};
+								for (auto& lodMesh : pMesh->m_lods)
 								{
-									const auto& lodGeometry = mesh.lods[lodIndex];
-									if (lodGeometry.m_vertices.IsEmpty() || lodGeometry.m_indices.IsEmpty())
-									{
-										continue;
-									}
-
-									RHI::RHIMeshPtr lodMesh = RHI::Renderer::GetDriver()->CreateMesh();
-									lodMesh->m_vertexDescription = pMesh->m_vertexDescription;
 									lodMesh->m_vertexBuffer = pMesh->m_vertexBuffer;
 									lodMesh->m_indexBuffer = pMesh->m_indexBuffer;
-									lodMesh->m_bounds = pMesh->m_bounds;
-									lodMesh->m_materialIndex = pMesh->m_materialIndex;
-									lodMesh->m_bakedVolumeScale = pMesh->m_bakedVolumeScale;
-									lodMesh->m_indexCount = static_cast<uint32_t>(lodGeometry.m_indices.Num());
-									lodMesh->m_firstIndex = lodFirstIndices[lodIndex];
-									lodMesh->m_vertexOffset = lodVertexOffsets[lodIndex];
-									pMesh->m_lods.Add(std::move(lodMesh));
 								}
 
-								const uint32_t renderMeshIndex = static_cast<uint32_t>(pModel->m_meshes.Num());
 								pModel->m_meshes.Emplace(pMesh);
-								if (mesh.sourceMeshIndex >= 0 &&
-									static_cast<size_t>(mesh.sourceMeshIndex) < pModel->m_sourceMeshes.Num())
-								{
-									Model::SourceMesh& sourceMesh =
-										pModel->m_sourceMeshes[static_cast<size_t>(mesh.sourceMeshIndex)];
-									sourceMesh.m_renderMeshIndices.Add(renderMeshIndex);
-									sourceMesh.m_bounds.Extend(mesh.bounds);
-								}
-
-								if (pData->m_bShouldKeepCpuBuffers || pData->m_bShouldGenerateBLAS)
-								{
-									Model::MeshCpuData cpuMesh{};
-									cpuMesh.m_vertices = std::move(mesh.outVertices);
-									cpuMesh.m_indices = std::move(mesh.outIndices);
-									cpuMesh.m_bounds = mesh.bounds;
-									cpuMesh.m_materialIndex = mesh.materialIndex;
-									pModel->m_cpuMeshes.Add(std::move(cpuMesh));
-								}
 							}
 
-							ModelImporter::PopulateModelSceneHierarchy(*pModel, pData->m_sceneNodes);
-
-							pModel->m_inverseBind = std::move(pData->m_inverseBind);
-							pModel->ProceedCpuMeshes(pData->m_bShouldGenerateBLAS, pData->m_bShouldKeepCpuBuffers);
 							pModel->Flush();
 						}
-						return pModel;
+						return pModel->IsStructurallyReady() ? pModel : ModelPtr{};
 					},
-					"Update RHI Meshes",
+					"Update RHI Meshes"_h,
 					EThreadType::RHI)
 				->ToTaskWithResult();
 
 		outModel = loadedModel = pModel;
 		promise->Run();
+		auto result = promise;
 
 		m_loadedModels.Unlock(uid);
 		m_promises.Unlock(uid);
 
-		return promise;
+		return result;
 	}
 
 	outModel = nullptr;
@@ -427,17 +431,18 @@ bool ModelImporter::LoadModel_Immediate(FileId uid, ModelPtr& outModel)
 	}
 
 	task->Wait();
-	return task->GetResult().IsValid();
+	outModel = task->GetResult();
+	return outModel && outModel->IsStructurallyReady();
 }
 
 Tasks::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(FileId uid, TVector<MaterialPtr>& outMaterials)
 {
 	outMaterials.Clear();
 
-	if (ModelAssetInfoPtr modelInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
+	if (ModelAssetInfoPtr modelInfo = m_assetRegistry->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
 	{
 		Tasks::TaskPtr<bool> loadingFinished =
-			Tasks::CreateTaskWithResult<bool>("Load Default Materials", []() { return true; });
+			Tasks::CreateTask<bool>("Load Default Materials"_h, []() { return true; });
 		const TVector<FileId>& defaultMaterials = modelInfo->GetDefaultMaterials();
 		outMaterials.Resize(defaultMaterials.Num());
 
@@ -462,7 +467,7 @@ Tasks::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(FileId uid, TVector<Mat
 			}
 		}
 
-		App::GetSubmodule<Tasks::Scheduler>()->Run(loadingFinished);
+		m_scheduler->Run(loadingFinished);
 		return loadingFinished;
 	}
 
@@ -479,34 +484,29 @@ bool ModelImporter::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmedia
 		return bRes;
 	}
 
-	LoadModel(uid, outModel);
+	auto task = LoadModel(uid, outModel);
 	out = outModel;
-	return true;
+	return static_cast<bool>(task);
 }
 
 void ModelImporter::CollectGarbage()
 {
-	TVector<FileId> uidsToRemove;
-
 	m_promises.LockAll();
 	auto ids = m_promises.GetKeys();
 	m_promises.UnlockAll();
 
 	for (const auto& id : ids)
 	{
-		auto promise = m_promises.At_Lock(id);
-
-		if (!promise.IsValid() || (promise.IsValid() && promise->IsFinished()))
+		auto& promise = m_promises.At_Lock(id);
+		if (!promise || promise->IsFinished())
 		{
-			FileId uid = id;
-			uidsToRemove.Emplace(uid);
+			if (promise && !promise->GetResult())
+			{
+				m_loadedModels.Remove(id);
+			}
+			// Read and removal share the stripe, so a retry cannot replace this attempt in between.
+			m_promises.ForcelyRemove(id);
 		}
-
 		m_promises.Unlock(id);
-	}
-
-	for (auto& uid : uidsToRemove)
-	{
-		m_promises.Remove(uid);
 	}
 }

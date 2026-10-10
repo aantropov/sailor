@@ -57,6 +57,7 @@ namespace Sailor
 		InstanceId m_instanceId = InstanceId::Invalid;
 
 #ifdef SAILOR_EDITOR
+		void TraceHotReloadDependents(Tasks::ITaskPtr previousTask);
 		TConcurrentSet<ObjectPtr> m_hotReloadDeps;
 #endif
 	};

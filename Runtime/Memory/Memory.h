@@ -1,5 +1,8 @@
 #pragma once
+#include <algorithm>
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <cassert>
 #include <unordered_map>
@@ -13,15 +16,15 @@ namespace Sailor::Memory
 	template<typename T, typename TAllocator = DefaultGlobalAllocator>
 	SAILOR_API __forceinline T* New(TAllocator& allocator)
 	{
-		void* ptr = allocator.Allocate(sizeof(T), 8);
+		void* ptr = allocator.Allocate(sizeof(T), alignof(T));
 		return new (ptr) T();
 	}
 
 	template<typename T, typename TAllocator, typename... TArgs>
 	SAILOR_API __forceinline T* New(TAllocator& allocator, TArgs&& ... args)
 	{
-		void* ptr = allocator.Allocate(sizeof(T));
-		return new (ptr) T(std::forward(args) ...);
+		void* ptr = allocator.Allocate(sizeof(T), alignof(T));
+		return new (ptr) T(std::forward<TArgs>(args)...);
 	}
 
 	template<typename T, typename TAllocator = DefaultGlobalAllocator>
@@ -35,17 +38,28 @@ namespace Sailor::Memory
 		allocator.Free(ptr);
 	}
 
-	template<uint16_t stackSize = 1024, typename TAllocator = DefaultGlobalAllocator>
+	template<uint32_t stackSize = 1024, typename TAllocator = DefaultGlobalAllocator>
 	class SAILOR_API TInlineAllocator final
 	{
 	protected:
 
-		uint8_t m_stack[stackSize];
-		uint16_t m_index = 0u;
+		struct Header
+		{
+			uint32_t m_size;
+			uint32_t m_previousIndex;
+		};
+
+		alignas(std::max_align_t) uint8_t m_stack[stackSize];
+		uint32_t m_index = 0u;
+		uint32_t m_numAllocations = 0u;
 
 		TAllocator m_allocator{};
 
-		bool Contains(void* pData) const { return pData >= &m_stack[0] && pData < &m_stack[stackSize]; }
+		bool Contains(void* pData) const
+		{
+			const auto address = reinterpret_cast<uintptr_t>(pData);
+			return address >= reinterpret_cast<uintptr_t>(m_stack) && address < reinterpret_cast<uintptr_t>(m_stack + stackSize);
+		}
 
 	public:
 
@@ -56,36 +70,47 @@ namespace Sailor::Memory
 		TInlineAllocator& operator=(const TInlineAllocator&) = delete;
 		~TInlineAllocator() = default;
 
+		static constexpr size_t GetAllocationSize(size_t size, size_t alignment)
+		{
+			const size_t blockAlignment = (std::max)(alignment, alignof(Header));
+			const size_t headerSize = (sizeof(Header) + blockAlignment - 1) / blockAlignment * blockAlignment;
+			return headerSize + (size + blockAlignment - 1) / blockAlignment * blockAlignment;
+		}
+
 		void* Allocate(size_t size, size_t alignment = 8)
 		{
-			size_t requiredSize = size + sizeof(uint16_t);
-			if (stackSize - m_index < requiredSize)
+			check(alignment != 0 && (alignment & (alignment - 1)) == 0);
+			if (stackSize - m_index >= sizeof(Header))
 			{
-				return m_allocator.Allocate(size, alignment);
+				void* data = m_stack + m_index + sizeof(Header);
+				size_t available = stackSize - m_index - sizeof(Header);
+				if (std::align((std::max)(alignment, alignof(Header)), size, data, available))
+				{
+					auto* header = reinterpret_cast<Header*>(static_cast<uint8_t*>(data) - sizeof(Header));
+					new (header) Header{ static_cast<uint32_t>(size), m_index };
+					m_index = static_cast<uint32_t>(static_cast<uint8_t*>(data) - m_stack + size);
+					++m_numAllocations;
+					return data;
+				}
 			}
-			uint8_t* res = &m_stack[m_index];
-			m_index += static_cast<uint16_t>(requiredSize);
-			assert(size < 65536);
-			*reinterpret_cast<uint16_t*>(res) = static_cast<uint16_t>(size);
-			return res + sizeof(uint16_t);
+			return m_allocator.Allocate(size, alignment);
 		}
 
 		bool Reallocate(void* pData, size_t size, size_t alignment = 8)
 		{
-			if (Contains(pData) && size < 65536)
+			if (!Contains(pData))
 			{
-				uint16_t* pSize = reinterpret_cast<uint16_t*>(static_cast<uint8_t*>(pData) - sizeof(uint16_t));
-				uint16_t usedSpace = *pSize + sizeof(uint16_t);
-				if (static_cast<uint8_t*>(pData) + usedSpace == &m_stack[m_index])
-				{
-					uint16_t newSize = static_cast<uint16_t>(size + sizeof(uint16_t));
-					if (newSize <= stackSize - m_index + usedSpace)
-					{
-						*pSize = static_cast<uint16_t>(size);
-						m_index = m_index - usedSpace + newSize;
-						return true;
-					}
-				}
+				return m_allocator.Reallocate(pData, size, alignment);
+			}
+			check(alignment != 0 && (alignment & (alignment - 1)) == 0);
+			auto* header = reinterpret_cast<Header*>(static_cast<uint8_t*>(pData) - sizeof(Header));
+			const size_t offset = static_cast<uint8_t*>(pData) - m_stack;
+			if (offset + header->m_size == m_index && size <= stackSize - offset &&
+				reinterpret_cast<uintptr_t>(pData) % alignment == 0)
+			{
+				header->m_size = static_cast<uint32_t>(size);
+				m_index = static_cast<uint32_t>(offset + size);
+				return true;
 			}
 			return false;
 		}
@@ -94,11 +119,14 @@ namespace Sailor::Memory
 		{
 			if (Contains(pData))
 			{
-				uint16_t* pSize = reinterpret_cast<uint16_t*>(static_cast<uint8_t*>(pData) - sizeof(uint16_t));
-				uint16_t usedSpace = *pSize + sizeof(uint16_t);
-				if (static_cast<uint8_t*>(pData) + usedSpace == &m_stack[m_index])
+				auto* header = reinterpret_cast<Header*>(static_cast<uint8_t*>(pData) - sizeof(Header));
+				if (--m_numAllocations == 0)
 				{
-					m_index -= usedSpace;
+					m_index = 0;
+				}
+				else if (static_cast<uint8_t*>(pData) + header->m_size == &m_stack[m_index])
+				{
+					m_index = header->m_previousIndex;
 				}
 			}
 			else
@@ -179,5 +207,4 @@ namespace Sailor::Memory
 		return false;
 	}
 
-	void SAILOR_API RunMemoryBenchmark();
 }

@@ -44,12 +44,6 @@
                              Clicked="OnSimulationButtonClicked"/>
             </HorizontalStackLayout>
             <HorizontalStackLayout Grid.Column="2" Spacing="4" HorizontalOptions="End">
-                <ImageButton Source="toolbar_trace_scene.png"
-                             ToolTipProperties.Text="Trace Scene" SemanticProperties.Description="Trace Scene"
-                             Clicked="OnPathTraceSceneButtonClicked"/>
-                <ImageButton Source="toolbar_trace_selection.png"
-                             ToolTipProperties.Text="Trace Selection" SemanticProperties.Description="Trace Selection"
-                             Clicked="OnPathTraceSelectionButtonClicked"/>
                 <ImageButton Source="toolbar_save_layout.png"
                              ToolTipProperties.Text="Save Layout" SemanticProperties.Description="Save Layout"
                              Clicked="OnSaveLayoutButtonClicked"/>

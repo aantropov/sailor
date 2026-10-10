@@ -62,7 +62,7 @@ namespace Sailor::RHI
 		SAILOR_API void SetTextureBindings(const TVector<RHITexturePtr>& textureBinding) { m_textureBinding = textureBinding; }
 		SAILOR_API void SetLayout(const ShaderLayoutBinding& layout) { m_bindingLayout = layout; }
 
-		SAILOR_API bool FindVariableInUniformBuffer(const std::string& variable, ShaderLayoutBindingMember& outVariable) const;
+		SAILOR_API bool FindVariableInUniformBuffer(StringHash variable, ShaderLayoutBindingMember& outVariable) const;
 
 	protected:
 

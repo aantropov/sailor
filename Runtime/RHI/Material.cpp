@@ -56,7 +56,8 @@ namespace
 	}
 }
 
-GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr RHIMaterial::Vulkan::GetOrAddPipeline(const TVector<VkFormat>& colorAttachments, VkFormat depthStencilAttachment)
+GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr RHIMaterial::Vulkan::GetOrAddPipeline(const TVector<VkFormat>& colorAttachments,
+	VkFormat depthStencilAttachment, VkSampleCountFlagBits samples)
 {
 	SAILOR_PROFILE_FUNCTION();
 	m_pipelinesLock.Lock();
@@ -66,6 +67,10 @@ GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr RHIMaterial::Vulkan::GetOrAddP
 
 	for (auto& p : m_pipelines)
 	{
+		if (p->GetMsaaSamples() != samples)
+		{
+			continue;
+		}
 		stateIndex = 0;
 		for (auto& state : p->m_pipelineStates)
 		{
@@ -90,6 +95,13 @@ GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr RHIMaterial::Vulkan::GetOrAddP
 	TVector<VulkanPipelineStatePtr> states = m_pipelines[0]->m_pipelineStates;
 
 	states[stateIndex] = GraphicsDriver::Vulkan::VulkanStateDynamicRenderingPtr::Make(colorAttachments, depthStencilAttachment, stencilAttachmentFormat);
+	for (auto& state : states)
+	{
+		if (state.DynamicCast<VulkanStateMultisample>())
+		{
+			state = VulkanStateMultisamplePtr::Make(samples);
+		}
+	}
 
 	GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr pipeline = VulkanGraphicsPipelinePtr::Make(device,
 		m_pipelines[0]->m_layout,
@@ -123,7 +135,7 @@ void RHIShaderBindingSet::RecalculateCompatibility()
 	}
 }
 
-RHI::RHIShaderBindingPtr& RHIShaderBindingSet::GetOrAddShaderBinding(const std::string& binding)
+RHI::RHIShaderBindingPtr& RHIShaderBindingSet::GetOrAddShaderBinding(StringHash binding)
 {
 	auto& pBinding = m_shaderBindings.At_Lock(binding);
 	if (!pBinding)
@@ -135,26 +147,35 @@ RHI::RHIShaderBindingPtr& RHIShaderBindingSet::GetOrAddShaderBinding(const std::
 	return pBinding;
 }
 
-void RHIShaderBindingSet::RemoveShaderBinding(const std::string& binding)
+void RHIShaderBindingSet::RemoveShaderBinding(StringHash binding)
 {
 	m_shaderBindings.Remove(binding);
 }
 
 void RHIShaderBindingSet::UpdateLayoutShaderBinding(const ShaderLayoutBinding& layout)
 {
-	// We are able to rewrite m_binding and m_set
 	const size_t index = m_layoutBindings.FindIf([&](const auto& lhs)
 		{
-			return lhs.m_name == layout.m_name && lhs.m_type == layout.m_type && lhs.m_arrayCount == layout.m_arrayCount;
+			return lhs.m_name == layout.m_name || lhs.m_binding == layout.m_binding;
 		});
 
 	if (index != -1)
 	{
 		m_layoutBindings[index] = layout;
-		return;
+		for (size_t i = m_layoutBindings.Num(); i > index + 1;)
+		{
+			const auto& other = m_layoutBindings[--i];
+			if (other.m_name == layout.m_name || other.m_binding == layout.m_binding)
+			{
+				m_layoutBindings.RemoveAt(i);
+			}
+		}
 	}
-
-	m_layoutBindings.Add(layout);
+	else
+	{
+		m_layoutBindings.Add(layout);
+	}
+	m_bNeedsStorageBuffer = PerInstanceDataStoredInSsbo();
 }
 
 bool RHIShaderBindingSet::PerInstanceDataStoredInSsbo() const
@@ -162,7 +183,7 @@ bool RHIShaderBindingSet::PerInstanceDataStoredInSsbo() const
 	return std::find_if(m_layoutBindings.begin(), m_layoutBindings.end(), [](const auto& binding) { return binding.m_type == EShaderBindingType::StorageBuffer; }) != m_layoutBindings.end();
 }
 
-uint32_t RHIShaderBindingSet::GetStorageInstanceIndex(const std::string& bindingName) const
+uint32_t RHIShaderBindingSet::GetStorageInstanceIndex(StringHash bindingName) const
 {
 	if (m_shaderBindings.ContainsKey(bindingName))
 	{
@@ -178,14 +199,16 @@ void RHIShaderBindingSet::SetLayoutShaderBindings(TVector<RHI::ShaderLayoutBindi
 	m_bNeedsStorageBuffer = PerInstanceDataStoredInSsbo();
 }
 
-void RHIShaderBindingSet::ParseParameter(const std::string& parameter, std::string& outBinding, std::string& outVariable)
+void RHIShaderBindingSet::ParseParameter(StringHash parameter, StringHash& outBinding, StringHash& outVariable)
 {
-	TVector<std::string> splittedString = Utils::SplitString(parameter, ".");
-	outBinding = splittedString[0];
-	outVariable = splittedString[1];
+	const std::string_view text = parameter.ToString();
+	const size_t separator = text.find('.');
+	check(separator != std::string_view::npos);
+	outBinding = StringHash::Runtime(text.substr(0, separator));
+	outVariable = StringHash::Runtime(text.substr(separator + 1));
 }
 
-bool RHIShaderBindingSet::HasBinding(const std::string& binding) const
+bool RHIShaderBindingSet::HasBinding(StringHash binding) const
 {
 	auto it = std::find_if(m_layoutBindings.begin(), m_layoutBindings.end(), [&binding](const RHI::ShaderLayoutBinding& shaderLayoutBinding)
 		{
@@ -195,12 +218,16 @@ bool RHIShaderBindingSet::HasBinding(const std::string& binding) const
 	return it != m_layoutBindings.end();
 }
 
-bool RHIShaderBindingSet::HasParameter(const std::string& parameter) const
+bool RHIShaderBindingSet::HasParameter(StringHash parameter) const
 {
-	TVector<std::string> splittedString = Utils::SplitString(parameter, ".");
-	const std::string& binding = splittedString[0];
-	const std::string& variable = splittedString[1];
+	StringHash binding;
+	StringHash variable;
+	ParseParameter(parameter, binding, variable);
+	return HasParameter(binding, variable);
+}
 
+bool RHIShaderBindingSet::HasParameter(StringHash binding, StringHash variable) const
+{
 	auto index = m_layoutBindings.FindIf([&binding](const RHI::ShaderLayoutBinding& shaderLayoutBinding)
 		{
 			return shaderLayoutBinding.m_name == binding;

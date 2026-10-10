@@ -33,9 +33,18 @@ namespace Sailor
 		SAILOR_API void SetSensor(bool value);
 		SAILOR_API bool IsSleepingAllowed() const { return m_bAllowSleeping; }
 		SAILOR_API void SetSleepingAllowed(bool value);
-		SAILOR_API const glm::vec3& GetLinearVelocity() const { return m_linearVelocity; }
+		// Initial velocities are authoring settings for newly created bodies, not live commands.
+		SAILOR_API const glm::vec3& GetInitialLinearVelocity() const { return m_initialLinearVelocity; }
+		SAILOR_API void SetInitialLinearVelocity(const glm::vec3& value);
+		SAILOR_API const glm::vec3& GetInitialAngularVelocity() const { return m_initialAngularVelocity; }
+		SAILOR_API void SetInitialAngularVelocity(const glm::vec3& value);
+
+		// Runtime commands apply on the next physics tick, without changing initial authoring values.
+		// Before ECS registration setters do nothing; queries return zero until a body is created.
+		// Queries return the last synchronized physics state, not a pending command.
+		SAILOR_API glm::vec3 GetLinearVelocity() const;
 		SAILOR_API void SetLinearVelocity(const glm::vec3& value);
-		SAILOR_API const glm::vec3& GetAngularVelocity() const { return m_angularVelocity; }
+		SAILOR_API glm::vec3 GetAngularVelocity() const;
 		SAILOR_API void SetAngularVelocity(const glm::vec3& value);
 		SAILOR_API bool AddForceAtPosition(
 			const glm::vec3& force,
@@ -47,8 +56,8 @@ namespace Sailor
 	private:
 		Physics::ERigidBodyMotionType m_motionType =
 			Physics::ERigidBodyMotionType::Dynamic;
-		glm::vec3 m_linearVelocity{};
-		glm::vec3 m_angularVelocity{};
+		glm::vec3 m_initialLinearVelocity{};
+		glm::vec3 m_initialAngularVelocity{};
 		float m_mass = 1.0f;
 		float m_friction = 0.2f;
 		float m_restitution = 0.0f;
@@ -86,8 +95,8 @@ REFL_AUTO(
 	func(SetSensor, property("sensor")),
 	func(IsSleepingAllowed, property("allowSleeping")),
 	func(SetSleepingAllowed, property("allowSleeping")),
-	func(GetLinearVelocity, property("linearVelocity")),
-	func(SetLinearVelocity, property("linearVelocity")),
-	func(GetAngularVelocity, property("angularVelocity")),
-	func(SetAngularVelocity, property("angularVelocity"))
+	func(GetInitialLinearVelocity, property("linearVelocity")),
+	func(SetInitialLinearVelocity, property("linearVelocity")),
+	func(GetInitialAngularVelocity, property("angularVelocity")),
+	func(SetInitialAngularVelocity, property("angularVelocity"))
 )

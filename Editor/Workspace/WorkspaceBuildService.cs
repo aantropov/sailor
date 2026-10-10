@@ -8,7 +8,10 @@ namespace SailorEditor.Workspace;
 public sealed record WorkspaceProcessInvocation(
     string FileName,
     IReadOnlyList<string> Arguments,
-    string WorkingDirectory);
+    string WorkingDirectory)
+{
+    public Encoding? OutputEncoding { get; init; }
+}
 
 public sealed record WorkspaceProcessResult(
     int ExitCode,
@@ -25,26 +28,34 @@ public sealed record WorkspaceBuildPlan(
     public static WorkspaceBuildPlan CreateConfigure(
         WorkspaceSession session,
         string configuration,
-        string cmakeExecutable = "cmake")
+        string cmakeExecutable = "cmake",
+        string? engineDirectory = null,
+        string? engineSdkDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         var normalizedConfiguration = NormalizeConfiguration(configuration);
         return new WorkspaceBuildPlan(
             normalizedConfiguration,
-            [CreateConfigureInvocation(session, normalizedConfiguration, cmakeExecutable)]);
+            [CreateConfigureInvocation(session, normalizedConfiguration, cmakeExecutable, engineDirectory, engineSdkDirectory)]);
     }
 
     public static WorkspaceBuildPlan Create(
         WorkspaceSession session,
         string configuration,
         bool configure,
-        string cmakeExecutable = "cmake")
+        string cmakeExecutable = "cmake",
+        string? engineDirectory = null,
+        string? engineSdkDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         var normalizedConfiguration = NormalizeConfiguration(configuration);
+        // A project may have been configured by another editor checkout.
+        configure |= engineDirectory is not null || engineSdkDirectory is not null;
         var invocations = new List<WorkspaceProcessInvocation>(configure ? 2 : 1);
         if (configure)
-            invocations.Add(CreateConfigureInvocation(session, normalizedConfiguration, cmakeExecutable));
+        {
+            invocations.Add(CreateConfigureInvocation(session, normalizedConfiguration, cmakeExecutable, engineDirectory, engineSdkDirectory));
+        }
 
         invocations.Add(new WorkspaceProcessInvocation(
             cmakeExecutable,
@@ -65,7 +76,9 @@ public sealed record WorkspaceBuildPlan(
     static WorkspaceProcessInvocation CreateConfigureInvocation(
         WorkspaceSession session,
         string configuration,
-        string cmakeExecutable)
+        string cmakeExecutable,
+        string? engineDirectory,
+        string? engineSdkDirectory)
     {
         var arguments = new List<string>
         {
@@ -75,7 +88,21 @@ public sealed record WorkspaceBuildPlan(
             session.BuildDirectory,
             "-DCMAKE_BUILD_TYPE=" + configuration,
         };
-        AddVcpkgArguments(session, arguments);
+        if (engineSdkDirectory is not null)
+        {
+            engineSdkDirectory = Path.GetFullPath(engineSdkDirectory);
+            arguments.Add("-DSAILOR_ENGINE_ROOT=" + engineSdkDirectory);
+            arguments.Add("-DSAILOR_ENGINE_REFERENCE_KIND=installed");
+            arguments.Add("-DSailor_DIR=" + Path.Combine(engineSdkDirectory, "lib", "cmake", "Sailor"));
+        }
+        else if (engineDirectory is not null)
+        {
+            engineDirectory = Path.GetFullPath(engineDirectory);
+            arguments.Add("-DSAILOR_ENGINE_ROOT=" + engineDirectory);
+            arguments.Add("-DSAILOR_ENGINE_REFERENCE_KIND=" +
+                (Directory.Exists(Path.Combine(engineDirectory, "Runtime")) ? "source" : "installed"));
+        }
+        AddVcpkgArguments(session, arguments, engineDirectory);
         return new WorkspaceProcessInvocation(
             cmakeExecutable,
             arguments,
@@ -84,12 +111,13 @@ public sealed record WorkspaceBuildPlan(
 
     static void AddVcpkgArguments(
         WorkspaceSession session,
-        ICollection<string> arguments)
+        ICollection<string> arguments,
+        string? engineDirectory)
     {
         var configuredEnginePath = session.Manifest.EnginePath
             .Replace('/', Path.DirectorySeparatorChar)
             .Replace('\\', Path.DirectorySeparatorChar);
-        var engineDirectory = Path.IsPathRooted(configuredEnginePath)
+        engineDirectory ??= Path.IsPathRooted(configuredEnginePath)
             ? Path.GetFullPath(configuredEnginePath)
             : Path.GetFullPath(configuredEnginePath, session.WorkspaceRoot);
         var toolchainPath = Path.Combine(
@@ -183,6 +211,8 @@ public sealed class WorkspaceProcessRunner : IWorkspaceProcessRunner
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardOutputEncoding = invocation.OutputEncoding,
+            StandardErrorEncoding = invocation.OutputEncoding,
             CreateNoWindow = true,
         };
         foreach (var argument in invocation.Arguments)
@@ -244,14 +274,20 @@ internal sealed class WorkspaceBuildService
 {
     readonly WorkspaceLifecycleService _workspaceLifecycle;
     readonly IWorkspaceProcessRunner _processRunner;
+    readonly string? _engineDirectory;
+    readonly string? _engineSdkDirectory;
     readonly SemaphoreSlim _buildGate = new(1, 1);
 
     public WorkspaceBuildService(
         WorkspaceLifecycleService workspaceLifecycle,
-        IWorkspaceProcessRunner processRunner)
+        IWorkspaceProcessRunner processRunner,
+        string? engineDirectory = null,
+        string? engineSdkDirectory = null)
     {
         _workspaceLifecycle = workspaceLifecycle;
         _processRunner = processRunner;
+        _engineDirectory = engineDirectory;
+        _engineSdkDirectory = engineSdkDirectory;
     }
 
     public async Task<WorkspaceBuildResult> BuildAsync(
@@ -297,7 +333,8 @@ internal sealed class WorkspaceBuildService
         WorkspaceBuildPlan plan;
         try
         {
-            plan = WorkspaceBuildPlan.Create(session, configuration, configure);
+            plan = WorkspaceBuildPlan.Create(session, configuration, configure,
+                engineDirectory: _engineDirectory, engineSdkDirectory: _engineSdkDirectory);
         }
         catch (ArgumentException exception)
         {
@@ -335,7 +372,8 @@ internal sealed class WorkspaceBuildService
         WorkspaceBuildPlan plan;
         try
         {
-            plan = WorkspaceBuildPlan.CreateConfigure(session, configuration);
+            plan = WorkspaceBuildPlan.CreateConfigure(session, configuration,
+                engineDirectory: _engineDirectory, engineSdkDirectory: _engineSdkDirectory);
         }
         catch (ArgumentException exception)
         {

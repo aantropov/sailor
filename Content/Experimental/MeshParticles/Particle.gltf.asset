@@ -1,7 +1,7 @@
 assetInfoType: Sailor::ModelAssetInfo
 fileId: "{2387902B-538E-4191-93D6-53503B5571B2}"
 filename: Particle.gltf
-bShouldGenerateMaterials: true
+bShouldGenerateMaterials: false
 bShouldBatchByMaterial: true
 unitScale: 1
 materials:

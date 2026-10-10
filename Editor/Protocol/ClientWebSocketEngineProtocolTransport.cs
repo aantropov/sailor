@@ -4,12 +4,9 @@ namespace SailorEditor.Protocol;
 
 internal sealed class ClientWebSocketEngineProtocolTransport : IEngineProtocolTransport
 {
-    sealed class WebSocketLane(
-        string name,
-        bool allowsBlockingRequest = false)
+    sealed class WebSocketLane(string name)
     {
         public string Name { get; } = name;
-        public bool AllowsBlockingRequest { get; } = allowsBlockingRequest;
         public SemaphoreSlim Gate { get; } = new(1, 1);
         public ClientWebSocket? Socket;
     }
@@ -34,8 +31,6 @@ internal sealed class ClientWebSocketEngineProtocolTransport : IEngineProtocolTr
     readonly WebSocketLane requestLane = new("request");
     readonly WebSocketLane interactiveLane = new("interactive");
     readonly WebSocketLane lifecycleLane = new("lifecycle");
-    readonly WebSocketLane backgroundLane =
-        new("background", allowsBlockingRequest: true);
     readonly CancellationTokenSource disposeCancellation = new();
     readonly TaskCompletionSource disposalCompletion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -99,13 +94,10 @@ internal sealed class ClientWebSocketEngineProtocolTransport : IEngineProtocolTr
         {
             EngineProtocolInvocationKind.Interactive => interactiveLane,
             EngineProtocolInvocationKind.Lifecycle => lifecycleLane,
-            EngineProtocolInvocationKind.Background => backgroundLane,
             _ => requestLane
         };
         var timeout = invocationKind switch
         {
-            EngineProtocolInvocationKind.Background =>
-                Timeout.InfiniteTimeSpan,
             EngineProtocolInvocationKind.Interactive =>
                 InteractiveRequestTimeout,
             EngineProtocolInvocationKind.Lifecycle =>
@@ -287,15 +279,8 @@ internal sealed class ClientWebSocketEngineProtocolTransport : IEngineProtocolTr
                 "X-Sailor-Channel",
                 lane.Name);
             // A finite timeout makes a half-open remote connection observable.
-            // A blocking background command is executed synchronously by the
-            // current native server callback, which cannot service PING until
-            // the command completes. Caller cancellation and lane abort still
-            // bound that channel without a false keep-alive failure.
             socket.Options.KeepAliveInterval = KeepAliveInterval;
-            socket.Options.KeepAliveTimeout =
-                lane.AllowsBlockingRequest
-                    ? Timeout.InfiniteTimeSpan
-                    : KeepAliveTimeout;
+            socket.Options.KeepAliveTimeout = KeepAliveTimeout;
             using var connectCancellation =
                 CancellationTokenSource.CreateLinkedTokenSource(
                     invocationCancellation);
@@ -439,7 +424,6 @@ internal sealed class ClientWebSocketEngineProtocolTransport : IEngineProtocolTr
         ResetLane(requestLane);
         ResetLane(interactiveLane);
         ResetLane(lifecycleLane);
-        ResetLane(backgroundLane);
         TryCompleteDisposal();
     }
 
@@ -486,7 +470,6 @@ internal sealed class ClientWebSocketEngineProtocolTransport : IEngineProtocolTr
         requestLane.Gate.Dispose();
         interactiveLane.Gate.Dispose();
         lifecycleLane.Gate.Dispose();
-        backgroundLane.Gate.Dispose();
         disposeCancellation.Dispose();
     }
 }

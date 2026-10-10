@@ -67,7 +67,7 @@ InstanceId::InstanceId(std::string_view value)
 YAML::Node InstanceId::Serialize() const
 {
 	YAML::Node outData;
-	outData = m_instanceId.ToString();
+	outData = ToString();
 	return outData;
 }
 
@@ -96,6 +96,8 @@ void InstanceId::Deserialize(const YAML::Node& inData)
 
 const std::string& InstanceId::ToString() const
 {
+	// Constant-initialized sentinels have a hash but may not have registered text yet.
+	if (m_instanceId == InstanceId::Invalid.m_instanceId) return "NullInstanceId"_h.ToString();
 	return m_instanceId.ToString();
 }
 

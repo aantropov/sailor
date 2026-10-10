@@ -15,6 +15,7 @@ namespace Sailor
 	public:
 		const AudioClipPtr& GetClip() const { return m_clip; }
 		const AudioVoiceSettings& GetSettings() const { return m_settings; }
+		AudioVoiceId GetVoiceId() const { return m_voiceId; }
 		bool IsPlaybackRequested() const { return m_bPlaybackRequested; }
 
 	private:
@@ -27,6 +28,7 @@ namespace Sailor
 		uint64_t m_playRequest = 0;
 		uint64_t m_appliedPlayRequest = 0;
 		uint64_t m_attemptedClipRevision = 0;
+		uint64_t m_attemptedPlayRequest = 0;
 		size_t m_lastTransformFrame = 0;
 		glm::vec3 m_lastPosition{};
 		glm::vec3 m_lastVelocity{};
@@ -63,7 +65,7 @@ namespace Sailor
 		public ECS::TSystem<AudioECS, AudioSourceData>
 	{
 	public:
-		Tasks::ITaskPtr Tick(float deltaTime) override;
+		void Tick(float deltaTime) override;
 		void EndPlay() override;
 		uint32_t GetOrder() const override { return 250; }
 

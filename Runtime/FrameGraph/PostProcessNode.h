@@ -5,13 +5,14 @@
 #include "RHI/Types.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
+#include "RHI/RenderSubmission.h"
 
 namespace Sailor::Framegraph
 {
-	class PostProcessNode final : public TFrameGraphNode<PostProcessNode>
+	class PostProcessNode : public TFrameGraphNode<PostProcessNode>
 	{
 	public:
-		SAILOR_API static const char* GetName() { return m_name; }
+		SAILOR_API static StringHash GetName() { return "PostProcess"_h; }
 
 		SAILOR_API void PreloadShader();
 		SAILOR_API bool IsShaderReady() const;
@@ -19,12 +20,24 @@ namespace Sailor::Framegraph
 		SAILOR_API virtual void Clear() override;
 
 	protected:
+		friend class PostProcessNodeTestAccess;
 
-		SAILOR_SHARED_API static const char* m_name;
+		class SubmissionResources final : public RHI::RHIFrameGraphSubmissionResource
+		{
+		public:
+			void ResetForSubmission() override {}
+			void InvalidateSubmission() override { m_uploadedParameterRevision = 0; }
+
+			RHI::RHIShaderBindingSetPtr m_shaderBindings{};
+			uint64_t m_shaderGeneration = 0;
+			uint64_t m_uploadedParameterRevision = 0;
+		};
 
 		ShaderSetPtr m_pShader{};
 		RHI::RHIMaterialPtr m_postEffectMaterial{};
-		RHI::RHIShaderBindingSetPtr m_shaderBindings{};
+		std::string m_shaderPath;
+		std::string m_shaderDefines;
+		uint64_t m_shaderGeneration = 0;
 	};
 
 	template class TFrameGraphNode<PostProcessNode>;

@@ -18,6 +18,45 @@ bool RHI::IsDepthStencilFormat(ETextureFormat textureFormat)
 		textureFormat == RHI::EFormat::D24_UNORM_S8_UINT;
 }
 
+bool RHI::IsSrgbFormat(ETextureFormat textureFormat)
+{
+	switch (textureFormat)
+	{
+	case EFormat::R8_SRGB:
+	case EFormat::R8G8_SRGB:
+	case EFormat::R8G8B8_SRGB:
+	case EFormat::B8G8R8_SRGB:
+	case EFormat::R8G8B8A8_SRGB:
+	case EFormat::B8G8R8A8_SRGB:
+	case EFormat::A8B8G8R8_SRGB_PACK32:
+	case EFormat::BC1_RGB_SRGB_BLOCK:
+	case EFormat::BC1_RGBA_SRGB_BLOCK:
+	case EFormat::BC2_SRGB_BLOCK:
+	case EFormat::BC3_SRGB_BLOCK:
+	case EFormat::BC7_SRGB_BLOCK:
+	case EFormat::ETC2_R8G8B8_SRGB_BLOCK:
+	case EFormat::ETC2_R8G8B8A1_SRGB_BLOCK:
+	case EFormat::ETC2_R8G8B8A8_SRGB_BLOCK:
+	case EFormat::ASTC_4x4_SRGB_BLOCK:
+	case EFormat::ASTC_5x4_SRGB_BLOCK:
+	case EFormat::ASTC_5x5_SRGB_BLOCK:
+	case EFormat::ASTC_6x5_SRGB_BLOCK:
+	case EFormat::ASTC_6x6_SRGB_BLOCK:
+	case EFormat::ASTC_8x5_SRGB_BLOCK:
+	case EFormat::ASTC_8x6_SRGB_BLOCK:
+	case EFormat::ASTC_8x8_SRGB_BLOCK:
+	case EFormat::ASTC_10x5_SRGB_BLOCK:
+	case EFormat::ASTC_10x6_SRGB_BLOCK:
+	case EFormat::ASTC_10x8_SRGB_BLOCK:
+	case EFormat::ASTC_10x10_SRGB_BLOCK:
+	case EFormat::ASTC_12x10_SRGB_BLOCK:
+	case EFormat::ASTC_12x12_SRGB_BLOCK:
+		return true;
+	default:
+		return false;
+	}
+}
+
 bool RHI::IsFloatFormat(ETextureFormat textureFormat)
 {
 	switch (textureFormat)

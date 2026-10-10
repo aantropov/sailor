@@ -1,12 +1,13 @@
 #pragma once
 
 #include "Containers/Vector.h"
-#include "Engine/InstanceId.h"
+#include "Editor/EditorViewportEvent.h"
 #include "Math/Bounds.h"
 #include "Math/Transform.h"
 #include "Memory/ObjectPtr.hpp"
 
 #include <string>
+#include <string_view>
 
 namespace Sailor
 {
@@ -15,20 +16,6 @@ namespace Sailor
 
 	namespace EditorViewport
 	{
-		enum class ETransformOperation : uint8_t
-		{
-			Select = 0,
-			Translate,
-			Rotate,
-			Scale
-		};
-
-		enum class ETransformSpace : uint8_t
-		{
-			World = 0,
-			Local
-		};
-
 		struct PickCandidate
 		{
 			InstanceId m_instanceId{};
@@ -94,9 +81,9 @@ namespace Sailor
 			SAILOR_API void Reset();
 			SAILOR_API void CancelPointerInteraction();
 			SAILOR_API void CancelInteraction(World& world);
-			SAILOR_API bool PullEvent(std::string& outEvent);
+			SAILOR_API bool PullEvent(Event& outEvent);
 			SAILOR_API bool QueueAssetDropEvent(
-				const std::string& fileId,
+				std::string_view fileId,
 				float normalizedX,
 				float normalizedY);
 			SAILOR_API bool QueueToolShortcutEvent(uint32_t keyCode);
@@ -121,7 +108,6 @@ namespace Sailor
 			SAILOR_API ETransformSpace GetSpace() const { return m_space; }
 
 		private:
-			TObjectPtr<GameObject> ResolveSelectedObject(World& world) const;
 			void CompleteActiveTransform(World& world);
 			void TickTransformGizmo(World& world, TObjectPtr<GameObject> selectedObject);
 			void TickSelection(World& world);
@@ -152,7 +138,7 @@ namespace Sailor
 			uint64_t m_selectedObjectMutationRevision = 0;
 			uint64_t m_dragManagedObjectMutationRevision = 0;
 			int32_t m_lastTickFrame = -1;
-			TVector<std::string> m_pendingEvents{};
+			TVector<Event> m_pendingEvents{};
 		};
 	}
 }

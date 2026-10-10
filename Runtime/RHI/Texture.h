@@ -35,6 +35,7 @@ namespace Sailor::RHI
 		SAILOR_API ETextureClamping GetClamping() const { return m_clamping; }
 		SAILOR_API bool HasMipMaps() const { return m_bHasMipMaps; }
 		SAILOR_API EFormat GetFormat() const;
+		SAILOR_API EMsaaSamples GetMsaaSamples() const;
 		SAILOR_API glm::ivec2 GetExtent() const;
 		SAILOR_API EImageLayout GetDefaultLayout() const { return m_defaultLayout; }
 #if defined(SAILOR_BUILD_WITH_VULKAN)

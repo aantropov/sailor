@@ -2,6 +2,7 @@
 #include "AssetRegistry/Model/GltfModelImporterInternal.h"
 
 #include "Core/Utils.h"
+#include "Workspace/WorkspacePathEncoding.h"
 #include "Memory/UniquePtr.hpp"
 
 #include <algorithm>
@@ -12,6 +13,7 @@
 #include <iterator>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include <nlohmann/json.hpp>
@@ -43,7 +45,7 @@ namespace Sailor::GltfImporterInternal
 		bool& outHandled)
 	{
 		outHandled = false;
-		std::ifstream input(assetFilepath, std::ios::binary);
+		std::ifstream input(Workspace::PathFromUtf8(assetFilepath), std::ios::binary);
 		if (!input.is_open())
 		{
 			return false;
@@ -144,7 +146,7 @@ namespace Sailor::GltfImporterInternal
 			&warning,
 			patchedSource.data(),
 			static_cast<unsigned int>(patchedSource.size()),
-			std::filesystem::path(assetFilepath).parent_path().string());
+			Workspace::PathToUtf8(Workspace::PathFromUtf8(assetFilepath).parent_path()));
 		if (loaded)
 		{
 			for (size_t bufferIndex : placeholderBuffers)
@@ -669,7 +671,7 @@ namespace Sailor::GltfImporterInternal
 			}
 
 			const std::string& mode = extension.Get("mode").Get<std::string>();
-			std::string filter = "NONE";
+			std::string_view filter = "NONE";
 			if (extension.Has("filter"))
 			{
 				if (!extension.Get("filter").IsString())

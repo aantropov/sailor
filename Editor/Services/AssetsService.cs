@@ -9,6 +9,7 @@ using YamlDotNet.Core;
 using YamlDotNet.Core.Events;
 using SailorEditor.Helpers;
 using SailorEditor.Content;
+using SailorEditor.Workflow;
 
 namespace SailorEditor.Services
 {
@@ -71,22 +72,19 @@ namespace SailorEditor.Services
             try
             {
                 var selectionService = MauiProgram.GetService<SelectionService>();
-                var selectedAssetId = (selectionService.SelectedItem as AssetFile)?.FileId;
+                var selection = selectionService.Snapshot;
+                var workspaceEpoch = WorkspaceEpoch;
                 await RefreshAsync();
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
-                    if (selectedAssetId is null || selectedAssetId.IsEmpty())
+                    // Reload must not replace a newer selection or cross a workspace change.
+                    if (workspaceEpoch != WorkspaceEpoch || selection != selectionService.Snapshot ||
+                        selection.Kind != SelectionTargetKind.Asset || selection.SelectedId is null)
                     {
                         return;
                     }
 
-                    if (Assets.TryGetValue(selectedAssetId, out var refreshedAsset))
-                    {
-                        selectionService.SelectObject(refreshedAsset, force: true);
-                        return;
-                    }
-
-                    selectionService.ClearSelection();
+                    RestoreSelectedAsset(selectionService, new FileId(selection.SelectedId));
                 });
             }
             catch (Exception exception)
@@ -177,7 +175,7 @@ namespace SailorEditor.Services
                 return Task.FromResult(false);
             }
 
-            return _engineService.UpdateAssetAsync(
+            return _engineService.ReimportAssetAsync(
                 assetFile.FileId,
                 cancellationToken);
         }
@@ -1206,6 +1204,7 @@ namespace SailorEditor.Services
 
         public async Task RefreshAsync(CancellationToken cancellationToken = default)
         {
+            var workspaceEpoch = WorkspaceEpoch;
             if (_activeLaunchContext is null)
             {
                 return;
@@ -1217,14 +1216,21 @@ namespace SailorEditor.Services
                 .Select(folder => (folder.ProjectRootId, folder.FullPath))
                 .OrderBy(folder => folder.FullPath.Count(character => character == Path.DirectorySeparatorChar))
                 .ToArray();
-            await MainThread.InvokeOnMainThreadAsync(() => AddProjectRoot(launchContext));
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                // A queued refresh still belongs to the workspace that requested it.
+                if (workspaceEpoch == WorkspaceEpoch)
+                {
+                    AddProjectRoot(launchContext);
+                }
+            });
             foreach (var loadedFolder in loadedFolders)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var folderId = await MainThread.InvokeOnMainThreadAsync(() =>
-                    Folders.FirstOrDefault(candidate =>
+                    workspaceEpoch == WorkspaceEpoch ? Folders.FirstOrDefault(candidate =>
                         candidate.ProjectRootId == loadedFolder.ProjectRootId &&
-                        ProjectContentPathPolicy.IsSamePath(candidate.FullPath, loadedFolder.FullPath))?.Id);
+                        ProjectContentPathPolicy.IsSamePath(candidate.FullPath, loadedFolder.FullPath))?.Id : null);
                 if (folderId is not null)
                 {
                     await EnsureFolderLoadedAsync(folderId.Value, cancellationToken).ConfigureAwait(false);

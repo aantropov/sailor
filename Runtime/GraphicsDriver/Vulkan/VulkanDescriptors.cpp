@@ -50,11 +50,11 @@ bool VulkanDescriptorSet::ValidateDescriptorWrite(const VulkanDescriptorSetLayou
 	}
 
 	const uint32_t allowedDescriptorCount = GetEffectiveDescriptorCount(layout, *layoutBinding, variableDescriptorCount);
-	if (write.dstArrayElement >= allowedDescriptorCount ||
-		write.descriptorCount > allowedDescriptorCount ||
-		write.dstArrayElement + write.descriptorCount > allowedDescriptorCount)
+	if (write.descriptorCount == 0 ||
+		write.dstArrayElement >= allowedDescriptorCount ||
+		write.descriptorCount > allowedDescriptorCount - write.dstArrayElement)
 	{
-		SAILOR_LOG_ERROR("%s: descriptor write exceeds layout. binding=%u, type=%u, count=%u, arrayElement=%u, allowed=%u, layoutCount=%u, variableCount=%u",
+		SAILOR_LOG_ERROR("%s: invalid descriptor write range. binding=%u, type=%u, count=%u, arrayElement=%u, allowed=%u, layoutCount=%u, variableCount=%u",
 			context,
 			write.dstBinding,
 			static_cast<uint32_t>(write.descriptorType),
@@ -66,6 +66,46 @@ bool VulkanDescriptorSet::ValidateDescriptorWrite(const VulkanDescriptorSetLayou
 		return false;
 	}
 
+	for (uint32_t i = 0; i < write.descriptorCount; i++)
+	{
+		bool bValid = true;
+		switch (write.descriptorType)
+		{
+		case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+			bValid = write.pImageInfo != nullptr &&
+				write.pImageInfo[i].imageView != VK_NULL_HANDLE &&
+				write.pImageInfo[i].sampler != VK_NULL_HANDLE;
+			break;
+		case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+		case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+		case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+			bValid = write.pImageInfo != nullptr && write.pImageInfo[i].imageView != VK_NULL_HANDLE;
+			break;
+		case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+		case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+		case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
+		case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
+			bValid = write.pBufferInfo != nullptr && write.pBufferInfo[i].buffer != VK_NULL_HANDLE;
+			break;
+		case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+		case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
+			bValid = write.pTexelBufferView != nullptr && write.pTexelBufferView[i] != VK_NULL_HANDLE;
+			break;
+		default:
+			break;
+		}
+
+		if (!bValid)
+		{
+			SAILOR_LOG_ERROR("%s: descriptor write has an unavailable resource. binding=%u, type=%u, arrayElement=%u",
+				context,
+				write.dstBinding,
+				static_cast<uint32_t>(write.descriptorType),
+				write.dstArrayElement + i);
+			return false;
+		}
+	}
+
 	return true;
 }
 
@@ -74,6 +114,11 @@ VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(VulkanDevicePtr pDevice, TV
 	m_device(pDevice),
 	m_variableDescriptorBinding(variableDescriptorBinding)
 {
+	// Direct bindings and shader reflection can arrive in different orders.
+	m_descriptorSetLayoutBindings.Sort([](const auto& lhs, const auto& rhs)
+		{
+			return lhs.binding < rhs.binding;
+		});
 }
 
 VulkanDescriptorSetLayout::~VulkanDescriptorSetLayout()
@@ -125,13 +170,11 @@ void VulkanDescriptorSetLayout::Compile()
 		bindingFlagsStorage.Resize(layoutInfo.bindingCount);
 		for (uint32_t i = 0; i < bindingFlagsStorage.Num(); i++)
 		{
-			VkDescriptorBindingFlags flag =
-				VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-				VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
+			VkDescriptorBindingFlags flag = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
 
 			if (bUseUpdateAfterBind)
 			{
-				flag |= VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+				flag |= VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
 			}
 
 			if ((int32_t)m_descriptorSetLayoutBindings[i].binding == m_variableDescriptorBinding)
@@ -438,6 +481,18 @@ void VulkanDescriptorSet::Compile()
 bool VulkanDescriptorSet::TryCompile()
 {
 	uint32_t variableDescriptorCount = std::max(1u, m_variableDescriptorCount);
+	TVector<VkWriteDescriptorSet> descriptorsWrite(m_descriptors.Num());
+
+	// Reject the entire supplied list before allocating or updating the native set.
+	for (uint32_t i = 0; i < m_descriptors.Num(); i++)
+	{
+		m_descriptors[i]->Apply(descriptorsWrite[i]);
+		if (!ValidateDescriptorWrite(m_descriptorSetLayout, descriptorsWrite[i],
+			variableDescriptorCount, "VulkanDescriptorSet::TryCompile"))
+		{
+			return false;
+		}
+	}
 
 	if (!m_descriptorSet)
 	{
@@ -546,65 +601,15 @@ bool VulkanDescriptorSet::TryCompile()
 		}
 	}
 
-	TVector<VkWriteDescriptorSet> descriptorsWrite(m_descriptors.Num());
-
-	for (uint32_t i = 0; i < m_descriptors.Num(); i++)
-	{
-		m_descriptors[i]->Apply(descriptorsWrite[i]);
-		descriptorsWrite[i].dstSet = m_descriptorSet;
-	}
-
-	TVector<VkWriteDescriptorSet> validWrites;
-	validWrites.Reserve(descriptorsWrite.Num());
-
 	for (auto& write : descriptorsWrite)
 	{
-		bool bValid = true;
-
-		switch (write.descriptorType)
-		{
-		case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
-			bValid = (write.pImageInfo != nullptr) && (write.pImageInfo->imageView != VK_NULL_HANDLE) && (write.pImageInfo->sampler != VK_NULL_HANDLE);
-			break;
-		case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
-		case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-		case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
-			bValid = (write.pImageInfo != nullptr) && (write.pImageInfo->imageView != VK_NULL_HANDLE);
-			break;
-		case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
-		case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
-		case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
-		case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
-			bValid = (write.pBufferInfo != nullptr) && (write.pBufferInfo->buffer != VK_NULL_HANDLE);
-			break;
-		case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
-		case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
-			bValid = (write.pTexelBufferView != nullptr) && (*write.pTexelBufferView != VK_NULL_HANDLE);
-			break;
-		default:
-			break;
-		}
-
-		if (bValid)
-		{
-			bValid = ValidateDescriptorWrite(m_descriptorSetLayout, write, variableDescriptorCount, "VulkanDescriptorSet::Compile");
-			if (bValid)
-			{
-				validWrites.Add(write);
-			}
-		}
-#ifdef _DEBUG
-		if (!bValid)
-		{
-			check(false);
-		}
-#endif
+		write.dstSet = m_descriptorSet;
 	}
 
 	RecalculateCompatibility();
-	if (validWrites.Num() > 0)
+	if (descriptorsWrite.Num() > 0)
 	{
-		vkUpdateDescriptorSets(*m_device, static_cast<uint32_t>(validWrites.Num()), validWrites.GetData(), 0, nullptr);
+		vkUpdateDescriptorSets(*m_device, static_cast<uint32_t>(descriptorsWrite.Num()), descriptorsWrite.GetData(), 0, nullptr);
 	}
 
 	return true;
@@ -660,6 +665,18 @@ VulkanDescriptorBuffer::VulkanDescriptorBuffer(uint32_t dstBinding,
 	m_bufferInfo.range = m_range;
 }
 
+VulkanDescriptorBuffer::VulkanDescriptorBuffer(uint32_t dstBinding,
+	uint32_t dstArrayElement,
+	TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator> allocation,
+	VkDeviceSize offset,
+	VkDeviceSize range,
+	RHI::EShaderBindingType bufferType) :
+	VulkanDescriptorBuffer(dstBinding, dstArrayElement, (*allocation->Get()).m_buffer,
+		offset, range, bufferType)
+{
+	m_allocation = std::move(allocation);
+}
+
 void VulkanDescriptorBuffer::Apply(VkWriteDescriptorSet& writeDescriptorSet) const
 {
 	VulkanDescriptor::Apply(writeDescriptorSet);
@@ -682,7 +699,7 @@ VulkanDescriptorCombinedImage::VulkanDescriptorCombinedImage(uint32_t dstBinding
 {
 	m_imageInfo.imageLayout = m_imageLayout;
 	m_imageInfo.imageView = *m_imageView;
-	m_imageInfo.sampler = *m_sampler;
+	m_imageInfo.sampler = m_sampler ? *m_sampler : VK_NULL_HANDLE;
 }
 
 void VulkanDescriptorCombinedImage::SetImageView(VulkanImageViewPtr imageView)

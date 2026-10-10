@@ -20,7 +20,7 @@ public partial class Observable<T> : ObservableObject, ICloneable
 
     public static implicit operator Observable<T>(T value) => new Observable<T>(value);
     public static implicit operator T(Observable<T> observable) => observable.Value;
-    public object Clone() => new Observable<T>(Value);
+    public object Clone() => new Observable<T>(Value is ICloneable cloneable ? (T)cloneable.Clone() : Value);
     public override string ToString() => Value.ToString();
     public override bool Equals(object obj)
     {

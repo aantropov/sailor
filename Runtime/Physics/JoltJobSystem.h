@@ -1,5 +1,6 @@
 #pragma once
 #include "Core/Defines.h"
+#include "Memory/SharedPtr.hpp"
 #include <Jolt/Jolt.h>
 #include <Jolt/Core/JobSystemWithBarrier.h>
 #include <atomic>
@@ -39,7 +40,9 @@ namespace Sailor::Physics
 		void FreeJob(JPH::JobSystem::Job* job) override;
 
 	private:
+		friend class JoltJobSystemTestAccess;
+
 		Tasks::Scheduler* m_scheduler = nullptr;
-		std::atomic<uint32_t> m_numQueuedTasks = 0;
+		TSharedPtr<std::atomic<uint32_t>> m_numQueuedTasks = TSharedPtr<std::atomic<uint32_t>>::Make(0u);
 	};
 }

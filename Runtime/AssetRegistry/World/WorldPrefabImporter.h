@@ -48,7 +48,7 @@ namespace Sailor
 		}
 		SAILOR_API const std::string& GetLoadDiagnostic() const { return m_loadDiagnostic; }
 
-		static WorldPrefabPtr FromWorld(WorldPtr world);
+		SAILOR_API static WorldPrefabPtr FromWorld(WorldPtr world);
 
 	protected:
 
@@ -67,9 +67,25 @@ namespace Sailor
 			TMap<InstanceId, InstanceId>& outSourceToInstanceIds,
 			std::string& outDiagnostic);
 
+		static bool ReconcileLinkedInstanceIds(
+			const PrefabInstance::Snapshot& expanded,
+			const PrefabInstance::Snapshot& source,
+			const TMap<InstanceId, InstanceId>& savedSourceToInstanceIds,
+			TSet<InstanceId>& reservedInstanceIds,
+			TMap<InstanceId, InstanceId>& outSourceToInstanceIds,
+			std::string& outDiagnostic);
+
 		static bool BuildLinkedOverrides(
 			const PrefabPtr& expandedPrefab,
 			const PrefabPtr& sourcePrefab,
+			const TMap<InstanceId, InstanceId>& sourceToInstanceIds,
+			TMap<InstanceId, YAML::Node>& outGameObjectOverrides,
+			TMap<InstanceId, ReflectedData>& outComponentOverrides,
+			std::string& outDiagnostic);
+
+		static bool BuildLinkedOverrides(
+			const PrefabInstance::Snapshot& expanded,
+			const PrefabInstance::Snapshot& source,
 			const TMap<InstanceId, InstanceId>& sourceToInstanceIds,
 			TMap<InstanceId, YAML::Node>& outGameObjectOverrides,
 			TMap<InstanceId, ReflectedData>& outComponentOverrides,
@@ -79,6 +95,15 @@ namespace Sailor
 			const PrefabPtr& expandedPrefab,
 			const PrefabPtr& sourcePrefab,
 			const PrefabPtr& effectiveBaseline,
+			const TMap<InstanceId, InstanceId>& sourceToInstanceIds,
+			TMap<InstanceId, YAML::Node>& outGameObjectOverrides,
+			TMap<InstanceId, ReflectedData>& outComponentOverrides,
+			std::string& outDiagnostic);
+
+		static bool BuildUpdatedLinkedOverrides(
+			const PrefabInstance::Snapshot& expanded,
+			const PrefabInstance::Snapshot& source,
+			const PrefabInstance::Snapshot& baseline,
 			const TMap<InstanceId, InstanceId>& sourceToInstanceIds,
 			TMap<InstanceId, YAML::Node>& outGameObjectOverrides,
 			TMap<InstanceId, ReflectedData>& outComponentOverrides,

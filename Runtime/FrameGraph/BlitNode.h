@@ -11,7 +11,7 @@ namespace Sailor::Framegraph
 	class BlitNode : public TFrameGraphNode<BlitNode>
 	{
 	public:
-		SAILOR_API static const char* GetName() { return m_name; }
+		SAILOR_API static StringHash GetName() { return "Blit"_h; }
 
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph,
 			RHI::RHICommandListPtr transferCommandList,
@@ -34,7 +34,6 @@ namespace Sailor::Framegraph
 		RHI::RHIMaterialPtr m_blitToMsaaTargetMaterial{};
 		RHI::RHIShaderBindingSetPtr m_shaderBindings{};
 
-		SAILOR_SHARED_API static const char* m_name;
 	};
 
 	template class TFrameGraphNode<BlitNode>;

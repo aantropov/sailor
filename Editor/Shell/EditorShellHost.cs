@@ -91,10 +91,16 @@ public sealed class EditorShellHost : IEditorShellHost, INotifyPropertyChanged
         }
 
         var reference = new PanelReference(PanelId.New(), panelTypeId);
-        targetGroupId ??= descriptor.DefaultDockPreference.TargetGroupId ?? GuessDefaultGroupId(panelTypeId);
-        var updatedRoot = CurrentLayout is null
-            ? LayoutOperations.CreateDefaultLayout().Root.Content
-            : LayoutOperations.InsertTabbed(CurrentLayout.Root.Content, targetGroupId, reference);
+        var preferredGroupId = targetGroupId ?? descriptor.DefaultDockPreference.TargetGroupId ?? GuessDefaultGroupId(panelTypeId);
+        targetGroupId = State.OpenPanels.Any(panel => panel.GroupId == preferredGroupId)
+            ? preferredGroupId
+            : State.Focus.ActiveTabGroupId;
+
+        // Closing a group's last tab removes the group; reopen in the active group.
+        var updatedRoot = targetGroupId is not null && CurrentLayout is not null
+            ? LayoutOperations.InsertTabbed(CurrentLayout.Root.Content, targetGroupId, reference)
+            : new TabGroupNode(descriptor.Role, [reference], reference.PanelId, preferredGroupId);
+        targetGroupId ??= preferredGroupId;
 
         var layout = (CurrentLayout ?? LayoutOperations.CreateDefaultLayout()) with { Root = new LayoutRoot(updatedRoot) };
         ApplyLayout(layout);

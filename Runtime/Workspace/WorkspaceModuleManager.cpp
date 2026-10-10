@@ -3,21 +3,14 @@
 
 #include "Components/Component.h"
 #include "Core/Reflection.h"
-#include "Core/Utils.h"
+#include "Core/ReflectionMetadata.h"
+#include "Core/YamlUtils.h"
 #include "ECS/ECSAutoRegistration.h"
 #include "Workspace/WorkspaceModuleApi.h"
+#include "Workspace/WorkspacePathEncoding.h"
 
-#include <algorithm>
-#include <charconv>
-#include <cctype>
-#include <cmath>
 #include <cstring>
-#include <limits>
-#include <unordered_map>
-#include <unordered_set>
 #include <utility>
-#include <vector>
-#include <yaml-cpp/yaml.h>
 
 namespace
 {
@@ -25,17 +18,12 @@ namespace
 	using namespace Sailor::Workspace;
 
 	constexpr uint64_t MaxApiStringLength = 4096;
-	constexpr uint64_t MaxMetadataPayloadSize = 16 * 1024 * 1024;
 
 	struct CollectedWorkspaceType
 	{
-		std::string m_typeName;
-		std::string m_baseTypeName;
 		const TypeInfo* m_typeInfo{};
 		uint64_t m_typeSize = 0;
 		uint64_t m_typeAlignment = 0;
-		std::string m_canonicalDefaultValues;
-		uint32_t m_flags = 0;
 		TWorkspacePlacementFactoryV1 m_placementFactory{};
 	};
 
@@ -43,119 +31,31 @@ namespace
 	{
 		TVector<CollectedWorkspaceType> m_types;
 		std::string m_error;
-		uint64_t m_totalCanonicalDefaultValuesLength = 0;
-	};
-
-	struct MetadataIdentities
-	{
-		TSet<std::string> m_engineTypes;
-		TSet<std::string> m_cdos;
-		TSet<std::string> m_enums;
-		TSet<std::string> m_assetTypes;
-		TSet<std::string> m_assetExtensions;
-	};
-
-	constexpr const char* MetadataSections[]
-	{
-		"engineTypes",
-		"cdos",
-		"enums",
-		"assetTypes"
 	};
 
 	uint32_t SAILOR_WORKSPACE_CALL CollectWorkspaceType(
-		void* context,
-		const WorkspaceTypeDescriptorV1* descriptor) noexcept
+		void* context, const WorkspaceTypeDescriptorV1* descriptor) noexcept
 	{
-		if (context == nullptr || descriptor == nullptr)
+		if (!context || !descriptor)
 		{
 			return static_cast<uint32_t>(EWorkspaceModuleResult::InvalidArgument);
 		}
-
 		auto& collector = *static_cast<WorkspaceTypeCollector*>(context);
-		if (descriptor->structSize < sizeof(WorkspaceTypeDescriptorV1) ||
-			descriptor->typeName == nullptr ||
-			descriptor->typeNameLength == 0 ||
-			descriptor->typeNameLength > MaxApiStringLength ||
-			descriptor->baseTypeName == nullptr ||
-			descriptor->baseTypeNameLength > MaxApiStringLength ||
-			descriptor->typeInfo == nullptr ||
-			descriptor->typeSize == 0 ||
-			descriptor->typeAlignment == 0 ||
-			(descriptor->typeAlignment & (descriptor->typeAlignment - 1)) != 0 ||
-			descriptor->canonicalDefaultValues == nullptr ||
-			descriptor->canonicalDefaultValuesLength == 0 ||
-			descriptor->canonicalDefaultValuesLength > MaxMetadataPayloadSize ||
-			(descriptor->flags & ~WorkspaceTypeDescriptorKnownFlags) != 0 ||
-			descriptor->placementFactory == nullptr)
+		if (descriptor->structSize < sizeof(WorkspaceTypeDescriptorV1) || !descriptor->typeInfo ||
+			!descriptor->placementFactory || descriptor->typeSize == 0 || descriptor->typeAlignment == 0 ||
+			(descriptor->typeAlignment & (descriptor->typeAlignment - 1)) != 0)
 		{
 			collector.m_error = "Workspace module returned an invalid type descriptor.";
 			return static_cast<uint32_t>(EWorkspaceModuleResult::RegistrationFailed);
 		}
-		if (descriptor->canonicalDefaultValuesLength >
-			MaxMetadataPayloadSize - collector.m_totalCanonicalDefaultValuesLength)
+		const auto* type = static_cast<const TypeInfo*>(descriptor->typeInfo);
+		if (type->Name().empty() || type->Name().size() > MaxApiStringLength || type->Base().size() > MaxApiStringLength)
 		{
-			collector.m_error = "Workspace module returned too much canonical default data.";
+			collector.m_error = "Workspace module returned an invalid reflected type name.";
 			return static_cast<uint32_t>(EWorkspaceModuleResult::RegistrationFailed);
 		}
-
-		CollectedWorkspaceType type;
-		type.m_typeName.assign(descriptor->typeName, static_cast<size_t>(descriptor->typeNameLength));
-		type.m_baseTypeName.assign(
-			descriptor->baseTypeName,
-			static_cast<size_t>(descriptor->baseTypeNameLength));
-		type.m_typeInfo = static_cast<const TypeInfo*>(descriptor->typeInfo);
-		type.m_typeSize = descriptor->typeSize;
-		type.m_typeAlignment = descriptor->typeAlignment;
-		type.m_canonicalDefaultValues.assign(
-			descriptor->canonicalDefaultValues,
-			static_cast<size_t>(descriptor->canonicalDefaultValuesLength));
-		type.m_flags = descriptor->flags;
-		type.m_placementFactory = descriptor->placementFactory;
-		collector.m_types.Add(std::move(type));
-		collector.m_totalCanonicalDefaultValuesLength +=
-			descriptor->canonicalDefaultValuesLength;
+		collector.m_types.Add({ type, descriptor->typeSize, descriptor->typeAlignment, descriptor->placementFactory });
 		return static_cast<uint32_t>(EWorkspaceModuleResult::Success);
-	}
-
-	bool IsInside(const std::filesystem::path& root, const std::filesystem::path& candidate)
-	{
-		auto rootPart = root.begin();
-		auto candidatePart = candidate.begin();
-		for (; rootPart != root.end(); ++rootPart, ++candidatePart)
-		{
-			if (candidatePart == candidate.end())
-			{
-				return false;
-			}
-
-			std::string rootValue = rootPart->generic_string();
-			std::string candidateValue = candidatePart->generic_string();
-#if defined(_WIN32)
-			std::transform(rootValue.begin(), rootValue.end(), rootValue.begin(), [](unsigned char character)
-				{
-					return static_cast<char>(std::tolower(character));
-				});
-			std::transform(candidateValue.begin(), candidateValue.end(), candidateValue.begin(), [](unsigned char character)
-				{
-					return static_cast<char>(std::tolower(character));
-				});
-#endif
-			if (rootValue != candidateValue)
-			{
-				return false;
-			}
-		}
-
-		return true;
-	}
-
-	bool IsBlank(const std::string& value)
-	{
-		return value.empty() || std::all_of(value.begin(), value.end(), [](unsigned char character)
-			{
-				return std::isspace(character) != 0;
-			});
 	}
 
 	std::filesystem::path GetModuleFilename(const std::string& moduleName)
@@ -169,260 +69,7 @@ namespace
 #endif
 	}
 
-	using MetadataEntries = TMap<std::string, YAML::Node>;
 	using CollectedTypeInfos = TMap<std::string, const TypeInfo*>;
-	using EditorEnumDefinitions = TMap<std::string, TSet<std::string>>;
-
-	struct EditorTypeSchema
-	{
-		std::string m_baseType;
-		TMap<std::string, std::string> m_properties;
-	};
-
-	using EditorTypeSchemas = TMap<std::string, EditorTypeSchema>;
-
-	bool TryParsePropertyRangeBound(
-		const YAML::Node& value,
-		double& outValue)
-	{
-		if (!value.IsScalar())
-		{
-			return false;
-		}
-
-		const std::string& scalar = value.Scalar();
-		const char* begin = scalar.data();
-		const char* end = begin + scalar.size();
-		const auto parsed = std::from_chars(
-			begin,
-			end,
-			outValue,
-			std::chars_format::general);
-
-		return parsed.ec == std::errc{} &&
-			parsed.ptr == end &&
-			std::isfinite(outValue);
-	}
-
-	bool TryReadPropertyRange(
-		const YAML::Node& range,
-		double& outMin,
-		double& outMax)
-	{
-		if (!range.IsMap() || range.size() != 2)
-		{
-			return false;
-		}
-
-		bool bHasMin = false;
-		bool bHasMax = false;
-		TSet<std::string> fields;
-		for (const auto& field : range)
-		{
-			if (!field.first.IsScalar() ||
-				!field.second.IsScalar())
-			{
-				return false;
-			}
-
-			const std::string& fieldName = field.first.Scalar();
-			if (!fields.Insert(fieldName))
-			{
-				return false;
-			}
-
-			if (fieldName == "min")
-			{
-				if (!TryParsePropertyRangeBound(field.second, outMin))
-				{
-					return false;
-				}
-				bHasMin = true;
-			}
-			else if (fieldName == "max")
-			{
-				if (!TryParsePropertyRangeBound(field.second, outMax))
-				{
-					return false;
-				}
-				bHasMax = true;
-			}
-			else
-			{
-				return false;
-			}
-		}
-
-		return bHasMin &&
-			bHasMax &&
-			outMin < outMax;
-	}
-
-	bool IsPropertyRangeRepresentable(
-		const std::string& propertyType,
-		double min,
-		double max)
-	{
-		if (propertyType == "float")
-		{
-			return min >= static_cast<double>(std::numeric_limits<float>::lowest()) &&
-				max <= static_cast<double>(std::numeric_limits<float>::max());
-		}
-
-		if (propertyType == "int32")
-		{
-			return min >= static_cast<double>(std::numeric_limits<int32_t>::lowest()) &&
-				max <= static_cast<double>(std::numeric_limits<int32_t>::max()) &&
-				std::trunc(min) == min &&
-				std::trunc(max) == max;
-		}
-
-		if (propertyType == "uint32")
-		{
-			return min >= 0.0 &&
-				max <= static_cast<double>(std::numeric_limits<uint32_t>::max()) &&
-				std::trunc(min) == min &&
-				std::trunc(max) == max;
-		}
-
-		return false;
-	}
-
-	bool ValidatePropertyRangeSchema(
-		const YAML::Node& metadataPropertyRanges,
-		const TypeInfo& typeInfo,
-		std::string& outError)
-	{
-		const auto& reflectedPropertyRanges = typeInfo.PropertyRanges();
-		if (!metadataPropertyRanges.IsDefined())
-		{
-			if (reflectedPropertyRanges.Num() == 0)
-			{
-				return true;
-			}
-
-			outError = "Workspace metadata propertyRanges schema for '" + typeInfo.Name() +
-				"' does not match its reflected TypeInfo.";
-			return false;
-		}
-
-		if (!metadataPropertyRanges.IsMap() ||
-			metadataPropertyRanges.size() != reflectedPropertyRanges.Num())
-		{
-			outError = "Workspace metadata propertyRanges schema for '" + typeInfo.Name() +
-				"' does not match its reflected TypeInfo.";
-			return false;
-		}
-
-		TSet<std::string> propertyNames;
-		for (const auto& propertyRange : metadataPropertyRanges)
-		{
-			if (!propertyRange.first.IsScalar())
-			{
-				outError = "Workspace metadata propertyRanges schema for '" + typeInfo.Name() +
-					"' contains a non-scalar property name.";
-				return false;
-			}
-
-			const std::string propertyName = propertyRange.first.as<std::string>();
-			const auto reflectedRange = reflectedPropertyRanges.Find(propertyName);
-			double min = 0.0;
-			double max = 0.0;
-			if (!propertyNames.Insert(propertyName) ||
-				reflectedRange == reflectedPropertyRanges.end() ||
-				!TryReadPropertyRange(propertyRange.second, min, max) ||
-				reflectedRange.Value().m_min != min ||
-				reflectedRange.Value().m_max != max)
-			{
-				outError = "Workspace metadata property range '" + typeInfo.Name() + "::" +
-					propertyName + "' does not match its reflected TypeInfo.";
-				return false;
-			}
-		}
-
-		return true;
-	}
-
-	bool IndexMetadataEntries(
-		const YAML::Node& entries,
-		const char* sectionName,
-		MetadataEntries& outEntries,
-		std::string& outError)
-	{
-		outEntries.Clear();
-		for (const YAML::Node& entry : entries)
-		{
-			if (!entry.IsMap() || !entry["typename"] || !entry["typename"].IsScalar())
-			{
-				outError = std::string("Workspace metadata section '") + sectionName +
-					"' contains an entry without a scalar typename.";
-				return false;
-			}
-
-			const std::string typeName = entry["typename"].as<std::string>();
-			if (typeName.empty() || !outEntries.Insert(typeName, entry))
-			{
-				outError = std::string("Workspace metadata section '") + sectionName +
-					"' contains duplicate or empty typename '" + typeName + "'.";
-				return false;
-			}
-		}
-
-		return true;
-	}
-
-	bool ValidatePropertySchema(
-		const YAML::Node& metadataProperties,
-		const TypeInfo& typeInfo,
-		std::string& outError)
-	{
-		const auto& reflectedProperties = typeInfo.Properties();
-		if (!metadataProperties.IsDefined())
-		{
-			outError = "Workspace metadata property schema for '" + typeInfo.Name() +
-				"' is missing.";
-			return false;
-		}
-
-		if (reflectedProperties.Num() == 0)
-		{
-			if (metadataProperties.IsNull())
-			{
-				return true;
-			}
-		}
-
-		if (!metadataProperties.IsMap() || metadataProperties.size() != reflectedProperties.Num())
-		{
-			outError = "Workspace metadata property schema for '" + typeInfo.Name() +
-				"' does not match its reflected TypeInfo.";
-			return false;
-		}
-
-		TSet<std::string> propertyNames;
-		for (const auto& property : metadataProperties)
-		{
-			if (!property.first.IsScalar() || !property.second.IsScalar())
-			{
-				outError = "Workspace metadata property schema for '" + typeInfo.Name() +
-					"' must contain scalar names and type names.";
-				return false;
-			}
-
-			const std::string propertyName = property.first.as<std::string>();
-			const std::string propertyType = property.second.as<std::string>();
-			if (!propertyNames.Insert(propertyName) ||
-				!reflectedProperties.ContainsKey(propertyName) ||
-				reflectedProperties[propertyName] != propertyType)
-			{
-				outError = "Workspace metadata property '" + typeInfo.Name() + "::" +
-					propertyName + "' does not match its reflected TypeInfo.";
-				return false;
-			}
-		}
-
-		return true;
-	}
 
 	bool ValidateComponentHierarchy(
 		const TypeInfo& typeInfo,
@@ -474,613 +121,9 @@ namespace
 		return false;
 	}
 
-	bool HasUniqueScalarStringKeys(const YAML::Node& node)
-	{
-		if (!node.IsMap())
-		{
-			return false;
-		}
-
-		TSet<std::string> keys;
-		for (const auto& entry : node)
-		{
-			if (!entry.first.IsScalar() || !keys.Insert(entry.first.Scalar()))
-			{
-				return false;
-			}
-		}
-
-		return true;
-	}
-
-	bool ValidateCanonicalDefaultValues(
-		const YAML::Node& defaultValues,
-		const CollectedWorkspaceType& collected,
-		std::string& outError)
-	{
-		const YAML::Node canonicalDefaultValues = YAML::Load(collected.m_canonicalDefaultValues);
-		std::string canonicalMetadata;
-		std::string canonicalDescriptor;
-		if (!Utils::CanonicalizeYaml(
-				defaultValues,
-				canonicalMetadata,
-				Utils::EYamlCanonicalizationMode::StrictDocument) ||
-			!Utils::CanonicalizeYaml(
-				canonicalDefaultValues,
-				canonicalDescriptor,
-				Utils::EYamlCanonicalizationMode::StrictDocument) ||
-			!HasUniqueScalarStringKeys(defaultValues) ||
-			!HasUniqueScalarStringKeys(canonicalDefaultValues) ||
-			canonicalMetadata != canonicalDescriptor)
-		{
-			outError = "Workspace metadata defaults for '" + collected.m_typeName +
-				"' do not match the canonical descriptor snapshot.";
-			return false;
-		}
-
-		return true;
-	}
-
-	bool GetMetadataIdentity(
-		const YAML::Node& entry,
-		const char* sectionName,
-		std::string& outIdentity,
-		std::string& outError)
-	{
-		if (!entry.IsMap())
-		{
-			outError = "Editor metadata section '" + std::string(sectionName) + "' contains a non-map entry.";
-			return false;
-		}
-
-		if (std::strcmp(sectionName, "enums") == 0)
-		{
-			if (entry.size() != 1 || !entry.begin()->first.IsScalar() || !entry.begin()->second.IsSequence())
-			{
-				outError = "Editor metadata section 'enums' contains an invalid enum entry.";
-				return false;
-			}
-
-			outIdentity = entry.begin()->first.as<std::string>();
-		}
-		else
-		{
-			const YAML::Node typeName = entry["typename"];
-			if (!typeName.IsScalar())
-			{
-				outError = "Editor metadata section '" + std::string(sectionName) +
-					"' contains an entry without a scalar typename.";
-				return false;
-			}
-
-			outIdentity = typeName.as<std::string>();
-		}
-
-		if (IsBlank(outIdentity))
-		{
-			outError = "Editor metadata section '" + std::string(sectionName) + "' contains an empty identity.";
-			return false;
-		}
-
-		return true;
-	}
-
-	bool CollectMetadataIdentities(
-		const YAML::Node& metadata,
-		const char* sectionName,
-		TSet<std::string>& outIdentities,
-		std::string& outError)
-	{
-		const YAML::Node entries = metadata[sectionName];
-		if (!entries.IsSequence())
-		{
-			outError = "Editor metadata section '" + std::string(sectionName) + "' must be a sequence.";
-			return false;
-		}
-
-		for (const YAML::Node& entry : entries)
-		{
-			std::string identity;
-			if (!GetMetadataIdentity(entry, sectionName, identity, outError))
-			{
-				return false;
-			}
-
-			if (!outIdentities.Insert(identity))
-			{
-				outError = "Editor metadata section '" + std::string(sectionName) +
-					"' contains duplicate identity '" + identity + "'.";
-				return false;
-			}
-		}
-
-		return true;
-	}
-
-	bool ValidateEditorTypeSchemas(
-		const YAML::Node& metadata,
-		bool bWorkspaceMetadata,
-		std::string& outError)
-	{
-		for (const YAML::Node& type : metadata["engineTypes"])
-		{
-			const std::string typeName = type["typename"].as<std::string>();
-			if (bWorkspaceMetadata && !type["base"].IsScalar())
-			{
-				outError = "Workspace editor metadata type '" + typeName +
-					"' must provide a scalar base type.";
-				return false;
-			}
-
-			const YAML::Node properties = type["properties"];
-			if ((bWorkspaceMetadata && !properties.IsDefined()) ||
-				(properties.IsDefined() && !properties.IsNull() && !properties.IsMap()))
-			{
-				outError = "Editor metadata type '" + typeName + "' has an invalid property schema.";
-				return false;
-			}
-
-			TSet<std::string> propertyNames;
-			if (properties.IsMap())
-			{
-				for (const auto& property : properties)
-				{
-					if (!property.first.IsScalar() || !property.second.IsScalar())
-					{
-						outError = "Editor metadata type '" + typeName +
-							"' must contain scalar property names and type names.";
-						return false;
-					}
-
-					const std::string propertyName = property.first.as<std::string>();
-					const std::string propertyType = property.second.as<std::string>();
-					if (IsBlank(propertyName) || IsBlank(propertyType) ||
-						!propertyNames.Insert(propertyName))
-					{
-						outError = "Editor metadata type '" + typeName +
-							"' contains an empty or duplicate property '" + propertyName + "'.";
-						return false;
-					}
-				}
-			}
-
-			YAML::Node propertyRanges(YAML::NodeType::Undefined);
-			for (const auto& field : type)
-			{
-				if (field.first.IsScalar() && field.first.as<std::string>() == "propertyRanges")
-				{
-					propertyRanges = field.second;
-					break;
-				}
-			}
-			if (propertyRanges.IsDefined() && !propertyRanges.IsMap())
-			{
-				outError = "Editor metadata type '" + typeName +
-					"' has an invalid propertyRanges schema.";
-				return false;
-			}
-
-			TSet<std::string> rangedPropertyNames;
-			if (propertyRanges.IsMap())
-			{
-				for (const auto& propertyRange : propertyRanges)
-				{
-					if (!propertyRange.first.IsScalar())
-					{
-						outError = "Editor metadata type '" + typeName +
-							"' contains a non-scalar propertyRanges name.";
-						return false;
-					}
-
-					const std::string propertyName = propertyRange.first.as<std::string>();
-					double min = 0.0;
-					double max = 0.0;
-					if (IsBlank(propertyName) ||
-						!propertyNames.Contains(propertyName) ||
-						!rangedPropertyNames.Insert(propertyName) ||
-						!TryReadPropertyRange(propertyRange.second, min, max))
-					{
-						outError = "Editor metadata property range '" + typeName + "::" +
-							propertyName + "' has an invalid propertyRanges schema.";
-						return false;
-					}
-
-					const std::string propertyType = properties[propertyName].as<std::string>();
-					if (!IsPropertyRangeRepresentable(propertyType, min, max))
-					{
-						outError = "Editor metadata property range '" + typeName + "::" +
-							propertyName + "' is not representable by property type '" +
-							propertyType + "'.";
-						return false;
-					}
-				}
-			}
-
-			YAML::Node readOnlyProperties(YAML::NodeType::Undefined);
-			for (const auto& field : type)
-			{
-				if (field.first.IsScalar() && field.first.as<std::string>() == "readOnlyProperties")
-				{
-					readOnlyProperties = field.second;
-					break;
-				}
-			}
-			if (bWorkspaceMetadata && !readOnlyProperties.IsSequence())
-			{
-				outError = "Workspace editor metadata type '" + typeName +
-					"' must provide a readOnlyProperties sequence.";
-				return false;
-			}
-			if (readOnlyProperties.IsDefined() && !readOnlyProperties.IsNull() &&
-				!readOnlyProperties.IsSequence())
-			{
-				outError = "Editor metadata type '" + typeName +
-					"' has an invalid readOnlyProperties schema.";
-				return false;
-			}
-
-			TSet<std::string> readOnlyPropertyNames;
-			if (readOnlyProperties.IsSequence())
-			{
-				for (const YAML::Node& property : readOnlyProperties)
-				{
-					if (!property.IsScalar())
-					{
-						outError = "Editor metadata type '" + typeName +
-							"' contains a non-scalar read-only property.";
-						return false;
-					}
-
-					const std::string propertyName = property.as<std::string>();
-					if (IsBlank(propertyName) || propertyNames.Contains(propertyName) ||
-						!readOnlyPropertyNames.Insert(propertyName))
-					{
-						outError = "Editor metadata type '" + typeName +
-							"' contains invalid read-only property '" + propertyName + "'.";
-						return false;
-					}
-				}
-			}
-		}
-
-		return true;
-	}
-
-	bool CollectEditorEnumDefinitions(
-		const YAML::Node& metadata,
-		EditorEnumDefinitions& outDefinitions,
-		std::string& outError)
-	{
-		outDefinitions.Clear();
-		for (const YAML::Node& enumEntry : metadata["enums"])
-		{
-			const std::string enumName = enumEntry.begin()->first.as<std::string>();
-			const YAML::Node values = enumEntry.begin()->second;
-			if (values.size() == 0)
-			{
-				outError = "Editor enum metadata '" + enumName + "' must declare at least one value.";
-				return false;
-			}
-
-			TSet<std::string> enumValues;
-			for (const YAML::Node& value : values)
-			{
-				if (!value.IsScalar())
-				{
-					outError = "Editor enum metadata '" + enumName + "' contains a non-scalar value.";
-					return false;
-				}
-
-				const std::string enumValue = value.as<std::string>();
-				if (IsBlank(enumValue) || !enumValues.Insert(enumValue))
-				{
-					outError = "Editor enum metadata '" + enumName +
-						"' contains an empty or duplicate value '" + enumValue + "'.";
-					return false;
-				}
-			}
-
-			if (!outDefinitions.Insert(enumName, std::move(enumValues)))
-			{
-				outError = "Editor enum metadata contains duplicate identity '" + enumName + "'.";
-				return false;
-			}
-		}
-
-		return true;
-	}
-
-	const std::string* FindEditorPropertyType(
-		const EditorTypeSchemas& schemas,
-		const std::string& typeName,
-		const std::string& propertyName)
-	{
-		TSet<std::string> visitedTypes;
-		std::string currentType = typeName;
-		while (!currentType.empty() && visitedTypes.Insert(currentType))
-		{
-			const auto schema = schemas.Find(currentType);
-			if (schema == schemas.end())
-			{
-				return nullptr;
-			}
-
-			const auto property = schema.Value().m_properties.Find(propertyName);
-			if (property != schema.Value().m_properties.end())
-			{
-				return &property.Value();
-			}
-
-			currentType = schema.Value().m_baseType;
-		}
-
-		return nullptr;
-	}
-
-	bool ValidateEditorMetadataCrossSchema(const YAML::Node& metadata, std::string& outError)
-	{
-		EditorEnumDefinitions enumDefinitions;
-		if (!CollectEditorEnumDefinitions(metadata, enumDefinitions, outError))
-		{
-			return false;
-		}
-
-		EditorTypeSchemas typeSchemas;
-		for (const YAML::Node& type : metadata["engineTypes"])
-		{
-			const std::string typeName = type["typename"].as<std::string>();
-			EditorTypeSchema schema;
-			if (type["base"].IsScalar())
-			{
-				schema.m_baseType = type["base"].as<std::string>();
-			}
-			if (type["properties"].IsMap())
-			{
-				for (const auto& property : type["properties"])
-				{
-					const std::string propertyName = property.first.as<std::string>();
-					const std::string propertyType = property.second.as<std::string>();
-					if (propertyType.rfind("enum ", 0) == 0 && !enumDefinitions.ContainsKey(propertyType))
-					{
-						outError = "Editor property '" + typeName + "::" + propertyName +
-							"' references missing enum metadata '" + propertyType + "'.";
-						return false;
-					}
-					schema.m_properties.Insert(propertyName, propertyType);
-				}
-			}
-			typeSchemas.Insert(typeName, std::move(schema));
-		}
-
-		for (const YAML::Node& defaultObject : metadata["cdos"])
-		{
-			const std::string typeName = defaultObject["typename"].as<std::string>();
-			if (!typeSchemas.ContainsKey(typeName))
-			{
-				outError = "Editor default object '" + typeName + "' has no matching reflected type.";
-				return false;
-			}
-
-			const YAML::Node defaultValues = defaultObject["defaultValues"];
-			if (!defaultValues.IsDefined() || (!defaultValues.IsNull() && !defaultValues.IsMap()))
-			{
-				outError = "Editor default object '" + typeName + "' has an invalid defaultValues schema.";
-				return false;
-			}
-			if (!defaultValues.IsMap())
-			{
-				continue;
-			}
-
-			for (const auto& defaultValue : defaultValues)
-			{
-				if (!defaultValue.first.IsScalar())
-				{
-					outError = "Editor default object '" + typeName + "' contains a non-scalar property name.";
-					return false;
-				}
-
-				const std::string propertyName = defaultValue.first.as<std::string>();
-				const std::string* propertyType = FindEditorPropertyType(typeSchemas, typeName, propertyName);
-				if (propertyType == nullptr || propertyType->rfind("enum ", 0) != 0)
-				{
-					continue;
-				}
-
-				const auto enumDefinition = enumDefinitions.Find(*propertyType);
-				if (!defaultValue.second.IsScalar() ||
-					enumDefinition == enumDefinitions.end() ||
-					!enumDefinition.Value().Contains(defaultValue.second.as<std::string>()))
-				{
-					outError = "Editor enum default '" + typeName + "::" + propertyName +
-						"' is not a declared member of '" + *propertyType + "'.";
-					return false;
-				}
-			}
-		}
-
-		return true;
-	}
-
-	bool CollectAssetExtensions(
-		const YAML::Node& metadata,
-		TSet<std::string>& outExtensions,
-		std::string& outError)
-	{
-		for (const YAML::Node& assetType : metadata["assetTypes"])
-		{
-			const YAML::Node extensions = assetType["extensions"];
-			if (!extensions.IsDefined() || extensions.IsNull())
-			{
-				continue;
-			}
-			if (!extensions.IsSequence())
-			{
-				outError = "Editor asset metadata must provide an extension sequence.";
-				return false;
-			}
-
-			for (const YAML::Node& extensionNode : extensions)
-			{
-				if (!extensionNode.IsScalar())
-				{
-					outError = "Editor asset metadata contains a non-scalar extension.";
-					return false;
-				}
-
-				std::string extension = extensionNode.as<std::string>();
-				extension.erase(extension.begin(), std::find_if(extension.begin(), extension.end(), [](unsigned char character)
-					{
-						return !std::isspace(character);
-					}));
-				extension.erase(std::find_if(extension.rbegin(), extension.rend(), [](unsigned char character)
-					{
-						return !std::isspace(character);
-					}).base(), extension.end());
-				while (!extension.empty() && extension.front() == '.')
-				{
-					extension.erase(extension.begin());
-				}
-				std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char character)
-					{
-						return static_cast<char>(std::tolower(character));
-					});
-
-				if (extension.empty() || !outExtensions.Insert(extension))
-				{
-					outError = "Editor asset metadata contains an empty or duplicate extension '" + extension + "'.";
-					return false;
-				}
-			}
-		}
-
-		return true;
-	}
-
-	bool ValidateMetadataDocument(
-		const YAML::Node& metadata,
-		bool bWorkspaceMetadata,
-		const std::string& expectedModuleName,
-		MetadataIdentities& outIdentities,
-		std::string& outError)
-	{
-		if (!metadata.IsMap() || !metadata["timeStamp"].IsScalar())
-		{
-			outError = "Editor metadata must be a map with a scalar timeStamp.";
-			return false;
-		}
-
-		if (bWorkspaceMetadata)
-		{
-			if (!metadata["metadataVersion"].IsScalar() ||
-				metadata["metadataVersion"].as<uint32_t>() != WorkspaceTypeMetadataVersion ||
-				!metadata["moduleName"].IsScalar())
-			{
-				outError = "Workspace editor metadata has an invalid version or module identity.";
-				return false;
-			}
-
-			const std::string moduleName = metadata["moduleName"].as<std::string>();
-			if (IsBlank(moduleName) || (!expectedModuleName.empty() && moduleName != expectedModuleName))
-			{
-				outError = "Workspace editor metadata module identity does not match the active module.";
-				return false;
-			}
-		}
-
-		if (!CollectMetadataIdentities(metadata, MetadataSections[0], outIdentities.m_engineTypes, outError) ||
-			!CollectMetadataIdentities(metadata, MetadataSections[1], outIdentities.m_cdos, outError) ||
-			!CollectMetadataIdentities(metadata, MetadataSections[2], outIdentities.m_enums, outError) ||
-			!CollectMetadataIdentities(metadata, MetadataSections[3], outIdentities.m_assetTypes, outError) ||
-			!CollectAssetExtensions(metadata, outIdentities.m_assetExtensions, outError) ||
-			!ValidateEditorTypeSchemas(metadata, bWorkspaceMetadata, outError))
-		{
-			return false;
-		}
-
-		EditorEnumDefinitions enumDefinitions;
-		if (!CollectEditorEnumDefinitions(metadata, enumDefinitions, outError))
-		{
-			return false;
-		}
-
-		if (bWorkspaceMetadata && outIdentities.m_engineTypes != outIdentities.m_cdos)
-		{
-			outError = "Workspace editor metadata must provide exactly one default object for every reflected type.";
-			return false;
-		}
-
-		return true;
-	}
-
-	bool HasMetadataCollision(
-		const TSet<std::string>& engineIdentities,
-		const TSet<std::string>& workspaceIdentities,
-		const char* sectionName,
-		std::string& outError)
-	{
-		for (const std::string& identity : workspaceIdentities)
-		{
-			if (engineIdentities.Contains(identity))
-			{
-				outError = "Workspace editor metadata section '" + std::string(sectionName) +
-					"' conflicts with engine identity '" + identity + "'.";
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	bool CollectSharedEnumIdentities(
-		const YAML::Node& engineMetadata,
-		const YAML::Node& workspaceMetadata,
-		const TSet<std::string>& engineEnums,
-		TSet<std::string>& outSharedEnums,
-		std::string& outError)
-	{
-		for (const YAML::Node& workspaceEnum : workspaceMetadata["enums"])
-		{
-			const std::string identity = workspaceEnum.begin()->first.as<std::string>();
-			if (!engineEnums.Contains(identity))
-			{
-				continue;
-			}
-
-			YAML::Node engineEnum;
-			for (const YAML::Node& candidate : engineMetadata["enums"])
-			{
-				if (candidate[identity])
-				{
-					engineEnum = candidate;
-					break;
-				}
-			}
-
-			const YAML::Node engineValues = engineEnum[identity];
-			const YAML::Node workspaceValues = workspaceEnum[identity];
-			bool bDefinitionsMatch = engineValues.IsSequence() &&
-				workspaceValues.IsSequence() &&
-				engineValues.size() == workspaceValues.size();
-			for (size_t index = 0; bDefinitionsMatch && index < engineValues.size(); ++index)
-			{
-				bDefinitionsMatch = engineValues[index].IsScalar() &&
-					workspaceValues[index].IsScalar() &&
-					engineValues[index].as<std::string>() == workspaceValues[index].as<std::string>();
-			}
-			if (!bDefinitionsMatch)
-			{
-				outError = "Workspace editor enum metadata conflicts with engine identity '" + identity + "'.";
-				return false;
-			}
-
-			outSharedEnums.Insert(identity);
-		}
-
-		return true;
-	}
-
 }
+
+Sailor::Workspace::WorkspaceModuleManager::WorkspaceModuleManager() noexcept = default;
 
 Sailor::Workspace::WorkspaceModuleManager::~WorkspaceModuleManager() noexcept
 {
@@ -1131,14 +174,14 @@ const Sailor::Workspace::WorkspaceModuleLoadResult& Sailor::Workspace::Workspace
 
 	pathError.clear();
 	const std::filesystem::path modulePath = std::filesystem::weakly_canonical(
-		context.GetLogicOutput() / m_result.m_buildConfig / GetModuleFilename(moduleName),
+		context.GetLogicOutput() / PathFromUtf8(m_result.m_buildConfig) / GetModuleFilename(moduleName),
 		pathError);
 	m_result.m_modulePath = modulePath;
-	if (pathError || !IsInside(root, modulePath))
+	if (pathError || !IsPathWithin(root, modulePath))
 	{
 		return Fail(
 			EWorkspaceModuleLoadStatus::ManifestInvalid,
-			"Workspace module path escapes the workspace: '" + modulePath.generic_string() + "'.");
+			"Workspace module path escapes the workspace: '" + PathToUtf8(modulePath) + "'.");
 	}
 
 	if (!std::filesystem::is_regular_file(modulePath))
@@ -1146,18 +189,18 @@ const Sailor::Workspace::WorkspaceModuleLoadResult& Sailor::Workspace::Workspace
 		return Fail(
 			EWorkspaceModuleLoadStatus::ModuleNotFound,
 			"Workspace module for configuration '" + m_result.m_buildConfig +
-			"' was not found at '" + modulePath.generic_string() + "'. Build the workspace logic project first.");
+			"' was not found at '" + PathToUtf8(modulePath) + "'. Build the workspace logic project first.");
 	}
 
 	pathError.clear();
 	const std::filesystem::path loadPath = std::filesystem::canonical(modulePath, pathError);
-	if (pathError || !IsInside(root, loadPath) ||
+	if (pathError || !IsPathWithin(root, loadPath) ||
 		!std::filesystem::is_regular_file(loadPath, pathError) || pathError)
 	{
 		return Fail(
 			EWorkspaceModuleLoadStatus::ManifestInvalid,
 			"Workspace module path changed or escaped the workspace before loading: '" +
-				modulePath.generic_string() + "'.");
+				PathToUtf8(modulePath) + "'.");
 	}
 	m_result.m_modulePath = loadPath;
 
@@ -1193,12 +236,11 @@ const Sailor::Workspace::WorkspaceModuleLoadResult& Sailor::Workspace::Workspace
 		moduleApi->abiTag == nullptr ||
 		moduleApi->abiTagLength == 0 ||
 		moduleApi->abiTagLength > MaxApiStringLength ||
-		moduleApi->getMetadata == nullptr ||
 		moduleApi->registerTypes == nullptr)
 	{
 		return Fail(
 			EWorkspaceModuleLoadStatus::ApiInvalid,
-			"Workspace module '" + modulePath.generic_string() + "' returned an invalid V1 API table.");
+			"Workspace module '" + PathToUtf8(modulePath) + "' returned an invalid V1 API table.");
 	}
 
 	const std::string apiModuleName(moduleApi->moduleName, static_cast<size_t>(moduleApi->moduleNameLength));
@@ -1217,52 +259,8 @@ const Sailor::Workspace::WorkspaceModuleLoadResult& Sailor::Workspace::Workspace
 		const std::string actualAbi(moduleApi->abiTag, static_cast<size_t>(moduleApi->abiTagLength));
 		return Fail(
 			EWorkspaceModuleLoadStatus::AbiMismatch,
-			"Workspace module ABI mismatch for '" + modulePath.generic_string() + "'. Expected '" +
+			"Workspace module ABI mismatch for '" + PathToUtf8(modulePath) + "'. Expected '" +
 			GetWorkspaceModuleAbiTagV1() + "', received '" + actualAbi + "'. Rebuild the module with this engine configuration.");
-	}
-
-	uint64_t metadataSize = 0;
-	const auto queryResult = static_cast<EWorkspaceModuleResult>(
-		moduleApi->getMetadata(nullptr, 0, &metadataSize));
-	if (queryResult != EWorkspaceModuleResult::BufferTooSmall ||
-		metadataSize == 0 || metadataSize > MaxMetadataPayloadSize)
-	{
-		return Fail(
-			EWorkspaceModuleLoadStatus::MetadataInvalid,
-			"Workspace module returned an invalid metadata size.");
-	}
-
-	m_metadata.assign(static_cast<size_t>(metadataSize), '\0');
-	uint64_t writtenSize = 0;
-	const auto metadataResult = static_cast<EWorkspaceModuleResult>(
-		moduleApi->getMetadata(m_metadata.data(), metadataSize, &writtenSize));
-	if (metadataResult != EWorkspaceModuleResult::Success || writtenSize != metadataSize)
-	{
-		return Fail(
-			EWorkspaceModuleLoadStatus::MetadataInvalid,
-			"Workspace module failed to write its V1 metadata payload.");
-	}
-
-	const YAML::Node metadata = YAML::Load(m_metadata);
-	MetadataIdentities metadataIdentities;
-	std::string metadataError;
-	if (!ValidateMetadataDocument(metadata, true, moduleName, metadataIdentities, metadataError))
-	{
-		return Fail(
-			EWorkspaceModuleLoadStatus::MetadataInvalid,
-			std::move(metadataError));
-	}
-
-	YAML::Node editorMetadataPreflight;
-	if (!MergeEditorTypeMetadata(
-			Reflection::ExportEngineTypes(),
-			metadata,
-			editorMetadataPreflight,
-			metadataError))
-	{
-		return Fail(
-			EWorkspaceModuleLoadStatus::MetadataInvalid,
-			std::move(metadataError));
 	}
 
 	WorkspaceTypeCollector collector;
@@ -1287,129 +285,93 @@ const Sailor::Workspace::WorkspaceModuleLoadResult& Sailor::Workspace::Workspace
 		return Fail(EWorkspaceModuleLoadStatus::RegistrationFailed, collector.m_error);
 	}
 
-	MetadataEntries metadataTypes;
-	MetadataEntries metadataDefaults;
-	if (!IndexMetadataEntries(metadata["engineTypes"], "engineTypes", metadataTypes, metadataError) ||
-		!IndexMetadataEntries(metadata["cdos"], "cdos", metadataDefaults, metadataError))
+	TMap<std::string, const TypeInfo*> collectedTypeInfos;
+	TVector<const TypeInfo*> types;
+	TSet<std::string> typeNames;
+	std::string metadataError;
+	for (const auto& collected : collector.m_types)
+	{
+		const auto& type = *collected.m_typeInfo;
+		if (type.Size() != collected.m_typeSize || type.Alignment() != collected.m_typeAlignment ||
+			Reflection::TryGetTypeByName(type.Name()) || !collectedTypeInfos.Insert(type.Name(), &type))
+		{
+			return Fail(EWorkspaceModuleLoadStatus::RegistrationFailed,
+				"Workspace type descriptor for '" + type.Name() + "' is incompatible or conflicts with an existing type.");
+		}
+		types.Add(&type);
+		typeNames.Insert(type.Name());
+	}
+	for (const auto* type : types)
+	{
+		if (type->HasAmbiguousProperties())
+		{
+			return Fail(EWorkspaceModuleLoadStatus::MetadataInvalid,
+				"Workspace type '" + type->Name() + "' contains ambiguous or shadowed reflected property names.");
+		}
+		if (!ValidateComponentHierarchy(*type, collectedTypeInfos, metadataError))
+		{
+			return Fail(EWorkspaceModuleLoadStatus::MetadataInvalid, std::move(metadataError));
+		}
+		if (!type->GetDefaultValues())
+		{
+			return Fail(EWorkspaceModuleLoadStatus::MetadataInvalid,
+				"Workspace type '" + type->Name() + "' has no reflected default object.");
+		}
+	}
+
+	auto preparedMetadata = TUniquePtr<ReflectedTypeCatalog>::Make();
+	YAML::Node metadata = Reflection::ExportTypes(types);
+	metadata["moduleName"] = moduleName;
+	metadata["metadataVersion"] = WorkspaceTypeMetadataVersion;
+	YAML::Node editorMetadata;
+	if (!Reflection::PrepareTypeCatalog(std::move(metadata), std::move(typeNames), *preparedMetadata, metadataError) ||
+		!Reflection::MergeTypeMetadata(Reflection::ExportEngineTypes(), *preparedMetadata, editorMetadata, metadataError) ||
+		!External::TryDumpYaml(preparedMetadata->m_metadata, m_metadata, metadataError))
 	{
 		return Fail(EWorkspaceModuleLoadStatus::MetadataInvalid, std::move(metadataError));
 	}
 
-	if (metadataTypes.Num() != collector.m_types.Num() ||
-		metadataDefaults.Num() != collector.m_types.Num())
+	// Cache identity follows the schema and defaults, not the time of export.
+	YAML::Node catalogIdentity = YAML::Clone(preparedMetadata->m_metadata);
+	catalogIdentity.remove("timeStamp");
+	std::string canonicalMetadata;
+	if (!Utils::CanonicalizeYaml(catalogIdentity, canonicalMetadata, Utils::EYamlCanonicalizationMode::SemanticValue))
 	{
-		return Fail(
-			EWorkspaceModuleLoadStatus::MetadataInvalid,
-			"Workspace module metadata must contain exactly one type and one CDO entry per registration descriptor.");
-	}
-
-	CollectedTypeInfos collectedTypeInfos;
-	for (const CollectedWorkspaceType& collected : collector.m_types)
-	{
-		if (collected.m_typeInfo == nullptr ||
-			collected.m_typeInfo->Name() != collected.m_typeName ||
-			collected.m_typeInfo->Base() != collected.m_baseTypeName ||
-			collected.m_typeInfo->Size() != collected.m_typeSize ||
-			collected.m_typeSize > std::numeric_limits<size_t>::max() ||
-			collected.m_typeAlignment > std::numeric_limits<size_t>::max() ||
-			Reflection::TryGetTypeByName(collected.m_typeName) != nullptr ||
-			!collectedTypeInfos.Insert(collected.m_typeName, collected.m_typeInfo))
-		{
-			return Fail(
-				EWorkspaceModuleLoadStatus::RegistrationFailed,
-				"Workspace type descriptor for '" + collected.m_typeName +
-				"' is incompatible or conflicts with an existing type.");
-		}
+		return Fail(EWorkspaceModuleLoadStatus::MetadataInvalid, "Cannot canonicalize workspace type metadata.");
 	}
 
 	TVector<Reflection::WorkspaceTypeRegistration> registrations;
 	registrations.Reserve(collector.m_types.Num());
-	for (const CollectedWorkspaceType& collected : collector.m_types)
+	for (const auto& collected : collector.m_types)
 	{
-		if ((collected.m_flags & WorkspaceTypeDescriptorFlagAmbiguousProperties) != 0)
-		{
-			return Fail(
-				EWorkspaceModuleLoadStatus::MetadataInvalid,
-				"Workspace type '" + collected.m_typeName +
-				"' contains ambiguous or shadowed reflected property names.");
-		}
-
-		const auto metadataTypeIt = metadataTypes.Find(collected.m_typeName);
-		const auto metadataDefaultsIt = metadataDefaults.Find(collected.m_typeName);
-		if (metadataTypeIt == metadataTypes.end() || metadataDefaultsIt == metadataDefaults.end())
-		{
-			return Fail(
-				EWorkspaceModuleLoadStatus::MetadataInvalid,
-				"Workspace metadata is missing type or CDO data for '" + collected.m_typeName + "'.");
-		}
-
-		const YAML::Node& metadataType = metadataTypeIt.Value();
-		const YAML::Node& metadataDefaultObject = metadataDefaultsIt.Value();
-		if (!metadataType["base"] || !metadataType["base"].IsScalar() ||
-			metadataType["base"].as<std::string>() != collected.m_baseTypeName)
-		{
-			return Fail(
-				EWorkspaceModuleLoadStatus::MetadataInvalid,
-				"Workspace metadata base type does not match the descriptor for '" +
-				collected.m_typeName + "'.");
-		}
-
-		YAML::Node metadataPropertyRanges(YAML::NodeType::Undefined);
-		for (const auto& field : metadataType)
-		{
-			if (field.first.IsScalar() && field.first.as<std::string>() == "propertyRanges")
-			{
-				metadataPropertyRanges = field.second;
-				break;
-			}
-		}
-
-		if (!ValidateComponentHierarchy(
-			*collected.m_typeInfo,
-			collectedTypeInfos,
-			metadataError) ||
-			!ValidatePropertySchema(
-				metadataType["properties"], *collected.m_typeInfo, metadataError) ||
-			!ValidatePropertyRangeSchema(
-				metadataPropertyRanges, *collected.m_typeInfo, metadataError) ||
-			!ValidateCanonicalDefaultValues(
-				metadataDefaultObject["defaultValues"], collected, metadataError))
-		{
-			return Fail(EWorkspaceModuleLoadStatus::MetadataInvalid, std::move(metadataError));
-		}
-
 		Reflection::WorkspaceTypeRegistration registration;
 		registration.m_typeInfo = collected.m_typeInfo;
 		registration.m_alignment = static_cast<size_t>(collected.m_typeAlignment);
-		registration.m_defaultObject = Reflection::CreateReflectedData(
-			*collected.m_typeInfo,
-			metadataDefaultObject["defaultValues"]);
+		registration.m_defaultObject = Reflection::CreateReflectedData(*collected.m_typeInfo,
+			YAML::Clone(*collected.m_typeInfo->GetDefaultValues()));
 		const TWorkspacePlacementFactoryV1 placementFactory = collected.m_placementFactory;
 		registration.m_placementFactory = [placementFactory](void* destination) -> IReflectable*
 		{
-			if (placementFactory(destination) == nullptr)
-			{
-				return nullptr;
-			}
-
-			return static_cast<Component*>(destination);
+			return placementFactory(destination) ? static_cast<Component*>(destination) : nullptr;
 		};
 		registrations.Add(std::move(registration));
 	}
 
-	std::string candidateOwner = moduleName + "@" + modulePath.generic_string();
+	std::string candidateOwner = moduleName + "@" + PathToUtf8(modulePath);
 	std::string registrationError;
 	if (!Reflection::RegisterWorkspaceTypes(candidateOwner, std::move(registrations), registrationError))
 	{
 		return Fail(EWorkspaceModuleLoadStatus::RegistrationFailed, std::move(registrationError));
 	}
 	m_owner.swap(candidateOwner);
+	m_editorMetadata = std::move(preparedMetadata);
+	m_typeCatalogHash = HashString(canonicalMetadata);
 
 	m_state = EWorkspaceModuleState::Registered;
 	m_result.m_status = EWorkspaceModuleLoadStatus::Success;
 	m_result.m_numRegisteredTypes = collector.m_types.Num();
 	m_result.m_message = "Loaded workspace module '" + moduleName + "' from '" +
-		modulePath.generic_string() + "' with " + std::to_string(collector.m_types.Num()) +
+		PathToUtf8(modulePath) + "' with " + std::to_string(collector.m_types.Num()) +
 		" reflected type(s).";
 	return m_result;
 }
@@ -1419,7 +381,7 @@ bool Sailor::Workspace::WorkspaceModuleManager::BuildEditorTypeMetadata(
 	YAML::Node& outMetadata,
 	std::string& outError) const noexcept
 {
-	if (!IsRegistered() || m_metadata.empty())
+	if (!IsRegistered())
 	{
 		YAML::Node engineOnly = YAML::Clone(engineMetadata);
 		outMetadata = std::move(engineOnly);
@@ -1427,90 +389,7 @@ bool Sailor::Workspace::WorkspaceModuleManager::BuildEditorTypeMetadata(
 		return true;
 	}
 
-	const YAML::Node workspaceMetadata = YAML::Load(m_metadata);
-	return MergeEditorTypeMetadata(engineMetadata, workspaceMetadata, outMetadata, outError);
-
-	return false;
-}
-
-bool Sailor::Workspace::WorkspaceModuleManager::MergeEditorTypeMetadata(
-	const YAML::Node& engineMetadata,
-	const YAML::Node& workspaceMetadata,
-	YAML::Node& outMetadata,
-	std::string& outError) noexcept
-{
-	MetadataIdentities engineIdentities;
-	MetadataIdentities workspaceIdentities;
-	TSet<std::string> sharedEnums;
-	std::string validationError;
-	if (!ValidateMetadataDocument(engineMetadata, false, {}, engineIdentities, validationError) ||
-		!ValidateMetadataDocument(workspaceMetadata, true, {}, workspaceIdentities, validationError))
-	{
-		outError = std::move(validationError);
-		return false;
-	}
-	if (!CollectSharedEnumIdentities(
-			engineMetadata,
-			workspaceMetadata,
-			engineIdentities.m_enums,
-			sharedEnums,
-			validationError))
-	{
-		outError = std::move(validationError);
-		return false;
-	}
-
-	if (HasMetadataCollision(
-			engineIdentities.m_engineTypes,
-			workspaceIdentities.m_engineTypes,
-			MetadataSections[0],
-			validationError) ||
-		HasMetadataCollision(
-			engineIdentities.m_cdos,
-			workspaceIdentities.m_cdos,
-			MetadataSections[1],
-			validationError) ||
-		HasMetadataCollision(
-			engineIdentities.m_assetTypes,
-			workspaceIdentities.m_assetTypes,
-			MetadataSections[3],
-			validationError) ||
-		HasMetadataCollision(
-			engineIdentities.m_assetExtensions,
-			workspaceIdentities.m_assetExtensions,
-			"asset extensions",
-			validationError))
-	{
-		outError = std::move(validationError);
-		return false;
-	}
-
-	YAML::Node mergedMetadata = YAML::Clone(engineMetadata);
-	for (const char* sectionName : MetadataSections)
-	{
-		for (const YAML::Node& entry : workspaceMetadata[sectionName])
-		{
-			if (std::strcmp(sectionName, "enums") == 0 &&
-				sharedEnums.Contains(entry.begin()->first.as<std::string>()))
-			{
-				continue;
-			}
-			mergedMetadata[sectionName].push_back(YAML::Clone(entry));
-		}
-	}
-
-	mergedMetadata["metadataVersion"] = workspaceMetadata["metadataVersion"].as<uint32_t>();
-	mergedMetadata["moduleName"] = workspaceMetadata["moduleName"].as<std::string>();
-	if (!ValidateEditorMetadataCrossSchema(mergedMetadata, validationError))
-	{
-		outError = std::move(validationError);
-		return false;
-	}
-	outMetadata = std::move(mergedMetadata);
-	outError.clear();
-	return true;
-
-	return false;
+	return Reflection::MergeTypeMetadata(engineMetadata, *m_editorMetadata, outMetadata, outError);
 }
 
 bool Sailor::Workspace::WorkspaceModuleManager::Unload() noexcept
@@ -1522,6 +401,8 @@ bool Sailor::Workspace::WorkspaceModuleManager::Unload() noexcept
 	}
 
 	m_metadata.clear();
+	m_typeCatalogHash = 0;
+	m_editorMetadata.Clear();
 	if (!m_library.Close())
 	{
 		m_state = EWorkspaceModuleState::Failed;
@@ -1547,12 +428,14 @@ const Sailor::Workspace::WorkspaceModuleLoadResult& Sailor::Workspace::Workspace
 		m_owner.clear();
 	}
 
+	m_editorMetadata.Clear();
 	if (m_library.IsOpen() && !m_library.Close())
 	{
 		message += " Additionally, the module could not be unloaded: " + m_library.GetError();
 	}
 
 	m_metadata.clear();
+	m_typeCatalogHash = 0;
 	m_state = EWorkspaceModuleState::Failed;
 	m_result.m_status = status;
 	m_result.m_message = std::move(message);

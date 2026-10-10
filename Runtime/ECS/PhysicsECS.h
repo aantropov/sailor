@@ -20,9 +20,11 @@ namespace Sailor
 		Physics::PhysicsBodyPose m_previousPose{};
 		Physics::PhysicsBodyPose m_currentPose{};
 		size_t m_lastAppliedTransformFrame = 0;
-		bool m_bVelocityDirty = true;
+		glm::vec3 m_pendingLinearVelocity{};
+		glm::vec3 m_pendingAngularVelocity{};
+		bool m_bLinearVelocityPending = false;
+		bool m_bAngularVelocityPending = false;
 
-		void MarkVelocityDirty() { m_bVelocityDirty = true; }
 		void ClearDirty() { m_bIsDirty = false; }
 
 		friend class PhysicsECS;
@@ -33,9 +35,11 @@ namespace Sailor
 	{
 	public:
 		PhysicsECS();
+		// JoltRuntime and scheduler must outlive the system and its physics world.
+		PhysicsECS(TUniquePtr<Physics::PhysicsWorld> physicsWorld, Tasks::Scheduler& scheduler);
 		~PhysicsECS() override;
 
-		Tasks::ITaskPtr Tick(float deltaTime) override;
+		void Tick(float deltaTime) override;
 		void EndPlay() override;
 		uint32_t GetOrder() const override { return 50; }
 
@@ -73,6 +77,7 @@ namespace Sailor
 			const glm::quat& rotation,
 			const glm::vec3& scale,
 			uint32_t& outBodyId);
+		bool SetExternalBodyTransform(uint32_t bodyId, const glm::vec3& position, const glm::quat& rotation);
 		void DestroyExternalBody(uint32_t bodyId);
 
 		void SetFixedDeltaTime(float value);
@@ -92,10 +97,11 @@ namespace Sailor
 			size_t index,
 			Physics::RigidBodyDesc& outDesc);
 		void SyncAuthoredTransforms(float fixedDeltaTime);
-		void ApplyBuoyancyForces(float sampleTime, float fixedDeltaTime);
+		void ApplyBuoyancyForces();
 		void ApplyDynamicTransforms(float interpolationAlpha);
 
 		TUniquePtr<Physics::PhysicsWorld> m_physicsWorld{};
+		Tasks::Scheduler* m_scheduler = nullptr;
 		float m_accumulator = 0.0f;
 		float m_fixedDeltaTime = 1.0f / 60.0f;
 		uint32_t m_maxSubSteps = 4;

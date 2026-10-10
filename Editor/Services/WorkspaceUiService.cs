@@ -1,5 +1,6 @@
 using CommunityToolkit.Maui.Storage;
 using SailorEditor.Commands;
+using SailorEditor.Protocol;
 using SailorEditor.Scene;
 using SailorEditor.Shell;
 using SailorEditor.Workspace;
@@ -129,7 +130,7 @@ internal sealed class WorkspaceUiService
                 var configure = !File.Exists(Path.Combine(session.BuildDirectory, "CMakeCache.txt"));
                 var result = await _workspaceBuildService.BuildAsync(
                         session,
-                        "Release",
+                        EngineProtocolNative.Configuration,
                         configure,
                         token)
                     .ConfigureAwait(false);
@@ -145,7 +146,7 @@ internal sealed class WorkspaceUiService
             {
                 var result = await _workspaceBuildService.ConfigureAsync(
                         session,
-                        "Release",
+                        EngineProtocolNative.Configuration,
                         token)
                     .ConfigureAwait(false);
                 if (!result.Succeeded)

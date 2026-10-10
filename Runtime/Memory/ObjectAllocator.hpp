@@ -84,7 +84,7 @@ namespace Sailor::Memory
 			}
 		}
 
-		SAILOR_API ObjectAllocator() = default;
+		SAILOR_API ObjectAllocator() : ObjectAllocator(EAllocationPolicy::SharedMemory_MultiThreaded) {}
 
 		ObjectAllocator(const ObjectAllocator&) = delete;
 		ObjectAllocator(ObjectAllocator&&) = delete;
@@ -94,13 +94,22 @@ namespace Sailor::Memory
 
 		~ObjectAllocator()
 		{
-			delete m_globalAllocator;
+			switch (m_policy)
+			{
+			case EAllocationPolicy::SharedMemory_MultiThreaded:
+				delete GetAllocator<DefaultGlobalAllocator>();
+				break;
+
+			case EAllocationPolicy::LocalMemory_SingleThread:
+				delete GetAllocator<HeapAllocator>();
+				break;
+			}
 		}
 
 	protected:
 
 		template<typename TAllocator>
-		__forceinline TAllocator* GetAllocator() { return reinterpret_cast<TAllocator*>(m_globalAllocator); }
+		__forceinline TAllocator* GetAllocator() { return static_cast<TAllocator*>(m_globalAllocator); }
 
 		EAllocationPolicy m_policy;
 		IBaseAllocator* m_globalAllocator;

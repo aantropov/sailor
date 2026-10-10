@@ -1,184 +1,54 @@
 #pragma once
 #include "Core/Defines.h"
 #include "Containers/Map.h"
-#include "Containers/Set.h"
 #include "Containers/Vector.h"
 #include "RHI/Types.h"
 
-#include <bitset>
-
 namespace Sailor::Framegraph
 {
-	class TextureDependencyCollector
-	{
-	public:
-		static constexpr size_t MaxTrackedTextures = 8192u;
-
-		void Reset()
-		{
-			m_seen.reset();
-			m_indices.Clear(false);
-			Insert(0u);
-			m_bSorted = true;
-		}
-
-		void Insert(uint32_t textureIndex)
-		{
-			if (textureIndex >= MaxTrackedTextures || m_seen.test(textureIndex))
-			{
-				return;
-			}
-			m_seen.set(textureIndex);
-			m_indices.Add(textureIndex);
-			m_bSorted = false;
-		}
-
-		const TVector<uint32_t>& GetIndices()
-		{
-			if (!m_bSorted)
-			{
-				m_indices.Sort();
-				m_bSorted = true;
-			}
-			return m_indices;
-		}
-
-	private:
-		std::bitset<MaxTrackedTextures> m_seen{};
-		TVector<uint32_t> m_indices{};
-		bool m_bSorted = true;
-	};
-
 	struct TextureBindingCacheKey
 	{
 		TextureBindingCacheKey() = default;
-		explicit TextureBindingCacheKey(const TSet<uint32_t>& lookupTextures) :
+		// Borrow canonical scene-resource indices for lookup; own them before insertion.
+		explicit TextureBindingCacheKey(const TVector<uint32_t>& lookupTextures) :
 			m_lookupTextures(&lookupTextures)
 		{
 		}
 
 		void Materialize()
 		{
-			if (!m_lookupTextures)
+			if (m_lookupTextures)
 			{
-				return;
+				m_requestedTextures = *m_lookupTextures;
+				m_lookupTextures = nullptr;
 			}
+		}
 
-			m_requestedTextures.Clear(false);
-			m_requestedTextures.Reserve(GetNumRequestedTextures());
-			ForEachRequestedTexture([&](uint32_t textureIndex)
-				{
-					m_requestedTextures.Add(textureIndex);
-				});
-			m_requestedTextures.Sort();
-			m_lookupTextures = nullptr;
+		const TVector<uint32_t>& GetTextures() const
+		{
+			return m_lookupTextures ? *m_lookupTextures : m_requestedTextures;
 		}
 
 		bool operator==(const TextureBindingCacheKey& rhs) const
 		{
-			if (GetNumRequestedTextures() != rhs.GetNumRequestedTextures())
-			{
-				return false;
-			}
-
-			bool bEqual = true;
-			ForEachRequestedTexture([&](uint32_t textureIndex)
-				{
-					bEqual = bEqual && rhs.ContainsRequestedTexture(textureIndex);
-				});
-			rhs.ForEachRequestedTexture([&](uint32_t textureIndex)
-				{
-					bEqual = bEqual && ContainsRequestedTexture(textureIndex);
-				});
-			return bEqual;
+			return GetTextures() == rhs.GetTextures();
 		}
 
 		size_t GetHash() const
 		{
-			uint64_t xorHash = 0ull;
-			uint64_t sumHash = 0ull;
-			ForEachRequestedTexture([&](uint32_t textureIndex)
-				{
-					const uint64_t elementHash = MixHash(textureIndex);
-					xorHash ^= elementHash;
-					sumHash += elementHash;
-				});
+			const auto& textures = GetTextures();
 			size_t result = Fnv1aOffsetBasis;
-			HashCombine(
-				result,
-				GetNumRequestedTextures(),
-				xorHash,
-				sumHash);
+			HashCombine(result, textures.Num());
+			for (uint32_t texture : textures)
+			{
+				HashCombine(result, texture);
+			}
 			return result;
 		}
-
-		TVector<uint32_t> m_requestedTextures{};
 
 	private:
-		template<typename TCallback>
-		void ForEachRequestedTexture(TCallback&& callback) const
-		{
-			callback(0u);
-			if (m_lookupTextures)
-			{
-				for (uint32_t textureIndex : *m_lookupTextures)
-				{
-					if (textureIndex > 0u &&
-						textureIndex < TextureDependencyCollector::MaxTrackedTextures)
-					{
-						callback(textureIndex);
-					}
-				}
-				return;
-			}
-
-			for (uint32_t textureIndex : m_requestedTextures)
-			{
-				if (textureIndex > 0u &&
-					textureIndex < TextureDependencyCollector::MaxTrackedTextures)
-				{
-					callback(textureIndex);
-				}
-			}
-		}
-
-		size_t GetNumRequestedTextures() const
-		{
-			size_t result = 1u;
-			if (m_lookupTextures)
-			{
-				for (uint32_t textureIndex : *m_lookupTextures)
-				{
-					result += textureIndex > 0u &&
-						textureIndex < TextureDependencyCollector::MaxTrackedTextures;
-				}
-				return result;
-			}
-
-			for (uint32_t textureIndex : m_requestedTextures)
-			{
-				result += textureIndex > 0u &&
-					textureIndex < TextureDependencyCollector::MaxTrackedTextures;
-			}
-			return result;
-		}
-
-		bool ContainsRequestedTexture(uint32_t textureIndex) const
-		{
-			if (textureIndex == 0u)
-			{
-				return true;
-			}
-			if (textureIndex >= TextureDependencyCollector::MaxTrackedTextures)
-			{
-				return false;
-			}
-			return m_lookupTextures ?
-				m_lookupTextures->Contains(textureIndex) :
-				m_requestedTextures.Contains(textureIndex);
-		}
-
-		const TSet<uint32_t>* m_lookupTextures = nullptr;
+		TVector<uint32_t> m_requestedTextures{};
+		const TVector<uint32_t>* m_lookupTextures = nullptr;
 	};
 
 	struct TextureBindingCacheEntry
@@ -199,17 +69,19 @@ namespace Sailor::Framegraph::Details
 	static constexpr uint32_t MaxTextureSlotsPerBatch = 1024u;
 	static constexpr uint64_t MaxTextureBindingCacheUnusedFrames = 5u;
 
-	inline const TSet<uint32_t>& GetDefaultRequestedTextures()
+	inline const TVector<uint32_t>& GetDefaultRequestedTextures()
 	{
-		static const TSet<uint32_t> DefaultRequestedTextures{ 0u };
+		static const TVector<uint32_t> DefaultRequestedTextures{ 0u };
 		return DefaultRequestedTextures;
 	}
 
+	// A cached fallback remains usable even when the current request could not be prepared.
 	SAILOR_API RHI::RHIShaderBindingSetPtr GetTextureBindingSet(
 		TextureBindingCache& cache,
-		const TSet<uint32_t>& requestedTextures,
+		const TVector<uint32_t>& requestedTextures,
 		uint64_t frame,
-		uint32_t& outSupportedMeshesPerBatch);
+		uint32_t& outSupportedMeshesPerBatch,
+		bool& outCurrent);
 
 	SAILOR_API void EvictTextureBindingCache(
 		TextureBindingCache& cache,

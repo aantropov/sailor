@@ -2,21 +2,13 @@
 #include "Sailor.h"
 #include "ECS/ECS.h"
 #include "Engine/Types.h"
-#include "Raytracing/BVH.h"
-#include "Raytracing/LightingModel.h"
 #include "Raytracing/PathTracer.h"
 #include "Math/Bounds.h"
-#include "Containers/Octree.h"
 #include "AssetRegistry/FileId.h"
 #include "RHI/SceneView.h"
 
 namespace Sailor
 {
-	namespace Raytracing
-	{
-		class PathTracer;
-	}
-
 	class PathTracerProxyData final : public ECS::TComponent
 	{
 	public:
@@ -25,19 +17,9 @@ namespace Sailor
 		{
 			bool m_bEnabled = false;
 			bool m_bRebuildEveryFrame = false;
-			uint32_t m_maxBounces = 2;
-			uint32_t m_samplesPerPixel = 2;
 		};
 
-		SAILOR_API const TVector<MaterialPtr>& GetMaterials() const { return m_materials; }
-		SAILOR_API const TVector<TMap<std::string, TexturePtr>>& GetTextureBindings() const { return m_textureBindings; }
-		SAILOR_API void SetMaterials(TVector<MaterialPtr>&& materials, TVector<TMap<std::string, TexturePtr>>&& textureBindings)
-		{
-			m_materials = std::move(materials);
-			m_textureBindings = std::move(textureBindings);
-			MarkDirty();
-		}
-
+		// Model and materials belong to MeshRendererComponent.
 		SAILOR_API const Options& GetOptions() const { return m_options; }
 		SAILOR_API Options& GetOptions() { return m_options; }
 
@@ -48,8 +30,6 @@ namespace Sailor
 		SAILOR_API virtual void Clear() override
 		{
 			m_owner = nullptr;
-			m_materials.Clear();
-			m_textureBindings.Clear();
 			m_options = Options();
 			m_worldBounds = Math::AABB();
 			m_worldMatrix = glm::mat4(1.0f);
@@ -63,8 +43,6 @@ namespace Sailor
 
 	protected:
 
-		TVector<MaterialPtr> m_materials{};
-		TVector<TMap<std::string, TexturePtr>> m_textureBindings{};
 		Options m_options{};
 
 		Math::AABB m_worldBounds{};
@@ -81,20 +59,19 @@ namespace Sailor
 	{
 	public:
 
-		virtual Tasks::ITaskPtr Tick(float deltaTime) override;
-		void CopySceneView(RHI::RHISceneViewPtr& outSceneView);
+		SAILOR_API virtual void Tick(float) override {}
+		SAILOR_API virtual void EndPlay() override;
+		SAILOR_API void CopySceneView(RHI::RHISceneViewPtr& outSceneView);
 		void SetPathTracingEnabled(bool bEnabled) { m_bPathTracingEnabled = bEnabled; }
 		bool IsPathTracingEnabled() const { return m_bPathTracingEnabled; }
 		virtual uint32_t GetOrder() const override { return 1100; }
 
 	protected:
 
+		void UpdateScene();
 		bool m_bPathTracingEnabled = false;
-		TOctree<size_t> m_proxyOctree{ glm::ivec3(0, 0, 0), 16536 * 16, 4 };
-		TVector<RHI::RHIPathTracerProxy> m_pathTracerProxiesCache{};
-		TVector<Raytracing::PathTracer::TLASInstance> m_pathTracerTLASInstancesCache{};
-		TVector<MaterialPtr> m_pathTracerMaterialsCache{};
-		TVector<Raytracing::LightProxy> m_pathTracerLightsCache{};
+		RHI::RHIPathTracerScenePtr m_scene;
+		Raytracing::PathTracer::MaterialSnapshotCache m_materialSnapshots;
 	};
 
 	template class ECS::TSystem<PathTracerECS, PathTracerProxyData>;

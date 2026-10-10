@@ -11,25 +11,26 @@ namespace Sailor::Framegraph
 	class BloomNode : public TFrameGraphNode<BloomNode>
 	{
 	public:
-		SAILOR_API static const char* GetName() { return m_name; }
+		SAILOR_API static StringHash GetName() { return "Bloom"_h; }
 
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override;
 
 	protected:
 
-		SAILOR_SHARED_API static const char* m_name;
-
 		ShaderSetPtr m_pComputeDownscaleShader{};
 		ShaderSetPtr m_pComputeUpscaleShader{};
 
 		TVector<RHI::RHIShaderBindingSetPtr> m_computeDownscaleBindings{};
 		TVector<RHI::RHIShaderBindingSetPtr> m_computeUpscaleBindings{};
+		RHI::RHITexturePtr m_bloomTarget;
+		RHI::RHITexturePtr m_averageLuminance;
+		RHI::RHITexturePtr m_lensDirt;
 
 		struct PushConstantsDownscale
 		{
 			glm::vec4  m_threshold; // x -> threshold, yzw -> (threshold - knee, 2.0 * knee, 0.25 / knee)
-			bool	   m_useThreshold;
+			uint32_t   m_bIsThresholdEnabled;
 		};
 
 		struct PushConstantsUpscale

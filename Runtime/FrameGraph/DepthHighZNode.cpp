@@ -2,21 +2,14 @@
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
-#include "RHI/Surface.h"
 #include "RHI/RenderTarget.h"
+#include "RHI/Surface.h"
 #include "RHI/Texture.h"
-#include "Engine/World.h"
-#include "Engine/GameObject.h"
-#include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/AssetRegistry.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
-
-#ifndef _SAILOR_IMPORT_
-const char* DepthHighZNode::m_name = "DepthHighZ";
-#endif
 
 void DepthHighZNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
@@ -25,32 +18,46 @@ void DepthHighZNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	RHI::RHIRenderTargetPtr depthAttachment = GetRHIResource("src").DynamicCast<RHI::RHIRenderTarget>();
-	if (!depthAttachment)
-	{
-		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
-	}
+	auto depthResource = GetRHIResource("src"_h, frameGraph.GetRawPtr());
+	if (!depthResource) depthResource = frameGraph->GetResource("DepthBuffer"_h);
+	const auto depthSurface = depthResource.DynamicCast<RHISurface>();
+	auto depthAttachment = depthSurface ? depthSurface->GetTarget() : depthResource.DynamicCast<RHIRenderTarget>();
 
-	RHI::RHIRenderTargetPtr highZRenderTarget = GetResolvedAttachment("dst").DynamicCast<RHIRenderTarget>();
+	RHI::RHIRenderTargetPtr highZRenderTarget = GetResolvedAttachment("dst"_h, frameGraph.GetRawPtr()).DynamicCast<RHIRenderTarget>();
 	if (!depthAttachment || !highZRenderTarget || highZRenderTarget->GetMipLevels() == 0u)
 	{
 		return;
 	}
 
 	const size_t numMipBindings = highZRenderTarget->GetMipLevels() - 1;
+	if (!depthSurface && depthAttachment == frameGraph->GetRenderTarget("DepthBuffer"_h) &&
+		App::GetSubmodule<RHI::Renderer>()->GetMsaaSamples() != EMsaaSamples::Samples_1)
+	{
+		// Read the attachment written by the depth prepasses, before native resolve
+		// can lose uncovered samples. The device may clamp the requested MSAA count.
+		auto msaaDepth = driver->GetOrAddMsaaFramebufferRenderTarget(
+			depthAttachment->GetFormat(), depthAttachment->GetExtent());
+		if (!msaaDepth) return;
+		if (msaaDepth->GetMsaaSamples() != EMsaaSamples::Samples_1)
+		{
+			depthAttachment = msaaDepth.StaticCast<RHIRenderTarget>();
+		}
+	}
+	const bool bMsaaDepth = depthAttachment->GetMsaaSamples() != EMsaaSamples::Samples_1;
+	auto& inputShader = bMsaaDepth ? m_pComputeDepthHighZMsaaShader : m_pComputeDepthHighZInputShader;
 
-	if (!m_pComputeDepthHighZShader || !m_pComputeDepthHighZInputShader)
+	if (!m_pComputeDepthHighZShader || !inputShader)
 	{
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeDepthHighZ.shader"))
 		{
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pComputeDepthHighZShader);
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(
-				shaderInfo->GetFileId(), m_pComputeDepthHighZInputShader, { "DEPTH_INPUT" });
+				shaderInfo->GetFileId(), inputShader, { bMsaaDepth ? "MSAA_DEPTH_INPUT" : "DEPTH_INPUT" });
 		}
 	}
 
 	if (!m_pComputeDepthHighZShader || !m_pComputeDepthHighZShader->IsReady() ||
-		!m_pComputeDepthHighZInputShader || !m_pComputeDepthHighZInputShader->IsReady())
+		!inputShader || !inputShader->IsReady())
 	{
 		return;
 	}
@@ -67,13 +74,13 @@ void DepthHighZNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr
 			auto writeMipLevel = highZRenderTarget->GetMipLayer(i + 1);
 
 			m_computeDepthHighZBindings[i] = driver->CreateShaderBindings();
-			driver->AddStorageImageToShaderBindings(m_computeDepthHighZBindings[i], "inputDepth", readMipLevel, 0);
-			driver->AddStorageImageToShaderBindings(m_computeDepthHighZBindings[i], "outputDepth", writeMipLevel, 1);
+			driver->AddStorageImageToShaderBindings(m_computeDepthHighZBindings[i], "inputDepth"_h, readMipLevel, 0);
+			driver->AddStorageImageToShaderBindings(m_computeDepthHighZBindings[i], "outputDepth"_h, writeMipLevel, 1);
 		}
 
 		m_computePrepassDepthHighZBindings = driver->CreateShaderBindings();
-		driver->AddSamplerToShaderBindings(m_computePrepassDepthHighZBindings, "inputDepth", depthAttachment->GetDepthAspect(), 0);
-		driver->AddStorageImageToShaderBindings(m_computePrepassDepthHighZBindings, "outputDepth", highZRenderTarget->GetMipLayer(0), 1);
+		driver->AddSamplerToShaderBindings(m_computePrepassDepthHighZBindings, "inputDepth"_h, depthAttachment->GetDepthAspect(), 0);
+		driver->AddStorageImageToShaderBindings(m_computePrepassDepthHighZBindings, "outputDepth"_h, highZRenderTarget->GetMipLayer(0), 1);
 		m_boundDepth = depthAttachment;
 		m_boundPyramid = highZRenderTarget;
 	}
@@ -106,7 +113,7 @@ void DepthHighZNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr
 			commands->ImageMemoryBarrier(commandList, writeMipLevel, EImageLayout::ComputeWrite);
 
 			commands->Dispatch(commandList,
-				(bFirst ? m_pComputeDepthHighZInputShader : m_pComputeDepthHighZShader)->GetComputeShaderRHI(),
+				(bFirst ? inputShader : m_pComputeDepthHighZShader)->GetComputeShaderRHI(),
 				(uint32_t)glm::ceil(float(mipSize.x) / 8),
 				(uint32_t)glm::ceil(float(mipSize.y) / 8),
 				1u,
@@ -114,6 +121,8 @@ void DepthHighZNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr
 				&params, sizeof(PushConstantsDownscale));
 		}
 	}
+	// The cached MSAA image is reused by the ordinary scene passes.
+	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetDefaultLayout());
 	commands->EndDebugRegion(commandList);
 	frameGraph->MarkCurrentDepthPyramid(highZRenderTarget);
 }

@@ -36,82 +36,90 @@ namespace Sailor
 			return *this;
 		}
 
-		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
-		TWeakPtr(const TWeakPtr<R>& pDerivedPtr) noexcept
+		template<typename R, typename = std::enable_if_t<std::is_convertible_v<R*, T*> && !std::is_same_v<T, R>>>
+		TWeakPtr(const TWeakPtr<R, TGlobalAllocator>& pDerivedPtr) noexcept
 		{
 			AssignRawPtr(static_cast<T*>(pDerivedPtr.m_pRawPtr), pDerivedPtr.m_pControlBlock);
 		}
 
-		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
-		TWeakPtr(TWeakPtr<R>&& pDerivedPtr) noexcept
+		template<typename R, typename = std::enable_if_t<std::is_convertible_v<R*, T*> && !std::is_same_v<T, R>>>
+		TWeakPtr(TWeakPtr<R, TGlobalAllocator>&& pDerivedPtr) noexcept
 		{
 			Swap(std::move(pDerivedPtr));
 		}
 
-		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
-		TWeakPtr& operator=(TWeakPtr<R> pDerivedPtr) noexcept
+		template<typename R, typename = std::enable_if_t<std::is_convertible_v<R*, T*> && !std::is_same_v<T, R>>>
+		TWeakPtr& operator=(TWeakPtr<R, TGlobalAllocator> pDerivedPtr) noexcept
 		{
 			Swap(std::move(pDerivedPtr));
 			return *this;
 		}
 
 		// Shared pointer
-		TWeakPtr(const TSharedPtr<T>& pSharedPtr) noexcept
+		TWeakPtr(const TSharedPtr<T, TGlobalAllocator>& pSharedPtr) noexcept
 		{
 			AssignRawPtr(pSharedPtr.m_pRawPtr, pSharedPtr.m_pControlBlock);
 		}
 
-		TWeakPtr& operator=(const TSharedPtr<T>& pSharedPtr) noexcept
+		TWeakPtr& operator=(const TSharedPtr<T, TGlobalAllocator>& pSharedPtr) noexcept
 		{
 			AssignRawPtr(pSharedPtr.m_pRawPtr, pSharedPtr.m_pControlBlock);
 			return *this;
 		}
 
-		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
-		TWeakPtr(const TSharedPtr<R>& pDerivedPtr) noexcept
+		template<typename R, typename = std::enable_if_t<std::is_convertible_v<R*, T*> && !std::is_same_v<T, R>>>
+		TWeakPtr(const TSharedPtr<R, TGlobalAllocator>& pDerivedPtr) noexcept
 		{
 			AssignRawPtr(static_cast<T*>(pDerivedPtr.m_pRawPtr), pDerivedPtr.m_pControlBlock);
 		}
 
-		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
-		TWeakPtr& operator=(const TSharedPtr<R>& pDerivedPtr) noexcept
+		template<typename R, typename = std::enable_if_t<std::is_convertible_v<R*, T*> && !std::is_same_v<T, R>>>
+		TWeakPtr& operator=(const TSharedPtr<R, TGlobalAllocator>& pDerivedPtr) noexcept
 		{
 			AssignRawPtr(static_cast<T*>(pDerivedPtr.m_pRawPtr), pDerivedPtr.m_pControlBlock);
 			return *this;
 		}
 
-		TSharedPtr<T> Lock() const
+		TSharedPtr<T, TGlobalAllocator> Lock() const
 		{
-			check(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
-
-			TSharedPtr<T> pRes;
-			pRes.AssignRawPtr(m_pRawPtr, m_pControlBlock);
+			auto pRes = TryLock();
+			check(pRes);
 			return pRes;
 		}
 
-		TSharedPtr<T> TryLock() const
+		TSharedPtr<T, TGlobalAllocator> TryLock() const
 		{
-			TSharedPtr<T> pRes;
-			if (!(*this))
+			TSharedPtr<T, TGlobalAllocator> pRes;
+			if (!m_pControlBlock)
 			{
 				return pRes;
 			}
 
-			pRes.AssignRawPtr(m_pRawPtr, m_pControlBlock);
+			auto count = m_pControlBlock->m_sharedPtrCounter.load();
+			while (count != 0)
+			{
+				if (m_pControlBlock->m_sharedPtrCounter.compare_exchange_weak(count, count + 1))
+				{
+					++m_pControlBlock->m_weakPtrCounter;
+					pRes.m_pRawPtr = m_pRawPtr;
+					pRes.m_pControlBlock = m_pControlBlock;
+					break;
+				}
+			}
 			return pRes;
 		}
 
 		bool IsValid() const noexcept { return m_pRawPtr != nullptr; }
 		explicit operator bool() const noexcept { return m_pRawPtr != nullptr && m_pControlBlock->m_sharedPtrCounter > 0; }
 
-		bool operator==(const TWeakPtr<T>& pRhs) const
+		bool operator==(const TWeakPtr& pRhs) const
 		{
-			return m_pRawPtr == pRhs.m_pRawPtr;
+			return m_pControlBlock == pRhs.m_pControlBlock && m_pRawPtr == pRhs.m_pRawPtr;
 		}
 
-		bool operator!=(const TWeakPtr<T>& pRhs) const
+		bool operator!=(const TWeakPtr& pRhs) const
 		{
-			return m_pRawPtr != pRhs.m_pRawPtr;
+			return !(*this == pRhs);
 		}
 
 		void Clear() noexcept
@@ -142,7 +150,7 @@ namespace Sailor
 
 		void AssignRawPtr(T* pRawPtr, TSmartPtrControlBlock* pControlBlock)
 		{
-			if (m_pRawPtr == pRawPtr)
+			if (m_pRawPtr == pRawPtr && m_pControlBlock == pControlBlock)
 			{
 				return;
 			}
@@ -180,10 +188,10 @@ namespace Sailor
 			}
 		}
 
-		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> || std::is_same_v<T, R>>>
-		void Swap(TWeakPtr<R>&& pPtr)
+		template<typename R, typename = std::enable_if_t<std::is_convertible_v<R*, T*>>>
+		void Swap(TWeakPtr<R, TGlobalAllocator>&& pPtr)
 		{
-			if (m_pRawPtr == static_cast<T*>(pPtr.m_pRawPtr))
+			if (static_cast<const void*>(this) == static_cast<const void*>(&pPtr))
 			{
 				return;
 			}
@@ -200,17 +208,17 @@ namespace Sailor
 			pPtr.m_pControlBlock = nullptr;
 		}
 
+		template<typename, typename>
 		friend class TWeakPtr;
-		friend class TSharedPtr<T>;
 	};
 }
 
 namespace std
 {
-	template<typename T>
-	struct hash<Sailor::TWeakPtr<T>>
+	template<typename T, typename TGlobalAllocator>
+	struct hash<Sailor::TWeakPtr<T, TGlobalAllocator>>
 	{
-		SAILOR_API std::size_t operator()(const Sailor::TWeakPtr<T>& p) const
+		SAILOR_API std::size_t operator()(const Sailor::TWeakPtr<T, TGlobalAllocator>& p) const
 		{
 			return p.GetHash();
 		}

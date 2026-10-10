@@ -1,13 +1,17 @@
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <filesystem>
+#include <future>
 #include <functional>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -25,16 +29,17 @@
 #include "Math/Math.h"
 #include "Raytracing/SkyEnvironmentGenerator.h"
 #include "RHI/Texture.h"
+#include "RHI/VertexDescription.h"
 
 using namespace Sailor;
 
 namespace
 {
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -148,6 +153,7 @@ namespace
 		using Framegraph::SkyNode::CreateEnvironmentViewMatrices;
 		using Framegraph::SkyNode::LoadCloudsNoise;
 		using Framegraph::SkyNode::AreCloudsResourcesReady;
+		using Framegraph::SkyNode::ParseStarsMesh;
 
 		bool IsEnvironmentDirty() const { return m_bIsDirty; }
 		void ClearEnvironmentDirty() { m_bIsDirty = false; }
@@ -159,6 +165,136 @@ namespace
 			m_pCloudsNoiseHighTexture = high;
 		}
 	};
+
+	YAML::Node MakeStarColors(glm::vec3 color = { 0.25f, 0.5f, 1.0f })
+	{
+		YAML::Node root;
+		for (uint32_t temperature = 1000; temperature <= 40000; temperature += 100)
+		{
+			root["colors"].push_back(std::vector<float>{ float(temperature), 2, 0, 0, 0, color.r, color.g, color.b });
+		}
+		return root;
+	}
+
+	template<typename T>
+	void WriteStarField(TVector<uint8_t>& bytes, size_t offset, const T& value)
+	{
+		std::memcpy(bytes.GetData() + offset, &value, sizeof(value));
+	}
+
+	TVector<uint8_t> MakeStarCatalogue()
+	{
+		TVector<uint8_t> bytes(28 + 32);
+		std::fill_n(bytes.GetData(), bytes.Num(), uint8_t{});
+		const int32_t header[]{ 0, 1, -1, 1, 1, 1, 32 };
+		std::memcpy(bytes.GetData(), header, sizeof(header));
+		WriteStarField(bytes, 28, 1.0f);
+		WriteStarField(bytes, 32, 1.0);
+		WriteStarField(bytes, 40, 0.3);
+		bytes[48] = 'G';
+		bytes[49] = '2';
+		WriteStarField(bytes, 50, int16_t(200));
+		return bytes;
+	}
+
+	void TestStarCatalogueEpochs()
+	{
+		const std::string colors = YAML::Dump(MakeStarColors());
+		const auto j2000 = MakeStarCatalogue();
+		auto b1950 = j2000;
+		WriteStarField(b1950, 8, int32_t(1));
+		const auto positive = SkyNodeProbe::ParseStarsMesh(colors, b1950);
+		const auto negative = SkyNodeProbe::ParseStarsMesh(colors, j2000);
+		Require(positive.m_first.Num() == 1 && negative.m_first.Num() == 1 &&
+			positive.m_first[0].m_position == negative.m_first[0].m_position && positive.m_first[0].m_color == negative.m_first[0].m_color,
+			"both catalogue epochs must preserve identical records");
+
+		auto emptyCatalogue = j2000;
+		emptyCatalogue.Resize(28);
+		WriteStarField(emptyCatalogue, 8, int32_t(0));
+		const auto empty = SkyNodeProbe::ParseStarsMesh(colors, emptyCatalogue);
+		Require(empty.m_first.IsEmpty() && empty.m_second.IsEmpty(),
+			"an empty catalogue must not create geometry");
+	}
+
+	void TestStarCatalogueColorsAndIndependentParses()
+	{
+		const auto catalogue = MakeStarCatalogue();
+		std::vector<std::future<void>> parses;
+		for (uint32_t worker = 0; worker < 8; ++worker)
+		{
+			parses.push_back(std::async(std::launch::async, [&, worker]()
+			{
+				const glm::vec3 color(0.125f * worker, 0.5f, 1.0f);
+				const std::string yaml = YAML::Dump(MakeStarColors(color));
+				for (uint32_t repeat = 0; repeat < 4; ++repeat)
+				{
+					const auto result = SkyNodeProbe::ParseStarsMesh(yaml, catalogue);
+					Require(result.m_first.Num() == 1 && result.m_second.Num() == 1 && result.m_second[0] == 0,
+						"a complete catalogue must return the original point-list topology");
+					Require(IsNear(result.m_first[0].m_position, Utils::ConvertToEuclidean(1.0f, 0.3f, 1.0f) / 2.4f * 5000.0f) &&
+						IsNear(result.m_first[0].m_color, glm::vec4(glm::pow(color, glm::vec3(1 / 2.2f)), 1)),
+						"parallel parses must preserve positions and use only their own color table");
+				}
+			}));
+		}
+		for (auto& parse : parses) parse.get();
+
+		for (const std::string spectral : { "  ", "Ap", "A/", "WN", "pe", "Z0", "a0" })
+		{
+			auto bytes = catalogue;
+			bytes[48] = spectral[0];
+			bytes[49] = spectral[1];
+			const auto result = SkyNodeProbe::ParseStarsMesh(YAML::Dump(MakeStarColors()), bytes);
+			Require(result.m_first.Num() == 1 && result.m_first[0].m_color == glm::vec4(1),
+				"unclassified and nonnumeric spectral entries must remain renderable with neutral white");
+		}
+	}
+
+	void TestOwnedStarCatalogueParity()
+	{
+		const auto content = std::filesystem::path(__FILE__).parent_path().parent_path() / "Content";
+		std::string yaml;
+		TVector<uint8_t> bytes;
+		Require(AssetRegistry::ReadAllTextFile((content / "StarsColor.yaml").string(), yaml) &&
+			AssetRegistry::ReadBinaryFile(content / "BSC5", bytes), "the owned star inputs must be readable");
+		const auto result = SkyNodeProbe::ParseStarsMesh(yaml, bytes);
+		Require(result.m_first.Num() == 9110 && result.m_second.Num() == 9110,
+			"the owned BSC5 catalogue must retain every star");
+		std::array<glm::vec3, 391> colors{};
+		for (const auto& row : YAML::Load(yaml)["colors"])
+			colors[(row[0].as<uint32_t>() - 1000) / 100] = { row[5].as<float>(), row[6].as<float>(), row[7].as<float>() };
+		const glm::vec2 ranges[]{
+			{ 7300,10000 }, { 10000,30000 }, { 2400,3200 }, { 100000,1000000 }, { 0,0 }, { 6000,7300 }, { 5300,6000 },
+			{ 0,0 }, { 0,0 }, { 0,0 }, { 3800,5300 }, { 1300,2100 }, { 2500,3800 }, { 0,0 }, { 30000,40000 },
+			{ 0,0 }, { 0,0 }, { 0,0 }, { 2400,3500 }, { 600,1300 }, { 0,0 }, { 0,0 }, { 25000,40000 }, { 0,0 }, { 0,600 }
+		};
+		uint32_t numeric = 0;
+		for (uint32_t i = 0; i < result.m_first.Num(); ++i)
+		{
+			const uint8_t* record = bytes.GetData() + 28 + i * 32;
+			double ra, dec;
+			int16_t magnitude;
+			std::memcpy(&ra, record + 4, sizeof(ra));
+			std::memcpy(&dec, record + 12, sizeof(dec));
+			std::memcpy(&magnitude, record + 22, sizeof(magnitude));
+			const auto position = Utils::ConvertToEuclidean(float(ra), float(dec), 1.0f) / (magnitude / 100.0f + 0.4f) * 5000.0f;
+			Require(result.m_second[i] == i && result.m_first[i].m_position == position,
+				"every owned star must retain its exact original position and index");
+			glm::vec3 color(1);
+			if (record[20] >= 'A' && record[20] <= 'Y' && record[21] >= '0' && record[21] <= '9')
+			{
+				const auto range = ranges[record[20] - 'A'];
+				const uint32_t step = uint32_t((range.y - range.x) / 9);
+				const uint32_t temperature = glm::clamp(uint32_t(range.x + ('9' - record[21]) * step), 1000u, 40000u);
+				color = colors[(temperature - 1000) / 100];
+				++numeric;
+			}
+			const glm::vec4 expected(pow(color.x, 1 / 2.2f), pow(color.y, 1 / 2.2f), pow(color.z, 1 / 2.2f), 1);
+			Require(result.m_first[i].m_color == expected, "numeric classifications must keep the original temperature and gamma mapping");
+		}
+		Require(numeric == 9029, "all 9029 numeric classifications must be covered by exact color parity");
+	}
 
 	void TestCloudsWaitForAllTextureUploads()
 	{
@@ -1040,6 +1176,43 @@ namespace
 		world.Clear();
 	}
 
+	void TestSelectedSkyControlsLinkedSun()
+	{
+		SkyTestWorld world;
+		auto otherOwner = world.Instantiate("Other sky", InstanceId("00000000000000000003"));
+		auto selectedOwner = world.Instantiate("Selected sky", InstanceId("00000000000000000002"));
+		auto other = otherOwner->AddComponent<SkyComponent>();
+		auto selected = selectedOwner->AddComponent<SkyComponent>();
+		auto light = world.Instantiate("Shared sun")->AddComponent<LightComponent>();
+		selected->SetDirectionalLight(light);
+		other->SetDirectionalLight(light);
+		selected->SetSunAngle(20);
+		other->SetSunAngle(70);
+		const auto expected = Raytracing::CalculateDirectSunIlluminance(selected->GetSkyParameters());
+		for (uint32_t frame = 0; frame < 3; ++frame)
+		{
+			selected->Tick(0);
+			other->Tick(0);
+			Require(IsNear(light->GetIntensity(), expected),
+				"the lowest-instance-ID sky must own the linked sun regardless of component tick order");
+		}
+		Require(otherOwner->RemoveComponent(other), "the nonselected sky must be removable");
+		selected->EditorTick(0);
+		Require(IsNear(light->GetIntensity(), expected), "removing a nonselected sky must preserve the selected sun");
+		auto replacementOwner = world.Instantiate("Replacement sky", InstanceId("00000000000000000001"));
+		auto replacement = replacementOwner->AddComponent<SkyComponent>();
+		replacement->SetDirectionalLight(light);
+		replacement->SetSunAngle(45);
+		replacement->EditorTick(0);
+		selected->EditorTick(0);
+		Require(IsNear(light->GetIntensity(), Raytracing::CalculateDirectSunIlluminance(replacement->GetSkyParameters())),
+			"a newly selected sky must take ownership in editor ticks as well as play ticks");
+		world.DestroyImmediate(replacementOwner);
+		selected->Tick(0);
+		Require(IsNear(light->GetIntensity(), expected), "destroying the selected sky must restore the surviving owner");
+		world.Clear();
+	}
+
 	void TestSkyNodeRenderState()
 	{
 		SkyNodeProbe node;
@@ -1351,6 +1524,10 @@ int main()
 		{ "TransientBakeEnvironmentUsesClearSkyParameters", TestTransientBakeEnvironmentUsesClearSkyParameters },
 		{ "GroundEnvironmentUsesTheSameSkyAndSun", TestGroundEnvironmentUsesTheSameSkyAndSun },
 		{ "SkyNodeRenderState", TestSkyNodeRenderState },
+		{ "SelectedSkyControlsLinkedSun", TestSelectedSkyControlsLinkedSun },
+		{ "StarCatalogueEpochs", TestStarCatalogueEpochs },
+		{ "StarCatalogueColorsAndIndependentParses", TestStarCatalogueColorsAndIndependentParses },
+		{ "OwnedStarCatalogueParity", TestOwnedStarCatalogueParity },
 		{ "CloudNoiseRemapping", TestCloudNoiseRemapping },
 		{ "CloudNoiseCacheRecovery", TestCloudNoiseCacheRecovery },
 		{ "CloudsWaitForAllTextureUploads", TestCloudsWaitForAllTextureUploads },
