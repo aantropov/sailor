@@ -799,6 +799,47 @@ namespace
 		return snapshot.m_shadowMapsToUpdate.IsEmpty() ? std::string{} : "unchanged D did not reuse successful C";
 	}
 
+	std::string ValidatePacketReuse(ShadowDrawCompletionState& state)
+	{
+		auto node = TRefPtr<ShadowProbe>::Make();
+		RHISceneViewSnapshot snapshot;
+		InitializeSnapshot(snapshot, state.m_neighbor);
+		AddPass(snapshot, state.m_neighbor, 0u);
+		AddPass(snapshot, state.m_neighbor, 1u);
+		// The first pass draws only the later packet, with its own light matrix.
+		snapshot.m_shadowMapsToUpdate[0].m_meshList.Clear();
+		snapshot.m_shadowMapsToUpdate[0].m_internalCommandsList.Add(1u);
+		snapshot.m_shadowMapsToUpdate[1].m_lightMatrix[3][2] = 0.125f;
+		auto readback = Renderer::GetDriver()->CreateBuffer(
+			64u * sizeof(uint16_t), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+		for (uint32_t frame = 0u; frame < 2u; ++frame)
+		{
+			snapshot.m_shadowMapsToUpdate[0].m_lightMatrix[3][2] = 0.25f * frame;
+			Prepare(*node, state.m_graph, snapshot);
+			if (auto error = Record(*node, state.m_graph, snapshot, 2u, { true, true }, readback); !error.empty())
+			{
+				return "reused packet: " + error;
+			}
+			const auto& views = node->Resources(snapshot)->m_activeShadowViews;
+			if (views[0]->m_packet.m_metrics.m_instanceUploadBytes != 0u ||
+				views[1]->m_packet.m_metrics.m_instanceUploadBytes != sizeof(ShadowPrepassNode::PerInstanceData))
+			{
+				return "a packet drawn by two passes must be uploaded once per recording";
+			}
+			const auto* pixels = static_cast<const uint16_t*>(readback->GetPointer());
+			const float expectedDepth = 0.5f + 0.25f * frame;
+			for (uint32_t pixel = 0u; pixel < 64u; ++pixel)
+			{
+				if (std::abs(float(pixels[pixel]) / 65535.0f - expectedDepth) > 0.0001f)
+				{
+					return std::format("reused packet frame {} pixel {}: expected depth {}, got {}",
+						frame, pixel, expectedDepth, float(pixels[pixel]) / 65535.0f);
+				}
+			}
+		}
+		return {};
+	}
+
 	[[maybe_unused]] std::string ValidateDependencies(ShadowDrawCompletionState& state)
 	{
 		auto& node = *state.m_nodes[1];
@@ -1078,6 +1119,10 @@ void ShadowDrawCompletionTestComponent::Tick(float)
 		{
 			if (auto error = ValidateBlurRadius(*hold); !error.empty()) return error;
 			if (auto error = ValidateColdPublication(*hold); !error.empty()) return error;
+			if (auto error = ValidatePacketReuse(*hold); !error.empty())
+			{
+				return error;
+			}
 #if defined(__APPLE__)
 			if (auto error = ValidateLighting(*hold); !error.empty()) return error;
 			if (auto error = ValidateDependencies(*hold); !error.empty()) return error;
@@ -1113,5 +1158,6 @@ void ShadowDrawCompletionTestComponent::Tick(float)
 	AddJournalEvent("ShadowBlurPublicationEvidence", "Own unused buffer 31 caused actual H sampler producer refusal: A32 retained sampler/view/native/revision/hash, B16 recorded zero with failed token and all 256 clear pixels; exact range restoration retried B with two draws and all 256 blurred pixels, retaining native A; no V-only producer-failure coverage");
 	AddJournalEvent("ShadowColdPublicationEvidence", "Preloaded-shader owner latch completed/reused template plus H/V and flight UBO; real reflected Storage-vs-Uniform rejected template/fresh-flight candidates, each retained node publication and allowed one independent PCF caster draw; same-owner retries accepted two normal blur draws plus PCF and all 1024 EVSM pixels; absent Render descriptor pool rejects cold/growing SSBO publication with zero draws/uploads and unchanged pair/capacities/revision; restored same-view 1/3-instance retries and warm reuse preserve all 64 PCF pixels and the retained original pair");
 	AddJournalEvent("ShadowDrawCompletionScope", "Recorded candidates, existing completion tokens and blur pixels; not CSM atlas/matrix atomic publication, visual quality, performance or Windows GPU coverage");
+	AddJournalEvent("ShadowPacketReuseEvidence", "Forward dependency and own pass draw the same packet twice with one upload per recording; two recordings preserve all 64 PCF pixels with different light matrices");
 	MarkPassed();
 }

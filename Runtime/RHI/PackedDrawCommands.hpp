@@ -6,41 +6,27 @@
 
 namespace Sailor::RHI
 {
-	template<typename TPerInstanceData, typename TShaderBindingsCallback, typename TBeforeDrawCallback>
-	DrawCallStats RHIRecordPackedDrawPacketImpl(
+	template<typename TPerInstanceData>
+	void RHIUploadPackedDrawPacket(
 		TPackedDrawPacket<TPerInstanceData>& packet,
-		RHICommandListPtr graphicsCmdList,
 		RHICommandListPtr transferCmdList,
-		TShaderBindingsCallback&& collectShaderBindings,
 		RHIShaderBindingSetPtr instanceBindings,
 		RHIBufferPtr& indirectCommandBuffer,
-		glm::ivec4 viewport,
-		glm::uvec4 scissors,
-		glm::vec2 depthRange,
-		RHIShaderPtr computeCullingShader,
-		RHIShaderBindingSetPtr* indirectCommandBufferBinding,
-		const TVector<RHIShaderBindingSetPtr>& cullingDispatchBindings,
-		RHICommandListPtr cullingCommandList,
-		bool bEnableOcclusion,
-		TBeforeDrawCallback&& beforeDraw)
+		bool bCullInstances = false,
+		RHIShaderBindingSetPtr* indirectCommandBufferBinding = nullptr)
 	{
 		SAILOR_PROFILE_FUNCTION();
-		DrawCallStats stats;
 		const uint32_t numInstances = packet.GetNumDrawInstances();
 		const uint32_t numStorageInstances = packet.GetNumStorageInstances();
 		const auto& groups = packet.GetGroups();
 		if (numInstances == 0u || numStorageInstances == 0u ||
 			groups.IsEmpty() || !instanceBindings)
 		{
-			return stats;
+			return;
 		}
 
 		auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 		auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-		if (!cullingCommandList)
-		{
-			cullingCommandList = transferCmdList;
-		}
 		auto storageBinding = instanceBindings->GetOrAddShaderBinding("data"_h);
 		auto indexBinding = instanceBindings->GetOrAddShaderBinding("indices"_h);
 		const uint32_t firstStorageInstance = storageBinding->GetStorageInstanceIndex();
@@ -48,7 +34,7 @@ namespace Sailor::RHI
 		// GPU culling compacts into the second half of the same flight-local SSBO.
 		// The first half remains immutable until the logical view changes, so the
 		// shader can restore the compacted stream without another CPU upload.
-		const uint32_t firstIndexInstance = computeCullingShader ?
+		const uint32_t firstIndexInstance = bCullInstances ?
 			firstCandidateInstance + numInstances : firstCandidateInstance;
 
 		const bool bStorageAllocationChanged =
@@ -331,7 +317,7 @@ namespace Sailor::RHI
 					0u);
 			}
 		}
-		else if (computeCullingShader && indirectCommandBufferBinding &&
+		else if (bCullInstances && indirectCommandBufferBinding &&
 			*indirectCommandBufferBinding &&
 			!(*indirectCommandBufferBinding)->HasBinding("drawIndexedIndirect"_h))
 		{
@@ -342,7 +328,7 @@ namespace Sailor::RHI
 				0u);
 		}
 
-		const bool bResetIndirectCommands = computeCullingShader ||
+		const bool bResetIndirectCommands = bCullInstances ||
 			bIndirectBufferChanged ||
 			packet.m_uploadedIndirectBuffer != indirectCommandBuffer ||
 			packet.m_uploadedIndirectCommands.Num() != packet.m_indirectCommands.Num() ||
@@ -362,25 +348,22 @@ namespace Sailor::RHI
 			packet.m_uploadedIndirectBuffer = indirectCommandBuffer;
 			packet.m_metrics.m_indirectUploadBytes += indirectBufferSize;
 		}
+	}
 
-		if (computeCullingShader)
-		{
-			GpuCullingPushConstants constants;
-			constants.m_numBatches = static_cast<uint32_t>(groups.Num());
-			constants.m_numInstances = numInstances;
-			constants.m_firstInstanceIndex = firstIndexInstance;
-			constants.m_firstStorageInstance = firstStorageInstance;
-			constants.m_firstCandidateInstance = firstCandidateInstance;
-			constants.m_bEnableOcclusion = bEnableOcclusion ? 1u : 0u;
-			commands->BeginDebugRegion(cullingCommandList, "GPU Culling"_h, DebugContext::Color_CmdCompute);
-			RecordGpuCullingDispatches(*commands, cullingCommandList, computeCullingShader,
-				cullingDispatchBindings, constants, Renderer::GPUCullingGroupSize,
-				cullingCommandList == graphicsCmdList);
-			commands->EndDebugRegion(cullingCommandList);
-		}
-
-		if (!beforeDraw()) return stats;
-
+	template<typename TPerInstanceData, typename TShaderBindingsCallback>
+	DrawCallStats RHIDrawPackedDrawPacket(
+		TPackedDrawPacket<TPerInstanceData>& packet,
+		RHICommandListPtr graphicsCmdList,
+		TShaderBindingsCallback&& collectShaderBindings,
+		RHIBufferPtr indirectCommandBuffer,
+		glm::ivec4 viewport,
+		glm::uvec4 scissors,
+		glm::vec2 depthRange)
+	{
+		SAILOR_PROFILE_FUNCTION();
+		DrawCallStats stats;
+		auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+		const auto& groups = packet.GetGroups();
 		uint32_t runBegin = 0u;
 		auto& drawBindingSets = packet.m_drawBindingSets;
 		while (runBegin < groups.Num())
@@ -426,6 +409,62 @@ namespace Sailor::RHI
 		drawBindingSets.Clear(false);
 
 		return stats;
+	}
+
+	template<typename TPerInstanceData, typename TShaderBindingsCallback, typename TBeforeDrawCallback>
+	DrawCallStats RHIRecordPackedDrawPacketImpl(
+		TPackedDrawPacket<TPerInstanceData>& packet,
+		RHICommandListPtr graphicsCmdList,
+		RHICommandListPtr transferCmdList,
+		TShaderBindingsCallback&& collectShaderBindings,
+		RHIShaderBindingSetPtr instanceBindings,
+		RHIBufferPtr& indirectCommandBuffer,
+		glm::ivec4 viewport,
+		glm::uvec4 scissors,
+		glm::vec2 depthRange,
+		RHIShaderPtr computeCullingShader,
+		RHIShaderBindingSetPtr* indirectCommandBufferBinding,
+		const TVector<RHIShaderBindingSetPtr>& cullingDispatchBindings,
+		RHICommandListPtr cullingCommandList,
+		bool bEnableOcclusion,
+		TBeforeDrawCallback&& beforeDraw)
+	{
+		SAILOR_PROFILE_FUNCTION();
+		const uint32_t numInstances = packet.GetNumDrawInstances();
+		if (numInstances == 0u || packet.GetNumStorageInstances() == 0u ||
+			packet.GetGroups().IsEmpty() || !instanceBindings)
+		{
+			return {};
+		}
+
+		RHIUploadPackedDrawPacket(packet, transferCmdList, instanceBindings,
+			indirectCommandBuffer, computeCullingShader.IsValid(), indirectCommandBufferBinding);
+		if (computeCullingShader)
+		{
+			auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+			if (!cullingCommandList)
+			{
+				cullingCommandList = transferCmdList;
+			}
+			GpuCullingPushConstants constants;
+			constants.m_numBatches = static_cast<uint32_t>(packet.GetGroups().Num());
+			constants.m_numInstances = numInstances;
+			constants.m_firstCandidateInstance = packet.m_uploadedFirstIndexInstance;
+			constants.m_firstInstanceIndex = constants.m_firstCandidateInstance + numInstances;
+			constants.m_firstStorageInstance = packet.m_uploadedFirstStorageInstance;
+			constants.m_bEnableOcclusion = bEnableOcclusion ? 1u : 0u;
+			commands->BeginDebugRegion(cullingCommandList, "GPU Culling"_h, DebugContext::Color_CmdCompute);
+			RecordGpuCullingDispatches(*commands, cullingCommandList, computeCullingShader,
+				cullingDispatchBindings, constants, Renderer::GPUCullingGroupSize,
+				cullingCommandList == graphicsCmdList);
+			commands->EndDebugRegion(cullingCommandList);
+		}
+		if (!beforeDraw())
+		{
+			return {};
+		}
+		return RHIDrawPackedDrawPacket(packet, graphicsCmdList, collectShaderBindings,
+			indirectCommandBuffer, viewport, scissors, depthRange);
 	}
 
 	template<typename TPerInstanceData, typename TShaderBindingsCallback>

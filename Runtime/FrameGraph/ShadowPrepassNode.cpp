@@ -964,6 +964,15 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 					viewResources.m_sizeInstanceIndices = sizeof(uint32_t) * numInstanceIndices;
 				}
 			}
+			if (viewResources.m_perInstanceData &&
+				viewResources.m_sizePerInstanceData >= sizeof(PerInstanceData) * numInstances &&
+				viewResources.m_sizeInstanceIndices >= sizeof(uint32_t) * numInstanceIndices)
+			{
+				// Dependent shadow passes reuse this packet with another light matrix.
+				// Upload it once, before recording any of those draws.
+				RHIUploadPackedDrawPacket(viewResources.m_packet, transferCommandList,
+					viewResources.m_perInstanceData, viewResources.m_indirectBuffer);
+			}
 		}
 
 		for (uint32_t index = 0; index < sceneView.m_shadowMapsToUpdate.Num(); index++)
@@ -1075,12 +1084,10 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 							}
 						};
 
-						stats = RHIRecordPackedDrawPacket(
+						stats = RHIDrawPackedDrawPacket(
 							viewResources.m_packet,
 							commandList,
-							transferCommandList,
 							prepareShadowMaterial,
-							viewResources.m_perInstanceData,
 							viewResources.m_indirectBuffer,
 							glm::ivec4(renderArea.x, renderArea.y + renderArea.w, renderArea.z, -renderArea.w),
 							glm::uvec4(renderArea),
