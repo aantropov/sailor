@@ -4601,81 +4601,64 @@ frame: []
 		}
 	};
 
-	void CheckAppBootstrapStop(const std::string& initialize, uint16_t port, EAppInitializationResult expectedResult)
+	void CheckAppBootstrapShutdown(const std::string& initialize, uint16_t port, ImGuiAllocationProbe& allocations)
 	{
-		using Gate = Protocol::TEditorEngineProtocolLifecycleGate;
-		struct Bootstrap
+		std::future<bool> shutdown;
+		bool bRetainedApp = false;
+		bool bDeferredStop = false;
+		bool bRejectedSecondShutdown = false;
+		allocations.m_beforeAllocation = [&]()
 		{
-			Gate m_gate;
-			Protocol::EditorEngineProtocolDependencies m_dependencies;
-			std::future<bool> m_shutdown;
-			EAppInitializationResult m_result = EAppInitializationResult::Failed;
-			std::atomic<uint32_t> m_stopCalls{ 0 }, m_shutdownCalls{ 0 };
-			std::atomic<bool> m_bIsInitializing{ true }, m_bWasStoppedEarly{ false };
-			bool m_bWasAppRetained = false;
-		} state;
-		auto& dependencies = state.m_dependencies;
-		dependencies.m_context = &state;
-		dependencies.m_lifecycleGate = &state.m_gate;
-		dependencies.m_initialize = [](void* context, const char** arguments, int32_t count)
-		{
-			auto& state = *static_cast<Bootstrap*>(context);
-			state.m_result = App::Initialize(arguments, count);
-			state.m_shutdown = std::async(std::launch::async, [&state]()
+			auto* app = App::GetInstance();
+			auto* renderer = App::GetSubmodule<Renderer>();
+			auto* window = App::GetMainWindow().GetRawPtr();
+			Require(app && renderer && window && !App::GetSubmodule<EngineLoop>() && !ImGuiApi::GetCurrentContext(),
+				"the shutdown race must pause inside actual App construction");
+			// App::Stop clears this flag. Keep it observable even before the first Start.
+			const bool bWasActive = window->IsActive();
+			window->SetActive(true);
+			std::array<std::future<bool>, 2> requests;
+			for (auto& request : requests)
 			{
-				return Protocol::StopEditorEngineLocalHost(true, state.m_dependencies);
-			});
-			// Hold the acknowledgement after real App construction until Stop closes admission.
-			std::atomic<Gate::EEditorDispatchState> observation{ Gate::EEditorDispatchState::Queued };
-			state.m_gate.WaitForEditorDispatch(observation);
-			const bool bWaitsForInitialization = state.m_shutdown.wait_for(std::chrono::milliseconds(30)) !=
-				std::future_status::ready;
-			state.m_bWasAppRetained = bWaitsForInitialization && App::IsRendererInitialized() && App::GetSubmodule<EngineLoop>() &&
-				App::GetSubmodule<Tasks::Scheduler>() && ImGuiApi::GetCurrentContext() &&
-				state.m_stopCalls == 0 && state.m_shutdownCalls == 0;
-			state.m_bIsInitializing = false;
-			return state.m_result;
-		};
-		dependencies.m_stop = [](void* context)
-		{
-			auto& state = *static_cast<Bootstrap*>(context);
-			++state.m_stopCalls;
-			if (state.m_bIsInitializing)
-			{
-				state.m_bWasStoppedEarly = true;
+				request = std::async(std::launch::async, []() { return SailorProtocolStopLocalHost(true) != 0; });
 			}
-			App::Stop();
-		};
-		dependencies.m_shutdown = [](void* context)
-		{
-			auto& state = *static_cast<Bootstrap*>(context);
-			++state.m_shutdownCalls;
-			if (state.m_bIsInitializing)
+			// One refusal proves the other caller owns the real gate while initialization is held.
+			while (requests[0].wait_for(std::chrono::milliseconds(0)) != std::future_status::ready &&
+				requests[1].wait_for(std::chrono::milliseconds(0)) != std::future_status::ready)
 			{
-				// Report wrong ordering without freeing the App still inspected by initialization.
-				state.m_bWasStoppedEarly = true;
-				return false;
+				std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			}
-			return App::Shutdown();
+			const size_t refused = requests[0].wait_for(std::chrono::milliseconds(0)) == std::future_status::ready ? 0 : 1;
+			bRejectedSecondShutdown = !requests[refused].get();
+			shutdown = std::move(requests[1 - refused]);
+			bRetainedApp = shutdown.wait_for(std::chrono::milliseconds(30)) != std::future_status::ready &&
+				app == App::GetInstance() && renderer == App::GetSubmodule<Renderer>() &&
+				window == App::GetMainWindow().GetRawPtr();
+			bDeferredStop = bRetainedApp && window->IsActive();
+			if (bRetainedApp)
+			{
+				window->SetActive(bWasActive);
+			}
 		};
+		Tests::ScopeExit resetAllocation([&]() { allocations.m_beforeAllocation = {}; });
 		const auto request = Tests::ProtocolWire::MakeRequest(1u, 10u, initialize);
 		constexpr std::string_view token = "0123456789abcdef0123456789abcdef";
-		const auto status = Protocol::StartEditorEngineLocalHost(
+		const auto status = static_cast<Protocol::EEditorEngineWebSocketHostStatus>(SailorProtocolStartLocalHost(
 			reinterpret_cast<const uint8_t*>(request.data()), static_cast<uint32_t>(request.size()),
-			port, token.data(), static_cast<uint32_t>(token.size()), dependencies);
-		Require(state.m_shutdown.valid(), "the bootstrap race must reach real App initialization");
-		while (state.m_shutdown.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready)
+			port, token.data(), static_cast<uint32_t>(token.size())));
+		Require(shutdown.valid(), "the bootstrap race must reach real App initialization");
+		while (shutdown.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready)
 		{
 			Mac::Window::ProcessMacMsgs();
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
-		const bool bStopped = state.m_shutdown.get();
-		Require(state.m_result == expectedResult && state.m_bWasAppRetained && !state.m_bWasStoppedEarly &&
+		const bool bStopped = shutdown.get();
+		Require(bRetainedApp && bDeferredStop && bRejectedSecondShutdown &&
 			status == Protocol::EEditorEngineWebSocketHostStatus::InitializationFailed && bStopped &&
-			state.m_stopCalls == 1 && state.m_shutdownCalls == 1 && !App::GetInstance() &&
-			!ImGuiApi::GetCurrentContext(),
-			"concurrent native Stop must retain the real App until initialization returns, then own its only teardown");
-		std::cout << "Concurrent native Stop drained real App bootstrap: result=" << static_cast<uint32_t>(state.m_result) << '\n';
+			!App::GetInstance() && !ImGuiApi::GetCurrentContext() && allocations.m_liveAllocations == 0,
+			"concurrent default native shutdown must defer Stop until construction finishes, with one teardown owner");
+		Require(SailorProtocolStopLocalHost(true) != 0, "completed native shutdown must remain idempotent");
+		std::cout << "Default native shutdown drained App construction with one teardown owner\n";
 	}
 
 	int RunImGuiLifetimeGpu(int argc, const char** argv)
@@ -4795,8 +4778,8 @@ frame: []
 					"native cleanup after a construction-time StopRequest must release the actual App and ImGui allocations");
 				std::cout << "Default native StopRequest during App construction passed: failedWorld=" << bFailWorld << '\n';
 			}
-			CheckAppBootstrapStop(initialize, static_cast<uint16_t>(port), EAppInitializationResult::Ready);
-			CheckAppBootstrapStop(failedWorldInitialize, static_cast<uint16_t>(port), EAppInitializationResult::Failed);
+			CheckAppBootstrapShutdown(initialize, static_cast<uint16_t>(port), allocations);
+			CheckAppBootstrapShutdown(failedWorldInitialize, static_cast<uint16_t>(port), allocations);
 			Require(allocations.m_liveAllocations == 0, "concurrent bootstrap shutdown must release all ImGui allocations");
 
 			for (uint32_t cycle = 0; cycle < 24; ++cycle)
