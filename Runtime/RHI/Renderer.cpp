@@ -505,7 +505,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 	if (m_bForceStop ||
 		(!App::HasEditor() && m_driverInstance->ShouldFixLostDevice(m_pViewport)) ||
-		m_bIsFrameQueued.load(std::memory_order_acquire))
+		!CanPrepareFrame())
 	{
 		return false;
 	}

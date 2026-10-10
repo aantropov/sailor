@@ -893,7 +893,7 @@ void App::Start()
 			true;
 #endif
 
-		if (bCanCreateNewFrame && bEditorRenderAreaReady)
+		if (bCanCreateNewFrame && bEditorRenderAreaReady && renderer->CanPrepareFrame())
 		{
 			FrameInputState inputState = (Sailor::FrameInputState)Win32::GlobalInput::GetInputState();
 			currentFrame = FrameState(pEngineLoop->GetWorld().GetRawPtr(),
@@ -903,11 +903,13 @@ void App::Start()
 				bFirstFrame ? nullptr : &lastFrame);
 
 			pEngineLoop->ProcessCpuFrame(currentFrame);
+			bCanCreateNewFrame = false;
 			bFirstFrame = false;
 		}
 
-		if (bEditorRenderAreaReady && (bCanCreateNewFrame = renderer->PushFrame(currentFrame)))
+		if (!bCanCreateNewFrame && bEditorRenderAreaReady && renderer->PushFrame(currentFrame))
 		{
+			bCanCreateNewFrame = true;
 			lastFrame = currentFrame;
 
 			//Frame successfully pushed

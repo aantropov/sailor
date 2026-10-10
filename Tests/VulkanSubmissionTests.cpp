@@ -6723,6 +6723,128 @@ frame: []
 		std::cout << "EngineLoop: one active world, dormant candidates, deferred promotion and retained frame commands passed\n";
 	}
 
+	void TestAppFramePacing()
+	{
+		auto* renderer = App::GetSubmodule<Renderer>();
+		auto* engine = App::GetSubmodule<EngineLoop>();
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = Renderer::GetDriver();
+		Require(engine->GetWorlds().IsEmpty(), "the App pacing fixture must own its world");
+		auto world = engine->CreateEmptyWorld("Frame pacing", EngineLoop::EditorWorldMask);
+		EditorRuntime::SetEditorRenderTargetSize(64, 48);
+		EditorRuntime::ApplyPendingEditorViewportOnEngineThread();
+		Require(renderer->EnsureFrameGraph(), "App pacing requires a real frame graph");
+		auto graph = renderer->GetFrameGraph()->GetRHI();
+		const auto nodes = graph->GetGraph();
+		graph->GetGraph().Clear();
+		Win32::GlobalInput::ApplyEvent({ Platform::InputEvent::Type::Reset });
+		FrameState warm(world.GetRawPtr(), 16, {}, { 32, 24 });
+		engine->ProcessCpuFrame(warm);
+		Require(renderer->PushFrame(warm), "the App fixture must initialize UI and world resources before holding the GPU");
+		renderer->WaitIdle();
+		const uint64_t initialWorldFrame = world->GetCurrentFrame();
+		PendingGpuGate gate(device);
+		TVector<RecordedFrame> frames;
+		TVector<RHIFencePtr> completions;
+		std::atomic<bool> bWaitStarted{ false }, bReleaseGpu{ false };
+		PFN_vkGetFenceStatus status = vkGetFenceStatus;
+		PFN_vkWaitForFences wait = ObservePendingFlightWait;
+		const bool bWasOutdated = VulkanSubmissionTestAccess::ExchangeSwapchainOutdated(*device, true);
+		OnRender([&]()
+			{
+				for (uint32_t i = 0; i < driver->GetMaxFramesInFlight(); ++i)
+				{
+					frames.Add(RecordFrame(4200u + i));
+					uint32_t slot = 0;
+					bool bHasImage = false;
+					Require(driver->BeginRenderSubmission(slot, bHasImage) && !bHasImage,
+						"the App pacing fixture must acquire each native flight");
+					auto completion = RHIFencePtr::Make();
+					gate.WaitOn(frames[i].command);
+					Require(driver->SubmitFrameWithoutPresent({ frames[i].command }, {}, completion).m_bSubmitted,
+						"each App pacing flight must contain real GPU work");
+					completions.Add(completion);
+				}
+				pendingFlightFence = *completions[0]->m_vulkan.m_fence;
+				pendingFlightWaitStarted = &bWaitStarted;
+				VulkanSubmissionTestAccess::ExchangeFenceDispatch(*device, status, wait);
+			});
+		Tests::ScopeExit cleanup([&]()
+			{
+				gate.Release();
+				renderer->WaitIdle();
+				OnRender([&]()
+					{
+						VulkanSubmissionTestAccess::ExchangeFenceDispatch(*device, status, wait);
+						pendingFlightFence = VK_NULL_HANDLE;
+						pendingFlightWaitStarted = nullptr;
+					});
+				VulkanSubmissionTestAccess::ExchangeSwapchainOutdated(*device, bWasOutdated);
+				graph->GetGraph() = nodes;
+				Win32::GlobalInput::ApplyEvent({ Platform::InputEvent::Type::Reset });
+				engine->ExitWorld(world.GetRawPtr());
+				engine->ProcessPendingWorldExits();
+			});
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+		VkResult signalResult = VK_ERROR_UNKNOWN;
+		// Release independently of Main so a blocking regression fails instead of deadlocking the fixture.
+		std::jthread releaseGpu([&]()
+			{
+				while (!bReleaseGpu.load() && std::chrono::steady_clock::now() < deadline)
+				{
+					std::this_thread::sleep_for(std::chrono::milliseconds(1));
+				}
+				signalResult = gate.Release();
+			});
+		uint64_t queuedWorldFrames = 0;
+		bool bMainResponsive = false, bFreshInput = false;
+		std::jthread controller([&]()
+			{
+				while (!bWaitStarted.load() && std::chrono::steady_clock::now() < deadline)
+				{
+					std::this_thread::sleep_for(std::chrono::milliseconds(1));
+				}
+				bMainResponsive = App::ExecuteOnEngineMainThread<bool>(false, [&]()
+					{
+						queuedWorldFrames = world->GetCurrentFrame() - initialWorldFrame;
+						Win32::GlobalInput::ApplyEvent({ Platform::InputEvent::Type::Key, 0, 0, 'W', -1, true });
+						return bWaitStarted.load() && !world->GetInput().IsKeyDown('W') &&
+							vkGetFenceStatus(*device, *completions[0]->m_vulkan.m_fence) == VK_NOT_READY;
+					});
+				for (uint32_t i = 0; i < 16; ++i)
+				{
+					bMainResponsive &= App::ExecuteOnEngineMainThread<bool>(false, [&]()
+						{
+							return world->GetCurrentFrame() == initialWorldFrame + queuedWorldFrames &&
+								Win32::GlobalInput::GetInputState().IsKeyDown('W');
+						});
+				}
+				bReleaseGpu.store(true);
+				while (!bFreshInput && std::chrono::steady_clock::now() < deadline)
+				{
+					bFreshInput = App::ExecuteOnEngineMainThread<bool>(false, [&]()
+						{
+							return world->GetCurrentFrame() > initialWorldFrame + queuedWorldFrames &&
+								world->GetInput().IsKeyDown('W');
+						});
+					std::this_thread::sleep_for(std::chrono::milliseconds(1));
+				}
+				App::Stop();
+			});
+		App::Start();
+		controller.join();
+		releaseGpu.join();
+		renderer->WaitIdle();
+		for (auto& frame : frames)
+		{
+			CheckReadback(frame, true);
+		}
+		std::cout << "App frame pacing: queued CPU frames=" << queuedWorldFrames << ", Main responsive=" << bMainResponsive
+			<< ", fresh input=" << bFreshInput << '\n';
+		Require(signalResult == VK_SUCCESS && bMainResponsive && bFreshInput && queuedWorldFrames == 1,
+			"App must capture one independent frame, keep Main responsive and sample the next input only after admission reopens");
+	}
+
 	void TestGpuTimingNames()
 	{
 		auto& driver = Renderer::GetDriver();
@@ -6811,6 +6933,7 @@ frame: []
 				TestSingleActiveWorld();
 				Tests::RunAnimationShadowCommandTests();
 				Tests::RunWorldLifecycleCommandTests();
+				TestAppFramePacing();
 			}
 			else if (mode == "--gpu-debug-lifetime")
 			{
