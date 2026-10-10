@@ -43,7 +43,7 @@
 #include "RHI/Shader.h"
 #include "RHI/Surface.h"
 #include "RHI/VertexDescription.h"
-#include "Support/MeshReadback.h"
+#include "Components/Tests/BufferReadback.h"
 #if defined(__APPLE__)
 #include "Support/VulkanCapabilityOverrides.h"
 #endif
@@ -1996,8 +1996,8 @@ frame:
 						const auto expected = SkyCommandProbe::ParseStarsMesh(colors, catalogue);
 						const size_t vertexBytes = expected.m_first.Num() * sizeof(VertexP3C4);
 						const size_t indexBytes = expected.m_second.Num() * sizeof(uint32_t);
-						auto vertices = Tests::ReadMeshBuffer(recovered->m_vertexBuffer, vertexBytes);
-						auto indices = Tests::ReadMeshBuffer(recovered->m_indexBuffer, indexBytes);
+						auto vertices = Tests::ReadBuffer_Immediate(recovered->m_vertexBuffer, vertexBytes);
+						auto indices = Tests::ReadBuffer_Immediate(recovered->m_indexBuffer, indexBytes);
 						const auto actual = static_cast<const VertexP3C4*>(vertices->GetPointer());
 						for (size_t i = 0; i < expected.m_first.Num(); ++i)
 							Require(actual[i].m_position == expected.m_first[i].m_position && actual[i].m_color == expected.m_first[i].m_color,
@@ -3767,13 +3767,11 @@ frame:
 			for (uint32_t i = 0; i < 2; ++i)
 			{
 				auto bindings = lightingView->m_snapshots[i].m_rhiLightsData;
-				uniforms[i] = *bindings->GetOrAddShaderBinding("localReflection"_h)->m_vulkan.m_valueBinding->Get();
-				auto buffer = driver->CreateBuffer(sizeof(expected), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+				const auto allocation = bindings->GetOrAddShaderBinding("localReflection"_h)->m_vulkan.m_valueBinding;
+				uniforms[i] = *allocation->Get();
 				auto read = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 				commands->BeginCommandList(read, true);
-				read->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-				read->m_vulkan.m_commandBuffer->CopyBuffer(uniforms[i], *buffer->m_vulkan.m_buffer->Get(), sizeof(expected));
-				read->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
+				auto buffer = Tests::RecordBufferReadback(read, allocation, sizeof(expected));
 				commands->EndCommandList(read);
 				auto finished = RHIFencePtr::Make();
 				auto next = driver->CreateWaitSemaphore();
@@ -5797,19 +5795,12 @@ frame:
 				packet.m_metrics.m_instanceUploadBytes == count * sizeof(RenderSceneNode::PerInstanceData) &&
 				packet.m_metrics.m_dirtyInstanceRanges == 1,
 				"each transparent camera must record its own draws and one complete dynamic upload");
-			draw->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-			const auto readBuffer = [&](const auto& source, size_t size)
-			{
-				auto result = driver->CreateBuffer(size, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
-				draw->m_vulkan.m_commandBuffer->CopyBuffer(source, *result->m_vulkan.m_buffer->Get(), size);
-				return result;
-			};
 			const auto& instanceBindings = resources->m_perInstanceData->GetShaderBindings();
-			const auto instances = readBuffer(*instanceBindings["data"_h]->m_vulkan.m_valueBinding->Get(),
+			const auto instances = Tests::RecordBufferReadback(draw, instanceBindings["data"_h]->m_vulkan.m_valueBinding,
 				count * sizeof(RenderSceneNode::PerInstanceData));
-			const auto indices = readBuffer(*instanceBindings["indices"_h]->m_vulkan.m_valueBinding->Get(),
+			const auto indices = Tests::RecordBufferReadback(draw, instanceBindings["indices"_h]->m_vulkan.m_valueBinding,
 				count * sizeof(uint32_t));
-			const auto indirect = readBuffer(*resources->m_indirectBuffers[0]->m_vulkan.m_buffer->Get(),
+			const auto indirect = Tests::RecordBufferReadback(draw, resources->m_indirectBuffers[0]->m_vulkan.m_buffer,
 				count * sizeof(DrawIndexedIndirectData));
 			const auto pixels = ReadColor(draw, color->GetResolved());
 			CompleteCommands(upload, draw);
@@ -7733,16 +7724,14 @@ frame:
 					}
 				auto bindings = node->GetBindings(scene);
 				Require(bindings.IsValid(), "light-culling bindings must belong to the node's flight/camera resources");
-				const auto indices = *bindings->GetOrAddShaderBinding("culledLights"_h)->m_vulkan.m_valueBinding->Get();
-				const auto grid = *bindings->GetOrAddShaderBinding("lightsGrid"_h)->m_vulkan.m_valueBinding->Get();
-				auto indexReadback = driver->CreateBuffer(indices.m_size, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
-				auto gridReadback = driver->CreateBuffer(grid.m_size, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+				const auto indexAllocation = bindings->GetOrAddShaderBinding("culledLights"_h)->m_vulkan.m_valueBinding;
+				const auto gridAllocation = bindings->GetOrAddShaderBinding("lightsGrid"_h)->m_vulkan.m_valueBinding;
+				const auto indices = *indexAllocation->Get();
+				const auto grid = *gridAllocation->Get();
 				auto read = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 				commands->BeginCommandList(read, true);
-				read->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-				read->m_vulkan.m_commandBuffer->CopyBuffer(indices, *indexReadback->m_vulkan.m_buffer->Get(), indices.m_size);
-				read->m_vulkan.m_commandBuffer->CopyBuffer(grid, *gridReadback->m_vulkan.m_buffer->Get(), grid.m_size);
-				read->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
+				auto indexReadback = Tests::RecordBufferReadback(read, indexAllocation, indices.m_size);
+				auto gridReadback = Tests::RecordBufferReadback(read, gridAllocation, grid.m_size);
 				commands->EndCommandList(read);
 				auto finished = RHIFencePtr::Make();
 				Require(driver->SubmitCommandList(read, finished, {}, recording.ready) && finished->Wait(5000000000ull) == EFenceStatus::Finished,

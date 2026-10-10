@@ -20,6 +20,7 @@
 #include "RHI/Surface.h"
 #include "FrameGraph/RenderSceneNode.h"
 #include "Support/SurfaceRender.h"
+#include "Components/Tests/BufferReadback.h"
 #include <glm/gtc/packing.hpp>
 
 #include <array>
@@ -140,14 +141,9 @@ namespace
 				Require(binding && binding->m_vulkan.m_valueBinding, "material must own reflected storage");
 				const size_t size = (std::max)(binding->GetLayout().m_size, binding->GetLayout().m_paddedSize);
 				Require(size > 0, "material storage must have a reflected size");
-				auto readback = driver->CreateBuffer(size, EBufferUsageBit::BufferTransferDst_Bit,
-					EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
 				auto cmd = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 				commands->BeginCommandList(cmd, true);
-				cmd->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-				cmd->m_vulkan.m_commandBuffer->CopyBuffer(*binding->m_vulkan.m_valueBinding->Get(),
-					*readback->m_vulkan.m_buffer->Get(), size);
-				cmd->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
+				auto readback = Tests::RecordBufferReadback(cmd, binding->m_vulkan.m_valueBinding, size);
 				commands->EndCommandList(cmd);
 				auto fence = RHIFencePtr::Make();
 				Require(driver->SubmitCommandList(cmd, fence), "material readback must submit");
@@ -479,12 +475,8 @@ namespace Sailor::Tests
 					auto readback = driver->CreateBuffer(side * side * 8, EBufferUsageBit::BufferTransferDst_Bit, hostMemory);
 					commands->ImageMemoryBarrier(draw, color, EImageLayout::TransferSrcOptimal);
 					commands->CopyImageToBuffer(draw, color, readback);
-					auto headerReadback = driver->CreateBuffer(sizeof(RHIGlobalIlluminationGpuHeader), EBufferUsageBit::BufferTransferDst_Bit, hostMemory);
 					auto header = scene.m_rhiLightsData->GetOrAddShaderBinding("globalIlluminationHeader"_h);
-					draw->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-					draw->m_vulkan.m_commandBuffer->CopyBuffer(*header->m_vulkan.m_valueBinding->Get(),
-						*headerReadback->m_vulkan.m_buffer->Get(), sizeof(RHIGlobalIlluminationGpuHeader));
-					commands->MemoryBarrier(draw, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit), static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+					auto headerReadback = Tests::RecordBufferReadback(draw, header->m_vulkan.m_valueBinding, sizeof(RHIGlobalIlluminationGpuHeader));
 					commands->EndCommandList(upload);
 					commands->EndCommandList(draw);
 					auto ready = driver->CreateWaitSemaphore();

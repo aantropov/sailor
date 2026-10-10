@@ -1,4 +1,5 @@
 #include "Components/Tests/GraphicsBindingResultTestComponent.h"
+#include "Components/Tests/BufferReadback.h"
 #include "Platform/Time.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
@@ -413,11 +414,9 @@ namespace
 				if (packet.m_metrics.m_instanceUploadBytes != sizeof(Instance) * uploadedInstances ||
 					packet.m_metrics.m_dirtyInstanceRanges != uploadRanges ||
 					draw.m_stats.m_numInstances != handles.Num()) return "unexpected flight upload bytes, ranges or draw count";
-				auto readback = driver->CreateBuffer(sizeof(Instance) * expected.Num(), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
 				const auto binding = draw.m_resources->m_perInstanceData->GetOrAddShaderBinding("data"_h);
-				graphics->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-				graphics->m_vulkan.m_commandBuffer->CopyBuffer(*binding->m_vulkan.m_valueBinding->Get(),
-					*readback->m_vulkan.m_buffer->Get(), readback->GetSize());
+				auto readback = Tests::RecordBufferReadback(graphics, binding->m_vulkan.m_valueBinding,
+					sizeof(Instance) * expected.Num());
 				if (defer)
 				{
 					deferred = { upload, graphics };

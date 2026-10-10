@@ -14,7 +14,7 @@
 #include "Raytracing/PathTracer.h"
 #include "Support/EditorProtocolWire.h"
 #include "Support/SurfaceRender.h"
-#include "Support/MeshReadback.h"
+#include "Components/Tests/BufferReadback.h"
 #include "EditorEngineProtocolLifecycle.h"
 #include "Workspace/WorkspacePathEncoding.h"
 
@@ -877,9 +877,9 @@ namespace
 			{
 				const auto vertexBytes = geometry.m_vertices.Num() * sizeof(geometry.m_vertices[0]);
 				const auto indexBytes = geometry.m_indices.Num() * sizeof(uint32_t);
-				auto vertices = Tests::ReadMeshBuffer(mesh->m_vertexBuffer, vertexBytes,
+				auto vertices = Tests::ReadBuffer_Immediate(mesh->m_vertexBuffer, vertexBytes,
 					mesh->m_vertexOffset * sizeof(geometry.m_vertices[0]));
-				auto indices = Tests::ReadMeshBuffer(mesh->m_indexBuffer, indexBytes, mesh->m_firstIndex * sizeof(uint32_t));
+				auto indices = Tests::ReadBuffer_Immediate(mesh->m_indexBuffer, indexBytes, mesh->m_firstIndex * sizeof(uint32_t));
 				return std::equal(geometry.m_vertices.begin(), geometry.m_vertices.end(),
 						static_cast<const RHI::VertexP3N3T3B3UV2C4I4W4*>(vertices->GetPointer())) &&
 					std::equal(geometry.m_indices.begin(), geometry.m_indices.end(),

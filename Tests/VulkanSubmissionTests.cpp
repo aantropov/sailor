@@ -13,7 +13,7 @@
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "Support/TempDirectory.h"
-#include "Support/MeshReadback.h"
+#include "Components/Tests/BufferReadback.h"
 #include "Support/ScopeExit.h"
 #include "Support/ImGuiWorkspaceProbe.h"
 #include "Platform/DynamicLibrary.h"
@@ -3292,8 +3292,8 @@ frame: []
 				Require(accepted->IsReady() && !failed->IsReady(), "completion must not resurrect a refused mesh");
 				OnRender([&]()
 					{
-						auto vertexReadback = Tests::ReadMeshBuffer(accepted->m_vertexBuffer, sizeof(vertices));
-						auto indexReadback = Tests::ReadMeshBuffer(accepted->m_indexBuffer, sizeof(indices));
+						auto vertexReadback = Tests::ReadBuffer_Immediate(accepted->m_vertexBuffer, sizeof(vertices));
+						auto indexReadback = Tests::ReadBuffer_Immediate(accepted->m_indexBuffer, sizeof(indices));
 						Require(std::memcmp(vertexReadback->GetPointer(), vertices.data(), sizeof(vertices)) == 0 &&
 							std::memcmp(indexReadback->GetPointer(), indices.data(), sizeof(indices)) == 0,
 							"all retried mesh vertices and indices must match their source");

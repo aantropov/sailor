@@ -11,6 +11,7 @@
 #include "Components/LightComponent.h"
 #include "Components/MeshRendererComponent.h"
 #include "Components/SkyComponent.h"
+#include "Components/Tests/BufferReadback.h"
 #include "Core/YamlUtils.h"
 #include "ECS/GlobalIlluminationECS.h"
 #include "ECS/LandscapeECS.h"
@@ -1700,20 +1701,18 @@ namespace
 					std::array<RHIBufferPtr, 11> readbacks;
 					auto command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 					commands->BeginCommandList(command, true);
-					command->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
 					for (size_t i = 0; i < expected.size(); ++i)
 					{
 						const auto& buffer = expected[i];
 						auto bindings = buffer.name == "bones"_h ? snapshot.m_boneMatrices : snapshot.m_rhiLightsData;
 						auto binding = bindings->GetOrAddShaderBinding(buffer.name);
 						Require(binding && binding->m_vulkan.m_valueBinding, "framegraph must publish each shared and per-view buffer");
-						if (buffer.size == 0) continue;
-						readbacks[i] = driver->CreateBuffer(buffer.size, EBufferUsageBit::BufferTransferDst_Bit,
-							EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
-						command->m_vulkan.m_commandBuffer->CopyBuffer(*binding->m_vulkan.m_valueBinding->Get(),
-							*readbacks[i]->m_vulkan.m_buffer->Get(), buffer.size);
+						if (buffer.size == 0)
+						{
+							continue;
+						}
+						readbacks[i] = Tests::RecordBufferReadback(command, binding->m_vulkan.m_valueBinding, buffer.size);
 					}
-					command->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
 					commands->EndCommandList(command);
 					auto fence = RHIFencePtr::Make();
 					Require(driver->SubmitCommandList(command, fence, {}, wait), "shared resource readback submission must succeed");
