@@ -3097,6 +3097,8 @@ frame: []
 
 	void TestAsynchronousImagePublication(bool cubemap)
 	{
+		constexpr std::array<VkImageViewType, 4> viewTypes{
+			VK_IMAGE_VIEW_TYPE_1D, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_VIEW_TYPE_3D, VK_IMAGE_VIEW_TYPE_CUBE };
 		auto device = VulkanApi::GetInstance()->GetMainDevice();
 		auto& driver = *Renderer::GetDriver().DynamicCast<VulkanGraphicsDriver>();
 		const auto usage = ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferSrc_Bit |
@@ -3176,8 +3178,9 @@ frame: []
 						accepted->GetClamping() == ETextureClamping::Clamp && accepted->HasMipMaps() == (levels > 1) &&
 						accepted->GetFormat() == EFormat::R8G8B8A8_UNORM &&
 						accepted->m_vulkan.m_image->m_mipLevels == levels && accepted->m_vulkan.m_image->m_arrayLayers == layers &&
-						accepted->m_vulkan.m_image->m_extent.depth == uint32_t(extent.z),
-						"retry must retain the requested image shape, sampling properties and mip/layer count");
+						accepted->m_vulkan.m_image->m_extent.depth == uint32_t(extent.z) &&
+						accepted->m_vulkan.m_imageView->m_viewType == viewTypes[static_cast<size_t>(type)],
+						"retry must retain the requested image shape, native view type, sampling properties and mip/layer count");
 					if (!upload)
 					{
 						auto command = driver.CreateCommandList(false, ECommandListQueue::Graphics);
