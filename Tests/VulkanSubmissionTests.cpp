@@ -5703,14 +5703,20 @@ frame: []
 			m_generation = snapshot.m_submissionContext->GetResourceGeneration();
 			m_version = m_material->GetVersion();
 			m_material->SetBindings(RHIShaderBindingSetPtr::Make());
-			return Tasks::CreateTask("Prepare retained submission snapshot"_h, [this, &snapshot]()
+			auto prepare = [this, &snapshot]()
 				{
 					m_bStarted.store(true);
 					m_bStarted.notify_one();
 					m_bReleased.wait(false);
 					m_bPrepared = snapshot.m_submissionContext &&
 						m_material->GetVersionForSubmission(snapshot.m_submissionContext->GetSubmissionId()) == m_version;
-				}, EThreadType::Worker);
+				};
+			if (m_bHoldFlightSetup)
+			{
+				prepare();
+				return {};
+			}
+			return Tasks::CreateTask("Prepare retained submission snapshot"_h, std::move(prepare), EThreadType::Worker);
 		}
 
 		void Process(RHIFrameGraphPtr, RHICommandListPtr transfer, RHICommandListPtr command, const RHISceneViewSnapshot& snapshot) override
@@ -5751,6 +5757,7 @@ frame: []
 		float m_recordedWorldTime = 0.0f;
 		uint32_t m_payload = 0;
 		std::atomic<bool> m_bStarted{ false }, m_bReleased{ false };
+		bool m_bHoldFlightSetup = false;
 		bool m_bPrepared = false;
 		bool m_bCapturedVersionMatches = false;
 		uint32_t m_numProcessed = 0;
@@ -5822,7 +5829,7 @@ frame: []
 		std::cout << "Material layout cache: concurrent creation, readiness and shared RHI identity passed\n";
 	}
 
-	void TestRendererSubmissionOwnership(bool bResizeWhilePreparing = false)
+	void TestRendererSubmissionOwnership(bool bResizeWhilePreparing = false, bool bHoldFlightSetup = false)
 	{
 		auto* renderer = App::GetSubmodule<Renderer>();
 		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
@@ -5833,6 +5840,7 @@ frame: []
 		auto world = engine->GetWorld();
 		auto node = TRefPtr<SubmissionLifecycleNode>::Make();
 		node->SetTag("SubmissionLifecycle"_h);
+		node->m_bHoldFlightSetup = bHoldFlightSetup;
 		node->m_material = TRefPtr<SubmissionHistoryMaterial>::Make();
 		node->m_material->SetBindings(RHIShaderBindingSetPtr::Make());
 		Tests::ScopeExit cleanup([&]()
@@ -5856,6 +5864,12 @@ frame: []
 		}
 		Require(renderer->PushFrame(frame), "real PushFrame must accept the observed submission");
 		node->m_bStarted.wait(false);
+		if (!bHoldFlightSetup)
+		{
+			OnRender([]() {});
+		}
+		Require(renderer->CanPrepareFrame() == !bHoldFlightSetup,
+			"admission must wait for synchronous flight setup, but not for asynchronous node preparation");
 		Require(!node->m_previousMotion, "a graph without MotionBlur must not prepare temporal scene data");
 		Require(node->m_numProcessed == 0 && node->m_material->GetHistorySize() == 2,
 			"pending preparation must retain the captured material version and delay recording");
@@ -5890,6 +5904,7 @@ frame: []
 			!recycled->m_submissionContext,
 			"completion must clear and return the original view after its borrowers finish");
 		std::cout << "Renderer submission: resize=" << bResizeWhilePreparing <<
+			", held flight setup=" << bHoldFlightSetup <<
 			", held preparation, captured material revision, one record, native completion and scene-view return passed\n";
 	}
 
@@ -6926,6 +6941,7 @@ frame: []
 				TestConcurrentMaterialLayouts();
 				TestRendererSubmissionOwnership();
 				TestRendererSubmissionOwnership(true);
+				TestRendererSubmissionOwnership(false, true);
 				TestRendererPendingFlightReuse();
 				TestRendererSubmissionOutcomes();
 				TestRendererTimingPublication();

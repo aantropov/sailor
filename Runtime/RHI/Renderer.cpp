@@ -551,8 +551,6 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 			auto current = std::move(submission);
 			auto record = std::move(render);
 			const bool bAcquired = AcquireSubmission(*current);
-			// Let Main capture the next frame while this flight is prepared and recorded.
-			m_bIsFrameQueued.store(false, std::memory_order_release);
 			if (bAcquired)
 			{
 				PrepareSceneView(*current);
@@ -566,6 +564,8 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					task->Run();
 				}
 			}
+			// Sample the next CPU frame after flight setup; node tasks and recording still overlap it.
+			m_bIsFrameQueued.store(false, std::memory_order_release);
 			record->Run();
 		}, EThreadType::Render);
 	if (m_previousRenderFrame)

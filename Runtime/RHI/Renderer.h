@@ -46,7 +46,7 @@ namespace Sailor::RHI
 		SAILOR_API RHI::EFormat GetDepthFormat() const;
 
 		SAILOR_API void FixLostDevice();
-		// Main can sample fresh input once the queued capture has acquired its flight.
+		// Main can sample fresh input once flight setup has dispatched node preparation.
 		SAILOR_API bool CanPrepareFrame() const { return !m_bIsFrameQueued.load(std::memory_order_acquire); }
 		SAILOR_API bool PushFrame(const Sailor::FrameState& frame);
 		SAILOR_API void WaitIdle();
