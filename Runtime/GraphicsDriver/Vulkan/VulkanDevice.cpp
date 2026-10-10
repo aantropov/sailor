@@ -430,9 +430,11 @@ TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 	TUniquePtr<ThreadContext> context = TUniquePtr<ThreadContext>::Make();
 
 	check(m_queueFamilies.IsComplete());
-	context->m_commandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), m_queueFamilies.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
-	context->m_transferCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), m_queueFamilies.m_transferFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
-	context->m_computeCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), m_queueFamilies.m_computeFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+	// Completed command buffers can be reset independently of other work in the pool.
+	constexpr VkCommandPoolCreateFlags poolFlags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	context->m_commandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), m_queueFamilies.m_graphicsFamily.value(), poolFlags);
+	context->m_transferCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), m_queueFamilies.m_transferFamily.value(), poolFlags);
+	context->m_computeCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), m_queueFamilies.m_computeFamily.value(), poolFlags);
 
 	auto descriptorSizes = TVector
 	{

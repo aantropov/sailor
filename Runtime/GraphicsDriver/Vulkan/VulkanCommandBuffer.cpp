@@ -843,9 +843,14 @@ void VulkanCommandBuffer::EndRenderPass()
 
 void VulkanCommandBuffer::Reset()
 {
-	vkResetCommandBuffer(m_commandBuffer, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
+	VK_CHECK(vkResetCommandBuffer(m_commandBuffer, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT));
 	ClearDependencies();
 
+	m_bIsRecorded = false;
+	m_bGraphicsPipelineBound = false;
+	m_bHasViewport = false;
+	m_currentAttachments.Clear(false);
+	m_currentDepthAttachment = VK_FORMAT_UNDEFINED;
 	m_numRecordedCommands = 0;
 	m_gpuCost = 0;
 }

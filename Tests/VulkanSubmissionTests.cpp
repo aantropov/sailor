@@ -1658,8 +1658,51 @@ namespace
 			<< " native flights and all readback words completed\n";
 	}
 
+	void TestCommandBufferReset()
+	{
+		auto& driver = *Renderer::GetDriver();
+		auto commands = Renderer::GetDriverCommands();
+		for (auto queue : { ECommandListQueue::Graphics, ECommandListQueue::Transfer, ECommandListQueue::Compute })
+		{
+			auto command = driver.CreateCommandList(false, queue);
+			auto native = command->m_vulkan.m_commandBuffer;
+			const VkCommandBuffer handle = *native;
+			auto readback = driver.CreateBuffer(sizeof(uint32_t), EBufferUsageBit::BufferTransferDst_Bit,
+				EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
+			for (uint32_t value = 1; value <= 3; ++value)
+			{
+				commands->BeginCommandList(command, true);
+				Require(!native->IsRecorded(), "reset command buffers must stay unrecorded until EndCommandList");
+				if (queue == ECommandListQueue::Graphics)
+				{
+					commands->SetViewport(command, 0, 0, 4, 4, glm::vec2(0), glm::vec2(4), 0, 1);
+				}
+				native->AddDependency(readback);
+				commands->MemoryBarrier(command, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+					static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit));
+				commands->UpdateBuffer(command, readback, &value, sizeof(value));
+				commands->MemoryBarrier(command, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+					static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+				commands->EndCommandList(command);
+				Require(native->IsRecorded() && command->GetNumRecordedCommands() > 0,
+					"a reused command must publish its new recording");
+				Require(driver.SubmitCommandList_Immediate(command), "a reset command must submit again on its original queue");
+				Require(*static_cast<const uint32_t*>(readback->GetPointer()) == value,
+					"each recording must execute its new upload, not the previous command's payload");
+				native->Reset();
+				Require(!native->IsRecorded() && command->GetNumRecordedCommands() == 0 && command->GetGPUCost() == 0,
+					"reset must discard the previous recording state and counters");
+				const VkViewport otherViewport{ 0, 0, 8, 8, 0, 1 };
+				Require(native->FitsViewport(otherViewport) && readback.NumRefs() == 1 && static_cast<VkCommandBuffer>(*native) == handle,
+					"reset must release dependencies and cached viewport state without replacing the native command buffer");
+			}
+		}
+		std::cout << "Command reset: three recordings on graphics, transfer and compute queues, readbacks and dependency release passed\n";
+	}
+
 	void TestFrameCompletionReuse()
 	{
+		TestCommandBufferReset();
 		auto device = VulkanApi::GetInstance()->GetMainDevice();
 		auto& driver = Renderer::GetDriver();
 		TVector<RHIFencePtr> completions;
