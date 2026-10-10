@@ -1,10 +1,10 @@
 #pragma once
 #include "Core/Defines.h"
+#include "Containers/Vector.h"
 #include "Memory/RefPtr.hpp"
 #include "Engine/Object.h"
 #include "RHI/Types.h"
 #include "RHI/Renderer.h"
-#include <span>
 
 namespace Sailor::Framegraph
 {
@@ -36,9 +36,10 @@ namespace Sailor::Framegraph
 
 		// Fixed color-output names eligible for MSAA. The first is the primary
 		// attachment; its explicit Surface sample count governs the whole pass.
-		SAILOR_API virtual std::span<const StringHash> GetMsaaOutputs() const
+		SAILOR_API virtual const TVector<StringHash>& GetMsaaOutputs() const
 		{
-			return {};
+			static const TVector<StringHash> outputs;
+			return outputs;
 		}
 
 		// Called in graph order before scheduling the returned recording tasks.

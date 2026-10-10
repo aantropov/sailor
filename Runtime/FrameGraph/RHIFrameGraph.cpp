@@ -513,8 +513,8 @@ bool RHIFrameGraph::PrepareRenderTargets()
 
 	const auto collectTargets = [&](FrameGraphNodePtr node, TVector<RHIRenderTargetPtr>& sources)
 	{
-		const auto outputs = node->GetMsaaOutputs();
-		auto primary = node->GetRHIResource(outputs.front(), this);
+		const auto& outputs = node->GetMsaaOutputs();
+		auto primary = node->GetRHIResource(outputs[0], this);
 		const auto primarySurface = primary.DynamicCast<RHISurface>();
 		if (!primary || (primarySurface && !primarySurface->NeedsResolve()))
 		{
@@ -555,8 +555,8 @@ bool RHIFrameGraph::PrepareRenderTargets()
 					m_boundSurfaces.Add(surface);
 				}
 			}
-			const auto outputs = node->GetMsaaOutputs();
-			if (outputs.empty() || samples == EMsaaSamples::Samples_1)
+			const auto& outputs = node->GetMsaaOutputs();
+			if (outputs.IsEmpty() || samples == EMsaaSamples::Samples_1)
 			{
 				continue;
 			}

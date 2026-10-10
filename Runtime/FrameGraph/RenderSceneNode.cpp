@@ -23,9 +23,9 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 
-std::span<const StringHash> RenderSceneNode::GetMsaaOutputs() const
+const TVector<StringHash>& RenderSceneNode::GetMsaaOutputs() const
 {
-	static const StringHash outputs[] = { "color"_h, "motionVectors"_h };
+	static const TVector<StringHash> outputs = { "color"_h, "motionVectors"_h };
 	return outputs;
 }
 

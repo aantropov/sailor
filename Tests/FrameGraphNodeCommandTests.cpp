@@ -1273,9 +1273,9 @@ frame:
 	class DeclaredOutputsNode final : public BaseFrameGraphNode
 	{
 	public:
-		std::span<const StringHash> GetMsaaOutputs() const override
+		const TVector<StringHash>& GetMsaaOutputs() const override
 		{
-			static const StringHash outputs[] = { "albedo"_h, "velocity"_h };
+			static const TVector<StringHash> outputs = { "albedo"_h, "velocity"_h };
 			return outputs;
 		}
 

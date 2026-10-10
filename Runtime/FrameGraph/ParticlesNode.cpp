@@ -18,9 +18,9 @@ using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 using namespace Sailor::Framegraph::Experimental;
 
-std::span<const StringHash> ParticlesNode::GetMsaaOutputs() const
+const TVector<StringHash>& ParticlesNode::GetMsaaOutputs() const
 {
-	static const StringHash outputs[] = { "color"_h };
+	static const TVector<StringHash> outputs = { "color"_h };
 	return outputs;
 }
 

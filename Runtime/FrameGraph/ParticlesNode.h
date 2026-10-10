@@ -81,7 +81,7 @@ namespace Sailor::Framegraph
 
 			SAILOR_API static StringHash GetName() { return "ExperimentalParticles"_h; }
 
-			SAILOR_API std::span<const StringHash> GetMsaaOutputs() const override;
+			SAILOR_API const TVector<StringHash>& GetMsaaOutputs() const override;
 
 			SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override;
 			SAILOR_API virtual void Clear() override;
