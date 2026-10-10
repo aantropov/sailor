@@ -8,6 +8,9 @@
 
 using namespace Sailor;
 
+// MSVC also needs the template's static methods emitted by the runtime DLL.
+template class Sailor::TSubmodule<Sailor::Tests::GarbageCollectionProbe>;
+
 void Tests::GarbageCollectionProbe::CollectGarbage()
 {
 	++m_numCollections;
