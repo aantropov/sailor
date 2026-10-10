@@ -414,7 +414,12 @@ bool VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		{
 			const auto depthExtents = glm::ivec2(depthStencilAttachment->GetImage()->m_extent.width, depthStencilAttachment->GetImage()->m_extent.height);
 			auto target = vulkanRenderer->GetOrAddMsaaFramebufferRenderTarget((RHI::ETextureFormat)depthStencilAttachment->m_format, depthExtents);
-			if (!target) return false;
+			if (!target)
+			{
+				return false;
+			}
+			// The caller transitions its resolve image, not this internal MSAA target.
+			ImageMemoryBarrier(target, target->GetDefaultLayout());
 			msaaDepthStencilTarget = target->m_vulkan.m_imageView;
 		}
 
@@ -422,7 +427,11 @@ bool VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		{
 			const auto extents = glm::ivec2(colorAttachments[i]->GetImage()->m_extent.width, colorAttachments[i]->GetImage()->m_extent.height);
 			auto target = vulkanRenderer->GetOrAddMsaaFramebufferRenderTarget((RHI::ETextureFormat)colorAttachments[i]->m_format, extents, i);
-			if (!target) return false;
+			if (!target)
+			{
+				return false;
+			}
+			ImageMemoryBarrier(target, target->GetDefaultLayout());
 			msaaColorTargets.Add(target->m_vulkan.m_imageView);
 		}
 

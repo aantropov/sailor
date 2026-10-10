@@ -3193,7 +3193,11 @@ bool VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 		if (depthStencilAttachment && depthStencilAttachment->GetMsaaSamples() == RHI::EMsaaSamples::Samples_1)
 		{
 			auto target = GetOrAddMsaaFramebufferRenderTarget(depthStencilAttachment->GetFormat(), depthStencilAttachment->GetExtent());
-			if (!target) return false;
+			if (!target)
+			{
+				return false;
+			}
+			ImageMemoryBarrier(cmd, target, target->GetDefaultLayout());
 			depthResolve = depthTarget;
 			depthTarget = target->m_vulkan.m_imageView;
 		}
@@ -3351,7 +3355,11 @@ bool VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 		if (depthStencilAttachment && depthStencilAttachment->GetMsaaSamples() == RHI::EMsaaSamples::Samples_1)
 		{
 			auto attachment = GetOrAddMsaaFramebufferRenderTarget(depthStencilAttachment->GetFormat(), depthStencilAttachment->GetExtent());
-			if (!attachment) return false;
+			if (!attachment)
+			{
+				return false;
+			}
+			ImageMemoryBarrier(cmd, attachment, attachment->GetDefaultLayout());
 			depthResolve = depthTarget;
 			depthTarget = attachment->m_vulkan.m_imageView;
 		}
@@ -3396,7 +3404,11 @@ bool VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 		if (multisampling && target->GetMsaaSamples() == RHI::EMsaaSamples::Samples_1)
 		{
 			auto attachment = GetOrAddMsaaFramebufferRenderTarget(target->GetFormat(), target->GetExtent(), i);
-			if (!attachment) return false;
+			if (!attachment)
+			{
+				return false;
+			}
+			ImageMemoryBarrier(cmd, attachment, attachment->GetDefaultLayout());
 			resolves[i] = targets[i];
 			targets[i] = attachment->m_vulkan.m_imageView;
 		}
@@ -3406,7 +3418,11 @@ bool VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 	if (multisampling && depthStencilAttachment && !depthResolve && depthStencilAttachment->GetMsaaSamples() == RHI::EMsaaSamples::Samples_1)
 	{
 		auto attachment = GetOrAddMsaaFramebufferRenderTarget(depthStencilAttachment->GetFormat(), depthStencilAttachment->GetExtent());
-		if (!attachment) return false;
+		if (!attachment)
+		{
+			return false;
+		}
+		ImageMemoryBarrier(cmd, attachment, attachment->GetDefaultLayout());
 		depthResolve = depthTarget;
 		depthTarget = attachment->m_vulkan.m_imageView;
 	}

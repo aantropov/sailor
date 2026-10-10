@@ -4853,6 +4853,11 @@ frame:
 				}
 			}
 			node->Process(graph, recorded.m_upload, recorded.m_draw, scene);
+			const auto& layouts = recorded.m_draw->m_vulkan.m_commandBuffer->GetImageBarriers();
+			Require(layouts[*colorTarget->m_vulkan.m_image].m_layout == EImageLayout::ColorAttachmentOptimal,
+				"particle rendering must transition the actual color target, including cached MSAA attachments");
+			Require(layouts[*depthTarget->m_vulkan.m_image].m_layout == EImageLayout::DepthAttachmentOptimal,
+				"particle rendering must transition the actual depth target, including cached MSAA attachments");
 			recorded.m_bAttachmentsMatch = node->GetDrawCallStats().m_numBatches == 2 && recordedColorCount == 1 &&
 				recordedColor.imageView == static_cast<VkImageView>(*colorTarget->m_vulkan.m_imageView) &&
 				recordedDepth.imageView == static_cast<VkImageView>(*depthTarget->m_vulkan.m_imageView) &&
