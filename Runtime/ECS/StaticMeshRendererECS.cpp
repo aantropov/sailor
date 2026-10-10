@@ -418,8 +418,11 @@ void StaticMeshRendererECS::Tick(float deltaTime)
 		// the scene handle, not by the last observed transform timestamp.
 		bool bNeedsUpdate = data.m_bIsDirty ||
 			(data.GetModel() && !m_renderInstanceHandles.ContainsKey(componentIndex));
-		if (GameObjectPtr owner = data.m_owner.StaticCast<GameObject>())
+		if (data.m_owner)
 		{
+			// The ECS owner handle stays valid until these workers join. Borrow it
+			// to avoid per-mesh contention on the world's shared allocator.
+			auto* owner = static_cast<GameObject*>(data.m_owner.GetRawPtr());
 			bNeedsUpdate |= owner->GetTransformComponent().GetFrameLastChange() > data.m_frameLastChange;
 		}
 
