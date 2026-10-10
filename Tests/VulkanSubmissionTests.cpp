@@ -15,6 +15,7 @@
 #include "Support/TempDirectory.h"
 #include "Components/Tests/BufferReadback.h"
 #include "Support/ScopeExit.h"
+#include "Support/TaskTestApp.h"
 #include "Support/ImGuiWorkspaceProbe.h"
 #include "Platform/DynamicLibrary.h"
 #include "Workspace/WorkspacePathEncoding.h"
@@ -119,20 +120,6 @@ namespace Sailor::Tests { void RunWorldLifecycleCommandTests(); }
 namespace Sailor::Tests { void RunEditorMessageViewTests(); }
 namespace Sailor::Tests { void RunEditorViewportCommandTests(); }
 namespace Sailor::Tests { int RunEditorSimulationTests(int argc, const char** argv); }
-
-namespace Sailor::Tests
-{
-	class GarbageCollectionProbe : public TSubmodule<GarbageCollectionProbe>
-	{
-	public:
-		void CollectGarbage() override
-		{
-			++m_numCollections;
-		}
-
-		uint64_t m_numCollections = 0;
-	};
-}
 
 extern "C" SAILOR_SHARED_API int32_t SailorProtocolStopLocalHost(bool bShutdownEngine) noexcept;
 extern "C" SAILOR_SHARED_API int32_t SailorProtocolStartLocalHost(const uint8_t* requestData, uint32_t requestSize,

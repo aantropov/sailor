@@ -8,6 +8,11 @@
 
 using namespace Sailor;
 
+void Tests::GarbageCollectionProbe::CollectGarbage()
+{
+	++m_numCollections;
+}
+
 Tests::TaskTestApp::TaskTestApp()
 {
 	if (App::GetInstance())

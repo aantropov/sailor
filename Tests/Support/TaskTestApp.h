@@ -1,12 +1,21 @@
 #pragma once
 
-#include "Core/Defines.h"
+#include "Core/Submodule.h"
 
 namespace Sailor::Tasks { class Scheduler; }
 namespace Sailor { class AnimationAssetInfoHandler; class AnimationImporter; class AudioSystem; }
 
 namespace Sailor::Tests
 {
+	// Windows imports this submodule's type ID from the runtime DLL.
+	class SAILOR_SHARED_API GarbageCollectionProbe : public TSubmodule<GarbageCollectionProbe>
+	{
+	public:
+		void CollectGarbage() override;
+
+		uint64_t m_numCollections = 0;
+	};
+
 	// Use the real App submodule lookup without starting a window or renderer.
 	class SAILOR_SHARED_API TaskTestApp final
 	{
