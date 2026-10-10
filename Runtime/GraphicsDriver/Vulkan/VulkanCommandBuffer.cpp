@@ -1307,16 +1307,19 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, const VkImage
 {
 	const bool bComputeOld = oldLayout == RHI::EImageLayout::ComputeRead || oldLayout == RHI::EImageLayout::ComputeWrite;
 	const bool bComputeNew = newLayout == RHI::EImageLayout::ComputeRead || newLayout == RHI::EImageLayout::ComputeWrite;
-	if (!bComputeOld && !bComputeNew && !bComputeSampling && oldLayout == newLayout)
-	{
-		return;
-	}
 	const auto oldVkLayout = bComputeOld ? VK_IMAGE_LAYOUT_GENERAL : static_cast<VkImageLayout>(oldLayout);
 	const auto newVkLayout = bComputeNew ? VK_IMAGE_LAYOUT_GENERAL : static_cast<VkImageLayout>(newLayout);
 	const auto queueFlags = GetQueueFlags();
 	const VkAccessFlags srcAccess = bComputeOld
 		? (oldLayout == RHI::EImageLayout::ComputeWrite ? VK_ACCESS_SHADER_WRITE_BIT : VK_ACCESS_SHADER_READ_BIT)
 		: GetAccessFlags(oldVkLayout, queueFlags);
+	// Clears, copies and attachment writes still need a dependency in the same layout.
+	constexpr VkAccessFlags writes = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+		VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	if (!bComputeOld && !bComputeNew && !bComputeSampling && oldLayout == newLayout && !(srcAccess & writes))
+	{
+		return;
+	}
 	const VkAccessFlags dstAccess = bComputeSampling ? VK_ACCESS_SHADER_READ_BIT : bComputeNew
 		? (newLayout == RHI::EImageLayout::ComputeWrite ? VK_ACCESS_SHADER_WRITE_BIT : VK_ACCESS_SHADER_READ_BIT)
 		: GetAccessFlags(newVkLayout, queueFlags);
@@ -1377,28 +1380,17 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, const VkImage
 
 void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
 {
-	if (oldLayout == newLayout)
-	{
-		return;
-	}
-
-	const auto queueFlags = GetQueueFlags();
-	ImageMemoryBarrier(image, format, oldLayout, newLayout,
-		GetAccessFlags(oldLayout, queueFlags), GetAccessFlags(newLayout, queueFlags),
-		GetPipelineStage(oldLayout, queueFlags), GetPipelineStage(newLayout, queueFlags));
+	auto range = image->m_subresourceRange;
+	range.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(format);
+	m_rhiDependecies.Insert(image);
+	ImageMemoryBarrier(image->GetImage(), range,
+		static_cast<RHI::EImageLayout>(oldLayout), static_cast<RHI::EImageLayout>(newLayout));
 }
 
 void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
 {
-	if (oldLayout == newLayout)
-	{
-		return;
-	}
-
 	const VkImageSubresourceRange range{ VulkanApi::ComputeAspectFlagsForFormat(format),
 		0, image->m_mipLevels, 0, image->m_arrayLayers };
-	const auto queueFlags = GetQueueFlags();
-	ImageMemoryBarrier(image, range, oldLayout, newLayout,
-		GetAccessFlags(oldLayout, queueFlags), GetAccessFlags(newLayout, queueFlags),
-		GetPipelineStage(oldLayout, queueFlags), GetPipelineStage(newLayout, queueFlags));
+	ImageMemoryBarrier(image, range,
+		static_cast<RHI::EImageLayout>(oldLayout), static_cast<RHI::EImageLayout>(newLayout));
 }

@@ -988,6 +988,9 @@ namespace
 		};
 		Require(transition(cube, EImageLayout::TransferDstOptimal) == 1, "a uniform full-image transition needs only one barrier");
 		commands->ClearImage(command, cube, glm::vec4(0.25f));
+		Require(transition(cube, EImageLayout::TransferDstOptimal) == 1,
+			"successive transfer writes need a memory dependency even when the image layout stays unchanged");
+		commands->ClearImage(command, cube, glm::vec4(0.25f));
 		Require(transition(cube, EImageLayout::ComputeWrite) == 1, "uniform mip and face layouts must stay coalesced");
 		transition(cube->GetFace(2, 1), EImageLayout::TransferSrcOptimal);
 		transition(cube->GetFace(2, 2), EImageLayout::TransferSrcOptimal);

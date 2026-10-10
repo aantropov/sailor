@@ -1702,8 +1702,6 @@ frame:
 			// Internal MSAA targets support attachment resolves, not transfer reads.
 			commands->ImageMemoryBarrier(command, texture, EImageLayout::ColorAttachmentOptimal);
 			commands->ImageMemoryBarrier(command, resolved, EImageLayout::ColorAttachmentOptimal);
-			commands->MemoryBarrier(command, static_cast<EAccessFlags>(EAccessBit::ColorAttachmentWrite_Bit),
-				static_cast<EAccessFlags>(EAccessBit::ColorAttachmentRead_Bit) | static_cast<EAccessFlags>(EAccessBit::ColorAttachmentWrite_Bit));
 			const glm::ivec4 area(0, 0, texture->GetExtent().x, texture->GetExtent().y);
 			// Keep the observer on the tested node, not the readback's resolve pass.
 			const bool bWasCapturing = std::exchange(bCaptureRenderPass, false);
