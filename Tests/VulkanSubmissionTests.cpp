@@ -27,6 +27,8 @@
 #if defined(__APPLE__)
 #include "Support/MacViewportPresentation.h"
 #include "Support/VulkanCapabilityOverrides.h"
+#include "TextureImporterTestAccess.h"
+#include "FrameGraph/RenderSceneTextureCache.h"
 #endif
 #include "FrameGraph/ParticlesNode.h"
 #include "FrameGraph/ClearNode.h"
@@ -3024,6 +3026,74 @@ frame: []
 		if (!App::Shutdown()) result = 1;
 		return result;
 	}
+
+#if defined(__APPLE__)
+	void TestTextureRegistryCapacity()
+	{
+		auto* importer = App::GetSubmodule<TextureImporter>();
+		auto& driver = *Renderer::GetDriver();
+		const auto registry = importer->GetTextureSamplersBindingSet();
+		Require(registry && !registry->m_vulkan.m_descriptorSet,
+			"the Metal texture registry must not allocate an oversized global descriptor set");
+		const size_t firstIndex = importer->GetTextureSamplersCount();
+		const uint64_t revision = registry->GetDescriptorRevision();
+		size_t index = 0;
+		Require(!TextureImporterTestAccess::RegisterSampler(*importer,
+			RHITexturePtr::Make(ETextureFiltration::Nearest, ETextureClamping::Clamp, false), index) &&
+			importer->GetTextureSamplersCount() == firstIndex && registry->GetDescriptorRevision() == revision,
+			"a texture without an image view must not consume a registry slot or revision");
+		Require(firstIndex <= 1024u, "the isolated registry fixture must have room for high-index textures");
+
+		const std::array<uint32_t, 2> colors{ 0xff123456u, 0xffabcdefu };
+		std::array<RHITexturePtr, 2> textures;
+		for (size_t i = 0; i < textures.size(); ++i)
+		{
+			textures[i] = driver.CreateTexture(&colors[i], sizeof(colors[i]), glm::ivec3(1), 1,
+				ETextureType::Texture2D, EFormat::R8G8B8A8_UNORM, ETextureFiltration::Nearest,
+				ETextureClamping::Clamp, TextureImporter::DefaultTextureUsage);
+			Require(textures[i].IsValid(), "registry fixture textures must upload");
+		}
+		driver.WaitIdle();
+		for (size_t expected = firstIndex; expected < TextureImporter::MaxTexturesInScene; ++expected)
+		{
+			Require(TextureImporterTestAccess::RegisterSampler(*importer, textures[expected % 2u], index) && index == expected,
+				"global texture indices must remain contiguous through the full registry capacity");
+		}
+		const uint64_t fullRevision = registry->GetDescriptorRevision();
+		Require(importer->GetTextureSamplersCount() == TextureImporter::MaxTexturesInScene &&
+			!TextureImporterTestAccess::RegisterSampler(*importer, textures[0], index) &&
+			importer->GetTextureSamplersCount() == TextureImporter::MaxTexturesInScene &&
+			registry->GetDescriptorRevision() == fullRevision,
+			"a full registry must reject append without changing its count or revision");
+
+		const TVector<uint32_t> requested{ 0u, 1024u, static_cast<uint32_t>(TextureImporter::MaxTexturesInScene - 1u) };
+		const auto snapshot = importer->GetTextureSamplersSnapshot(requested);
+		Require(snapshot.m_slots.Num() == 3u && snapshot.m_slots[0].m_texture == driver.GetDefaultTexture() &&
+			snapshot.m_slots[1].m_texture == textures[0] && snapshot.m_slots[2].m_texture == textures[1] &&
+			snapshot.m_slots[2].m_contentRevision == fullRevision,
+			"snapshots must retain the default and high-index textures with their published revisions");
+		Framegraph::TextureBindingCache cache;
+		uint32_t supportedMeshes = 0;
+		bool bIsCurrent = false;
+		const auto dense = Framegraph::Details::GetTextureBindingSet(cache, requested, 1u, supportedMeshes, bIsCurrent);
+		Require(dense && bIsCurrent && dense->m_vulkan.m_descriptorSet && dense->m_vulkan.m_descriptorSet->IsCompiled(),
+			"high global indices must produce a compiled dense descriptor set");
+		Framegraph::TextureBindingCacheEntry* entry = nullptr;
+		cache.Find(Framegraph::TextureBindingCacheKey(requested), entry);
+		Require(entry && entry->m_textureRemapBuffer && entry->m_textureSetSize == 3u,
+			"dense bindings must retain their remap buffer and only the requested textures");
+		const auto* remap = static_cast<const uint32_t*>(entry->m_textureRemapBuffer->GetPointer());
+		Require(remap && remap[0] == 0u && remap[1024] == 1u && remap[requested[2]] == 2u,
+			"the GPU remap buffer must address high global indices without truncation");
+		for (uint32_t i = 0; i < textures.size(); ++i)
+		{
+			Require(dense->m_vulkan.m_descriptorSet->ReferencesImageView(1u, i + 1u, textures[i]->m_vulkan.m_imageView) &&
+				ReadImage(driver, textures[i]->m_vulkan.m_image) == std::vector<uint32_t>{ colors[i] },
+				"dense descriptors must retain the selected native image views and their uploaded pixels");
+		}
+		std::cout << "Metal texture registry: 8192 slots, failed publication, full-capacity refusal and high-index dense bindings passed\n";
+	}
+#endif
 
 	void TestAsynchronousImagePublication(bool cubemap)
 	{
@@ -6579,7 +6649,13 @@ frame: []
 #endif
 					else if (mode == "--gpu-immediate-image-create") TestImmediateImageCreation(false);
 					else if (mode == "--gpu-immediate-images") TestImmediateImageContents();
-					else if (mode == "--gpu-textures") TestAsynchronousImagePublication(false);
+					else if (mode == "--gpu-textures")
+					{
+#if defined(__APPLE__)
+						TestTextureRegistryCapacity();
+#endif
+						TestAsynchronousImagePublication(false);
+					}
 					else if (mode == "--gpu-cubemaps") TestAsynchronousImagePublication(true);
 					else if (mode == "--gpu-cubemap-pending") TestCubemapPending();
 					else if (mode == "--gpu-immediate-image-create-lost") TestImmediateImageCreation(true);

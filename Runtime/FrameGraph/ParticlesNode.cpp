@@ -11,7 +11,6 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
-#include "AssetRegistry/Texture/TextureImporter.h"
 #include "Math/Noise.h"
 
 using namespace Sailor;
@@ -204,8 +203,7 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 	}
 	if (!colorAttachment) return;
 
-	auto textureSamplers = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
-	TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData, m_material->GetBindings(), m_shadowMapBinding, textureSamplers });
+	TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData, m_material->GetBindings(), m_shadowMapBinding });
 	TVector<RHIShaderBindingSetPtr> computeSets({ m_perInstanceData, sceneView.m_frameBindings });
 
 	uvec4 numInstances = uvec4(m_numInstances, 0, 0, 0);

@@ -835,8 +835,7 @@ TVector<uint32_t> VulkanGraphicsDriver::CollectOptionalVariableDescriptorCount(c
 					reflectedBinding.m_name == "textureSamplers"_h)
 				{
 					// Apple render passes bind dense material-local texture arrays. The
-					// global registry intentionally keeps its legacy binding for other
-					// shaders, so it cannot provide the remapped binding's capacity here.
+					// CPU registry uses global indices, not the remapped binding's capacity.
 					res[reflectedBinding.m_set] = (std::max)(
 						res[reflectedBinding.m_set],
 						1024u);

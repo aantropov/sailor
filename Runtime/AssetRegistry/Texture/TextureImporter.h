@@ -37,8 +37,7 @@ namespace Sailor
 			TVector<TextureSamplerSlotSnapshot> m_slots;
 		};
 
-		// Keep this in sync with runtime descriptor allocation on macOS/MoltenVK.
-		// 262144 overflows Metal argument-buffer validation in current path.
+		// Global texture indices; independent of the batch-local descriptor count on Metal.
 		// Slot zero is reserved for the default texture.
 		static constexpr size_t MaxTexturesInScene = 8192;
 		static constexpr size_t MaxUserTexturesInScene = MaxTexturesInScene - 1;
@@ -97,6 +96,7 @@ namespace Sailor
 		SAILOR_API Tasks::TaskPtr<TVector<CpuTextureSnapshot>> CaptureCpuTextures(const TVector<TexturePtr>& textures);
 		SAILOR_API virtual void CollectGarbage() override;
 
+		// CPU registry on Apple; render passes bind dense sets from its snapshots instead.
 		SAILOR_API RHI::RHIShaderBindingSetPtr GetTextureSamplersBindingSet() { return m_textureSamplersBindings; }
 		SAILOR_API TextureSamplersSnapshot GetTextureSamplersSnapshot(const TVector<uint32_t>& requestedIndices) const;
 		SAILOR_API uint64_t CalculateTextureSamplersRevision(

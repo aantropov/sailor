@@ -143,7 +143,6 @@ glslVertex: |
   } material;
   
   layout(set=4, binding=0) uniform sampler2D shadowMapSampler;
-  layout(set=5, binding=0) uniform sampler2D textureSamplers[MAX_TEXTURES_IN_SCENE];
     
   void main() 
   {
@@ -260,7 +259,6 @@ glslFragment: |
   } material;
   
   layout(set=4, binding=0) uniform sampler2D shadowMapSampler;
-  layout(set=5, binding=0) uniform sampler2D textureSamplers[MAX_TEXTURES_IN_SCENE];
   
   MaterialData GetMaterialData()
   {

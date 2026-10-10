@@ -1972,6 +1972,16 @@ void main() { result.value = params.value; }
 
 	void TestRuntimeLightingShadersCompile()
 	{
+		for (const bool bIsDebug : { false, true })
+		{
+			for (const auto stage : { RHI::EShaderStage::Vertex, RHI::EShaderStage::Fragment })
+			{
+				const ReflectedShader particles(CompileRuntimeShaderStage(
+					"Experimental/MeshParticles/Particle.shader", {}, stage, bIsDebug));
+				RequireSpirvDescriptorBindingAbsent(particles, 5u, 0u);
+			}
+		}
+
 		constexpr std::array<const char*, 5> shaderPaths =
 		{
 			"Shaders/Standard.shader",

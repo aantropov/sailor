@@ -7,6 +7,11 @@ namespace Sailor
 	class TextureImporterTestAccess
 	{
 	public:
+		static bool RegisterSampler(TextureImporter& importer, RHI::RHITexturePtr texture, size_t& index)
+		{
+			return importer.RegisterTextureSamplerBinding(std::move(texture), index);
+		}
+
 		using Decoder = bool (*)(const TextureImporter::CpuDecodeRequest&, TextureImporter::ByteCode&,
 			int32_t&, int32_t&, uint32_t&);
 		static Decoder ExchangeDecoder(TextureImporter& importer, Decoder decoder)

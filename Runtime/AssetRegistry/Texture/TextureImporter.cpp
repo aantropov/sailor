@@ -421,7 +421,22 @@ TextureImporter::TextureImporter(TextureAssetInfoHandler* infoHandler)
 
 	m_textureSamplersCurrentIndex = 1;
 
-	auto textures = driver->AddSamplerToShaderBindings(m_textureSamplersBindings, "textureSamplers"_h, defaultTextures, 0, true, static_cast<uint32_t>(MaxTexturesInScene));
+#if defined(__APPLE__)
+	// Keep global indices on the CPU. Metal draws bind dense, batch-local arrays.
+	RHI::ShaderLayoutBinding layout;
+	layout.m_name = "textureSamplers"_h;
+	layout.m_binding = 0;
+	layout.m_type = RHI::EShaderBindingType::CombinedImageSampler;
+	layout.m_arrayCount = static_cast<uint32_t>(MaxTexturesInScene);
+	layout.m_bVariableDescriptorCount = true;
+	auto binding = m_textureSamplersBindings->GetOrAddShaderBinding(layout.m_name);
+	binding->SetLayout(layout);
+	binding->SetTextureBindings(defaultTextures);
+	m_textureSamplersBindings->UpdateLayoutShaderBinding(layout);
+	m_textureSamplersBindings->AdvanceDescriptorRevision();
+#else
+	driver->AddSamplerToShaderBindings(m_textureSamplersBindings, "textureSamplers"_h, defaultTextures, 0, true, static_cast<uint32_t>(MaxTexturesInScene));
+#endif
 	m_textureSamplersBindings->RecalculateCompatibility();
 
 	m_textureSamplerSlotRevisions.Resize(1);
@@ -606,8 +621,7 @@ bool TextureImporter::RegisterTextureSamplerBinding(RHI::RHITexturePtr texture, 
 			static_cast<uint32_t>(nextIndex));
 		if (bRegistered)
 		{
-			// Publish the next free slot only after the native descriptor write and slot
-			// revision have both succeeded. A failed write can therefore be retried.
+			// Failed publication leaves the slot available for retry.
 			m_textureSamplersCurrentIndex.store(nextIndex + 1, std::memory_order_release);
 		}
 	}
@@ -631,6 +645,15 @@ bool TextureImporter::UpdateTextureSamplerBinding(RHI::RHITexturePtr texture, ui
 
 bool TextureImporter::UpdateTextureSamplerBindingLocked(RHI::RHITexturePtr texture, uint32_t index)
 {
+#if defined(__APPLE__)
+	if (!texture->m_vulkan.m_imageView)
+	{
+		return false;
+	}
+	m_textureSamplersBindings->GetOrAddShaderBinding("textureSamplers"_h)->SetTextureBinding(index, std::move(texture));
+	m_textureSamplersBindings->AdvanceDescriptorRevision();
+	const uint64_t currentRevision = m_textureSamplersBindings->GetDescriptorRevision();
+#else
 	const uint64_t previousRevision = m_textureSamplersBindings->GetDescriptorRevision();
 	RHI::Renderer::GetDriver()->UpdateShaderBinding(m_textureSamplersBindings, "textureSamplers"_h, texture, index);
 	const uint64_t currentRevision = m_textureSamplersBindings->GetDescriptorRevision();
@@ -639,6 +662,7 @@ bool TextureImporter::UpdateTextureSamplerBindingLocked(RHI::RHITexturePtr textu
 	{
 		return false;
 	}
+#endif
 
 	if (m_textureSamplerSlotRevisions.Num() <= index)
 	{
