@@ -933,9 +933,11 @@ namespace
 		const auto defaultLayout = static_cast<VkImageLayout>(cube->GetDefaultLayout());
 		std::array<VkImageLayout, Mips * Faces> layouts;
 		layouts.fill(defaultLayout);
-		auto observe = [&](const std::vector<VkImageMemoryBarrier>& barriers,
-			VkImageSubresourceRange range, VkImageLayout layout)
+		auto checkBarriers = [&](const std::function<void()>& record,
+			VkImageSubresourceRange range, VkImageLayout layout, int32_t expectedCount = -1)
 		{
+#if defined(__APPLE__)
+			const auto barriers = Tests::CaptureVulkanImageBarriers(record);
 			const auto before = layouts;
 			std::array<uint32_t, Mips * Faces> visits{};
 			for (const auto& barrier : barriers)
@@ -965,14 +967,26 @@ namespace
 						"a transition must not be skipped because another mip already has the requested layout");
 				}
 			}
-			return barriers.size();
+			if (expectedCount >= 0)
+			{
+				Require(barriers.size() == static_cast<size_t>(expectedCount),
+					"uniform layout transitions must emit exactly the expected number of barriers");
+			}
+#else
+			// Native command interception is Mach-O-only. Other platforms still
+			// execute every transition and verify all face/mip pixels below.
+			record();
+#endif
 		};
 		const VkImageSubresourceRange whole{ VK_IMAGE_ASPECT_COLOR_BIT, 0, Mips, 0, Faces };
 		auto command = driver.CreateCommandList(false, ECommandListQueue::Graphics);
 		commands->BeginCommandList(command, true);
-		auto transition = [&](RHITexturePtr texture, EImageLayout layout, bool bComputeSampling = false)
+		auto transition = [&](RHITexturePtr texture, EImageLayout layout,
+			bool bComputeSampling = false, int32_t expectedCount = -1)
 		{
-			const auto barriers = Tests::CaptureVulkanImageBarriers([&]()
+			const auto nativeLayout = layout == EImageLayout::ComputeRead || layout == EImageLayout::ComputeWrite
+				? VK_IMAGE_LAYOUT_GENERAL : static_cast<VkImageLayout>(layout);
+			checkBarriers([&]()
 			{
 				if (bComputeSampling)
 				{
@@ -982,31 +996,25 @@ namespace
 				{
 					commands->ImageMemoryBarrier(command, texture, layout);
 				}
-			});
-			const auto nativeLayout = layout == EImageLayout::ComputeRead || layout == EImageLayout::ComputeWrite
-				? VK_IMAGE_LAYOUT_GENERAL : static_cast<VkImageLayout>(layout);
-			return observe(barriers, texture->m_vulkan.m_imageView->m_subresourceRange, nativeLayout);
+			}, texture->m_vulkan.m_imageView->m_subresourceRange, nativeLayout, expectedCount);
 		};
-		Require(transition(cube, EImageLayout::TransferDstOptimal) == 1, "a uniform full-image transition needs only one barrier");
+		transition(cube, EImageLayout::TransferDstOptimal, false, 1);
 		commands->ClearImage(command, cube, glm::vec4(0.25f));
-		Require(transition(cube, EImageLayout::TransferDstOptimal) == 1,
-			"successive transfer writes need a memory dependency even when the image layout stays unchanged");
+		transition(cube, EImageLayout::TransferDstOptimal, false, 1);
 		commands->ClearImage(command, cube, glm::vec4(0.25f));
-		Require(transition(cube, EImageLayout::ComputeWrite) == 1, "uniform mip and face layouts must stay coalesced");
+		transition(cube, EImageLayout::ComputeWrite, false, 1);
 		transition(cube->GetFace(2, 1), EImageLayout::TransferSrcOptimal);
 		transition(cube->GetFace(2, 2), EImageLayout::TransferSrcOptimal);
 		transition(cube->GetMipLevel(1), EImageLayout::TransferDstOptimal);
 		auto alias = RHITexturePtr::Make(ETextureFiltration::Nearest, ETextureClamping::Clamp, false, cube->GetDefaultLayout());
 		alias->m_vulkan = cube->GetFace(2, 2)->m_vulkan;
 		transition(alias, EImageLayout::ShaderReadOnlyOptimal, true);
-		observe(Tests::CaptureVulkanImageBarriers([&]() { commands->EndCommandList(command); }),
-			whole, defaultLayout);
+		checkBarriers([&]() { commands->EndCommandList(command); }, whole, defaultLayout);
 		Require(driver.SubmitCommandList_Immediate(command), "mixed subresource transitions must submit successfully");
 
 		command = driver.CreateCommandList(false, ECommandListQueue::Graphics);
 		commands->BeginCommandList(command, true);
-		Require(transition(cube, cube->GetDefaultLayout()) == 0,
-			"a later command must observe restored defaults without redundant barriers");
+		transition(cube, cube->GetDefaultLayout(), false, 0);
 		transition(cube->GetFace(1, 2), EImageLayout::TransferSrcOptimal);
 		commands->GenerateMipMaps(command, cube);
 		layouts.fill(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -1025,9 +1033,7 @@ namespace
 			}
 		}
 		commands->MemoryBarrier(command, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit), static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
-		const auto restored = Tests::CaptureVulkanImageBarriers([&]() { commands->EndCommandList(command); });
-		Require(observe(restored, whole, defaultLayout) == 1,
-			"restoring uniformly laid out subresources must coalesce back into one barrier");
+		checkBarriers([&]() { commands->EndCommandList(command); }, whole, defaultLayout, 1);
 		Require(driver.SubmitCommandList_Immediate(command), "all face and mip readbacks must complete");
 		for (const auto& buffer : readbacks)
 		{
@@ -1037,7 +1043,10 @@ namespace
 				Require(pixels[value] == 0.25f, "every face and mip must retain its pixels through overlapping layout transitions");
 			}
 		}
-		std::cout << "Image layouts: overlapping mip/face views, aliases, restoration, mip generation, coalescing and 24 GPU readbacks passed\n";
+#if defined(__APPLE__)
+		std::cout << "Native image barriers: old layouts, coalescing and read-only repetitions passed\n";
+#endif
+		std::cout << "Image layouts: overlapping mip/face views, aliases, restoration, mip generation and 24 GPU readbacks passed\n";
 	}
 
 	void TestTextureCaptures()
