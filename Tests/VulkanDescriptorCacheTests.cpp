@@ -118,9 +118,13 @@ namespace
 		}
 		features.Enable();
 		Require(!features.GetMissingRequirement(), "device enabling must preserve the required features");
-		Require(!features.m_core12.samplerFilterMinmax && !features.m_core12.hostQueryReset &&
+		Require(!features.m_core12.samplerFilterMinmax && !features.m_core12.hostQueryReset && !features.m_core12.timelineSemaphore &&
 			!features.m_core12.descriptorBindingUpdateUnusedWhilePending && !features.m_base.features.multiDrawIndirect,
 			"optional features must not become required or enabled without support");
+		features.m_core12.timelineSemaphore = VK_TRUE;
+		features.Enable();
+		Require(features.m_core12.timelineSemaphore && !features.GetMissingRequirement(),
+			"supported timeline semaphores must stay enabled without becoming a device requirement");
 
 		for (uint32_t version : { VK_API_VERSION_1_2, VK_API_VERSION_1_3 })
 		{

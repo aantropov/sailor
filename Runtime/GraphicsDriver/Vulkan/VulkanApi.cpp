@@ -172,6 +172,7 @@ void VulkanDeviceFeatures::Enable()
 	m_core12.descriptorIndexing = core12.descriptorIndexing;
 	m_core12.descriptorBindingUpdateUnusedWhilePending = core12.descriptorBindingUpdateUnusedWhilePending;
 	m_core12.hostQueryReset = core12.hostQueryReset;
+	m_core12.timelineSemaphore = core12.timelineSemaphore;
 
 	const auto atomicFloat = m_atomicFloat;
 	m_atomicFloat = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT, atomicFloat.pNext };

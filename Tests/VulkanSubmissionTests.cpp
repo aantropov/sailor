@@ -543,6 +543,104 @@ namespace
 		PFN_vkQueueSubmit m_previous;
 	};
 
+	class PendingGpuGate
+	{
+	public:
+		explicit PendingGpuGate(VulkanDevicePtr device) : m_device(std::move(device)), m_queue(m_device->GetGraphicsQueue())
+		{
+			VkPhysicalDeviceTimelineSemaphoreFeatures timeline{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES };
+			VkPhysicalDeviceFeatures2 features{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &timeline };
+			vkGetPhysicalDeviceFeatures2(m_device->GetPhysicalDevice(), &features);
+			Require(timeline.timelineSemaphore, "GPU gate tests require timeline semaphore support");
+			const VkSemaphoreTypeCreateInfo type{ VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO, nullptr, VK_SEMAPHORE_TYPE_TIMELINE, 0u };
+			const VkSemaphoreCreateInfo info{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, &type };
+			Require(vkCreateSemaphore(*m_device, &info, nullptr, &m_semaphore) == VK_SUCCESS,
+				"GPU gate timeline semaphore must be created");
+			s_active = this;
+			VulkanSubmissionTestAccess::ExchangeSubmit(*m_queue, Submit, &m_previous);
+		}
+
+		~PendingGpuGate()
+		{
+			Release();
+			m_device->WaitIdle();
+			VulkanSubmissionTestAccess::ExchangeSubmit(*m_queue, m_previous);
+			s_active = nullptr;
+			vkDestroySemaphore(*m_device, m_semaphore, nullptr);
+		}
+
+		void WaitOn(RHICommandListPtr command)
+		{
+			// Recording can run on RHI while another thread submits a resource upload.
+			m_command.store(*command->m_vulkan.m_commandBuffer);
+		}
+
+		VkResult Release()
+		{
+			uint64_t value = 0u;
+			const auto result = vkGetSemaphoreCounterValue(*m_device, m_semaphore, &value);
+			if (result != VK_SUCCESS || value != 0u)
+			{
+				return result;
+			}
+			const VkSemaphoreSignalInfo signal{ VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO, nullptr, m_semaphore, 1u };
+			return vkSignalSemaphore(*m_device, &signal);
+		}
+
+	private:
+		static VKAPI_ATTR VkResult VKAPI_CALL Submit(VkQueue queue, uint32_t count, const VkSubmitInfo* info, VkFence fence)
+		{
+			auto& gate = *s_active;
+			const auto command = gate.m_command.load();
+			for (uint32_t batch = 0u; batch < count; ++batch)
+			{
+				const auto& source = info[batch];
+				for (uint32_t i = 0u; i < source.commandBufferCount; ++i)
+				{
+					if (source.pCommandBuffers[i] != command)
+					{
+						continue;
+					}
+					TVector<VkSubmitInfo> submits;
+					for (uint32_t index = 0u; index < count; ++index)
+					{
+						submits.Add(info[index]);
+					}
+					TVector<VkSemaphore> waits;
+					TVector<VkPipelineStageFlags> stages;
+					TVector<uint64_t> values;
+					for (uint32_t index = 0u; index < source.waitSemaphoreCount; ++index)
+					{
+						waits.Add(source.pWaitSemaphores[index]);
+						stages.Add(source.pWaitDstStageMask[index]);
+						values.Add(0u);
+					}
+					waits.Add(gate.m_semaphore);
+					stages.Add(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+					values.Add(1u);
+					VkTimelineSemaphoreSubmitInfo timeline{ VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO };
+					timeline.pNext = source.pNext;
+					timeline.waitSemaphoreValueCount = static_cast<uint32_t>(values.Num());
+					timeline.pWaitSemaphoreValues = values.GetData();
+					auto& gated = submits[batch];
+					gated.pNext = &timeline;
+					gated.waitSemaphoreCount = static_cast<uint32_t>(waits.Num());
+					gated.pWaitSemaphores = waits.GetData();
+					gated.pWaitDstStageMask = stages.GetData();
+					return gate.m_previous(queue, count, submits.GetData(), fence);
+				}
+			}
+			return gate.m_previous(queue, count, info, fence);
+		}
+
+		VulkanDevicePtr m_device;
+		VulkanQueuePtr m_queue;
+		VkSemaphore m_semaphore = VK_NULL_HANDLE;
+		std::atomic<VkCommandBuffer> m_command{ VK_NULL_HANDLE };
+		PFN_vkQueueSubmit m_previous = nullptr;
+		inline static PendingGpuGate* s_active = nullptr;
+	};
+
 	struct RecordedFrame
 	{
 		RHICommandListPtr command;
@@ -550,7 +648,7 @@ namespace
 		std::array<uint32_t, 64> expected;
 	};
 
-	RecordedFrame RecordFrame(uint32_t seed, VkEvent gpuGate = VK_NULL_HANDLE)
+	RecordedFrame RecordFrame(uint32_t seed)
 	{
 		RecordedFrame frame;
 		for (uint32_t i = 0; i < frame.expected.size(); ++i)
@@ -563,11 +661,6 @@ namespace
 		frame.command = Renderer::GetDriver()->CreateCommandList(false, ECommandListQueue::Graphics);
 		auto commands = Renderer::GetDriverCommands();
 		commands->BeginCommandList(frame.command, true);
-		if (gpuGate != VK_NULL_HANDLE)
-		{
-			vkCmdWaitEvents(*frame.command->m_vulkan.m_commandBuffer, 1, &gpuGate,
-				VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, nullptr, 0, nullptr, 0, nullptr);
-		}
 		frame.command->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 		commands->UpdateBuffer(frame.command, frame.readback, frame.expected.data(), sizeof(frame.expected));
 		frame.command->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
@@ -1592,24 +1685,20 @@ namespace
 		auto device = VulkanApi::GetInstance()->GetMainDevice();
 		auto& driver = Renderer::GetDriver();
 		driver->WaitIdle();
-		VkEvent gate = VK_NULL_HANDLE;
-		const VkEventCreateInfo eventInfo{ VK_STRUCTURE_TYPE_EVENT_CREATE_INFO };
-		Require(vkCreateEvent(*device, &eventInfo, nullptr, &gate) == VK_SUCCESS,
-			"pending flight test requires a host-signalled GPU event");
+		PendingGpuGate gate(device);
 		TVector<RecordedFrame> frames;
 		TVector<RHIFencePtr> completions;
 		const bool bWasOutdated = VulkanSubmissionTestAccess::ExchangeSwapchainOutdated(*device, true);
 		Tests::ScopeExit cleanup([&]()
 			{
-				vkSetEvent(*device, gate);
+				gate.Release();
 				driver->WaitIdle();
 				VulkanSubmissionTestAccess::ExchangeSwapchainOutdated(*device, bWasOutdated);
-				vkDestroyEvent(*device, gate, nullptr);
 			});
 		const auto firstSlot = VulkanSubmissionTestAccess::Flight(*device);
 		for (uint32_t i = 0; i < driver->GetMaxFramesInFlight(); ++i)
 		{
-			frames.Add(RecordFrame(1200u + i, gate));
+			frames.Add(RecordFrame(1200u + i));
 		}
 		for (auto& frame : frames)
 		{
@@ -1618,6 +1707,7 @@ namespace
 			Require(driver->BeginRenderSubmission(slot, bHasImage) && !bHasImage,
 				"pending flight fixture must acquire the no-present path");
 			auto completion = RHIFencePtr::Make();
+			gate.WaitOn(frame.command);
 			Require(driver->SubmitFrameWithoutPresent({ frame.command }, {}, completion).m_bSubmitted,
 				"the gated GPU work must be submitted, not simulated");
 			completions.Add(completion);
@@ -1654,7 +1744,7 @@ namespace
 				bObservedPendingWait = bWaitStarted.load() &&
 					vkWaitForFences(*device, 1, &nativeFence, VK_TRUE, 50000000ull) == VK_TIMEOUT &&
 					!bAcquireReturned.load();
-				signalResult = vkSetEvent(*device, gate);
+				signalResult = gate.Release();
 			});
 		uint32_t slot = 0;
 		bool bHasImage = false;
@@ -5521,10 +5611,9 @@ frame: []
 			if (m_readback)
 			{
 				m_recordedCommand = command;
-				if (m_gpuGate != VK_NULL_HANDLE)
+				if (m_gpuGate)
 				{
-					vkCmdWaitEvents(*command->m_vulkan.m_commandBuffer, 1, &m_gpuGate,
-						VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, nullptr, 0, nullptr, 0, nullptr);
+					m_gpuGate->WaitOn(command);
 				}
 				command->m_vulkan.m_commandBuffer->MemoryBarrier(VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 				Renderer::GetDriverCommands()->UpdateBuffer(command, m_readback, &m_payload, sizeof(m_payload));
@@ -5541,7 +5630,7 @@ frame: []
 		TRefPtr<SubmissionObservedResources> m_resources;
 		TSharedPtr<const RHIMotionHistoryFrame> m_previousMotion;
 		RHIBufferPtr m_readback;
-		VkEvent m_gpuGate = VK_NULL_HANDLE;
+		PendingGpuGate* m_gpuGate = nullptr;
 		RHICommandListPtr m_recordedCommand;
 		RHICommandListPtr m_transferCommand;
 		uint64_t m_generation = 0;
@@ -5707,9 +5796,8 @@ frame: []
 		node->m_material = TRefPtr<SubmissionHistoryMaterial>::Make();
 		node->m_material->SetBindings(RHIShaderBindingSetPtr::Make());
 		node->m_bReleased.store(true);
-		const VkEventCreateInfo eventInfo{ VK_STRUCTURE_TYPE_EVENT_CREATE_INFO };
-		Require(vkCreateEvent(*device, &eventInfo, nullptr, &node->m_gpuGate) == VK_SUCCESS,
-			"renderer flight test requires a host-signalled GPU event");
+		PendingGpuGate gate(device);
+		node->m_gpuGate = &gate;
 		std::atomic<bool> bWaitStarted{ false }, bPushReturned{ false };
 		PFN_vkGetFenceStatus status = vkGetFenceStatus;
 		PFN_vkWaitForFences wait = ObservePendingFlightWait;
@@ -5721,7 +5809,7 @@ frame: []
 			});
 		Tests::ScopeExit cleanup([&]()
 			{
-				vkSetEvent(*device, node->m_gpuGate);
+				gate.Release();
 				renderer->WaitIdle();
 				OnRender([&]()
 					{
@@ -5732,8 +5820,7 @@ frame: []
 				VulkanSubmissionTestAccess::ExchangeSwapchainOutdated(*device, bWasOutdated);
 				graph->GetGraph() = nodes;
 				renderer->RemoveSceneView(world.GetRawPtr());
-				vkDestroyEvent(*device, node->m_gpuGate, nullptr);
-				node->m_gpuGate = VK_NULL_HANDLE;
+				node->m_gpuGate = nullptr;
 			});
 		graph->GetGraph().Clear();
 		graph->GetGraph().Add(node);
@@ -5798,7 +5885,7 @@ frame: []
 				bPreservedResources = bWaitStarted.load() &&
 					vkWaitForFences(*device, 1, &nativeFence, VK_TRUE, 50000000ull) == VK_TIMEOUT &&
 					firstResources->m_numResets.load() == resetCount;
-				signalResult = vkSetEvent(*device, node->m_gpuGate);
+				signalResult = gate.Release();
 			});
 		const bool bAccepted = renderer->PushFrame(frame);
 		bPushReturned.store(true);
@@ -6218,22 +6305,19 @@ frame: []
 		node->m_bReleased.store(true);
 		node->m_readback = Renderer::GetDriver()->CreateBuffer(sizeof(uint32_t), EBufferUsageBit::BufferTransferDst_Bit,
 			EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
-		VkEvent gate = VK_NULL_HANDLE;
-		const VkEventCreateInfo eventInfo{ VK_STRUCTURE_TYPE_EVENT_CREATE_INFO };
-		Require(vkCreateEvent(*device, &eventInfo, nullptr, &gate) == VK_SUCCESS, "timing publication requires a GPU gate");
+		PendingGpuGate gate(device);
 		Tests::ScopeExit cleanup([&]()
 			{
 				node->m_bReleased.store(true);
 				node->m_bReleased.notify_one();
-				vkSetEvent(*device, gate);
+				gate.Release();
 				renderer->WaitIdle();
 				OnRender([&]() { dispatch.Clear(); });
-				node->m_gpuGate = VK_NULL_HANDLE;
+				node->m_gpuGate = nullptr;
 				graph->GetGraph() = originalNodes;
 				App::SetRenderStatsMode(originalMode);
 				VulkanSubmissionTestAccess::ExchangeSwapchainOutdated(*device, bWasOutdated);
 				renderer->RemoveSceneView(world.GetRawPtr());
-				vkDestroyEvent(*device, gate, nullptr);
 			});
 		graph->GetGraph().Clear();
 		graph->GetGraph().Add(node);
@@ -6268,7 +6352,7 @@ frame: []
 		Require(ready.m_timings[0].m_queue != ready.m_timings[1].m_queue,
 			"the same node's graphics and compute/upload scopes must not be combined");
 
-		node->m_gpuGate = gate;
+		node->m_gpuGate = &gate;
 		const auto retained = submit(false);
 		// A single flight cannot be reused until the gated frame completes.
 		const auto pending = device->GetMaxFramesInFlight() > 1u ? submit(false) : renderer->GetGpuTimings();
@@ -6280,10 +6364,10 @@ frame: []
 		Require(renderer->GetGpuTimings().m_queryId == pending.m_queryId &&
 			pending.GetAgeMilliseconds(std::chrono::steady_clock::now()) > 0,
 			"repeated consumer reads must preserve query identity and expose the sample's age");
-		Require(vkSetEvent(*device, gate) == VK_SUCCESS &&
+		Require(gate.Release() == VK_SUCCESS &&
 			node->m_completion->Wait(5000000000ull) == EFenceStatus::Finished,
 			"releasing the gate must complete the occupied flights");
-		node->m_gpuGate = VK_NULL_HANDLE;
+		node->m_gpuGate = nullptr;
 		node->SetTag("Replacement submission"_h);
 		submit();
 		const auto replacement = submit();
