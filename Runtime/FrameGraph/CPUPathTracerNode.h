@@ -111,7 +111,6 @@ namespace Sailor::Framegraph
 
 		ShaderSetPtr m_pShader{};
 		RHI::RHIMaterialPtr m_overlayMaterial{};
-		RHI::RHIMaterialPtr m_overlayMaterialMsaa{};
 		TMap<uint32_t, TUniquePtr<CameraState>> m_cameras;
 		uint32_t m_lastCameraIndex = 0;
 		uint64_t m_nextImageRevision = 0;

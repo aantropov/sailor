@@ -2,7 +2,6 @@
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
-#include "RHI/Surface.h"
 #include "RHI/Texture.h"
 #include "RHI/RenderTarget.h"
 #include "RHI/Types.h"
@@ -55,9 +54,6 @@ void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
 	RHI::RHITexturePtr target = GetResolvedAttachment("color"_h, frameGraph.GetRawPtr());
-	RHI::RHISurfacePtr targetMsaa = GetRHIResource("color"_h, frameGraph.GetRawPtr()).DynamicCast<RHISurface>();
-
-	const bool bShouldUseMsaaTarget = targetMsaa.IsValid() && targetMsaa->NeedsResolve();
 
 	if (!target && !m_unresolvedResourceParams.ContainsKey("color"_h))
 	{
@@ -101,11 +97,10 @@ void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		}
 	}
 
-	if (!m_postEffectMaterial || m_bMultisampling != bShouldUseMsaaTarget)
+	if (!m_postEffectMaterial)
 	{
-		m_bMultisampling = bShouldUseMsaaTarget;
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
-		RenderState renderState{ false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, bShouldUseMsaaTarget };
+		RenderState renderState{ false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, false };
 		m_postEffectMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pShader, bindings);
 	}
 
@@ -159,32 +154,15 @@ void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 	auto mesh = frameGraph->GetFullscreenNdcQuad();
 
-	if (bShouldUseMsaaTarget)
-	{
-		commands->ImageMemoryBarrier(commandList, targetMsaa->GetTarget(), EImageLayout::ColorAttachmentOptimal);
-
-		commands->BeginRenderPass(commandList,
-			TVector<RHI::RHISurfacePtr>{targetMsaa},
-			nullptr,
-			glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
-			glm::ivec2(0, 0),
-			false,
-			glm::vec4(0.0f),
-			0.0f,
-			false);
-	}
-	else
-	{
-		commands->BeginRenderPass(commandList,
-			TVector<RHI::RHITexturePtr>{target},
-			nullptr,
-			glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
-			glm::ivec2(0, 0),
-			false,
-			glm::vec4(0.0f),
-			0.0f,
-			false);
-	}
+	commands->BeginRenderPass(commandList,
+		TVector<RHI::RHITexturePtr>{target},
+		nullptr,
+		glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
+		glm::ivec2(0, 0),
+		false,
+		glm::vec4(0.0f),
+		0.0f,
+		false);
 
 	const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
 	const uint32_t vertexOffset = (uint32_t)mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();

@@ -6,7 +6,6 @@
 #include "RHI/RenderTarget.h"
 #include "RHI/SceneView.h"
 #include "RHI/Shader.h"
-#include "RHI/Surface.h"
 #include "RHI/VertexDescription.h"
 #include <cmath>
 
@@ -51,7 +50,6 @@ void AtmosphericFogNode::Process(RHIFrameGraphPtr frameGraph, RHICommandListPtr 
 	if (m_parameters.m_fog.x <= 0.0f || m_parameters.m_scattering.z <= 0.0f || !frameGraph) return;
 
 	RHITexturePtr color = GetResolvedAttachment("color"_h, frameGraph.GetRawPtr());
-	RHISurfacePtr surface = GetRHIResource("color"_h, frameGraph.GetRawPtr()).DynamicCast<RHISurface>();
 	RHITexturePtr depth = GetResolvedAttachment("depthSampler"_h, frameGraph.GetRawPtr());
 	if (!color || !depth || !sceneView.m_frameBindings) return;
 	PreloadShader();
@@ -109,12 +107,10 @@ void AtmosphericFogNode::Process(RHIFrameGraphPtr frameGraph, RHICommandListPtr 
 		m_depthTexture = sampledDepth;
 	}
 	commands->UpdateShaderBinding(transferCommandList, m_bindings->GetOrAddShaderBinding("data"_h), &m_parameters, sizeof(m_parameters));
-	const bool multisampling = surface && surface->NeedsResolve();
-	if (!m_material || m_bMultisampling != multisampling)
+	if (!m_material)
 	{
-		m_bMultisampling = multisampling;
 		const RenderState state{ false, false, 0, false, ECullMode::None,
-			EBlendMode::AlphaBlendingPreserveAlpha, EFillMode::Fill, 0, multisampling };
+			EBlendMode::AlphaBlendingPreserveAlpha, EFillMode::Fill, 0, false };
 		m_material = driver->CreateMaterial(driver->GetOrAddVertexDescription<VertexP3N3UV2C4>(),
 			EPrimitiveTopology::TriangleList, state, m_shader);
 	}
@@ -125,19 +121,8 @@ void AtmosphericFogNode::Process(RHIFrameGraphPtr frameGraph, RHICommandListPtr 
 	commands->ImageMemoryBarrier(commandList, m_previousEnvironment, EImageLayout::ShaderReadOnlyOptimal);
 	commands->ImageMemoryBarrier(commandList, color, EImageLayout::ColorAttachmentOptimal);
 	const glm::vec4 viewport(0, 0, color->GetExtent().x, color->GetExtent().y);
-	if (multisampling)
-	{
-		// Blend into the live MSAA surface as well as its resolve, so a later
-		// transparent pass cannot restore an unfogged multisampled background.
-		commands->ImageMemoryBarrier(commandList, surface->GetTarget(), EImageLayout::ColorAttachmentOptimal);
-		commands->BeginRenderPass(commandList, TVector<RHISurfacePtr>{surface}, nullptr,
-			viewport, glm::ivec2(0), false, glm::vec4(0), 0.0f, false);
-	}
-	else
-	{
-		commands->BeginRenderPass(commandList, TVector<RHITexturePtr>{color}, nullptr,
-			viewport, glm::ivec2(0), false, glm::vec4(0), 0.0f, false);
-	}
+	commands->BeginRenderPass(commandList, TVector<RHITexturePtr>{color}, nullptr,
+		viewport, glm::ivec2(0), false, glm::vec4(0), 0.0f, false);
 	const auto mesh = frameGraph->GetFullscreenNdcQuad();
 	commands->BindMaterial(commandList, m_material);
 	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);

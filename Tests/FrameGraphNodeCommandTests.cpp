@@ -1250,9 +1250,9 @@ frame:
 			Require(!graph->GetGraphNode("External"_h)->GetRHIResource("color"_h, graph.GetRawPtr()),
 				"binding static targets must not require an unpublished external color");
 			auto particles = graph->GetGraphNode("Particles"_h)->GetTargetAttachment("color"_h, graph.GetRawPtr());
-			Require(particles->GetMsaaSamples() == samples && particles != color && particles != motion &&
+			Require(particles->GetMsaaSamples() == EMsaaSamples::Samples_1 && particles != color && particles != motion &&
 				particles == graph->GetGraphNode("ClearParticles"_h)->GetTargetAttachment("target"_h, graph.GetRawPtr()),
-				"imported particle output and Clear must share their own live MSAA image before Process");
+				"particle outputs must remain single-sample");
 			auto original = first->GetResolvedAttachment("color"_h, graph.GetRawPtr());
 			graph->SetRenderTarget("Color"_h, graph->GetRenderTarget("Other"_h));
 			Require(first->GetTargetAttachment("color"_h, graph.GetRawPtr()) == color &&
@@ -1264,7 +1264,7 @@ frame:
 			"separate imported graphs must not share implicit MSAA images");
 		Require(firstInstance->GetRHI()->GetGraphNode("Particles"_h)->GetTargetAttachment("color"_h, firstInstance->GetRHI().GetRawPtr()) !=
 			secondInstance->GetRHI()->GetGraphNode("Particles"_h)->GetTargetAttachment("color"_h, secondInstance->GetRHI().GetRawPtr()),
-			"separate imported particle graphs must not share implicit MSAA images");
+			"separate imported particle graphs must not share output images");
 		FrameGraphImporterTestAccess::ReleaseInstance(*importer, firstInstance);
 		FrameGraphImporterTestAccess::ReleaseInstance(*importer, secondInstance);
 		std::cout << "FrameGraph static MSAA binding: import-time attachments, aliases and independent instances passed\n";
@@ -4815,11 +4815,8 @@ frame:
 					else if (depthKind == 1) graph->SetSurface("ParticleDepth"_h, depthResource.DynamicCast<RHISurface>());
 					else graph->SetRenderTarget("ParticleDepth"_h, depth);
 				}
-				const bool msaa = VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT;
-				colorTarget = colorSurface ? colorResource.DynamicCast<RHISurface>()->GetTarget() : msaa ?
-					driver->GetOrAddMsaaFramebufferRenderTarget(color->GetFormat(), extent).StaticCast<RHIRenderTarget>() : color;
-				depthTarget = forceSingleSample ? depth : bDepthSurface ? depthResource.DynamicCast<RHISurface>()->GetTarget() : msaa ?
-					driver->GetOrAddMsaaFramebufferRenderTarget(depth->GetFormat(), extent).StaticCast<RHIRenderTarget>() : depth;
+				colorTarget = color;
+				depthTarget = depth;
 			}
 			const std::array<uint32_t, 6> frames{ 1, 2, 0, 1, 0, 2 };
 			UboFrameData frameData{};
@@ -4855,7 +4852,7 @@ frame:
 					target = driver->GetOrAddMsaaFramebufferRenderTarget(depth->GetFormat(), extent);
 					commands->ImageMemoryBarrier(recorded.m_draw, target, EImageLayout::TransferDstOptimal);
 					commands->ClearDepthStencil(recorded.m_draw, target, 1.0f - recorded.m_clearDepth, 0);
-					if (forceSingleSample)
+					if (depthResource.DynamicCast<RHISurface>()->NeedsResolve())
 					{
 						target = depthResource.DynamicCast<RHISurface>()->GetTarget();
 						commands->ImageMemoryBarrier(recorded.m_draw, target, EImageLayout::TransferDstOptimal);
@@ -4866,9 +4863,9 @@ frame:
 			node->Process(graph, recorded.m_upload, recorded.m_draw, scene);
 			const auto& layouts = recorded.m_draw->m_vulkan.m_commandBuffer->GetImageBarriers();
 			Require(layouts[*colorTarget->m_vulkan.m_image].m_layout == EImageLayout::ColorAttachmentOptimal,
-				"particle rendering must transition the actual color target, including cached MSAA attachments");
+				"particle rendering must transition the resolved color target");
 			Require(layouts[*depthTarget->m_vulkan.m_image].m_layout == EImageLayout::DepthAttachmentOptimal,
-				"particle rendering must transition the actual depth target, including cached MSAA attachments");
+				"particle rendering must transition the resolved depth target");
 			recorded.m_bAttachmentsMatch = node->GetDrawCallStats().m_numBatches == 2 && recordedColorCount == 1 &&
 				recordedColor.imageView == static_cast<VkImageView>(*colorTarget->m_vulkan.m_imageView) &&
 				recordedDepth.imageView == static_cast<VkImageView>(*depthTarget->m_vulkan.m_imageView) &&
@@ -4879,7 +4876,7 @@ frame:
 			recorded.m_depth = ReadDepth(recorded.m_draw, depthTarget, depthReadback);
 			recorded.m_resolvedDepth = ReadDepth(recorded.m_draw, depth, depthReadback);
 			const auto surface = depthResource.DynamicCast<RHISurface>();
-			if (forceSingleSample && surface && surface->NeedsResolve())
+			if (surface && surface->NeedsResolve())
 			{
 				recorded.m_unusedDepth = ReadDepth(recorded.m_draw, surface->GetTarget(), depthReadback);
 				recorded.m_unusedSamples = uint32_t(surface->GetTarget()->GetMsaaSamples());
@@ -4902,7 +4899,6 @@ frame:
 		CaptureAttachments capture;
 		auto& driver = Renderer::GetDriver();
 		auto commands = Renderer::GetDriverCommands();
-		const bool msaa = colorKind != 2 && VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT;
 		auto graph = RHIFrameGraphPtr::Make();
 		auto view = RHISceneViewPtr::Make();
 		view->m_snapshots.Resize(1);
@@ -5017,7 +5013,7 @@ frame:
 			{
 				auto depth = driver->CreateRenderTarget(extent, 1, EFormat::D32_SFLOAT, ETextureFiltration::Nearest,
 					ETextureClamping::Clamp, ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::TextureTransferDst_Bit);
-				auto depthSurface = msaa ? driver->CreateSurface(depth) : RHISurfacePtr::Make(depth, depth, false);
+				auto depthSurface = driver->CreateSurface(depth);
 				clearDepth->SetRHIResource("target"_h, depthSurface);
 				for (uint32_t i = 0; i < nodes.size(); ++i)
 				{
@@ -5100,16 +5096,16 @@ frame:
 			commands->BeginCommandList(recorded.m_readback, true);
 			for (uint32_t i = 0; i < nodes.size(); ++i)
 			{
-				auto target = nodes[i]->GetTargetAttachment("color"_h, graph.GetRawPtr());
+				auto target = nodes[i]->GetResolvedAttachment("color"_h, graph.GetRawPtr());
 				if (!replace) Require(target == previousTargets[i], "unchanged particle output must reuse its live image");
 				else if (frame) Require(target != previousTargets[i], "replaced particle output must own a different live image");
 				previousTargets[i] = target;
 				const auto& attachment = nodes[i]->m_colorAttachment;
 				recorded.m_bAttachmentsMatch &= nodes[i]->GetDrawCallStats().m_numBatches == 2 &&
-					target->GetMsaaSamples() == (msaa ? App::GetSubmodule<Renderer>()->GetMsaaSamples() : EMsaaSamples::Samples_1) &&
+					target->GetMsaaSamples() == EMsaaSamples::Samples_1 &&
 					attachment.imageView == static_cast<VkImageView>(*target->m_vulkan.m_imageView) &&
-					attachment.resolveImageView == (msaa ? static_cast<VkImageView>(*outputs[i]->m_vulkan.m_imageView) : VK_NULL_HANDLE) &&
-					attachment.resolveMode == (msaa ? VK_RESOLVE_MODE_AVERAGE_BIT : VK_RESOLVE_MODE_NONE) &&
+					attachment.resolveImageView == VK_NULL_HANDLE &&
+					attachment.resolveMode == VK_RESOLVE_MODE_NONE &&
 					attachment.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && attachment.storeOp == VK_ATTACHMENT_STORE_OP_STORE;
 				recorded.m_colors[i * 2] = ReadColor(recorded.m_readback, outputs[i]);
 				recorded.m_colors[i * 2 + 1] = target == outputs[i] ? recorded.m_colors[i * 2] : ReadColor(recorded.m_readback, target);
@@ -6576,9 +6572,9 @@ frame:
 						" batches=" + std::to_string(node->GetDrawCallStats().m_numBatches));
 				{
 					Require(recordedColorCount == 1 &&
-						recordedColor.imageView == static_cast<VkImageView>(*output->GetTarget()->m_vulkan.m_imageView) &&
-						recordedColor.resolveImageView == (output->NeedsResolve() ? static_cast<VkImageView>(*output->GetResolved()->m_vulkan.m_imageView) : VK_NULL_HANDLE),
-						"imported rendering must retain the actual static Surface attachment");
+						recordedColor.imageView == static_cast<VkImageView>(*output->GetResolved()->m_vulkan.m_imageView) &&
+						recordedColor.resolveImageView == VK_NULL_HANDLE,
+						"imported post-processing must use the resolved Surface attachment");
 					auto bindings = PostProcessNodeTestAccess::GetBindings(*node, scene);
 					Require(bindings->GetOrAddShaderBinding("sourceSampler"_h)->GetTextureBinding() == source &&
 						bindings->GetOrAddShaderBinding("externalSampler"_h)->GetTextureBinding() == (published ? RHITexturePtr(external) : fallback),
@@ -6596,7 +6592,10 @@ frame:
 					}
 				auto readback = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 				commands->BeginCommandList(readback, true);
-				const std::array images{ ReadColor(readback, output->GetResolved()), ReadColor(readback, output->GetTarget()) };
+				const std::array images{
+					std::pair{ ReadColor(readback, output->GetResolved()), false },
+					std::pair{ ReadColor(readback, output->GetTarget()), output->NeedsResolve() }
+				};
 				commands->MemoryBarrier(readback, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit), static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
 				commands->EndCommandList(readback);
 				auto finished = RHIFencePtr::Make();
@@ -6606,13 +6605,14 @@ frame:
 				for (const auto& image : images)
 					for (uint32_t pixel = 0; pixel < Side * Side; ++pixel)
 					{
-						const auto actual = static_cast<const glm::vec4*>(image->GetPointer())[pixel];
+						const auto actual = static_cast<const glm::vec4*>(image.first->GetPointer())[pixel];
+						const auto expectedColor = image.second ? glm::vec4(0) : expected;
 						for (uint32_t component = 0; component < 4; ++component)
-							if (!std::isfinite(actual[component]) || std::abs(actual[component] - expected[component]) >= (published ? 0.00001f : 0.002f))
+							if (!std::isfinite(actual[component]) || std::abs(actual[component] - expectedColor[component]) >= (published ? 0.00001f : 0.002f))
 								throw std::runtime_error("Imported graph pixel mismatch: instance=" + std::to_string(instanceIndex) +
 									" frame=" + std::to_string(frame) + " pixel=" + std::to_string(pixel) +
 									" component=" + std::to_string(component) + " actual=" + std::to_string(actual[component]) +
-									" expected=" + std::to_string(expected[component]));
+									" expected=" + std::to_string(expectedColor[component]));
 					}
 			}
 		}
@@ -7523,8 +7523,11 @@ frame:
 			const glm::vec4 radiance = frame == 0 ? glm::vec4(0.125f, 1, 0.25f, 1) : glm::vec4(1, 0.125f, 0.5f, 1);
 			const float depthValue = frame == 2 ? 0 : frame == 0 ? 0.5f : 0.25f;
 			const float density = frame == 0 ? 0.3f : 0.65f;
-			ClearColor(draw, target, background);
-			if (msaa) ClearColor(draw, color, glm::vec4(-8));
+			ClearColor(draw, color, background);
+			if (msaa)
+			{
+				ClearColor(draw, target, glm::vec4(-8));
+			}
 			ClearColor(draw, environment, radiance);
 			commands->ImageMemoryBarrier(draw, depth, EImageLayout::TransferDstOptimal);
 			commands->ClearDepthStencil(draw, depth, depthValue, 0);
@@ -7547,15 +7550,29 @@ frame:
 			commands->UpdateShaderBinding(upload, frameBinding, &frameData, sizeof(frameData));
 			recordedColorCount = 0;
 			node->Process(graph, upload, draw, scene);
+			Require(node->GetDrawCallStats().m_numBatches == 1 && recordedColorCount == 1 &&
+				recordedColor.imageView == static_cast<VkImageView>(*color->m_vulkan.m_imageView) &&
+				recordedColor.resolveImageView == VK_NULL_HANDLE &&
+				recordedColor.resolveMode == VK_RESOLVE_MODE_NONE &&
+				recordedColor.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && recordedColor.storeOp == VK_ATTACHMENT_STORE_OP_STORE,
+				"Fog must blend into the resolved color at 1x, even when bound to an MSAA Surface");
 			auto resolvedReadback = ReadColor(draw, color);
+			auto untouchedTarget = msaa ? ReadColor(draw, target) : RHIBufferPtr{};
+			// The graph explicitly copies the fogged resolve back before another MSAA geometry pass.
+			auto resumeGeometry = TRefPtr<BlitNode>::Make();
+			resumeGeometry->SetRHIResource_Unresolved("src"_h, "Color"_h);
+			resumeGeometry->SetRHIResource_Unresolved("dst"_h, "Color"_h);
+			resumeGeometry->Process(graph, upload, draw, scene);
 			auto targetReadback = msaa ? ReadColor(draw, target) : resolvedReadback;
 			CompleteCommands(upload, draw);
-			Require(node->GetDrawCallStats().m_numBatches == 1 && recordedColorCount == 1 &&
-				recordedColor.imageView == static_cast<VkImageView>(*target->m_vulkan.m_imageView) &&
-				recordedColor.resolveImageView == (msaa ? static_cast<VkImageView>(*color->m_vulkan.m_imageView) : VK_NULL_HANDLE) &&
-				recordedColor.resolveMode == (msaa ? VK_RESOLVE_MODE_AVERAGE_BIT : VK_RESOLVE_MODE_NONE) &&
-				recordedColor.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && recordedColor.storeOp == VK_ATTACHMENT_STORE_OP_STORE,
-				"Fog must blend into the selected live target and resolve it");
+			if (untouchedTarget)
+			{
+				const auto pixels = static_cast<const glm::vec4*>(untouchedTarget->GetPointer());
+				for (uint32_t i = 0; i < Side * Side; ++i)
+				{
+					Require(pixels[i] == glm::vec4(-8), "Fog must not modify the multisampled target");
+				}
+			}
 			for (auto readback : { resolvedReadback, targetReadback })
 			{
 				const auto pixels = static_cast<const glm::vec4*>(readback->GetPointer());
@@ -7574,7 +7591,7 @@ frame:
 			}
 		}
 		std::cout << "Fog colorSurface=" << colorIsSurface << " late=" << late << " depth=" << static_cast<uint32_t>(depthFormat) <<
-			": three frames, replaced inputs, sky/alpha and both images passed\n";
+			": resolved 1x fog, preserved MSAA samples and explicit geometry reseeding passed\n";
 	}
 
 	enum class LightCullingInput { Default, Bound, Named, NamedWithoutDefault };
@@ -7913,19 +7930,23 @@ frame:
 			commands->BeginCommandList(graphics, true);
 			commands->MemoryBarrier(graphics, static_cast<EAccessFlags>(EAccessBit::HostWrite_Bit),
 				static_cast<EAccessFlags>(EAccessBit::VertexAttributeRead_Bit) | static_cast<EAccessFlags>(EAccessBit::IndexRead_Bit));
+			const bool bHasMsaaTarget = surface && surface->NeedsResolve();
+			if (bHasMsaaTarget)
+			{
+				ClearColor(graphics, surface->GetTarget(), glm::vec4(-8));
+			}
 			recordedColorCount = 0;
 			const auto beforeUpload = upload->GetNumRecordedCommands();
 			node->Process(graph, upload, graphics, scene);
 			const auto uploadCommands = upload->GetNumRecordedCommands() - beforeUpload;
-			const bool msaa = surface && surface->NeedsResolve();
 			auto currentBindings = PostProcessNodeTestAccess::GetBindings(*node, scene);
 			Require(currentBindings.IsValid(), "post-process shader must be ready and create its bindings");
 			const auto binding = currentBindings->GetOrAddShaderBinding("data"_h);
 			const auto reflectedSize = (std::max)(binding->GetLayout().m_size, binding->GetLayout().m_paddedSize);
 			const bool validAttachments = recordedColorCount == 1 &&
-				recordedColor.imageView == static_cast<VkImageView>(*(msaa ? surface->GetTarget() : target)->m_vulkan.m_imageView) &&
-				recordedColor.resolveImageView == (msaa ? static_cast<VkImageView>(*target->m_vulkan.m_imageView) : VK_NULL_HANDLE) &&
-				recordedColor.resolveMode == (msaa ? VK_RESOLVE_MODE_AVERAGE_BIT : VK_RESOLVE_MODE_NONE);
+				recordedColor.imageView == static_cast<VkImageView>(*target->m_vulkan.m_imageView) &&
+				recordedColor.resolveImageView == VK_NULL_HANDLE &&
+				recordedColor.resolveMode == VK_RESOLVE_MODE_NONE;
 			if (!validAttachments || binding->m_vulkan.m_valueBinding->Get().m_size < reflectedSize)
 			{
 				commands->EndCommandList(upload);
@@ -7938,6 +7959,7 @@ frame:
 			auto readback = driver->CreateBuffer(Side * Side * sizeof(glm::vec4), EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
 			commands->ImageMemoryBarrier(graphics, target, EImageLayout::TransferSrcOptimal);
 			commands->CopyImageToBuffer(graphics, target, readback);
+			auto untouchedTarget = bHasMsaaTarget ? ReadColor(graphics, surface->GetTarget()) : RHIBufferPtr{};
 			commands->MemoryBarrier(graphics, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit), static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
 			commands->EndCommandList(upload);
 			commands->EndCommandList(graphics);
@@ -7948,6 +7970,14 @@ frame:
 				"post-process upload and draw must submit");
 			Require(finished->Wait(5000000000ull) == EFenceStatus::Finished && uploaded->Wait(5000000000ull) == EFenceStatus::Finished,
 				"post-process readback must complete");
+			if (untouchedTarget)
+			{
+				const auto pixels = static_cast<const glm::vec4*>(untouchedTarget->GetPointer());
+				for (uint32_t i = 0; i < Side * Side; ++i)
+				{
+					Require(pixels[i] == glm::vec4(-8), "PostProcess must leave the MSAA target untouched");
+				}
+			}
 			const auto pixels = static_cast<const glm::vec4*>(readback->GetPointer());
 			const auto expected = inverted ? glm::vec4(1) - (tint * gain + texel) : tint * gain + texel;
 			for (uint32_t i = 0; i < Side * Side; ++i)

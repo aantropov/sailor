@@ -354,6 +354,12 @@ frame:
   - maxAccumulatedSamples: 32
   renderTargets:
   - color: Main
+
+# Restore the resolved overlay to the scene target before MSAA geometry resumes.
+- name: Blit
+  renderTargets:
+  - src: Main
+  - dst: Main
   
 ############################
 - name: RenderScene

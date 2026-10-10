@@ -38,7 +38,6 @@ namespace Sailor::Framegraph
 		std::string m_shaderPath;
 		std::string m_shaderDefines;
 		uint64_t m_shaderGeneration = 0;
-		bool m_bMultisampling = false;
 	};
 
 	template class TFrameGraphNode<PostProcessNode>;

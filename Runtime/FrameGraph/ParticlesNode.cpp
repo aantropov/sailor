@@ -18,12 +18,6 @@ using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 using namespace Sailor::Framegraph::Experimental;
 
-const TVector<StringHash>& ParticlesNode::GetMsaaOutputs() const
-{
-	static const TVector<StringHash> outputs = { "color"_h };
-	return outputs;
-}
-
 bool ParticlesNode::InitializeBuffers(const TVector<PerInstanceData>& instances)
 {
 	auto& driver = Renderer::GetDriver();
@@ -188,19 +182,11 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 		if (!InitializeBuffers(instances)) return;
 	}
 
-	const auto colorSurface = GetRHIResource("color"_h, frameGraph.GetRawPtr()).DynamicCast<RHISurface>();
-	const auto colorAttachment = GetTargetAttachment("color"_h, frameGraph.GetRawPtr());
-	const auto colorResolve = colorSurface && colorSurface->NeedsResolve() ? colorSurface->GetResolved() : RHITexturePtr{};
+	const auto colorAttachment = GetResolvedAttachment("color"_h, frameGraph.GetRawPtr());
 	auto depthResource = GetRHIResource("depthStencil"_h, frameGraph.GetRawPtr());
 	if (!depthResource) depthResource = frameGraph->GetResource("DepthBuffer"_h);
 	const auto depthSurface = depthResource.DynamicCast<RHISurface>();
 	RHITexturePtr depthAttachment = depthSurface ? depthSurface->GetResolved() : depthResource.DynamicCast<RHITexture>();
-	RHITexturePtr depthResolve;
-	if (depthSurface && depthSurface->NeedsResolve() && (!colorSurface || colorSurface->NeedsResolve()))
-	{
-		depthResolve = depthAttachment;
-		depthAttachment = depthSurface->GetTarget();
-	}
 	if (!colorAttachment) return;
 
 	TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData, m_material->GetBindings(), m_shadowMapBinding });
@@ -240,7 +226,7 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 			true,
 			glm::vec4(0.0f),
 			0.0f,
-			true,
+			false,
 			true))
 		{
 			commands->EndDebugRegion(commandList);
@@ -269,25 +255,21 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 	//
 
 	commands->ImageMemoryBarrier(commandList, colorAttachment, EImageLayout::ColorAttachmentOptimal);
-	if (colorResolve) commands->ImageMemoryBarrier(commandList, colorResolve, EImageLayout::ColorAttachmentOptimal);
 	if (depthAttachment)
 	{
 		const auto depthLayout = IsDepthStencilFormat(depthAttachment->GetFormat()) ?
 			EImageLayout::DepthStencilAttachmentOptimal : EImageLayout::DepthAttachmentOptimal;
 		commands->ImageMemoryBarrier(commandList, depthAttachment, depthLayout);
-		if (depthResolve) commands->ImageMemoryBarrier(commandList, depthResolve, depthLayout);
 	}
 	if (!commands->BeginRenderPass(commandList,
 		TVector<RHITexturePtr>{ colorAttachment },
-		TVector<RHITexturePtr>{ colorResolve },
 		depthAttachment,
-		depthResolve,
 		glm::vec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y),
 		glm::ivec2(0, 0),
 		false,
 		glm::vec4(0.0f),
 		0.0f,
-		!colorSurface || colorSurface->NeedsResolve(),
+		false,
 		true))
 	{
 		commands->EndDebugRegion(commandList);

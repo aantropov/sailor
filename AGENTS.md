@@ -12,6 +12,7 @@
 
 - Prefer existing engine types, ownership and helpers over redundant wrappers, validation or dependencies. Comments explain non-obvious decisions.
 - Create RHI/Vulkan resources only on Main, Render or RHI threads. Worker tasks may load, decode and prepare CPU data; hand GPU resource creation to an allowed queue.
+- Keep MSAA in scene geometry, depth prepass and debug drawing. Fog, post-processing, particles and tracer composition use resolved 1x targets. Describe copies back to a later MSAA geometry pass explicitly in the render graph.
 - Before public release, all project-owned asset/generated-data/settings/layout schemas, generator versions and editor/runtime protocols stay at version 1. Update producers/consumers together and regenerate derived data. No migrations, compatibility paths or version bumps unless explicitly requested.
 - Never commit generated `.probes` or `.probes.asset` files; tests generate temporary payloads.
 - Tests are opt-in (`SAILOR_BUILD_TESTS=ON`); CI enables them explicitly. Do not add standalone benchmark executables or benchmark build/CI steps.

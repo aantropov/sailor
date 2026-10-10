@@ -3,7 +3,6 @@
 #include "RHI/Renderer.h"
 #include "RHI/CommandList.h"
 #include "RHI/Shader.h"
-#include "RHI/Surface.h"
 #include "RHI/RenderTarget.h"
 #include "RHI/Texture.h"
 #include "RHI/Cubemap.h"
@@ -384,10 +383,7 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		return;
 	}
 
-	auto colorResource = GetRHIResource("color"_h, frameGraph.GetRawPtr());
-	const auto dstSurface = colorResource.DynamicCast<RHISurface>();
-	const auto dst = dstSurface ? dstSurface->GetResolved() : colorResource.DynamicCast<RHITexture>();
-	const bool bUseMsaaTarget = dstSurface && dstSurface->NeedsResolve();
+	const auto dst = GetResolvedAttachment("color"_h, frameGraph.GetRawPtr());
 	if (!dst)
 	{
 		CompleteImageRequests(sceneView.m_cameraIndex, sceneView.m_frame);
@@ -586,15 +582,13 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		resources->m_shaderBindings->RecalculateCompatibility();
 	}
 
-	if (!m_overlayMaterial || !m_overlayMaterialMsaa)
+	if (!m_overlayMaterial)
 	{
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
 		RenderState overlayState{ false, false, 0, false, ECullMode::None, EBlendMode::AlphaBlending, EFillMode::Fill, 0, false };
-		RenderState overlayMsaaState{ false, false, 0, false, ECullMode::None, EBlendMode::AlphaBlending, EFillMode::Fill, 0, true };
-		if (!m_overlayMaterial) { m_overlayMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, overlayState, m_pShader, resources->m_shaderBindings); }
-		if (!m_overlayMaterialMsaa) { m_overlayMaterialMsaa = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, overlayMsaaState, m_pShader, resources->m_shaderBindings); }
+		m_overlayMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, overlayState, m_pShader, resources->m_shaderBindings);
 	}
-	if (!m_overlayMaterial || !m_overlayMaterialMsaa)
+	if (!m_overlayMaterial)
 	{
 		commands->EndDebugRegion(commandList);
 		return;
@@ -610,37 +604,20 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
 	const uint32_t vertexOffset = (uint32_t)mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
 
-	if (bUseMsaaTarget)
-	{
-		commands->ImageMemoryBarrier(commandList, dstSurface->GetTarget(), EImageLayout::ColorAttachmentOptimal);
-		commands->BeginRenderPass(commandList,
-			TVector<RHI::RHISurfacePtr>{dstSurface},
-			nullptr,
-			glm::vec4(0, 0, dst->GetExtent().x, dst->GetExtent().y),
-			glm::ivec2(0, 0),
-			false,
-			glm::vec4(0.0f),
-			0.0f,
-			false);
-		commands->BindMaterial(commandList, m_overlayMaterialMsaa);
-	}
-	else
-	{
-		commands->ImageMemoryBarrier(commandList, dst, EImageLayout::ColorAttachmentOptimal);
-		commands->BeginRenderPass(commandList,
-			TVector<RHI::RHITexturePtr>{dst},
-			nullptr,
-			glm::vec4(0, 0, dst->GetExtent().x, dst->GetExtent().y),
-			glm::ivec2(0, 0),
-			false,
-			glm::vec4(0.0f),
-			0.0f,
-			false);
-		commands->BindMaterial(commandList, m_overlayMaterial);
-	}
+	commands->ImageMemoryBarrier(commandList, dst, EImageLayout::ColorAttachmentOptimal);
+	commands->BeginRenderPass(commandList,
+		TVector<RHI::RHITexturePtr>{dst},
+		nullptr,
+		glm::vec4(0, 0, dst->GetExtent().x, dst->GetExtent().y),
+		glm::ivec2(0, 0),
+		false,
+		glm::vec4(0.0f),
+		0.0f,
+		false);
+	commands->BindMaterial(commandList, m_overlayMaterial);
 	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
-	if (commands->BindShaderBindings(commandList, bUseMsaaTarget ? m_overlayMaterialMsaa : m_overlayMaterial, { sceneView.m_frameBindings, resources->m_shaderBindings }))
+	if (commands->BindShaderBindings(commandList, m_overlayMaterial, { sceneView.m_frameBindings, resources->m_shaderBindings }))
 	{
 		commands->SetViewport(commandList,
 			0.0f, 0.0f,
@@ -708,6 +685,5 @@ void CPUPathTracerNode::Clear()
 	m_cameras.Clear();
 	m_lastCameraIndex = 0;
 	m_overlayMaterial.Clear();
-	m_overlayMaterialMsaa.Clear();
 	m_pShader.Clear();
 }

@@ -129,7 +129,12 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 		m_blitToTextureMaterial &&
 		(src->GetExtent() != dst->GetExtent() || bForceShaderConversion);
 	bool bResolvedBlitSuccessful = false;
-	if (bUseFullscreenColorBlit)
+	if (src == dst)
+	{
+		// A self-blit seeds the MSAA target from its updated resolve before geometry resumes.
+		bResolvedBlitSuccessful = true;
+	}
+	else if (bUseFullscreenColorBlit)
 	{
 		// A fullscreen pass owns the native output viewport explicitly. This keeps
 		// resolution-scaled Scene View targets correctly fitted on MoltenVK instead
@@ -165,7 +170,7 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 			auto src2 = srcSurface->GetTarget();
 			auto dst2 = dstSurface->GetTarget();
 
-			if (srcSurface->NeedsResolve())
+			if (srcSurface->NeedsResolve() && src2 != dst2)
 			{
 				commands->ImageMemoryBarrier(commandList, src2, RHI::EImageLayout::TransferSrcOptimal);
 				commands->ImageMemoryBarrier(commandList, dst2, RHI::EImageLayout::TransferDstOptimal);

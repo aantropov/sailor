@@ -39,7 +39,6 @@ namespace Sailor::Framegraph
 		RHI::RHICubemapPtr m_environment, m_previousEnvironment;
 		ShaderParameters m_parameters{};
 		float m_lightingBlend = 1.0f;
-		bool m_bMultisampling = false;
 	};
 
 	template class TFrameGraphNode<AtmosphericFogNode>;
