@@ -85,7 +85,7 @@ jobs:
       run: >-
         dotnet test Editor.Tests/Editor.Contracts.Tests.csproj
         --configuration Release
-        --filter "FullyQualifiedName=SailorEditor.Editor.Tests.WorkspaceProjectGeneratorIntegrationTests.SourceMode_ConfiguresBuildsAndEmitsReleaseDll"
+        --filter "FullyQualifiedName~SailorEditor.Editor.Tests.WorkspaceProjectGeneratorIntegrationTests"
       env:
         SAILOR_RUN_CMAKE_INTEGRATION: 1
         SAILOR_ENGINE_SOURCE_DIR: ${{ github.workspace }}

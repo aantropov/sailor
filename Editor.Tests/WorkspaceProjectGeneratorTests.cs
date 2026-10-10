@@ -260,6 +260,53 @@ public sealed class WorkspaceProjectGeneratorTests
 
 public sealed class WorkspaceProjectGeneratorIntegrationTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("Category", "CMakeIntegration")]
+    public async Task NativeCli_PreservesUnicodeWorkspace(bool useManifestArgument)
+    {
+        if (!WorkspaceCMakeIntegrationHarness.ShouldRun)
+        {
+            return;
+        }
+
+        var engineRoot = WorkspaceCMakeIntegrationHarness.GetRequiredEnvironmentVariable(
+            "SAILOR_ENGINE_SOURCE_DIR");
+        using var workspace = IntegrationWorkspace.Create();
+        var root = Path.Combine(workspace.Root, "Skipper Я é 船 🚢");
+        Directory.CreateDirectory(root);
+        var manifest = WorkspaceManifest.CreateDefault("Unicode CLI", Path.GetFullPath(engineRoot)) with
+        {
+            LogicModuleName = "MissingCliModule"
+        };
+        var serializer = new WorkspaceManifestSerializer();
+        // Ignoring the CLI path must select a different, also windowless, failure.
+        Directory.CreateDirectory(Path.Combine(workspace.Root, "Content"));
+        await serializer.SaveAsync(Path.Combine(workspace.Root, WorkspaceTemplateService.ManifestFileName),
+            manifest with { LogicModuleName = "MissingFallbackModule" });
+        var session = new WorkspaceTemplateService(serializer).CreateSession(root, manifest);
+        Directory.CreateDirectory(session.ContentDirectory);
+        await serializer.SaveAsync(session.ManifestPath, manifest);
+
+        // A missing module stops the real CLI before it creates a window or renderer.
+        var executable = Path.Combine(engineRoot, "Binaries", "Release",
+            "SailorEngine-Release" + (OperatingSystem.IsWindows() ? ".exe" : string.Empty));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var result = await new WorkspaceProcessRunner().RunAsync(new WorkspaceProcessInvocation(
+            executable,
+            ["--noconsole", "--null-audio", "--no-title-stats",
+                useManifestArgument ? "--workspace-manifest" : "--workspace",
+                useManifestArgument ? session.ManifestPath : session.WorkspaceRoot],
+            workspace.Root), timeout.Token);
+
+        Assert.Equal(1, result.ExitCode);
+        var expectedModuleDirectory = Path.Combine(session.LogicOutputDirectory, "Release").Replace('\\', '/');
+        Assert.Contains($"Workspace module for configuration 'Release' was not found at '{expectedModuleDirectory}/",
+            result.Output, StringComparison.Ordinal);
+        Assert.Contains(manifest.LogicModuleName, result.Output, StringComparison.Ordinal);
+    }
+
     [Fact]
     [Trait("Category", "CMakeIntegration")]
     public async Task SourceMode_ConfiguresBuildsAndEmitsReleaseDll()
