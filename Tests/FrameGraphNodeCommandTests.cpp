@@ -6817,6 +6817,10 @@ frame:
 				commands->ImageMemoryBarrier(draw, image, image->GetDefaultLayout());
 			}
 			DrawDepthPattern(draw, graph, depthTarget, depthPattern, frame);
+			if (path == DepthDrawPath::ImGuiNode)
+			{
+				commands->ImageMemoryBarrier(draw, depthTarget, EImageLayout::ShaderReadOnlyOptimal);
+			}
 			recordedColorCount = 0;
 			recordedDepth = {};
 			recordedRenderingFlags = 0;
@@ -6831,6 +6835,14 @@ frame:
 			else
 			{
 				node->Process(graph, upload, draw, scene);
+			}
+			if (path == DepthDrawPath::ImGuiNode)
+			{
+				const auto& layouts = draw->m_vulkan.m_commandBuffer->GetImageBarriers();
+				Require(layouts[*target->m_vulkan.m_image].m_layout == EImageLayout::ColorAttachmentOptimal &&
+					layouts[*depthTarget->m_vulkan.m_image].m_layout == (IsDepthStencilFormat(format) ?
+						EImageLayout::DepthStencilAttachmentOptimal : EImageLayout::DepthAttachmentOptimal),
+					"ImGui must transition cleared color and sampled depth before its secondary draw");
 			}
 			const bool oneDraw = path == DepthDrawPath::SurfacePass ?
 				draw->GetRecordedDrawCallStats().m_numBatches == batchesBefore + 1 : node->GetDrawCallStats().m_numBatches == 1;

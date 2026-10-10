@@ -23,7 +23,9 @@ void RenderImGuiNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	RHI::RHITexturePtr depthAttachment = GetResolvedAttachment("depthStencil"_h, frameGraph.GetRawPtr());
 
 	if (!colorAttachment || !depthAttachment)
+	{
 		return;
+	}
 
 	{
 		SAILOR_PROFILE_SCOPE("Wait for ImGui");
@@ -38,6 +40,10 @@ void RenderImGuiNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdDebug);
+
+	commands->ImageMemoryBarrier(commandList, colorAttachment, EImageLayout::ColorAttachmentOptimal);
+	commands->ImageMemoryBarrier(commandList, depthAttachment, IsDepthStencilFormat(depthAttachment->GetFormat()) ?
+		EImageLayout::DepthStencilAttachmentOptimal : EImageLayout::DepthAttachmentOptimal);
 
 	if (commands->RenderSecondaryCommandBuffers(commandList,
 		{ imguiCommandList },
