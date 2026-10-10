@@ -43,6 +43,7 @@
 #include "RHI/Shader.h"
 #include "RHI/Surface.h"
 #include "RHI/VertexDescription.h"
+#include "Support/MeshReadback.h"
 #if defined(__APPLE__)
 #include "Support/VulkanCapabilityOverrides.h"
 #endif
@@ -1995,11 +1996,8 @@ frame:
 						const auto expected = SkyCommandProbe::ParseStarsMesh(colors, catalogue);
 						const size_t vertexBytes = expected.m_first.Num() * sizeof(VertexP3C4);
 						const size_t indexBytes = expected.m_second.Num() * sizeof(uint32_t);
-						auto vertices = driver->CreateBuffer(vertexBytes, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
-						auto indices = driver->CreateBuffer(indexBytes, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
-						Require(driver->CopyBuffer_Immediate(recovered->m_vertexBuffer, vertices, vertexBytes) &&
-							driver->CopyBuffer_Immediate(recovered->m_indexBuffer, indices, indexBytes),
-							"the recovered star mesh must support complete vertex/index readback");
+						auto vertices = Tests::ReadMeshBuffer(recovered->m_vertexBuffer, vertexBytes);
+						auto indices = Tests::ReadMeshBuffer(recovered->m_indexBuffer, indexBytes);
 						const auto actual = static_cast<const VertexP3C4*>(vertices->GetPointer());
 						for (size_t i = 0; i < expected.m_first.Num(); ++i)
 							Require(actual[i].m_position == expected.m_first[i].m_position && actual[i].m_color == expected.m_first[i].m_color,

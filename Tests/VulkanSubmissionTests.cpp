@@ -13,6 +13,7 @@
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "Support/TempDirectory.h"
+#include "Support/MeshReadback.h"
 #include "Support/ScopeExit.h"
 #include "Support/ImGuiWorkspaceProbe.h"
 #include "Platform/DynamicLibrary.h"
@@ -3291,11 +3292,8 @@ frame: []
 				Require(accepted->IsReady() && !failed->IsReady(), "completion must not resurrect a refused mesh");
 				OnRender([&]()
 					{
-						const auto memory = EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent;
-						auto vertexReadback = driver.CreateBuffer(sizeof(vertices), EBufferUsageBit::BufferTransferDst_Bit, memory);
-						auto indexReadback = driver.CreateBuffer(sizeof(indices), EBufferUsageBit::BufferTransferDst_Bit, memory);
-						Require(driver.CopyBuffer_Immediate(accepted->m_vertexBuffer, vertexReadback, sizeof(vertices)) &&
-							driver.CopyBuffer_Immediate(accepted->m_indexBuffer, indexReadback, sizeof(indices)), "mesh readback must complete");
+						auto vertexReadback = Tests::ReadMeshBuffer(accepted->m_vertexBuffer, sizeof(vertices));
+						auto indexReadback = Tests::ReadMeshBuffer(accepted->m_indexBuffer, sizeof(indices));
 						Require(std::memcmp(vertexReadback->GetPointer(), vertices.data(), sizeof(vertices)) == 0 &&
 							std::memcmp(indexReadback->GetPointer(), indices.data(), sizeof(indices)) == 0,
 							"all retried mesh vertices and indices must match their source");

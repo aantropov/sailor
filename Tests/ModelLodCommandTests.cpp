@@ -14,6 +14,7 @@
 #include "Raytracing/PathTracer.h"
 #include "Support/EditorProtocolWire.h"
 #include "Support/SurfaceRender.h"
+#include "Support/MeshReadback.h"
 #include "EditorEngineProtocolLifecycle.h"
 #include "Workspace/WorkspacePathEncoding.h"
 
@@ -874,16 +875,12 @@ namespace
 	{
 		auto readback = Tasks::CreateTaskWithResult<bool>("Read back selected LOD geometry"_h, [mesh, &geometry]()
 			{
-				auto& driver = RHI::Renderer::GetDriver();
-				const auto memory = RHI::EMemoryPropertyBit::HostVisible | RHI::EMemoryPropertyBit::HostCoherent;
 				const auto vertexBytes = geometry.m_vertices.Num() * sizeof(geometry.m_vertices[0]);
 				const auto indexBytes = geometry.m_indices.Num() * sizeof(uint32_t);
-				auto vertices = driver->CreateBuffer(vertexBytes, RHI::EBufferUsageBit::BufferTransferDst_Bit, memory);
-				auto indices = driver->CreateBuffer(indexBytes, RHI::EBufferUsageBit::BufferTransferDst_Bit, memory);
-				return driver->CopyBuffer_Immediate(mesh->m_vertexBuffer, vertices, vertexBytes,
-					mesh->m_vertexOffset * sizeof(geometry.m_vertices[0])) &&
-					driver->CopyBuffer_Immediate(mesh->m_indexBuffer, indices, indexBytes, mesh->m_firstIndex * sizeof(uint32_t)) &&
-					std::equal(geometry.m_vertices.begin(), geometry.m_vertices.end(),
+				auto vertices = Tests::ReadMeshBuffer(mesh->m_vertexBuffer, vertexBytes,
+					mesh->m_vertexOffset * sizeof(geometry.m_vertices[0]));
+				auto indices = Tests::ReadMeshBuffer(mesh->m_indexBuffer, indexBytes, mesh->m_firstIndex * sizeof(uint32_t));
+				return std::equal(geometry.m_vertices.begin(), geometry.m_vertices.end(),
 						static_cast<const RHI::VertexP3N3T3B3UV2C4I4W4*>(vertices->GetPointer())) &&
 					std::equal(geometry.m_indices.begin(), geometry.m_indices.end(),
 						static_cast<const uint32_t*>(indices->GetPointer()));

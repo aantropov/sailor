@@ -23,6 +23,7 @@
 #include "RHI/Mesh.h"
 #include "RHI/VertexDescription.h"
 #include "Settings/GraphicsSettings.h"
+#include "Support/MeshReadback.h"
 
 #include <algorithm>
 #include <array>
@@ -265,12 +266,9 @@ namespace
 			Require(mesh->IsReady() && mesh->GetNumLods() == 3, "terrain recovery must publish all three ready LODs");
 			auto readback = Tasks::CreateTaskWithResult<bool>("Read terrain mesh"_h, [&data, &chunk, mesh, expectedColor]()
 			{
-				auto& driver = RHI::Renderer::GetDriver();
-				const auto memory = RHI::EMemoryPropertyBit::HostVisible | RHI::EMemoryPropertyBit::HostCoherent;
 				const uint32_t row = data.m_chunkResolution + 1;
 				const size_t vertexBytes = row * row * sizeof(RHI::VertexP3N3T3B3UV2C4);
-				auto vertices = driver->CreateBuffer(vertexBytes, RHI::EBufferUsageBit::BufferTransferDst_Bit, memory);
-				if (!driver->CopyBuffer_Immediate(mesh->m_vertexBuffer, vertices, vertexBytes)) return false;
+				auto vertices = Tests::ReadMeshBuffer(mesh->m_vertexBuffer, vertexBytes);
 				const auto* values = static_cast<const RHI::VertexP3N3T3B3UV2C4*>(vertices->GetPointer());
 				for (uint32_t z = 0; z < row; ++z)
 					for (uint32_t x = 0; x < row; ++x)
@@ -290,10 +288,11 @@ namespace
 					const auto selected = lod == 0 ? mesh : mesh->GetLod(lod);
 					if (selected->GetIndexCount() != expected.Num()) return false;
 					const size_t bytes = expected.Num() * sizeof(uint32_t);
-					auto indices = driver->CreateBuffer(bytes, RHI::EBufferUsageBit::BufferTransferDst_Bit, memory);
-					if (!driver->CopyBuffer_Immediate(selected->m_indexBuffer, indices, bytes,
-						selected->m_firstIndex * sizeof(uint32_t)) || !std::equal(expected.begin(), expected.end(),
-							static_cast<const uint32_t*>(indices->GetPointer()))) return false;
+					auto indices = Tests::ReadMeshBuffer(selected->m_indexBuffer, bytes, selected->m_firstIndex * sizeof(uint32_t));
+					if (!std::equal(expected.begin(), expected.end(), static_cast<const uint32_t*>(indices->GetPointer())))
+					{
+						return false;
+					}
 				}
 				return true;
 			}, EThreadType::RHI);
@@ -354,11 +353,7 @@ namespace
 			const auto mesh = resource->m_proxy.m_meshes[0];
 			auto read = Tasks::CreateTaskWithResult<bool>("Read removed terrain"_h, [mesh]()
 			{
-				const auto memory = RHI::EMemoryPropertyBit::HostVisible | RHI::EMemoryPropertyBit::HostCoherent;
-				auto& driver = RHI::Renderer::GetDriver();
-				auto vertex = driver->CreateBuffer(sizeof(RHI::VertexP3N3T3B3UV2C4),
-					RHI::EBufferUsageBit::BufferTransferDst_Bit, memory);
-				if (!driver->CopyBuffer_Immediate(mesh->m_vertexBuffer, vertex, sizeof(RHI::VertexP3N3T3B3UV2C4))) return false;
+				auto vertex = Tests::ReadMeshBuffer(mesh->m_vertexBuffer, sizeof(RHI::VertexP3N3T3B3UV2C4));
 				const auto& first = *static_cast<const RHI::VertexP3N3T3B3UV2C4*>(vertex->GetPointer());
 				return first.m_position == glm::vec3(-4, 0, -4) && first.m_texcoord == glm::vec2(-4);
 			}, EThreadType::RHI);
@@ -2133,12 +2128,9 @@ namespace
 			const auto mesh = data.m_chunks[0].m_resource->m_proxy.m_meshes[0];
 			auto readback = Tasks::CreateTaskWithResult<glm::vec4>("Read painted terrain layer"_h, [mesh, &data]()
 			{
-				auto& driver = RHI::Renderer::GetDriver();
 				const uint32_t row = data.m_chunkResolution + 1;
 				const size_t size = row * row * sizeof(RHI::VertexP3N3T3B3UV2C4);
-				auto vertices = driver->CreateBuffer(size, RHI::EBufferUsageBit::BufferTransferDst_Bit,
-					RHI::EMemoryPropertyBit::HostVisible | RHI::EMemoryPropertyBit::HostCoherent);
-				Require(driver->CopyBuffer_Immediate(mesh->m_vertexBuffer, vertices, size), "painted vertices must be readable");
+				auto vertices = Tests::ReadMeshBuffer(mesh->m_vertexBuffer, size);
 				return static_cast<const RHI::VertexP3N3T3B3UV2C4*>(vertices->GetPointer())[(row / 2) * row + row / 2].m_color;
 			}, EThreadType::RHI);
 			readback->Run();
