@@ -4790,6 +4790,10 @@ frame: []
 				Require(context && allocations.m_liveAllocations > 0, "the native host must allocate a real ImGui context");
 				ImGui::SetCurrentContext(context);
 				ImGui::GetIO().IniFilename = nullptr;
+				Win32::GlobalInput::ProcessPendingEvents(true);
+				Require(!Win32::GlobalInput::GetInputState().IsKeyDown('W') &&
+					!Win32::GlobalInput::GetInputState().IsKeyDown('A'),
+					"a restarted native host must discard held keys and queued input from the previous App");
 
 				shutdown.m_bReaderFinished = false;
 				shutdown.m_bWasDestroyed = false;
@@ -4841,6 +4845,11 @@ frame: []
 						bReleaseReader = true;
 						bReleaseReader.notify_one();
 					}, EThreadType::Main)->Run();
+				Win32::GlobalInput::ApplyEvent({ Platform::InputEvent::Type::Key, 0.0f, 0.0f, 'W', -1, true });
+				Win32::GlobalInput::QueueNativeEvent({ Platform::InputEvent::Type::Key, 0.0f, 0.0f, 'A', -1, true });
+				Require(Win32::GlobalInput::GetInputState().IsKeyDown('W') &&
+					!Win32::GlobalInput::GetInputState().IsKeyDown('A'),
+					"shutdown must start with both applied and pending native input");
 				Require(SailorProtocolStopLocalHost(true) != 0, "the native host must join its pending ImGui reader");
 				std::cout << "ImGui shutdown cycle " << cycle << ": live allocations=" << allocations.m_liveAllocations
 					<< ", context=" << ImGuiApi::GetCurrentContext() << '\n';
@@ -4848,7 +4857,8 @@ frame: []
 					allocations.m_liveAllocations == 0 && !shutdown.m_frame.TryLock(),
 					"shutdown must destroy its context on the CPU owner after RHI readers and release all ImGui allocations");
 			}
-			std::cout << "Native ImGui lifetime: 24 host cycles, pending RHI readers and failed bootstrap passed; allocations="
+			Win32::GlobalInput::ProcessPendingEvents(false);
+			std::cout << "Native ImGui lifetime: 24 host cycles, fresh input, pending RHI readers and failed bootstrap passed; allocations="
 				<< allocations.m_totalAllocations << '\n';
 			result = 0;
 		}
@@ -5064,14 +5074,23 @@ frame: []
 			const int port = ix::getFreePort();
 			Require(ix::uninitNetSystem() && port > 0 && port <= 65535, "host lifetime fixture must reserve a local port");
 			constexpr std::string_view token = "0123456789abcdef0123456789abcdef";
-			Require(SailorProtocolStartLocalHost(reinterpret_cast<const uint8_t*>(request.data()),
-				static_cast<uint32_t>(request.size()), static_cast<uint16_t>(port), token.data(), static_cast<uint32_t>(token.size())) ==
-				static_cast<int32_t>(Protocol::EEditorEngineWebSocketHostStatus::Ok), "host lifetime fixture must start the real native protocol host");
-			Require(App::IsRendererInitialized() && App::HasEditor(), "host lifetime requires an initialized editor runtime");
-			Tests::CheckMacAppHostLifetime();
-			Tests::CheckMacAppViewportUpdates();
-			Tests::CheckMacHostShutdown([]() { return SailorProtocolStopLocalHost(true) != 0; });
-			std::cout << "Native host lifetime test passed\n";
+			for (uint32_t cycle = 0; cycle < 2; ++cycle)
+			{
+				Require(SailorProtocolStartLocalHost(reinterpret_cast<const uint8_t*>(request.data()),
+					static_cast<uint32_t>(request.size()), static_cast<uint16_t>(port), token.data(), static_cast<uint32_t>(token.size())) ==
+					static_cast<int32_t>(Protocol::EEditorEngineWebSocketHostStatus::Ok), "host lifetime fixture must start the real native protocol host");
+				Require(App::IsRendererInitialized() && App::HasEditor(), "host lifetime requires an initialized editor runtime");
+				for (uint64_t viewportId : { 257u, 258u, 259u })
+				{
+					Require(EditorRuntime::GetEditorRemoteViewportState(viewportId) == static_cast<uint32_t>(EditorRemote::SessionState::Created),
+						"a restarted native host must not inherit viewport bindings from the previous App");
+				}
+				Tests::CheckMacAppHostLifetime();
+				Tests::CheckMacAppViewportUpdates();
+				Tests::CheckMacHostShutdown([]() { return SailorProtocolStopLocalHost(true) != 0; });
+				Require(!App::GetInstance(), "native shutdown must release the App before the next host starts");
+			}
+			std::cout << "Native host lifetime: two App sessions, fresh viewport bindings and released host handles passed\n";
 			result = 0;
 		}
 		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
