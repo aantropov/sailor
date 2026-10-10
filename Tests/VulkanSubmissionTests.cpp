@@ -5307,12 +5307,27 @@ frame: []
 		const auto graphPath = workspace.Path("Content/EditorRenderer.renderer");
 		WriteEditorReadbackGraph(graphPath, 0, { 32, 24 });
 		const std::string workspacePath = workspace.Get().string();
-		std::vector<const char*> arguments(argv, argv + argc);
-		arguments.insert(arguments.end(), { "--workspace", workspacePath.c_str(), "--new-world", "--editor", "--port", "0" });
-		App::Initialize(arguments.data(), static_cast<int>(arguments.size()));
 		int result = 1;
 		try
 		{
+			std::string initialize;
+			for (int i = 0; i < argc; ++i)
+			{
+				Tests::ProtocolWire::AppendBytesField(initialize, 1u, argv[i]);
+			}
+			for (const auto argument : { "--workspace", workspacePath.c_str(), "--new-world", "--editor", "--port", "0" })
+			{
+				Tests::ProtocolWire::AppendBytesField(initialize, 1u, argument);
+			}
+			const auto request = Tests::ProtocolWire::MakeRequest(1u, 10u, initialize);
+			Require(ix::initNetSystem(), "readback graph fixture must initialize local networking");
+			const int port = ix::getFreePort();
+			Require(ix::uninitNetSystem() && port > 0 && port <= 65535, "readback graph fixture must reserve a local port");
+			constexpr std::string_view token = "0123456789abcdef0123456789abcdef";
+			Require(SailorProtocolStartLocalHost(reinterpret_cast<const uint8_t*>(request.data()),
+				static_cast<uint32_t>(request.size()), static_cast<uint16_t>(port), token.data(), static_cast<uint32_t>(token.size())) ==
+				static_cast<int32_t>(Protocol::EEditorEngineWebSocketHostStatus::Ok),
+				"readback graph fixture must initialize App through the real native protocol host");
 			Require(App::IsRendererInitialized(), "editor graph test requires an initialized renderer");
 			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 			TestEditorReadbackGraph(graphPath);
@@ -5320,8 +5335,10 @@ frame: []
 			result = 0;
 		}
 		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
-		App::Stop();
-		if (!App::Shutdown()) result = 1;
+		if (SailorProtocolStopLocalHost(true) == 0)
+		{
+			result = 1;
+		}
 		return result;
 	}
 #endif

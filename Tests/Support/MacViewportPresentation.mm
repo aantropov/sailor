@@ -24,6 +24,8 @@
 #include <thread>
 
 extern "C" SAILOR_SHARED_API void SailorProtocolFreeBuffer(uint8_t* buffer) noexcept;
+extern "C" SAILOR_SHARED_API int32_t SailorProtocolInvoke(const uint8_t* requestData, uint32_t requestSize,
+	uint8_t** responseData, uint32_t* responseSize) noexcept;
 extern "C" SAILOR_SHARED_API int32_t SailorProtocolSetMacViewportHost(uint64_t viewportId, uintptr_t layer) noexcept;
 
 struct HostBindGate
@@ -789,13 +791,6 @@ namespace Sailor::Tests
 			{
 				if (!value) throw std::runtime_error(message);
 			};
-		// This fixture initializes App directly, without the local protocol host.
-		Protocol::TEditorEngineProtocolLifecycleGate gate;
-		std::string error;
-		require(gate.TryBeginInitialization(error), "App viewport protocol gate must initialize");
-		gate.CompleteInitialization(true);
-		Protocol::EditorEngineProtocolDependencies dependencies;
-		dependencies.m_lifecycleGate = &gate;
 		uint64_t requestId = 0;
 		auto invoke = [&](ProtocolRequest& request)
 		{
@@ -804,8 +799,8 @@ namespace Sailor::Tests
 			const auto bytes = request.SerializeAsString();
 			uint8_t* data = nullptr;
 			uint32_t size = 0;
-			const auto status = Protocol::InvokeEditorEngineProtocol(reinterpret_cast<const uint8_t*>(bytes.data()),
-				static_cast<uint32_t>(bytes.size()), &data, &size, dependencies);
+			const auto status = SailorProtocolInvoke(reinterpret_cast<const uint8_t*>(bytes.data()),
+				static_cast<uint32_t>(bytes.size()), &data, &size);
 			ProtocolResponse response;
 			const bool decoded = response.ParseFromArray(data, static_cast<int>(size));
 			SailorProtocolFreeBuffer(data);
@@ -823,12 +818,8 @@ namespace Sailor::Tests
 			layer->m_queueDevice = [[ViewportQueueDevice alloc] initWithDevice:[MTLCreateSystemDefaultDevice() autorelease]];
 			try
 			{
-				ProtocolRequest hostRequest;
-				auto* host = hostRequest.mutable_set_remote_viewport_mac_host_handle();
-				host->set_viewport_id(viewportId);
-				host->set_host_handle_kind(static_cast<uint32_t>(MacNativeHostHandleKind::CAMetalLayer));
-				host->set_host_handle_value(reinterpret_cast<uint64_t>(layer));
-				require(invoke(hostRequest).bool_result().value(), "protobuf host binding must accept the actual Metal layer");
+				require(SailorProtocolSetMacViewportHost(viewportId, reinterpret_cast<uintptr_t>(layer)) != 0,
+					"the native host export must retain the actual Metal layer before queuing its binding");
 				ProtocolRequest updateRequest;
 				auto* update = updateRequest.mutable_upsert_remote_viewport();
 				update->set_viewport_id(viewportId);
@@ -918,14 +909,13 @@ namespace Sailor::Tests
 				require(invoke(destroyRequest).bool_result().value(), "protobuf destroy must release the actual App viewport after GPU completion");
 				require(invoke(stateRequest).uint32_result().value() == static_cast<uint32_t>(SessionState::Created) &&
 					!invoke(destroyRequest).bool_result().value(), "native binding must be absent after protobuf destroy");
-				host->set_host_handle_kind(0);
-				host->set_host_handle_value(0);
-				require(invoke(hostRequest).bool_result().value(), "protobuf cleanup must clear the native host reference");
+				require(SailorProtocolSetMacViewportHost(viewportId, 0) != 0,
+					"native host cleanup must accept detach after the viewport is destroyed");
 			}
 			catch (...)
 			{
 				EditorRuntime::DestroyEditorRemoteViewport(viewportId);
-				EditorRuntime::SetEditorRemoteViewportMacHostHandle(viewportId, 0, 0);
+				SailorProtocolSetMacViewportHost(viewportId, 0);
 				throw;
 			}
 		}

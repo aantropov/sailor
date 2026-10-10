@@ -379,15 +379,6 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 				response, Sailor::EditorRuntime::RetryEditorRemoteViewport(request.retry_remote_viewport().viewport_id()));
 			break;
 
-		case ProtocolRequest::kSetRemoteViewportMacHostHandle:
-		{
-			const auto& host = request.set_remote_viewport_mac_host_handle();
-			SetBoolResult(response,
-				Sailor::EditorRuntime::SetEditorRemoteViewportMacHostHandle(
-					host.viewport_id(), host.host_handle_kind(), host.host_handle_value()));
-			break;
-		}
-
 		case ProtocolRequest::kSendRemoteViewportInput:
 		{
 			const auto& input = request.send_remote_viewport_input();

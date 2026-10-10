@@ -149,9 +149,6 @@ extern ProtocolRequestDefaultTypeInternal _ProtocolRequest_default_instance_;
 class ProtocolResponse;
 struct ProtocolResponseDefaultTypeInternal;
 extern ProtocolResponseDefaultTypeInternal _ProtocolResponse_default_instance_;
-class RemoteViewportHostRequest;
-struct RemoteViewportHostRequestDefaultTypeInternal;
-extern RemoteViewportHostRequestDefaultTypeInternal _RemoteViewportHostRequest_default_instance_;
 class RemoteViewportInputRequest;
 struct RemoteViewportInputRequestDefaultTypeInternal;
 extern RemoteViewportInputRequestDefaultTypeInternal _RemoteViewportInputRequest_default_instance_;
@@ -732,7 +729,7 @@ class ViewportToolStateResult final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportToolStateResult*>(
         &_ViewportToolStateResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 51;
+  static constexpr int kIndexInFileMessages = 50;
   friend void swap(ViewportToolStateResult& a, ViewportToolStateResult& b) { a.Swap(&b); }
   inline void Swap(ViewportToolStateResult* other) {
     if (other == this) return;
@@ -934,7 +931,7 @@ class ViewportToolStateRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportToolStateRequest*>(
         &_ViewportToolStateRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 38;
+  static constexpr int kIndexInFileMessages = 37;
   friend void swap(ViewportToolStateRequest& a, ViewportToolStateRequest& b) { a.Swap(&b); }
   inline void Swap(ViewportToolStateRequest* other) {
     if (other == this) return;
@@ -1148,7 +1145,7 @@ class ViewportToolShortcutEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportToolShortcutEvent*>(
         &_ViewportToolShortcutEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 57;
+  static constexpr int kIndexInFileMessages = 56;
   friend void swap(ViewportToolShortcutEvent& a, ViewportToolShortcutEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportToolShortcutEvent* other) {
     if (other == this) return;
@@ -1338,7 +1335,7 @@ class ViewportSelectionEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportSelectionEvent*>(
         &_ViewportSelectionEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 54;
+  static constexpr int kIndexInFileMessages = 53;
   friend void swap(ViewportSelectionEvent& a, ViewportSelectionEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportSelectionEvent* other) {
     if (other == this) return;
@@ -1760,7 +1757,7 @@ class ViewportRayRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportRayRequest*>(
         &_ViewportRayRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 34;
+  static constexpr int kIndexInFileMessages = 33;
   friend void swap(ViewportRayRequest& a, ViewportRayRequest& b) { a.Swap(&b); }
   inline void Swap(ViewportRayRequest* other) {
     if (other == this) return;
@@ -1974,7 +1971,7 @@ class ViewportObjectRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportObjectRequest*>(
         &_ViewportObjectRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 36;
+  static constexpr int kIndexInFileMessages = 35;
   friend void swap(ViewportObjectRequest& a, ViewportObjectRequest& b) { a.Swap(&b); }
   inline void Swap(ViewportObjectRequest* other) {
     if (other == this) return;
@@ -2372,7 +2369,7 @@ class ViewportAssetDropEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportAssetDropEvent*>(
         &_ViewportAssetDropEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 56;
+  static constexpr int kIndexInFileMessages = 55;
   friend void swap(ViewportAssetDropEvent& a, ViewportAssetDropEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportAssetDropEvent* other) {
     if (other == this) return;
@@ -2592,7 +2589,7 @@ class Vector4 final : public ::google::protobuf::Message
     return reinterpret_cast<const Vector4*>(
         &_Vector4_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 53;
+  static constexpr int kIndexInFileMessages = 52;
   friend void swap(Vector4& a, Vector4& b) { a.Swap(&b); }
   inline void Swap(Vector4* other) {
     if (other == this) return;
@@ -2818,7 +2815,7 @@ class UpdateObjectRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const UpdateObjectRequest*>(
         &_UpdateObjectRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 27;
+  static constexpr int kIndexInFileMessages = 26;
   friend void swap(UpdateObjectRequest& a, UpdateObjectRequest& b) { a.Swap(&b); }
   inline void Swap(UpdateObjectRequest* other) {
     if (other == this) return;
@@ -3240,7 +3237,7 @@ class UInt64Result final : public ::google::protobuf::Message
     return reinterpret_cast<const UInt64Result*>(
         &_UInt64Result_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 45;
+  static constexpr int kIndexInFileMessages = 44;
   friend void swap(UInt64Result& a, UInt64Result& b) { a.Swap(&b); }
   inline void Swap(UInt64Result* other) {
     if (other == this) return;
@@ -3430,7 +3427,7 @@ class UInt32Result final : public ::google::protobuf::Message
     return reinterpret_cast<const UInt32Result*>(
         &_UInt32Result_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 44;
+  static constexpr int kIndexInFileMessages = 43;
   friend void swap(UInt32Result& a, UInt32Result& b) { a.Swap(&b); }
   inline void Swap(UInt32Result* other) {
     if (other == this) return;
@@ -3620,7 +3617,7 @@ class StringResult final : public ::google::protobuf::Message
     return reinterpret_cast<const StringResult*>(
         &_StringResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 46;
+  static constexpr int kIndexInFileMessages = 45;
   friend void swap(StringResult& a, StringResult& b) { a.Swap(&b); }
   inline void Swap(StringResult* other) {
     if (other == this) return;
@@ -3828,7 +3825,7 @@ class StringListResult final : public ::google::protobuf::Message
     return reinterpret_cast<const StringListResult*>(
         &_StringListResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 47;
+  static constexpr int kIndexInFileMessages = 46;
   friend void swap(StringListResult& a, StringListResult& b) { a.Swap(&b); }
   inline void Swap(StringListResult* other) {
     if (other == this) return;
@@ -4232,7 +4229,7 @@ class ShowMainWindowRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const ShowMainWindowRequest*>(
         &_ShowMainWindowRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 40;
+  static constexpr int kIndexInFileMessages = 39;
   friend void swap(ShowMainWindowRequest& a, ShowMainWindowRequest& b) { a.Swap(&b); }
   inline void Swap(ShowMainWindowRequest* other) {
     if (other == this) return;
@@ -4422,7 +4419,7 @@ class SelectionRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const SelectionRequest*>(
         &_SelectionRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 39;
+  static constexpr int kIndexInFileMessages = 38;
   friend void swap(SelectionRequest& a, SelectionRequest& b) { a.Swap(&b); }
   inline void Swap(SelectionRequest* other) {
     if (other == this) return;
@@ -4624,7 +4621,7 @@ class RuntimeGIProbesState final : public ::google::protobuf::Message
     return reinterpret_cast<const RuntimeGIProbesState*>(
         &_RuntimeGIProbesState_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 63;
+  static constexpr int kIndexInFileMessages = 62;
   friend void swap(RuntimeGIProbesState& a, RuntimeGIProbesState& b) { a.Swap(&b); }
   inline void Swap(RuntimeGIProbesState* other) {
     if (other == this) return;
@@ -5000,7 +4997,7 @@ class RuntimeGIProbesSettings final : public ::google::protobuf::Message
     return reinterpret_cast<const RuntimeGIProbesSettings*>(
         &_RuntimeGIProbesSettings_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 60;
+  static constexpr int kIndexInFileMessages = 59;
   friend void swap(RuntimeGIProbesSettings& a, RuntimeGIProbesSettings& b) { a.Swap(&b); }
   inline void Swap(RuntimeGIProbesSettings* other) {
     if (other == this) return;
@@ -5298,7 +5295,7 @@ class RuntimeGIProbesPreviewRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const RuntimeGIProbesPreviewRequest*>(
         &_RuntimeGIProbesPreviewRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 61;
+  static constexpr int kIndexInFileMessages = 60;
   friend void swap(RuntimeGIProbesPreviewRequest& a, RuntimeGIProbesPreviewRequest& b) { a.Swap(&b); }
   inline void Swap(RuntimeGIProbesPreviewRequest* other) {
     if (other == this) return;
@@ -5488,7 +5485,7 @@ class RuntimeGIProbesPreviewBudgetRequest final : public ::google::protobuf::Mes
     return reinterpret_cast<const RuntimeGIProbesPreviewBudgetRequest*>(
         &_RuntimeGIProbesPreviewBudgetRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 64;
+  static constexpr int kIndexInFileMessages = 63;
   friend void swap(RuntimeGIProbesPreviewBudgetRequest& a, RuntimeGIProbesPreviewBudgetRequest& b) { a.Swap(&b); }
   inline void Swap(RuntimeGIProbesPreviewBudgetRequest* other) {
     if (other == this) return;
@@ -5678,7 +5675,7 @@ class RuntimeGIProbesPauseRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const RuntimeGIProbesPauseRequest*>(
         &_RuntimeGIProbesPauseRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 62;
+  static constexpr int kIndexInFileMessages = 61;
   friend void swap(RuntimeGIProbesPauseRequest& a, RuntimeGIProbesPauseRequest& b) { a.Swap(&b); }
   inline void Swap(RuntimeGIProbesPauseRequest* other) {
     if (other == this) return;
@@ -5868,7 +5865,7 @@ class ReparentObjectRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const ReparentObjectRequest*>(
         &_ReparentObjectRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 28;
+  static constexpr int kIndexInFileMessages = 27;
   friend void swap(ReparentObjectRequest& a, ReparentObjectRequest& b) { a.Swap(&b); }
   inline void Swap(ReparentObjectRequest* other) {
     if (other == this) return;
@@ -6094,7 +6091,7 @@ class RenderPathTracedImageRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const RenderPathTracedImageRequest*>(
         &_RenderPathTracedImageRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 41;
+  static constexpr int kIndexInFileMessages = 40;
   friend void swap(RenderPathTracedImageRequest& a, RenderPathTracedImageRequest& b) { a.Swap(&b); }
   inline void Swap(RenderPathTracedImageRequest* other) {
     if (other == this) return;
@@ -6606,7 +6603,7 @@ class RemoteViewportInputRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const RemoteViewportInputRequest*>(
         &_RemoteViewportInputRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 25;
+  static constexpr int kIndexInFileMessages = 24;
   friend void swap(RemoteViewportInputRequest& a, RemoteViewportInputRequest& b) { a.Swap(&b); }
   inline void Swap(RemoteViewportInputRequest* other) {
     if (other == this) return;
@@ -6887,220 +6884,6 @@ class RemoteViewportInputRequest final : public ::google::protobuf::Message
 };
 // -------------------------------------------------------------------
 
-class RemoteViewportHostRequest final : public ::google::protobuf::Message
-/* @@protoc_insertion_point(class_definition:sailor.editor.v1.RemoteViewportHostRequest) */ {
- public:
-  inline RemoteViewportHostRequest() : RemoteViewportHostRequest(nullptr) {}
-  ~RemoteViewportHostRequest() PROTOBUF_FINAL;
-
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-  void operator delete(RemoteViewportHostRequest* msg, std::destroying_delete_t) {
-    SharedDtor(*msg);
-    ::google::protobuf::internal::SizedDelete(msg, sizeof(RemoteViewportHostRequest));
-  }
-#endif
-
-  template <typename = void>
-  explicit PROTOBUF_CONSTEXPR RemoteViewportHostRequest(
-      ::google::protobuf::internal::ConstantInitialized);
-
-  inline RemoteViewportHostRequest(const RemoteViewportHostRequest& from) : RemoteViewportHostRequest(nullptr, from) {}
-  inline RemoteViewportHostRequest(RemoteViewportHostRequest&& from) noexcept
-      : RemoteViewportHostRequest(nullptr, std::move(from)) {}
-  inline RemoteViewportHostRequest& operator=(const RemoteViewportHostRequest& from) {
-    CopyFrom(from);
-    return *this;
-  }
-  inline RemoteViewportHostRequest& operator=(RemoteViewportHostRequest&& from) noexcept {
-    if (this == &from) return *this;
-    if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
-      InternalSwap(&from);
-    } else {
-      CopyFrom(from);
-    }
-    return *this;
-  }
-
-  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const
-      ABSL_ATTRIBUTE_LIFETIME_BOUND {
-    return _internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance);
-  }
-  inline ::google::protobuf::UnknownFieldSet* mutable_unknown_fields()
-      ABSL_ATTRIBUTE_LIFETIME_BOUND {
-    return _internal_metadata_.mutable_unknown_fields<::google::protobuf::UnknownFieldSet>();
-  }
-
-  static const ::google::protobuf::Descriptor* descriptor() {
-    return GetDescriptor();
-  }
-  static const ::google::protobuf::Descriptor* GetDescriptor() {
-    return default_instance().GetMetadata().descriptor;
-  }
-  static const ::google::protobuf::Reflection* GetReflection() {
-    return default_instance().GetMetadata().reflection;
-  }
-  static const RemoteViewportHostRequest& default_instance() {
-    return *internal_default_instance();
-  }
-  static inline const RemoteViewportHostRequest* internal_default_instance() {
-    return reinterpret_cast<const RemoteViewportHostRequest*>(
-        &_RemoteViewportHostRequest_default_instance_);
-  }
-  static constexpr int kIndexInFileMessages = 24;
-  friend void swap(RemoteViewportHostRequest& a, RemoteViewportHostRequest& b) { a.Swap(&b); }
-  inline void Swap(RemoteViewportHostRequest* other) {
-    if (other == this) return;
-    if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
-      InternalSwap(other);
-    } else {
-      ::google::protobuf::internal::GenericSwap(this, other);
-    }
-  }
-  void UnsafeArenaSwap(RemoteViewportHostRequest* other) {
-    if (other == this) return;
-    ABSL_DCHECK(GetArena() == other->GetArena());
-    InternalSwap(other);
-  }
-
-  // implements Message ----------------------------------------------
-
-  RemoteViewportHostRequest* New(::google::protobuf::Arena* arena = nullptr) const {
-    return ::google::protobuf::Message::DefaultConstruct<RemoteViewportHostRequest>(arena);
-  }
-  using ::google::protobuf::Message::CopyFrom;
-  void CopyFrom(const RemoteViewportHostRequest& from);
-  using ::google::protobuf::Message::MergeFrom;
-  void MergeFrom(const RemoteViewportHostRequest& from) { RemoteViewportHostRequest::MergeImpl(*this, from); }
-
-  private:
-  static void MergeImpl(
-      ::google::protobuf::MessageLite& to_msg,
-      const ::google::protobuf::MessageLite& from_msg);
-
-  public:
-  bool IsInitialized() const {
-    return true;
-  }
-  ABSL_ATTRIBUTE_REINITIALIZES void Clear() PROTOBUF_FINAL;
-  #if defined(PROTOBUF_CUSTOM_VTABLE)
-  private:
-  static ::size_t ByteSizeLong(const ::google::protobuf::MessageLite& msg);
-  static ::uint8_t* _InternalSerialize(
-      const MessageLite& msg, ::uint8_t* target,
-      ::google::protobuf::io::EpsCopyOutputStream* stream);
-
-  public:
-  ::size_t ByteSizeLong() const { return ByteSizeLong(*this); }
-  ::uint8_t* _InternalSerialize(
-      ::uint8_t* target,
-      ::google::protobuf::io::EpsCopyOutputStream* stream) const {
-    return _InternalSerialize(*this, target, stream);
-  }
-  #else   // PROTOBUF_CUSTOM_VTABLE
-  ::size_t ByteSizeLong() const final;
-  ::uint8_t* _InternalSerialize(
-      ::uint8_t* target,
-      ::google::protobuf::io::EpsCopyOutputStream* stream) const final;
-  #endif  // PROTOBUF_CUSTOM_VTABLE
-  int GetCachedSize() const { return _impl_._cached_size_.Get(); }
-
-  private:
-  void SharedCtor(::google::protobuf::Arena* arena);
-  static void SharedDtor(MessageLite& self);
-  void InternalSwap(RemoteViewportHostRequest* other);
- private:
-  template <typename T>
-  friend ::absl::string_view(
-      ::google::protobuf::internal::GetAnyMessageName)();
-  static ::absl::string_view FullMessageName() { return "sailor.editor.v1.RemoteViewportHostRequest"; }
-
- protected:
-  explicit RemoteViewportHostRequest(::google::protobuf::Arena* arena);
-  RemoteViewportHostRequest(::google::protobuf::Arena* arena, const RemoteViewportHostRequest& from);
-  RemoteViewportHostRequest(::google::protobuf::Arena* arena, RemoteViewportHostRequest&& from) noexcept
-      : RemoteViewportHostRequest(arena) {
-    *this = ::std::move(from);
-  }
-  const ::google::protobuf::internal::ClassData* GetClassData() const PROTOBUF_FINAL;
-  static void* PlacementNew_(const void*, void* mem,
-                             ::google::protobuf::Arena* arena);
-  static constexpr auto InternalNewImpl_();
-  static const ::google::protobuf::internal::ClassDataFull _class_data_;
-
- public:
-  ::google::protobuf::Metadata GetMetadata() const;
-  // nested types ----------------------------------------------------
-
-  // accessors -------------------------------------------------------
-  enum : int {
-    kViewportIdFieldNumber = 1,
-    kHostHandleValueFieldNumber = 3,
-    kHostHandleKindFieldNumber = 2,
-  };
-  // uint64 viewport_id = 1;
-  void clear_viewport_id() ;
-  ::uint64_t viewport_id() const;
-  void set_viewport_id(::uint64_t value);
-
-  private:
-  ::uint64_t _internal_viewport_id() const;
-  void _internal_set_viewport_id(::uint64_t value);
-
-  public:
-  // uint64 host_handle_value = 3;
-  void clear_host_handle_value() ;
-  ::uint64_t host_handle_value() const;
-  void set_host_handle_value(::uint64_t value);
-
-  private:
-  ::uint64_t _internal_host_handle_value() const;
-  void _internal_set_host_handle_value(::uint64_t value);
-
-  public:
-  // uint32 host_handle_kind = 2;
-  void clear_host_handle_kind() ;
-  ::uint32_t host_handle_kind() const;
-  void set_host_handle_kind(::uint32_t value);
-
-  private:
-  ::uint32_t _internal_host_handle_kind() const;
-  void _internal_set_host_handle_kind(::uint32_t value);
-
-  public:
-  // @@protoc_insertion_point(class_scope:sailor.editor.v1.RemoteViewportHostRequest)
- private:
-  class _Internal;
-  friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<
-      2, 3, 0,
-      0, 2>
-      _table_;
-
-  friend class ::google::protobuf::MessageLite;
-  friend class ::google::protobuf::Arena;
-  template <typename T>
-  friend class ::google::protobuf::Arena::InternalHelper;
-  using InternalArenaConstructable_ = void;
-  using DestructorSkippable_ = void;
-  struct Impl_ {
-    inline explicit constexpr Impl_(
-        ::google::protobuf::internal::ConstantInitialized) noexcept;
-    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
-                          ::google::protobuf::Arena* arena);
-    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
-                          ::google::protobuf::Arena* arena, const Impl_& from,
-                          const RemoteViewportHostRequest& from_msg);
-    ::uint64_t viewport_id_;
-    ::uint64_t host_handle_value_;
-    ::uint32_t host_handle_kind_;
-    ::google::protobuf::internal::CachedSize _cached_size_;
-    PROTOBUF_TSAN_DECLARE_MEMBER
-  };
-  union { Impl_ _impl_; };
-  friend struct ::TableStruct_editor_5fengine_2eproto;
-};
-// -------------------------------------------------------------------
-
 class PrefabLinkRequest final : public ::google::protobuf::Message
 /* @@protoc_insertion_point(class_definition:sailor.editor.v1.PrefabLinkRequest) */ {
  public:
@@ -7160,7 +6943,7 @@ class PrefabLinkRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const PrefabLinkRequest*>(
         &_PrefabLinkRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 37;
+  static constexpr int kIndexInFileMessages = 36;
   friend void swap(PrefabLinkRequest& a, PrefabLinkRequest& b) { a.Swap(&b); }
   inline void Swap(PrefabLinkRequest* other) {
     if (other == this) return;
@@ -7374,7 +7157,7 @@ class ModelFingerprintStatusResult final : public ::google::protobuf::Message
     return reinterpret_cast<const ModelFingerprintStatusResult*>(
         &_ModelFingerprintStatusResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 65;
+  static constexpr int kIndexInFileMessages = 64;
   friend void swap(ModelFingerprintStatusResult& a, ModelFingerprintStatusResult& b) { a.Swap(&b); }
   inline void Swap(ModelFingerprintStatusResult* other) {
     if (other == this) return;
@@ -7564,7 +7347,7 @@ class ManagedMutationRevisionRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const ManagedMutationRevisionRequest*>(
         &_ManagedMutationRevisionRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 26;
+  static constexpr int kIndexInFileMessages = 25;
   friend void swap(ManagedMutationRevisionRequest& a, ManagedMutationRevisionRequest& b) { a.Swap(&b); }
   inline void Swap(ManagedMutationRevisionRequest* other) {
     if (other == this) return;
@@ -7772,7 +7555,7 @@ class Int32Result final : public ::google::protobuf::Message
     return reinterpret_cast<const Int32Result*>(
         &_Int32Result_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 43;
+  static constexpr int kIndexInFileMessages = 42;
   friend void swap(Int32Result& a, Int32Result& b) { a.Swap(&b); }
   inline void Swap(Int32Result* other) {
     if (other == this) return;
@@ -7962,7 +7745,7 @@ class InstantiatePrefabRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const InstantiatePrefabRequest*>(
         &_InstantiatePrefabRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 32;
+  static constexpr int kIndexInFileMessages = 31;
   friend void swap(InstantiatePrefabRequest& a, InstantiatePrefabRequest& b) { a.Swap(&b); }
   inline void Swap(InstantiatePrefabRequest* other) {
     if (other == this) return;
@@ -8176,7 +7959,7 @@ class InstantiatePrefabFromYamlRequest final : public ::google::protobuf::Messag
     return reinterpret_cast<const InstantiatePrefabFromYamlRequest*>(
         &_InstantiatePrefabFromYamlRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 33;
+  static constexpr int kIndexInFileMessages = 32;
   friend void swap(InstantiatePrefabFromYamlRequest& a, InstantiatePrefabFromYamlRequest& b) { a.Swap(&b); }
   inline void Swap(InstantiatePrefabFromYamlRequest* other) {
     if (other == this) return;
@@ -8402,7 +8185,7 @@ class InstanceIdResult final : public ::google::protobuf::Message
     return reinterpret_cast<const InstanceIdResult*>(
         &_InstanceIdResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 49;
+  static constexpr int kIndexInFileMessages = 48;
   friend void swap(InstanceIdResult& a, InstanceIdResult& b) { a.Swap(&b); }
   inline void Swap(InstanceIdResult* other) {
     if (other == this) return;
@@ -11301,7 +11084,7 @@ class CreateGameObjectRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const CreateGameObjectRequest*>(
         &_CreateGameObjectRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 29;
+  static constexpr int kIndexInFileMessages = 28;
   friend void swap(CreateGameObjectRequest& a, CreateGameObjectRequest& b) { a.Swap(&b); }
   inline void Swap(CreateGameObjectRequest* other) {
     if (other == this) return;
@@ -11705,7 +11488,7 @@ class BoolResult final : public ::google::protobuf::Message
     return reinterpret_cast<const BoolResult*>(
         &_BoolResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 42;
+  static constexpr int kIndexInFileMessages = 41;
   friend void swap(BoolResult& a, BoolResult& b) { a.Swap(&b); }
   inline void Swap(BoolResult* other) {
     if (other == this) return;
@@ -11895,7 +11678,7 @@ class AssetReloadStateResult final : public ::google::protobuf::Message
     return reinterpret_cast<const AssetReloadStateResult*>(
         &_AssetReloadStateResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 48;
+  static constexpr int kIndexInFileMessages = 47;
   friend void swap(AssetReloadStateResult& a, AssetReloadStateResult& b) { a.Swap(&b); }
   inline void Swap(AssetReloadStateResult* other) {
     if (other == this) return;
@@ -12121,7 +11904,7 @@ class AnimatorStateResult final : public ::google::protobuf::Message
     return reinterpret_cast<const AnimatorStateResult*>(
         &_AnimatorStateResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 52;
+  static constexpr int kIndexInFileMessages = 51;
   friend void swap(AnimatorStateResult& a, AnimatorStateResult& b) { a.Swap(&b); }
   inline void Swap(AnimatorStateResult* other) {
     if (other == this) return;
@@ -12431,7 +12214,7 @@ class AddComponentRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const AddComponentRequest*>(
         &_AddComponentRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 30;
+  static constexpr int kIndexInFileMessages = 29;
   friend void swap(AddComponentRequest& a, AddComponentRequest& b) { a.Swap(&b); }
   inline void Swap(AddComponentRequest* other) {
     if (other == this) return;
@@ -12663,7 +12446,7 @@ class ViewportTransformEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportTransformEvent*>(
         &_ViewportTransformEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 55;
+  static constexpr int kIndexInFileMessages = 54;
   friend void swap(ViewportTransformEvent& a, ViewportTransformEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportTransformEvent* other) {
     if (other == this) return;
@@ -12986,7 +12769,7 @@ class Vector4Result final : public ::google::protobuf::Message
     return reinterpret_cast<const Vector4Result*>(
         &_Vector4Result_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 50;
+  static constexpr int kIndexInFileMessages = 49;
   friend void swap(Vector4Result& a, Vector4Result& b) { a.Swap(&b); }
   inline void Swap(Vector4Result* other) {
     if (other == this) return;
@@ -13720,7 +13503,7 @@ class InstantiatePrefabInstanceRequest final : public ::google::protobuf::Messag
     return reinterpret_cast<const InstantiatePrefabInstanceRequest*>(
         &_InstantiatePrefabInstanceRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 35;
+  static constexpr int kIndexInFileMessages = 34;
   friend void swap(InstantiatePrefabInstanceRequest& a, InstantiatePrefabInstanceRequest& b) { a.Swap(&b); }
   inline void Swap(InstantiatePrefabInstanceRequest* other) {
     if (other == this) return;
@@ -14574,7 +14357,7 @@ class AnimatorParameterRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const AnimatorParameterRequest*>(
         &_AnimatorParameterRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 31;
+  static constexpr int kIndexInFileMessages = 30;
   friend void swap(AnimatorParameterRequest& a, AnimatorParameterRequest& b) { a.Swap(&b); }
   inline void Swap(AnimatorParameterRequest* other) {
     if (other == this) return;
@@ -14890,7 +14673,7 @@ class ViewportEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportEvent*>(
         &_ViewportEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 58;
+  static constexpr int kIndexInFileMessages = 57;
   friend void swap(ViewportEvent& a, ViewportEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportEvent* other) {
     if (other == this) return;
@@ -15206,7 +14989,6 @@ class ProtocolRequest final : public ::google::protobuf::Message
     kGetRemoteViewportState = 27,
     kGetRemoteViewportDiagnostics = 28,
     kRetryRemoteViewport = 29,
-    kSetRemoteViewportMacHostHandle = 30,
     kSendRemoteViewportInput = 31,
     kPullEditorViewportEvents = 32,
     kGetEditorManagedMutationRevision = 33,
@@ -15370,7 +15152,6 @@ class ProtocolRequest final : public ::google::protobuf::Message
     kGetRemoteViewportStateFieldNumber = 27,
     kGetRemoteViewportDiagnosticsFieldNumber = 28,
     kRetryRemoteViewportFieldNumber = 29,
-    kSetRemoteViewportMacHostHandleFieldNumber = 30,
     kSendRemoteViewportInputFieldNumber = 31,
     kPullEditorViewportEventsFieldNumber = 32,
     kGetEditorManagedMutationRevisionFieldNumber = 33,
@@ -15818,25 +15599,6 @@ class ProtocolRequest final : public ::google::protobuf::Message
   private:
   const ::sailor::editor::v1::ViewportIdRequest& _internal_retry_remote_viewport() const;
   ::sailor::editor::v1::ViewportIdRequest* _internal_mutable_retry_remote_viewport();
-
-  public:
-  // .sailor.editor.v1.RemoteViewportHostRequest set_remote_viewport_mac_host_handle = 30;
-  bool has_set_remote_viewport_mac_host_handle() const;
-  private:
-  bool _internal_has_set_remote_viewport_mac_host_handle() const;
-
-  public:
-  void clear_set_remote_viewport_mac_host_handle() ;
-  const ::sailor::editor::v1::RemoteViewportHostRequest& set_remote_viewport_mac_host_handle() const;
-  PROTOBUF_NODISCARD ::sailor::editor::v1::RemoteViewportHostRequest* release_set_remote_viewport_mac_host_handle();
-  ::sailor::editor::v1::RemoteViewportHostRequest* mutable_set_remote_viewport_mac_host_handle();
-  void set_allocated_set_remote_viewport_mac_host_handle(::sailor::editor::v1::RemoteViewportHostRequest* value);
-  void unsafe_arena_set_allocated_set_remote_viewport_mac_host_handle(::sailor::editor::v1::RemoteViewportHostRequest* value);
-  ::sailor::editor::v1::RemoteViewportHostRequest* unsafe_arena_release_set_remote_viewport_mac_host_handle();
-
-  private:
-  const ::sailor::editor::v1::RemoteViewportHostRequest& _internal_set_remote_viewport_mac_host_handle() const;
-  ::sailor::editor::v1::RemoteViewportHostRequest* _internal_mutable_set_remote_viewport_mac_host_handle();
 
   public:
   // .sailor.editor.v1.RemoteViewportInputRequest send_remote_viewport_input = 31;
@@ -16776,7 +16538,6 @@ class ProtocolRequest final : public ::google::protobuf::Message
   void set_has_get_remote_viewport_state();
   void set_has_get_remote_viewport_diagnostics();
   void set_has_retry_remote_viewport();
-  void set_has_set_remote_viewport_mac_host_handle();
   void set_has_send_remote_viewport_input();
   void set_has_pull_editor_viewport_events();
   void set_has_get_editor_managed_mutation_revision();
@@ -16829,7 +16590,7 @@ class ProtocolRequest final : public ::google::protobuf::Message
   inline void clear_has_command();
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      1, 71, 69,
+      1, 70, 68,
       0, 15>
       _table_;
 
@@ -16872,7 +16633,6 @@ class ProtocolRequest final : public ::google::protobuf::Message
       ::sailor::editor::v1::ViewportIdRequest* get_remote_viewport_state_;
       ::sailor::editor::v1::ViewportIdRequest* get_remote_viewport_diagnostics_;
       ::sailor::editor::v1::ViewportIdRequest* retry_remote_viewport_;
-      ::sailor::editor::v1::RemoteViewportHostRequest* set_remote_viewport_mac_host_handle_;
       ::sailor::editor::v1::RemoteViewportInputRequest* send_remote_viewport_input_;
       ::sailor::editor::v1::CountRequest* pull_editor_viewport_events_;
       ::sailor::editor::v1::ManagedMutationRevisionRequest* get_editor_managed_mutation_revision_;
@@ -16990,7 +16750,7 @@ class ViewportEventBatchResult final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportEventBatchResult*>(
         &_ViewportEventBatchResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 59;
+  static constexpr int kIndexInFileMessages = 58;
   friend void swap(ViewportEventBatchResult& a, ViewportEventBatchResult& b) { a.Swap(&b); }
   inline void Swap(ViewportEventBatchResult* other) {
     if (other == this) return;
@@ -19415,85 +19175,6 @@ inline ::sailor::editor::v1::ViewportIdRequest* ProtocolRequest::_internal_mutab
 inline ::sailor::editor::v1::ViewportIdRequest* ProtocolRequest::mutable_retry_remote_viewport() ABSL_ATTRIBUTE_LIFETIME_BOUND {
   ::sailor::editor::v1::ViewportIdRequest* _msg = _internal_mutable_retry_remote_viewport();
   // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolRequest.retry_remote_viewport)
-  return _msg;
-}
-
-// .sailor.editor.v1.RemoteViewportHostRequest set_remote_viewport_mac_host_handle = 30;
-inline bool ProtocolRequest::has_set_remote_viewport_mac_host_handle() const {
-  return command_case() == kSetRemoteViewportMacHostHandle;
-}
-inline bool ProtocolRequest::_internal_has_set_remote_viewport_mac_host_handle() const {
-  return command_case() == kSetRemoteViewportMacHostHandle;
-}
-inline void ProtocolRequest::set_has_set_remote_viewport_mac_host_handle() {
-  _impl_._oneof_case_[0] = kSetRemoteViewportMacHostHandle;
-}
-inline void ProtocolRequest::clear_set_remote_viewport_mac_host_handle() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (command_case() == kSetRemoteViewportMacHostHandle) {
-    if (GetArena() == nullptr) {
-      delete _impl_.command_.set_remote_viewport_mac_host_handle_;
-    } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
-      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.command_.set_remote_viewport_mac_host_handle_);
-    }
-    clear_has_command();
-  }
-}
-inline ::sailor::editor::v1::RemoteViewportHostRequest* ProtocolRequest::release_set_remote_viewport_mac_host_handle() {
-  // @@protoc_insertion_point(field_release:sailor.editor.v1.ProtocolRequest.set_remote_viewport_mac_host_handle)
-  if (command_case() == kSetRemoteViewportMacHostHandle) {
-    clear_has_command();
-    auto* temp = _impl_.command_.set_remote_viewport_mac_host_handle_;
-    if (GetArena() != nullptr) {
-      temp = ::google::protobuf::internal::DuplicateIfNonNull(temp);
-    }
-    _impl_.command_.set_remote_viewport_mac_host_handle_ = nullptr;
-    return temp;
-  } else {
-    return nullptr;
-  }
-}
-inline const ::sailor::editor::v1::RemoteViewportHostRequest& ProtocolRequest::_internal_set_remote_viewport_mac_host_handle() const {
-  return command_case() == kSetRemoteViewportMacHostHandle ? *_impl_.command_.set_remote_viewport_mac_host_handle_ : reinterpret_cast<::sailor::editor::v1::RemoteViewportHostRequest&>(::sailor::editor::v1::_RemoteViewportHostRequest_default_instance_);
-}
-inline const ::sailor::editor::v1::RemoteViewportHostRequest& ProtocolRequest::set_remote_viewport_mac_host_handle() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.ProtocolRequest.set_remote_viewport_mac_host_handle)
-  return _internal_set_remote_viewport_mac_host_handle();
-}
-inline ::sailor::editor::v1::RemoteViewportHostRequest* ProtocolRequest::unsafe_arena_release_set_remote_viewport_mac_host_handle() {
-  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.ProtocolRequest.set_remote_viewport_mac_host_handle)
-  if (command_case() == kSetRemoteViewportMacHostHandle) {
-    clear_has_command();
-    auto* temp = _impl_.command_.set_remote_viewport_mac_host_handle_;
-    _impl_.command_.set_remote_viewport_mac_host_handle_ = nullptr;
-    return temp;
-  } else {
-    return nullptr;
-  }
-}
-inline void ProtocolRequest::unsafe_arena_set_allocated_set_remote_viewport_mac_host_handle(::sailor::editor::v1::RemoteViewportHostRequest* value) {
-  // We rely on the oneof clear method to free the earlier contents
-  // of this oneof. We can directly use the pointer we're given to
-  // set the new value.
-  clear_command();
-  if (value) {
-    set_has_set_remote_viewport_mac_host_handle();
-    _impl_.command_.set_remote_viewport_mac_host_handle_ = value;
-  }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ProtocolRequest.set_remote_viewport_mac_host_handle)
-}
-inline ::sailor::editor::v1::RemoteViewportHostRequest* ProtocolRequest::_internal_mutable_set_remote_viewport_mac_host_handle() {
-  if (command_case() != kSetRemoteViewportMacHostHandle) {
-    clear_command();
-    set_has_set_remote_viewport_mac_host_handle();
-    _impl_.command_.set_remote_viewport_mac_host_handle_ =
-        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::RemoteViewportHostRequest>(GetArena());
-  }
-  return _impl_.command_.set_remote_viewport_mac_host_handle_;
-}
-inline ::sailor::editor::v1::RemoteViewportHostRequest* ProtocolRequest::mutable_set_remote_viewport_mac_host_handle() ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  ::sailor::editor::v1::RemoteViewportHostRequest* _msg = _internal_mutable_set_remote_viewport_mac_host_handle();
-  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolRequest.set_remote_viewport_mac_host_handle)
   return _msg;
 }
 
@@ -27858,76 +27539,6 @@ inline bool RemoteViewportRequest::_internal_focused() const {
 inline void RemoteViewportRequest::_internal_set_focused(bool value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.focused_ = value;
-}
-
-// -------------------------------------------------------------------
-
-// RemoteViewportHostRequest
-
-// uint64 viewport_id = 1;
-inline void RemoteViewportHostRequest::clear_viewport_id() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.viewport_id_ = ::uint64_t{0u};
-}
-inline ::uint64_t RemoteViewportHostRequest::viewport_id() const {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.RemoteViewportHostRequest.viewport_id)
-  return _internal_viewport_id();
-}
-inline void RemoteViewportHostRequest::set_viewport_id(::uint64_t value) {
-  _internal_set_viewport_id(value);
-  // @@protoc_insertion_point(field_set:sailor.editor.v1.RemoteViewportHostRequest.viewport_id)
-}
-inline ::uint64_t RemoteViewportHostRequest::_internal_viewport_id() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.viewport_id_;
-}
-inline void RemoteViewportHostRequest::_internal_set_viewport_id(::uint64_t value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.viewport_id_ = value;
-}
-
-// uint32 host_handle_kind = 2;
-inline void RemoteViewportHostRequest::clear_host_handle_kind() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.host_handle_kind_ = 0u;
-}
-inline ::uint32_t RemoteViewportHostRequest::host_handle_kind() const {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.RemoteViewportHostRequest.host_handle_kind)
-  return _internal_host_handle_kind();
-}
-inline void RemoteViewportHostRequest::set_host_handle_kind(::uint32_t value) {
-  _internal_set_host_handle_kind(value);
-  // @@protoc_insertion_point(field_set:sailor.editor.v1.RemoteViewportHostRequest.host_handle_kind)
-}
-inline ::uint32_t RemoteViewportHostRequest::_internal_host_handle_kind() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.host_handle_kind_;
-}
-inline void RemoteViewportHostRequest::_internal_set_host_handle_kind(::uint32_t value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.host_handle_kind_ = value;
-}
-
-// uint64 host_handle_value = 3;
-inline void RemoteViewportHostRequest::clear_host_handle_value() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.host_handle_value_ = ::uint64_t{0u};
-}
-inline ::uint64_t RemoteViewportHostRequest::host_handle_value() const {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.RemoteViewportHostRequest.host_handle_value)
-  return _internal_host_handle_value();
-}
-inline void RemoteViewportHostRequest::set_host_handle_value(::uint64_t value) {
-  _internal_set_host_handle_value(value);
-  // @@protoc_insertion_point(field_set:sailor.editor.v1.RemoteViewportHostRequest.host_handle_value)
-}
-inline ::uint64_t RemoteViewportHostRequest::_internal_host_handle_value() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.host_handle_value_;
-}
-inline void RemoteViewportHostRequest::_internal_set_host_handle_value(::uint64_t value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.host_handle_value_ = value;
 }
 
 // -------------------------------------------------------------------

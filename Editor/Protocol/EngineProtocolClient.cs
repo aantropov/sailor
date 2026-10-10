@@ -857,27 +857,6 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 .ConfigureAwait(false),
             nameof(ProtocolRequest.RetryRemoteViewport));
 
-    public async Task<bool> SetRemoteViewportMacHostHandleAsync(
-        ulong viewportId,
-        uint hostHandleKind,
-        ulong hostHandleValue,
-        CancellationToken cancellationToken = default)
-        => ReadBool(
-            await SendAsync(
-                    new ProtocolRequest
-                    {
-                        SetRemoteViewportMacHostHandle =
-                            new RemoteViewportHostRequest
-                            {
-                                ViewportId = viewportId,
-                                HostHandleKind = hostHandleKind,
-                                HostHandleValue = hostHandleValue
-                            }
-                    },
-                    cancellationToken)
-                .ConfigureAwait(false),
-            nameof(ProtocolRequest.SetRemoteViewportMacHostHandle));
-
     public async Task<bool> SendRemoteViewportInputAsync(
         ulong viewportId,
         uint kind,
@@ -1550,7 +1529,6 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 ProtocolRequest.CommandOneofCase.GetRemoteViewportDiagnostics or
                 ProtocolRequest.CommandOneofCase.CaptureRemoteViewportFrameEvidence or
                 ProtocolRequest.CommandOneofCase.RetryRemoteViewport or
-            ProtocolRequest.CommandOneofCase.SetRemoteViewportMacHostHandle or
                 ProtocolRequest.CommandOneofCase.SendRemoteViewportInput or
                 ProtocolRequest.CommandOneofCase.PullEditorViewportEvents or
                 ProtocolRequest.CommandOneofCase.TraceViewportRay or

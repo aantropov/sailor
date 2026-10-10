@@ -32,7 +32,6 @@ message ProtocolRequest {
 		ViewportIdRequest get_remote_viewport_state = 27;
 		ViewportIdRequest get_remote_viewport_diagnostics = 28;
 		ViewportIdRequest retry_remote_viewport = 29;
-		RemoteViewportHostRequest set_remote_viewport_mac_host_handle = 30;
 		RemoteViewportInputRequest send_remote_viewport_input = 31;
 		CountRequest pull_editor_viewport_events = 32;
 		ManagedMutationRevisionRequest get_editor_managed_mutation_revision = 33;
@@ -84,6 +83,7 @@ message ProtocolRequest {
 	}
 
 	reserved 3 to 9;
+	reserved 30;
 	reserved 50;
 	reserved "create_model_game_object";
 	reserved "resolve_viewport_drop_position";
@@ -270,12 +270,6 @@ message RemoteViewportRequest {
 	uint32 height = 5;
 	bool visible = 6;
 	bool focused = 7;
-}
-
-message RemoteViewportHostRequest {
-	uint64 viewport_id = 1;
-	uint32 host_handle_kind = 2;
-	uint64 host_handle_value = 3;
 }
 
 message RemoteViewportInputRequest {

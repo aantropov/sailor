@@ -15,9 +15,11 @@ traffic is rejected.
 
 The current local editor host still loads SailorLib because the macOS viewport
 data plane passes same-process `CAMetalLayer` and `IOSurface` object handles.
-The one-time local bootstrap and fail-safe teardown use a small lifecycle-only
-C surface; normal command traffic, including orderly stop and shutdown, uses
-WebSocket. The bundled native host binds only to `127.0.0.1` and requires an
+Local bootstrap, fail-safe teardown and same-process viewport host binding use
+the C surface. Mac host binding retains the native object on the UI caller before
+queuing its use; raw host pointers are not protobuf commands. Normal command
+traffic, including orderly stop and shutdown, uses WebSocket. The bundled
+native host binds only to `127.0.0.1` and requires an
 ephemeral bearer token; it cannot be configured for a network-visible
 plaintext listener. A future process/remote host can expose the same endpoint
 over `wss://` without changing protobuf clients after the viewport presenter is
@@ -33,8 +35,8 @@ allows one in-flight request, while independent lanes may make progress
 concurrently. Cancelling the managed wait closes the affected lane but does not
 imply that an already admitted native mutation was rolled back.
 
-The local `Initialize` bootstrap is the only platform-affine exception: on
-macOS it executes on the MAUI/Cocoa main thread because `App::Initialize`
+The local `Initialize` bootstrap is platform-affine: on macOS it executes on
+the MAUI/Cocoa main thread because `App::Initialize`
 creates the native `NSWindow`, `NSView`, and `CAMetalLayer`. Once that bootstrap
 has established the loopback host, all normal Editor RPC waits and WebSocket
 I/O are asynchronous.
@@ -120,16 +122,11 @@ completed successfully. Failed rendering or replacement preserves the old PNG;
 a failure to confirm OS sync after replacement remains retryable, not a rollback.
 Neither command changes the model processing acknowledgement. Both remain v1.
 
-Compatibility rules:
+Contract rules:
 
-- Ordinary commands use baseline `protocol_version = 1`. Strict InstanceId
-  restoration uses feature version `2`; the current host accepts version `2`
-  only for `instantiate_prefab_from_yaml` with `strict_instance_ids = true`.
-- Every current host response advertises
-  `supports_strict_instance_ids = true`. A new Editor probes this additive
-  capability over a baseline v1 request before sending a strict restore. An
-  older v1 host omits the field, so ordinary v1 commands remain available but
-  strict restore fails closed without sending the mutation.
+- All commands use `protocol_version = 1`, including strict InstanceId
+  restoration. Update producers and consumers together without legacy wire
+  variants. The current host advertises `supports_strict_instance_ids = true`.
 - Never reuse a field number. Reserve removed fields and enum values.
 - Keep `InstanceId` and `FileId` strings byte-for-byte compatible with their
   existing serialized forms.

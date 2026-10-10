@@ -820,33 +820,6 @@ struct RemoteViewportInputRequestDefaultTypeInternal {
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
     PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 RemoteViewportInputRequestDefaultTypeInternal _RemoteViewportInputRequest_default_instance_;
 
-inline constexpr RemoteViewportHostRequest::Impl_::Impl_(
-    ::_pbi::ConstantInitialized) noexcept
-      : viewport_id_{::uint64_t{0u}},
-        host_handle_value_{::uint64_t{0u}},
-        host_handle_kind_{0u},
-        _cached_size_{0} {}
-
-template <typename>
-PROTOBUF_CONSTEXPR RemoteViewportHostRequest::RemoteViewportHostRequest(::_pbi::ConstantInitialized)
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-    : ::google::protobuf::Message(_class_data_.base()),
-#else   // PROTOBUF_CUSTOM_VTABLE
-    : ::google::protobuf::Message(),
-#endif  // PROTOBUF_CUSTOM_VTABLE
-      _impl_(::_pbi::ConstantInitialized()) {
-}
-struct RemoteViewportHostRequestDefaultTypeInternal {
-  PROTOBUF_CONSTEXPR RemoteViewportHostRequestDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
-  ~RemoteViewportHostRequestDefaultTypeInternal() {}
-  union {
-    RemoteViewportHostRequest _instance;
-  };
-};
-
-PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
-    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 RemoteViewportHostRequestDefaultTypeInternal _RemoteViewportHostRequest_default_instance_;
-
 inline constexpr PrefabLinkRequest::Impl_::Impl_(
     ::_pbi::ConstantInitialized) noexcept
       : instance_id_(
@@ -2041,7 +2014,6 @@ const ::uint32_t
         ::_pbi::kInvalidFieldOffsetTag,
         ::_pbi::kInvalidFieldOffsetTag,
         ::_pbi::kInvalidFieldOffsetTag,
-        ::_pbi::kInvalidFieldOffsetTag,
         PROTOBUF_FIELD_OFFSET(::sailor::editor::v1::ProtocolRequest, _impl_.command_),
         ~0u,  // no _has_bits_
         PROTOBUF_FIELD_OFFSET(::sailor::editor::v1::ProtocolResponse, _internal_metadata_),
@@ -2356,17 +2328,6 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::sailor::editor::v1::RemoteViewportRequest, _impl_.height_),
         PROTOBUF_FIELD_OFFSET(::sailor::editor::v1::RemoteViewportRequest, _impl_.visible_),
         PROTOBUF_FIELD_OFFSET(::sailor::editor::v1::RemoteViewportRequest, _impl_.focused_),
-        ~0u,  // no _has_bits_
-        PROTOBUF_FIELD_OFFSET(::sailor::editor::v1::RemoteViewportHostRequest, _internal_metadata_),
-        ~0u,  // no _extensions_
-        ~0u,  // no _oneof_case_
-        ~0u,  // no _weak_field_map_
-        ~0u,  // no _inlined_string_donated_
-        ~0u,  // no _split_
-        ~0u,  // no sizeof(Split)
-        PROTOBUF_FIELD_OFFSET(::sailor::editor::v1::RemoteViewportHostRequest, _impl_.viewport_id_),
-        PROTOBUF_FIELD_OFFSET(::sailor::editor::v1::RemoteViewportHostRequest, _impl_.host_handle_kind_),
-        PROTOBUF_FIELD_OFFSET(::sailor::editor::v1::RemoteViewportHostRequest, _impl_.host_handle_value_),
         ~0u,  // no _has_bits_
         PROTOBUF_FIELD_OFFSET(::sailor::editor::v1::RemoteViewportInputRequest, _internal_metadata_),
         ~0u,  // no _extensions_
@@ -2856,70 +2817,69 @@ static const ::_pbi::MigrationSchema
     schemas[] ABSL_ATTRIBUTE_SECTION_VARIABLE(protodesc_cold) = {
         {0, -1, -1, sizeof(::sailor::editor::v1::Empty)},
         {8, -1, -1, sizeof(::sailor::editor::v1::ProtocolRequest)},
-        {88, -1, -1, sizeof(::sailor::editor::v1::ProtocolResponse)},
-        {119, -1, -1, sizeof(::sailor::editor::v1::InitializeRequest)},
-        {128, -1, -1, sizeof(::sailor::editor::v1::CountRequest)},
-        {137, -1, -1, sizeof(::sailor::editor::v1::FileIdRequest)},
-        {146, -1, -1, sizeof(::sailor::editor::v1::UpdateAssetRequest)},
-        {156, 171, -1, sizeof(::sailor::editor::v1::CreateModelInstanceRequest)},
-        {178, -1, -1, sizeof(::sailor::editor::v1::InstanceIdRequest)},
-        {187, -1, -1, sizeof(::sailor::editor::v1::ViewportIdRequest)},
-        {196, -1, -1, sizeof(::sailor::editor::v1::ViewportRectRequest)},
-        {208, -1, -1, sizeof(::sailor::editor::v1::SizeRequest)},
-        {218, -1, -1, sizeof(::sailor::editor::v1::EditorSimulationRequest)},
-        {227, -1, -1, sizeof(::sailor::editor::v1::EditorStatsModeRequest)},
-        {236, -1, -1, sizeof(::sailor::editor::v1::EditorRenderModeRequest)},
-        {245, -1, -1, sizeof(::sailor::editor::v1::EditorRenderModeResult)},
-        {254, -1, -1, sizeof(::sailor::editor::v1::GIProbesBakeSettings)},
-        {273, 289, -1, sizeof(::sailor::editor::v1::StartGIProbesBakeRequest)},
-        {297, -1, -1, sizeof(::sailor::editor::v1::GIProbesBakeStatusResult)},
-        {318, -1, -1, sizeof(::sailor::editor::v1::GlobalIlluminationProbeBinding)},
-        {331, 342, -1, sizeof(::sailor::editor::v1::SetGISettingsRequest)},
-        {345, -1, -1, sizeof(::sailor::editor::v1::GlobalIlluminationProbeState)},
-        {360, 377, -1, sizeof(::sailor::editor::v1::GlobalIlluminationStateResult)},
-        {386, -1, -1, sizeof(::sailor::editor::v1::RemoteViewportRequest)},
-        {401, -1, -1, sizeof(::sailor::editor::v1::RemoteViewportHostRequest)},
-        {412, -1, -1, sizeof(::sailor::editor::v1::RemoteViewportInputRequest)},
-        {433, -1, -1, sizeof(::sailor::editor::v1::ManagedMutationRevisionRequest)},
-        {443, -1, -1, sizeof(::sailor::editor::v1::UpdateObjectRequest)},
-        {453, -1, -1, sizeof(::sailor::editor::v1::ReparentObjectRequest)},
-        {464, -1, -1, sizeof(::sailor::editor::v1::CreateGameObjectRequest)},
-        {474, -1, -1, sizeof(::sailor::editor::v1::AddComponentRequest)},
-        {485, -1, -1, sizeof(::sailor::editor::v1::AnimatorParameterRequest)},
-        {501, -1, -1, sizeof(::sailor::editor::v1::InstantiatePrefabRequest)},
-        {511, -1, -1, sizeof(::sailor::editor::v1::InstantiatePrefabFromYamlRequest)},
-        {522, -1, -1, sizeof(::sailor::editor::v1::ViewportRayRequest)},
-        {533, 545, -1, sizeof(::sailor::editor::v1::InstantiatePrefabInstanceRequest)},
-        {549, -1, -1, sizeof(::sailor::editor::v1::ViewportObjectRequest)},
-        {559, -1, -1, sizeof(::sailor::editor::v1::PrefabLinkRequest)},
-        {569, -1, -1, sizeof(::sailor::editor::v1::ViewportToolStateRequest)},
-        {580, -1, -1, sizeof(::sailor::editor::v1::SelectionRequest)},
-        {589, -1, -1, sizeof(::sailor::editor::v1::ShowMainWindowRequest)},
-        {598, -1, -1, sizeof(::sailor::editor::v1::RenderPathTracedImageRequest)},
-        {611, -1, -1, sizeof(::sailor::editor::v1::BoolResult)},
-        {620, -1, -1, sizeof(::sailor::editor::v1::Int32Result)},
-        {629, -1, -1, sizeof(::sailor::editor::v1::UInt32Result)},
-        {638, -1, -1, sizeof(::sailor::editor::v1::UInt64Result)},
-        {647, -1, -1, sizeof(::sailor::editor::v1::StringResult)},
-        {657, -1, -1, sizeof(::sailor::editor::v1::StringListResult)},
-        {666, -1, -1, sizeof(::sailor::editor::v1::AssetReloadStateResult)},
-        {678, -1, -1, sizeof(::sailor::editor::v1::InstanceIdResult)},
-        {688, 697, -1, sizeof(::sailor::editor::v1::Vector4Result)},
-        {698, -1, -1, sizeof(::sailor::editor::v1::ViewportToolStateResult)},
-        {708, -1, -1, sizeof(::sailor::editor::v1::AnimatorStateResult)},
-        {726, -1, -1, sizeof(::sailor::editor::v1::Vector4)},
-        {738, -1, -1, sizeof(::sailor::editor::v1::ViewportSelectionEvent)},
-        {747, 764, -1, sizeof(::sailor::editor::v1::ViewportTransformEvent)},
-        {773, -1, -1, sizeof(::sailor::editor::v1::ViewportAssetDropEvent)},
-        {784, -1, -1, sizeof(::sailor::editor::v1::ViewportToolShortcutEvent)},
-        {793, -1, -1, sizeof(::sailor::editor::v1::ViewportEvent)},
-        {808, -1, -1, sizeof(::sailor::editor::v1::ViewportEventBatchResult)},
-        {817, -1, -1, sizeof(::sailor::editor::v1::RuntimeGIProbesSettings)},
-        {835, -1, -1, sizeof(::sailor::editor::v1::RuntimeGIProbesPreviewRequest)},
-        {844, -1, -1, sizeof(::sailor::editor::v1::RuntimeGIProbesPauseRequest)},
-        {853, -1, -1, sizeof(::sailor::editor::v1::RuntimeGIProbesState)},
-        {877, -1, -1, sizeof(::sailor::editor::v1::RuntimeGIProbesPreviewBudgetRequest)},
-        {886, -1, -1, sizeof(::sailor::editor::v1::ModelFingerprintStatusResult)},
+        {87, -1, -1, sizeof(::sailor::editor::v1::ProtocolResponse)},
+        {118, -1, -1, sizeof(::sailor::editor::v1::InitializeRequest)},
+        {127, -1, -1, sizeof(::sailor::editor::v1::CountRequest)},
+        {136, -1, -1, sizeof(::sailor::editor::v1::FileIdRequest)},
+        {145, -1, -1, sizeof(::sailor::editor::v1::UpdateAssetRequest)},
+        {155, 170, -1, sizeof(::sailor::editor::v1::CreateModelInstanceRequest)},
+        {177, -1, -1, sizeof(::sailor::editor::v1::InstanceIdRequest)},
+        {186, -1, -1, sizeof(::sailor::editor::v1::ViewportIdRequest)},
+        {195, -1, -1, sizeof(::sailor::editor::v1::ViewportRectRequest)},
+        {207, -1, -1, sizeof(::sailor::editor::v1::SizeRequest)},
+        {217, -1, -1, sizeof(::sailor::editor::v1::EditorSimulationRequest)},
+        {226, -1, -1, sizeof(::sailor::editor::v1::EditorStatsModeRequest)},
+        {235, -1, -1, sizeof(::sailor::editor::v1::EditorRenderModeRequest)},
+        {244, -1, -1, sizeof(::sailor::editor::v1::EditorRenderModeResult)},
+        {253, -1, -1, sizeof(::sailor::editor::v1::GIProbesBakeSettings)},
+        {272, 288, -1, sizeof(::sailor::editor::v1::StartGIProbesBakeRequest)},
+        {296, -1, -1, sizeof(::sailor::editor::v1::GIProbesBakeStatusResult)},
+        {317, -1, -1, sizeof(::sailor::editor::v1::GlobalIlluminationProbeBinding)},
+        {330, 341, -1, sizeof(::sailor::editor::v1::SetGISettingsRequest)},
+        {344, -1, -1, sizeof(::sailor::editor::v1::GlobalIlluminationProbeState)},
+        {359, 376, -1, sizeof(::sailor::editor::v1::GlobalIlluminationStateResult)},
+        {385, -1, -1, sizeof(::sailor::editor::v1::RemoteViewportRequest)},
+        {400, -1, -1, sizeof(::sailor::editor::v1::RemoteViewportInputRequest)},
+        {421, -1, -1, sizeof(::sailor::editor::v1::ManagedMutationRevisionRequest)},
+        {431, -1, -1, sizeof(::sailor::editor::v1::UpdateObjectRequest)},
+        {441, -1, -1, sizeof(::sailor::editor::v1::ReparentObjectRequest)},
+        {452, -1, -1, sizeof(::sailor::editor::v1::CreateGameObjectRequest)},
+        {462, -1, -1, sizeof(::sailor::editor::v1::AddComponentRequest)},
+        {473, -1, -1, sizeof(::sailor::editor::v1::AnimatorParameterRequest)},
+        {489, -1, -1, sizeof(::sailor::editor::v1::InstantiatePrefabRequest)},
+        {499, -1, -1, sizeof(::sailor::editor::v1::InstantiatePrefabFromYamlRequest)},
+        {510, -1, -1, sizeof(::sailor::editor::v1::ViewportRayRequest)},
+        {521, 533, -1, sizeof(::sailor::editor::v1::InstantiatePrefabInstanceRequest)},
+        {537, -1, -1, sizeof(::sailor::editor::v1::ViewportObjectRequest)},
+        {547, -1, -1, sizeof(::sailor::editor::v1::PrefabLinkRequest)},
+        {557, -1, -1, sizeof(::sailor::editor::v1::ViewportToolStateRequest)},
+        {568, -1, -1, sizeof(::sailor::editor::v1::SelectionRequest)},
+        {577, -1, -1, sizeof(::sailor::editor::v1::ShowMainWindowRequest)},
+        {586, -1, -1, sizeof(::sailor::editor::v1::RenderPathTracedImageRequest)},
+        {599, -1, -1, sizeof(::sailor::editor::v1::BoolResult)},
+        {608, -1, -1, sizeof(::sailor::editor::v1::Int32Result)},
+        {617, -1, -1, sizeof(::sailor::editor::v1::UInt32Result)},
+        {626, -1, -1, sizeof(::sailor::editor::v1::UInt64Result)},
+        {635, -1, -1, sizeof(::sailor::editor::v1::StringResult)},
+        {645, -1, -1, sizeof(::sailor::editor::v1::StringListResult)},
+        {654, -1, -1, sizeof(::sailor::editor::v1::AssetReloadStateResult)},
+        {666, -1, -1, sizeof(::sailor::editor::v1::InstanceIdResult)},
+        {676, 685, -1, sizeof(::sailor::editor::v1::Vector4Result)},
+        {686, -1, -1, sizeof(::sailor::editor::v1::ViewportToolStateResult)},
+        {696, -1, -1, sizeof(::sailor::editor::v1::AnimatorStateResult)},
+        {714, -1, -1, sizeof(::sailor::editor::v1::Vector4)},
+        {726, -1, -1, sizeof(::sailor::editor::v1::ViewportSelectionEvent)},
+        {735, 752, -1, sizeof(::sailor::editor::v1::ViewportTransformEvent)},
+        {761, -1, -1, sizeof(::sailor::editor::v1::ViewportAssetDropEvent)},
+        {772, -1, -1, sizeof(::sailor::editor::v1::ViewportToolShortcutEvent)},
+        {781, -1, -1, sizeof(::sailor::editor::v1::ViewportEvent)},
+        {796, -1, -1, sizeof(::sailor::editor::v1::ViewportEventBatchResult)},
+        {805, -1, -1, sizeof(::sailor::editor::v1::RuntimeGIProbesSettings)},
+        {823, -1, -1, sizeof(::sailor::editor::v1::RuntimeGIProbesPreviewRequest)},
+        {832, -1, -1, sizeof(::sailor::editor::v1::RuntimeGIProbesPauseRequest)},
+        {841, -1, -1, sizeof(::sailor::editor::v1::RuntimeGIProbesState)},
+        {865, -1, -1, sizeof(::sailor::editor::v1::RuntimeGIProbesPreviewBudgetRequest)},
+        {874, -1, -1, sizeof(::sailor::editor::v1::ModelFingerprintStatusResult)},
 };
 static const ::_pb::Message* const file_default_instances[] = {
     &::sailor::editor::v1::_Empty_default_instance_._instance,
@@ -2946,7 +2906,6 @@ static const ::_pb::Message* const file_default_instances[] = {
     &::sailor::editor::v1::_GlobalIlluminationProbeState_default_instance_._instance,
     &::sailor::editor::v1::_GlobalIlluminationStateResult_default_instance_._instance,
     &::sailor::editor::v1::_RemoteViewportRequest_default_instance_._instance,
-    &::sailor::editor::v1::_RemoteViewportHostRequest_default_instance_._instance,
     &::sailor::editor::v1::_RemoteViewportInputRequest_default_instance_._instance,
     &::sailor::editor::v1::_ManagedMutationRevisionRequest_default_instance_._instance,
     &::sailor::editor::v1::_UpdateObjectRequest_default_instance_._instance,
@@ -2992,7 +2951,7 @@ static const ::_pb::Message* const file_default_instances[] = {
 const char descriptor_table_protodef_editor_5fengine_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
     "\n\023editor_engine.proto\022\020sailor.editor.v1\""
-    "\007\n\005Empty\"\311&\n\017ProtocolRequest\022\030\n\020protocol"
+    "\007\n\005Empty\"\363%\n\017ProtocolRequest\022\030\n\020protocol"
     "_version\030\001 \001(\r\022\022\n\nrequest_id\030\002 \001(\004\0229\n\nin"
     "itialize\030\n \001(\0132#.sailor.editor.v1.Initia"
     "lizeRequestH\000\022(\n\005start\030\013 \001(\0132\027.sailor.ed"
@@ -3024,422 +2983,417 @@ const char descriptor_table_protodef_editor_5fengine_2eproto[] ABSL_ATTRIBUTE_SE
     "e_viewport_diagnostics\030\034 \001(\0132#.sailor.ed"
     "itor.v1.ViewportIdRequestH\000\022D\n\025retry_rem"
     "ote_viewport\030\035 \001(\0132#.sailor.editor.v1.Vi"
-    "ewportIdRequestH\000\022Z\n#set_remote_viewport"
-    "_mac_host_handle\030\036 \001(\0132+.sailor.editor.v"
-    "1.RemoteViewportHostRequestH\000\022R\n\032send_re"
-    "mote_viewport_input\030\037 \001(\0132,.sailor.edito"
-    "r.v1.RemoteViewportInputRequestH\000\022E\n\033pul"
-    "l_editor_viewport_events\030  \001(\0132\036.sailor."
-    "editor.v1.CountRequestH\000\022`\n$get_editor_m"
-    "anaged_mutation_revision\030! \001(\01320.sailor."
-    "editor.v1.ManagedMutationRevisionRequest"
-    "H\000\022>\n\rupdate_object\030\" \001(\0132%.sailor.edito"
-    "r.v1.UpdateObjectRequestH\000\022B\n\017reparent_o"
-    "bject\030# \001(\0132\'.sailor.editor.v1.ReparentO"
-    "bjectRequestH\000\022G\n\022create_game_object\030$ \001"
-    "(\0132).sailor.editor.v1.CreateGameObjectRe"
-    "questH\000\022=\n\016destroy_object\030% \001(\0132#.sailor"
-    ".editor.v1.InstanceIdRequestH\000\022J\n\033reset_"
-    "component_to_defaults\030& \001(\0132#.sailor.edi"
-    "tor.v1.InstanceIdRequestH\000\022>\n\radd_compon"
-    "ent\030\' \001(\0132%.sailor.editor.v1.AddComponen"
-    "tRequestH\000\022\?\n\020remove_component\030( \001(\0132#.s"
-    "ailor.editor.v1.InstanceIdRequestH\000\022H\n\022i"
-    "nstantiate_prefab\030) \001(\0132*.sailor.editor."
-    "v1.InstantiatePrefabRequestH\000\022Z\n\034instant"
-    "iate_prefab_from_yaml\030* \001(\01322.sailor.edi"
-    "tor.v1.InstantiatePrefabFromYamlRequestH"
-    "\000\022B\n\024set_editor_selection\030+ \001(\0132\".sailor"
-    ".editor.v1.SelectionRequestH\000\022C\n\020show_ma"
-    "in_window\030, \001(\0132\'.sailor.editor.v1.ShowM"
-    "ainWindowRequestH\000\022R\n\030render_path_traced"
-    "_image\030- \001(\0132..sailor.editor.v1.RenderPa"
-    "thTracedImageRequestH\000\0229\n\026serialize_engi"
-    "ne_types\030. \001(\0132\027.sailor.editor.v1.EmptyH"
-    "\000\022>\n\033is_engine_main_thread_ready\030/ \001(\0132\027"
-    ".sailor.editor.v1.EmptyH\000\0224\n\021is_engine_r"
-    "unning\0300 \001(\0132\027.sailor.editor.v1.EmptyH\000\022"
-    "B\n\022trace_viewport_ray\0301 \001(\0132$.sailor.edi"
-    "tor.v1.ViewportRayRequestH\000\022Y\n\033instantia"
-    "te_prefab_instance\0303 \001(\01322.sailor.editor"
-    ".v1.InstantiatePrefabInstanceRequestH\000\022F"
-    "\n\023focus_editor_camera\0304 \001(\0132\'.sailor.edi"
-    "tor.v1.ViewportObjectRequestH\000\022>\n\017set_pr"
-    "efab_link\0305 \001(\0132#.sailor.editor.v1.Prefa"
-    "bLinkRequestH\000\022@\n\021break_prefab_link\0306 \001("
-    "\0132#.sailor.editor.v1.InstanceIdRequestH\000"
-    "\022M\n\027set_viewport_tool_state\0307 \001(\0132*.sail"
-    "or.editor.v1.ViewportToolStateRequestH\000\022"
-    "F\n\027get_viewport_tool_state\0308 \001(\0132#.sailo"
-    "r.editor.v1.ViewportIdRequestH\000\022<\n\014updat"
-    "e_asset\0309 \001(\0132$.sailor.editor.v1.UpdateA"
-    "ssetRequestH\000\022M\n\025create_model_instance\030:"
-    " \001(\0132,.sailor.editor.v1.CreateModelInsta"
-    "nceRequestH\000\022L\n\026set_animator_parameter\030;"
-    " \001(\0132*.sailor.editor.v1.AnimatorParamete"
-    "rRequestH\000\022A\n\022get_animator_state\030< \001(\0132#"
-    ".sailor.editor.v1.InstanceIdRequestH\000\022J\n"
-    "\025set_editor_simulation\030= \001(\0132).sailor.ed"
-    "itor.v1.EditorSimulationRequestH\000\022>\n\033get"
-    "_editor_simulation_state\030> \001(\0132\027.sailor."
-    "editor.v1.EmptyH\000\022>\n\023preview_audio_asset"
-    "\030\? \001(\0132\037.sailor.editor.v1.FileIdRequestH"
-    "\000\022I\n\025set_editor_stats_mode\030@ \001(\0132(.sailo"
-    "r.editor.v1.EditorStatsModeRequestH\000\022K\n\026"
-    "set_editor_render_mode\030A \001(\0132).sailor.ed"
-    "itor.v1.EditorRenderModeRequestH\000\0229\n\026get"
-    "_editor_render_mode\030B \001(\0132\027.sailor.edito"
-    "r.v1.EmptyH\000\022J\n\024start_gi_probes_bake\030C \001"
-    "(\0132*.sailor.editor.v1.StartGIProbesBakeR"
-    "equestH\000\022<\n\031get_gi_probes_bake_status\030D "
-    "\001(\0132\027.sailor.editor.v1.EmptyH\000\0228\n\025cancel"
-    "_gi_probes_bake\030E \001(\0132\027.sailor.editor.v1"
-    ".EmptyH\000\022A\n\017set_gi_settings\030F \001(\0132&.sail"
-    "or.editor.v1.SetGISettingsRequestH\000\022@\n\035g"
-    "et_global_illumination_state\030G \001(\0132\027.sai"
-    "lor.editor.v1.EmptyH\000\022X\n\035set_runtime_gi_"
-    "probes_preview\030H \001(\0132/.sailor.editor.v1."
-    "RuntimeGIProbesPreviewRequestH\000\022U\n\034set_r"
-    "untime_gi_probes_paused\030I \001(\0132-.sailor.e"
-    "ditor.v1.RuntimeGIProbesPauseRequestH\000\022<"
-    "\n\031restart_runtime_gi_probes\030J \001(\0132\027.sail"
-    "or.editor.v1.EmptyH\000\022B\n\037rebuild_runtime_"
-    "gi_probes_scene\030K \001(\0132\027.sailor.editor.v1"
-    ".EmptyH\000\022e\n$set_runtime_gi_probes_previe"
-    "w_budget\030L \001(\01325.sailor.editor.v1.Runtim"
-    "eGIProbesPreviewBudgetRequestH\000\022U\n&captu"
-    "re_remote_viewport_frame_evidence\030M \001(\0132"
-    "#.sailor.editor.v1.ViewportIdRequestH\000\022D"
-    "\n\031request_model_fingerprint\030d \001(\0132\037.sail"
-    "or.editor.v1.FileIdRequestH\000\022G\n\034get_mode"
-    "l_fingerprint_status\030e \001(\0132\037.sailor.edit"
-    "or.v1.FileIdRequestH\000B\t\n\007commandJ\004\010\003\020\nJ\004"
-    "\0102\0203J\004\010N\020dR\030create_model_game_objectR\036re"
-    "solve_viewport_drop_position\"\271\n\n\020Protoco"
-    "lResponse\022\030\n\020protocol_version\030\001 \001(\r\022\022\n\nr"
-    "equest_id\030\002 \001(\004\022\017\n\007success\030\003 \001(\010\022\r\n\005erro"
-    "r\030\004 \001(\t\022$\n\034supports_strict_instance_ids\030"
-    "\005 \001(\010\022/\n\014empty_result\030\n \001(\0132\027.sailor.edi"
-    "tor.v1.EmptyH\000\0223\n\013bool_result\030\013 \001(\0132\034.sa"
-    "ilor.editor.v1.BoolResultH\000\0225\n\014int32_res"
-    "ult\030\014 \001(\0132\035.sailor.editor.v1.Int32Result"
-    "H\000\0227\n\ruint32_result\030\r \001(\0132\036.sailor.edito"
-    "r.v1.UInt32ResultH\000\0227\n\ruint64_result\030\016 \001"
-    "(\0132\036.sailor.editor.v1.UInt64ResultH\000\0227\n\r"
-    "string_result\030\017 \001(\0132\036.sailor.editor.v1.S"
-    "tringResultH\000\022@\n\022string_list_result\030\020 \001("
-    "\0132\".sailor.editor.v1.StringListResultH\000\022"
-    "M\n\031asset_reload_state_result\030\021 \001(\0132(.sai"
-    "lor.editor.v1.AssetReloadStateResultH\000\022@"
-    "\n\022instance_id_result\030\022 \001(\0132\".sailor.edit"
-    "or.v1.InstanceIdResultH\000\022Q\n\033viewport_eve"
-    "nt_batch_result\030\023 \001(\0132*.sailor.editor.v1"
-    ".ViewportEventBatchResultH\000\0229\n\016vector4_r"
-    "esult\030\024 \001(\0132\037.sailor.editor.v1.Vector4Re"
-    "sultH\000\022O\n\032viewport_tool_state_result\030\025 \001"
-    "(\0132).sailor.editor.v1.ViewportToolStateR"
-    "esultH\000\022F\n\025animator_state_result\030\026 \001(\0132%"
-    ".sailor.editor.v1.AnimatorStateResultH\000\022"
-    "M\n\031editor_render_mode_result\030\027 \001(\0132(.sai"
-    "lor.editor.v1.EditorRenderModeResultH\000\022R"
-    "\n\034gi_probes_bake_status_result\030\030 \001(\0132*.s"
-    "ailor.editor.v1.GIProbesBakeStatusResult"
-    "H\000\022[\n global_illumination_state_result\030\031"
-    " \001(\0132/.sailor.editor.v1.GlobalIlluminati"
-    "onStateResultH\000\022Y\n\037model_fingerprint_sta"
-    "tus_result\030d \001(\0132..sailor.editor.v1.Mode"
-    "lFingerprintStatusResultH\000B\010\n\006resultJ\004\010\006"
-    "\020\nJ\004\010\032\020d\"&\n\021InitializeRequest\022\021\n\targumen"
-    "ts\030\001 \003(\t\"!\n\014CountRequest\022\021\n\tmax_count\030\001 "
-    "\001(\r\" \n\rFileIdRequest\022\017\n\007file_id\030\001 \001(\t\"7\n"
-    "\022UpdateAssetRequest\022\017\n\007file_id\030\001 \001(\t\022\020\n\010"
-    "reimport\030\002 \001(\010\"\347\001\n\032CreateModelInstanceRe"
-    "quest\022\025\n\rmodel_file_id\030\001 \001(\t\022\014\n\004name\030\002 \001"
-    "(\t\022\032\n\022parent_instance_id\030\003 \001(\t\022\030\n\020create"
-    "_hierarchy\030\004 \001(\010\022\034\n\024apply_world_position"
-    "\030\005 \001(\010\0221\n\016world_position\030\006 \001(\0132\031.sailor."
-    "editor.v1.Vector4\022\035\n\025preferred_instance_"
-    "id\030\007 \001(\t\"(\n\021InstanceIdRequest\022\023\n\013instanc"
-    "e_id\030\001 \001(\t\"(\n\021ViewportIdRequest\022\023\n\013viewp"
-    "ort_id\030\001 \001(\004\"`\n\023ViewportRectRequest\022\024\n\014w"
-    "indow_pos_x\030\001 \001(\r\022\024\n\014window_pos_y\030\002 \001(\r\022"
-    "\r\n\005width\030\003 \001(\r\022\016\n\006height\030\004 \001(\r\",\n\013SizeRe"
-    "quest\022\r\n\005width\030\001 \001(\r\022\016\n\006height\030\002 \001(\r\"*\n\027"
-    "EditorSimulationRequest\022\017\n\007enabled\030\001 \001(\010"
-    "\"I\n\026EditorStatsModeRequest\022/\n\004mode\030\001 \001(\016"
-    "2!.sailor.editor.v1.EditorStatsMode\"K\n\027E"
-    "ditorRenderModeRequest\0220\n\004mode\030\001 \001(\0162\".s"
-    "ailor.editor.v1.EditorRenderMode\"J\n\026Edit"
-    "orRenderModeResult\0220\n\004mode\030\001 \001(\0162\".sailo"
-    "r.editor.v1.EditorRenderMode\"\253\002\n\024GIProbe"
-    "sBakeSettings\022\026\n\016rays_per_probe\030\001 \001(\r\022\024\n"
-    "\014bounce_count\030\002 \001(\r\022\023\n\013random_seed\030\003 \001(\r"
-    "\022\035\n\025max_subdivision_level\030\004 \001(\r\022\031\n\021min_p"
-    "robe_spacing\030\005 \001(\002\022\023\n\013normal_bias\030\006 \001(\002\022"
-    "\021\n\tview_bias\030\007 \001(\002\022\030\n\020max_ray_distance\030\010"
-    " \001(\002\022\023\n\013include_sky\030\t \001(\010\022\030\n\020include_emi"
-    "ssive\030\n \001(\010\022\037\n\027include_direct_lighting\030\013"
-    " \001(\010J\004\010\014\020\r\"\263\002\n\030StartGIProbesBakeRequest\022"
-    "\025\n\rworld_file_id\030\001 \001(\t\022\033\n\023output_virtual"
-    "_path\030\002 \001(\t\022\022\n\nstate_name\030\003 \001(\t\022\035\n\025layou"
-    "t_source_file_id\030\004 \001(\t\0228\n\010settings\030\005 \001(\013"
-    "2&.sailor.editor.v1.GIProbesBakeSettings"
-    "\0227\n\024fallback_environment\030\006 \001(\0132\031.sailor."
-    "editor.v1.Vector4\022\021\n\toverwrite\030\007 \001(\010\022\031\n\014"
-    "thread_count\030\010 \001(\rH\000\210\001\001B\017\n\r_thread_count"
-    "\"\327\002\n\030GIProbesBakeStatusResult\0222\n\005state\030\001"
-    " \001(\0162#.sailor.editor.v1.GIProbesBakeStat"
-    "e\022\020\n\010progress\030\002 \001(\002\022\030\n\020completed_probes\030"
-    "\003 \001(\r\022\024\n\014total_probes\030\004 \001(\r\022\023\n\013brick_cou"
-    "nt\030\005 \001(\r\022\023\n\013probe_count\030\006 \001(\r\022\027\n\017elapsed"
-    "_seconds\030\007 \001(\002\022\023\n\013layout_hash\030\010 \001(\004\022\026\n\016t"
-    "ransport_hash\030\t \001(\004\022\025\n\rlighting_hash\030\n \001"
-    "(\004\022\r\n\005stage\030\013 \001(\t\022\033\n\023output_virtual_path"
-    "\030\014 \001(\t\022\022\n\ndiagnostic\030\r \001(\t\"\253\001\n\036GlobalIll"
-    "uminationProbeBinding\022\014\n\004name\030\001 \001(\t\022\025\n\ra"
-    "sset_file_id\030\002 \001(\t\022;\n\004mode\030\003 \001(\0162-.sailo"
-    "r.editor.v1.GlobalIlluminationProbeMode\022"
-    "\026\n\016initial_weight\030\004 \001(\002\022\017\n\007preload\030\005 \001(\010"
-    "\"\341\001\n\024SetGISettingsRequest\022@\n\006probes\030\001 \003("
-    "\01320.sailor.editor.v1.GlobalIlluminationP"
-    "robeBinding\022;\n\004mode\030\002 \001(\0162(.sailor.edito"
-    "r.v1.GlobalIlluminationModeH\000\210\001\001\022A\n\016runt"
-    "ime_probes\030\003 \001(\0132).sailor.editor.v1.Runt"
-    "imeGIProbesSettingsB\007\n\005_mode\"\203\002\n\034GlobalI"
-    "lluminationProbeState\022\014\n\004name\030\001 \001(\t\022\025\n\ra"
-    "sset_file_id\030\002 \001(\t\022;\n\004mode\030\003 \001(\0162-.sailo"
-    "r.editor.v1.GlobalIlluminationProbeMode\022"
-    "\016\n\006weight\030\004 \001(\002\022E\n\tresidency\030\005 \001(\01622.sai"
-    "lor.editor.v1.GlobalIlluminationProbeRes"
-    "idency\022\026\n\016asset_revision\030\006 \001(\004\022\022\n\ndiagno"
-    "stic\030\007 \001(\t\"\244\003\n\035GlobalIlluminationStateRe"
-    "sult\022%\n\035max_probe_states_per_snapshot\030\001 "
-    "\001(\r\022>\n\006probes\030\002 \003(\0132..sailor.editor.v1.G"
-    "lobalIlluminationProbeState\022\022\n\ndiagnosti"
-    "c\030\003 \001(\t\022\031\n\021composition_count\030\004 \001(\004\022\"\n\032re"
-    "jected_composition_count\030\005 \001(\004\0226\n\004mode\030\006"
-    " \001(\0162(.sailor.editor.v1.GlobalIlluminati"
-    "onMode\022\017\n\007enabled\030\007 \001(\010\022A\n\016runtime_probe"
-    "s\030\010 \001(\0132).sailor.editor.v1.RuntimeGIProb"
-    "esSettings\022=\n\rruntime_state\030\t \001(\0132&.sail"
-    "or.editor.v1.RuntimeGIProbesState\"\231\001\n\025Re"
-    "moteViewportRequest\022\023\n\013viewport_id\030\001 \001(\004"
-    "\022\024\n\014window_pos_x\030\002 \001(\r\022\024\n\014window_pos_y\030\003"
-    " \001(\r\022\r\n\005width\030\004 \001(\r\022\016\n\006height\030\005 \001(\r\022\017\n\007v"
-    "isible\030\006 \001(\010\022\017\n\007focused\030\007 \001(\010\"e\n\031RemoteV"
-    "iewportHostRequest\022\023\n\013viewport_id\030\001 \001(\004\022"
-    "\030\n\020host_handle_kind\030\002 \001(\r\022\031\n\021host_handle"
-    "_value\030\003 \001(\004\"\212\002\n\032RemoteViewportInputRequ"
-    "est\022\023\n\013viewport_id\030\001 \001(\004\022\014\n\004kind\030\002 \001(\r\022\021"
-    "\n\tpointer_x\030\003 \001(\002\022\021\n\tpointer_y\030\004 \001(\002\022\025\n\r"
-    "wheel_delta_x\030\005 \001(\002\022\025\n\rwheel_delta_y\030\006 \001"
-    "(\002\022\020\n\010key_code\030\007 \001(\r\022\016\n\006button\030\010 \001(\r\022\021\n\t"
-    "modifiers\030\t \001(\r\022\017\n\007pressed\030\n \001(\010\022\017\n\007focu"
-    "sed\030\013 \001(\010\022\020\n\010captured\030\014 \001(\010\022\014\n\004text\030\r \001("
-    "\t\"C\n\036ManagedMutationRevisionRequest\022\014\n\004k"
-    "ind\030\001 \001(\r\022\023\n\013instance_id\030\002 \001(\t\"@\n\023Update"
-    "ObjectRequest\022\023\n\013instance_id\030\001 \001(\t\022\024\n\014ya"
-    "ml_changes\030\002 \001(\t\"f\n\025ReparentObjectReques"
-    "t\022\023\n\013instance_id\030\001 \001(\t\022\032\n\022parent_instanc"
-    "e_id\030\002 \001(\t\022\034\n\024keep_world_transform\030\003 \001(\010"
-    "\"T\n\027CreateGameObjectRequest\022\032\n\022parent_in"
-    "stance_id\030\001 \001(\t\022\035\n\025preferred_instance_id"
-    "\030\002 \001(\t\"f\n\023AddComponentRequest\022\023\n\013instanc"
-    "e_id\030\001 \001(\t\022\033\n\023component_type_name\030\002 \001(\t\022"
-    "\035\n\025preferred_instance_id\030\003 \001(\t\"\346\001\n\030Anima"
-    "torParameterRequest\022\023\n\013instance_id\030\001 \001(\t"
-    "\022\014\n\004name\030\002 \001(\t\022\025\n\013float_value\030\003 \001(\002H\000\022\023\n"
-    "\tint_value\030\004 \001(\021H\000\022\024\n\nbool_value\030\005 \001(\010H\000"
-    "\022*\n\007trigger\030\006 \001(\0132\027.sailor.editor.v1.Emp"
-    "tyH\000\0220\n\rreset_trigger\030\007 \001(\0132\027.sailor.edi"
-    "tor.v1.EmptyH\000B\007\n\005value\"G\n\030InstantiatePr"
-    "efabRequest\022\017\n\007file_id\030\001 \001(\t\022\032\n\022parent_i"
-    "nstance_id\030\002 \001(\t\"p\n InstantiatePrefabFro"
-    "mYamlRequest\022\023\n\013prefab_yaml\030\001 \001(\t\022\032\n\022par"
-    "ent_instance_id\030\002 \001(\t\022\033\n\023strict_instance"
-    "_ids\030\003 \001(\010\"U\n\022ViewportRayRequest\022\023\n\013view"
-    "port_id\030\001 \001(\004\022\024\n\014normalized_x\030\002 \001(\002\022\024\n\014n"
-    "ormalized_y\030\003 \001(\002\"\240\001\n InstantiatePrefabI"
-    "nstanceRequest\022\017\n\007file_id\030\001 \001(\t\022\032\n\022paren"
-    "t_instance_id\030\002 \001(\t\022\034\n\024apply_world_posit"
-    "ion\030\003 \001(\010\0221\n\016world_position\030\004 \001(\0132\031.sail"
-    "or.editor.v1.Vector4\"A\n\025ViewportObjectRe"
-    "quest\022\023\n\013viewport_id\030\001 \001(\004\022\023\n\013instance_i"
-    "d\030\002 \001(\t\"9\n\021PrefabLinkRequest\022\023\n\013instance"
-    "_id\030\001 \001(\t\022\017\n\007file_id\030\002 \001(\t\"\251\001\n\030ViewportT"
-    "oolStateRequest\022\023\n\013viewport_id\030\001 \001(\004\022\?\n\t"
-    "operation\030\002 \001(\0162,.sailor.editor.v1.Viewp"
-    "ortTransformOperation\0227\n\005space\030\003 \001(\0162(.s"
-    "ailor.editor.v1.ViewportTransformSpace\"("
-    "\n\020SelectionRequest\022\024\n\014instance_ids\030\001 \003(\t"
-    "\"%\n\025ShowMainWindowRequest\022\014\n\004show\030\001 \001(\010\""
-    "\210\001\n\034RenderPathTracedImageRequest\022\023\n\013outp"
-    "ut_path\030\001 \001(\t\022\023\n\013instance_id\030\002 \001(\t\022\016\n\006he"
-    "ight\030\003 \001(\r\022\031\n\021samples_per_pixel\030\004 \001(\r\022\023\n"
-    "\013max_bounces\030\005 \001(\r\"\033\n\nBoolResult\022\r\n\005valu"
-    "e\030\001 \001(\010\"\034\n\013Int32Result\022\r\n\005value\030\001 \001(\005\"\035\n"
-    "\014UInt32Result\022\r\n\005value\030\001 \001(\r\"\035\n\014UInt64Re"
-    "sult\022\r\n\005value\030\001 \001(\004\"0\n\014StringResult\022\021\n\th"
-    "as_value\030\001 \001(\010\022\r\n\005value\030\002 \001(\t\"\"\n\020StringL"
-    "istResult\022\016\n\006values\030\001 \003(\t\"\204\001\n\026AssetReloa"
-    "dStateResult\022\021\n\tavailable\030\001 \001(\010\022\032\n\022reque"
-    "st_generation\030\002 \001(\004\022\034\n\024completed_generat"
-    "ion\030\003 \001(\004\022\035\n\025successful_generation\030\004 \001(\004"
-    "\":\n\020InstanceIdResult\022\021\n\tsucceeded\030\001 \001(\010\022"
-    "\023\n\013instance_id\030\002 \001(\t\"9\n\rVector4Result\022(\n"
-    "\005value\030\001 \001(\0132\031.sailor.editor.v1.Vector4\""
-    "\223\001\n\027ViewportToolStateResult\022\?\n\toperation"
-    "\030\001 \001(\0162,.sailor.editor.v1.ViewportTransf"
-    "ormOperation\0227\n\005space\030\002 \001(\0162(.sailor.edi"
-    "tor.v1.ViewportTransformSpace\"\250\002\n\023Animat"
-    "orStateResult\022\026\n\016has_controller\030\001 \001(\010\022\033\n"
-    "\023controller_revision\030\002 \001(\004\022\027\n\017active_sta"
-    "te_id\030\003 \001(\004\022\031\n\021active_state_name\030\004 \001(\t\022\031"
-    "\n\021active_state_time\030\005 \001(\002\022\025\n\rtransitioni"
-    "ng\030\006 \001(\010\022\034\n\024destination_state_id\030\007 \001(\004\022\036"
-    "\n\026destination_state_name\030\010 \001(\t\022\036\n\026destin"
-    "ation_state_time\030\t \001(\002\022\030\n\020transition_alp"
-    "ha\030\n \001(\002\"5\n\007Vector4\022\t\n\001x\030\001 \001(\002\022\t\n\001y\030\002 \001("
-    "\002\022\t\n\001z\030\003 \001(\002\022\t\n\001w\030\004 \001(\002\"6\n\026ViewportSelec"
-    "tionEvent\022\034\n\024selected_instance_id\030\001 \001(\t\""
-    "\326\003\n\026ViewportTransformEvent\022\023\n\013instance_i"
-    "d\030\001 \001(\t\022\?\n\toperation\030\002 \001(\0162,.sailor.edit"
+    "ewportIdRequestH\000\022R\n\032send_remote_viewpor"
+    "t_input\030\037 \001(\0132,.sailor.editor.v1.RemoteV"
+    "iewportInputRequestH\000\022E\n\033pull_editor_vie"
+    "wport_events\030  \001(\0132\036.sailor.editor.v1.Co"
+    "untRequestH\000\022`\n$get_editor_managed_mutat"
+    "ion_revision\030! \001(\01320.sailor.editor.v1.Ma"
+    "nagedMutationRevisionRequestH\000\022>\n\rupdate"
+    "_object\030\" \001(\0132%.sailor.editor.v1.UpdateO"
+    "bjectRequestH\000\022B\n\017reparent_object\030# \001(\0132"
+    "\'.sailor.editor.v1.ReparentObjectRequest"
+    "H\000\022G\n\022create_game_object\030$ \001(\0132).sailor."
+    "editor.v1.CreateGameObjectRequestH\000\022=\n\016d"
+    "estroy_object\030% \001(\0132#.sailor.editor.v1.I"
+    "nstanceIdRequestH\000\022J\n\033reset_component_to"
+    "_defaults\030& \001(\0132#.sailor.editor.v1.Insta"
+    "nceIdRequestH\000\022>\n\radd_component\030\' \001(\0132%."
+    "sailor.editor.v1.AddComponentRequestH\000\022\?"
+    "\n\020remove_component\030( \001(\0132#.sailor.editor"
+    ".v1.InstanceIdRequestH\000\022H\n\022instantiate_p"
+    "refab\030) \001(\0132*.sailor.editor.v1.Instantia"
+    "tePrefabRequestH\000\022Z\n\034instantiate_prefab_"
+    "from_yaml\030* \001(\01322.sailor.editor.v1.Insta"
+    "ntiatePrefabFromYamlRequestH\000\022B\n\024set_edi"
+    "tor_selection\030+ \001(\0132\".sailor.editor.v1.S"
+    "electionRequestH\000\022C\n\020show_main_window\030, "
+    "\001(\0132\'.sailor.editor.v1.ShowMainWindowReq"
+    "uestH\000\022R\n\030render_path_traced_image\030- \001(\013"
+    "2..sailor.editor.v1.RenderPathTracedImag"
+    "eRequestH\000\0229\n\026serialize_engine_types\030. \001"
+    "(\0132\027.sailor.editor.v1.EmptyH\000\022>\n\033is_engi"
+    "ne_main_thread_ready\030/ \001(\0132\027.sailor.edit"
+    "or.v1.EmptyH\000\0224\n\021is_engine_running\0300 \001(\013"
+    "2\027.sailor.editor.v1.EmptyH\000\022B\n\022trace_vie"
+    "wport_ray\0301 \001(\0132$.sailor.editor.v1.Viewp"
+    "ortRayRequestH\000\022Y\n\033instantiate_prefab_in"
+    "stance\0303 \001(\01322.sailor.editor.v1.Instanti"
+    "atePrefabInstanceRequestH\000\022F\n\023focus_edit"
+    "or_camera\0304 \001(\0132\'.sailor.editor.v1.Viewp"
+    "ortObjectRequestH\000\022>\n\017set_prefab_link\0305 "
+    "\001(\0132#.sailor.editor.v1.PrefabLinkRequest"
+    "H\000\022@\n\021break_prefab_link\0306 \001(\0132#.sailor.e"
+    "ditor.v1.InstanceIdRequestH\000\022M\n\027set_view"
+    "port_tool_state\0307 \001(\0132*.sailor.editor.v1"
+    ".ViewportToolStateRequestH\000\022F\n\027get_viewp"
+    "ort_tool_state\0308 \001(\0132#.sailor.editor.v1."
+    "ViewportIdRequestH\000\022<\n\014update_asset\0309 \001("
+    "\0132$.sailor.editor.v1.UpdateAssetRequestH"
+    "\000\022M\n\025create_model_instance\030: \001(\0132,.sailo"
+    "r.editor.v1.CreateModelInstanceRequestH\000"
+    "\022L\n\026set_animator_parameter\030; \001(\0132*.sailo"
+    "r.editor.v1.AnimatorParameterRequestH\000\022A"
+    "\n\022get_animator_state\030< \001(\0132#.sailor.edit"
+    "or.v1.InstanceIdRequestH\000\022J\n\025set_editor_"
+    "simulation\030= \001(\0132).sailor.editor.v1.Edit"
+    "orSimulationRequestH\000\022>\n\033get_editor_simu"
+    "lation_state\030> \001(\0132\027.sailor.editor.v1.Em"
+    "ptyH\000\022>\n\023preview_audio_asset\030\? \001(\0132\037.sai"
+    "lor.editor.v1.FileIdRequestH\000\022I\n\025set_edi"
+    "tor_stats_mode\030@ \001(\0132(.sailor.editor.v1."
+    "EditorStatsModeRequestH\000\022K\n\026set_editor_r"
+    "ender_mode\030A \001(\0132).sailor.editor.v1.Edit"
+    "orRenderModeRequestH\000\0229\n\026get_editor_rend"
+    "er_mode\030B \001(\0132\027.sailor.editor.v1.EmptyH\000"
+    "\022J\n\024start_gi_probes_bake\030C \001(\0132*.sailor."
+    "editor.v1.StartGIProbesBakeRequestH\000\022<\n\031"
+    "get_gi_probes_bake_status\030D \001(\0132\027.sailor"
+    ".editor.v1.EmptyH\000\0228\n\025cancel_gi_probes_b"
+    "ake\030E \001(\0132\027.sailor.editor.v1.EmptyH\000\022A\n\017"
+    "set_gi_settings\030F \001(\0132&.sailor.editor.v1"
+    ".SetGISettingsRequestH\000\022@\n\035get_global_il"
+    "lumination_state\030G \001(\0132\027.sailor.editor.v"
+    "1.EmptyH\000\022X\n\035set_runtime_gi_probes_previ"
+    "ew\030H \001(\0132/.sailor.editor.v1.RuntimeGIPro"
+    "besPreviewRequestH\000\022U\n\034set_runtime_gi_pr"
+    "obes_paused\030I \001(\0132-.sailor.editor.v1.Run"
+    "timeGIProbesPauseRequestH\000\022<\n\031restart_ru"
+    "ntime_gi_probes\030J \001(\0132\027.sailor.editor.v1"
+    ".EmptyH\000\022B\n\037rebuild_runtime_gi_probes_sc"
+    "ene\030K \001(\0132\027.sailor.editor.v1.EmptyH\000\022e\n$"
+    "set_runtime_gi_probes_preview_budget\030L \001"
+    "(\01325.sailor.editor.v1.RuntimeGIProbesPre"
+    "viewBudgetRequestH\000\022U\n&capture_remote_vi"
+    "ewport_frame_evidence\030M \001(\0132#.sailor.edi"
+    "tor.v1.ViewportIdRequestH\000\022D\n\031request_mo"
+    "del_fingerprint\030d \001(\0132\037.sailor.editor.v1"
+    ".FileIdRequestH\000\022G\n\034get_model_fingerprin"
+    "t_status\030e \001(\0132\037.sailor.editor.v1.FileId"
+    "RequestH\000B\t\n\007commandJ\004\010\003\020\nJ\004\010\036\020\037J\004\0102\0203J\004"
+    "\010N\020dR\030create_model_game_objectR\036resolve_"
+    "viewport_drop_position\"\271\n\n\020ProtocolRespo"
+    "nse\022\030\n\020protocol_version\030\001 \001(\r\022\022\n\nrequest"
+    "_id\030\002 \001(\004\022\017\n\007success\030\003 \001(\010\022\r\n\005error\030\004 \001("
+    "\t\022$\n\034supports_strict_instance_ids\030\005 \001(\010\022"
+    "/\n\014empty_result\030\n \001(\0132\027.sailor.editor.v1"
+    ".EmptyH\000\0223\n\013bool_result\030\013 \001(\0132\034.sailor.e"
+    "ditor.v1.BoolResultH\000\0225\n\014int32_result\030\014 "
+    "\001(\0132\035.sailor.editor.v1.Int32ResultH\000\0227\n\r"
+    "uint32_result\030\r \001(\0132\036.sailor.editor.v1.U"
+    "Int32ResultH\000\0227\n\ruint64_result\030\016 \001(\0132\036.s"
+    "ailor.editor.v1.UInt64ResultH\000\0227\n\rstring"
+    "_result\030\017 \001(\0132\036.sailor.editor.v1.StringR"
+    "esultH\000\022@\n\022string_list_result\030\020 \001(\0132\".sa"
+    "ilor.editor.v1.StringListResultH\000\022M\n\031ass"
+    "et_reload_state_result\030\021 \001(\0132(.sailor.ed"
+    "itor.v1.AssetReloadStateResultH\000\022@\n\022inst"
+    "ance_id_result\030\022 \001(\0132\".sailor.editor.v1."
+    "InstanceIdResultH\000\022Q\n\033viewport_event_bat"
+    "ch_result\030\023 \001(\0132*.sailor.editor.v1.Viewp"
+    "ortEventBatchResultH\000\0229\n\016vector4_result\030"
+    "\024 \001(\0132\037.sailor.editor.v1.Vector4ResultH\000"
+    "\022O\n\032viewport_tool_state_result\030\025 \001(\0132).s"
+    "ailor.editor.v1.ViewportToolStateResultH"
+    "\000\022F\n\025animator_state_result\030\026 \001(\0132%.sailo"
+    "r.editor.v1.AnimatorStateResultH\000\022M\n\031edi"
+    "tor_render_mode_result\030\027 \001(\0132(.sailor.ed"
+    "itor.v1.EditorRenderModeResultH\000\022R\n\034gi_p"
+    "robes_bake_status_result\030\030 \001(\0132*.sailor."
+    "editor.v1.GIProbesBakeStatusResultH\000\022[\n "
+    "global_illumination_state_result\030\031 \001(\0132/"
+    ".sailor.editor.v1.GlobalIlluminationStat"
+    "eResultH\000\022Y\n\037model_fingerprint_status_re"
+    "sult\030d \001(\0132..sailor.editor.v1.ModelFinge"
+    "rprintStatusResultH\000B\010\n\006resultJ\004\010\006\020\nJ\004\010\032"
+    "\020d\"&\n\021InitializeRequest\022\021\n\targuments\030\001 \003"
+    "(\t\"!\n\014CountRequest\022\021\n\tmax_count\030\001 \001(\r\" \n"
+    "\rFileIdRequest\022\017\n\007file_id\030\001 \001(\t\"7\n\022Updat"
+    "eAssetRequest\022\017\n\007file_id\030\001 \001(\t\022\020\n\010reimpo"
+    "rt\030\002 \001(\010\"\347\001\n\032CreateModelInstanceRequest\022"
+    "\025\n\rmodel_file_id\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\022\032\n\022"
+    "parent_instance_id\030\003 \001(\t\022\030\n\020create_hiera"
+    "rchy\030\004 \001(\010\022\034\n\024apply_world_position\030\005 \001(\010"
+    "\0221\n\016world_position\030\006 \001(\0132\031.sailor.editor"
+    ".v1.Vector4\022\035\n\025preferred_instance_id\030\007 \001"
+    "(\t\"(\n\021InstanceIdRequest\022\023\n\013instance_id\030\001"
+    " \001(\t\"(\n\021ViewportIdRequest\022\023\n\013viewport_id"
+    "\030\001 \001(\004\"`\n\023ViewportRectRequest\022\024\n\014window_"
+    "pos_x\030\001 \001(\r\022\024\n\014window_pos_y\030\002 \001(\r\022\r\n\005wid"
+    "th\030\003 \001(\r\022\016\n\006height\030\004 \001(\r\",\n\013SizeRequest\022"
+    "\r\n\005width\030\001 \001(\r\022\016\n\006height\030\002 \001(\r\"*\n\027Editor"
+    "SimulationRequest\022\017\n\007enabled\030\001 \001(\010\"I\n\026Ed"
+    "itorStatsModeRequest\022/\n\004mode\030\001 \001(\0162!.sai"
+    "lor.editor.v1.EditorStatsMode\"K\n\027EditorR"
+    "enderModeRequest\0220\n\004mode\030\001 \001(\0162\".sailor."
+    "editor.v1.EditorRenderMode\"J\n\026EditorRend"
+    "erModeResult\0220\n\004mode\030\001 \001(\0162\".sailor.edit"
+    "or.v1.EditorRenderMode\"\253\002\n\024GIProbesBakeS"
+    "ettings\022\026\n\016rays_per_probe\030\001 \001(\r\022\024\n\014bounc"
+    "e_count\030\002 \001(\r\022\023\n\013random_seed\030\003 \001(\r\022\035\n\025ma"
+    "x_subdivision_level\030\004 \001(\r\022\031\n\021min_probe_s"
+    "pacing\030\005 \001(\002\022\023\n\013normal_bias\030\006 \001(\002\022\021\n\tvie"
+    "w_bias\030\007 \001(\002\022\030\n\020max_ray_distance\030\010 \001(\002\022\023"
+    "\n\013include_sky\030\t \001(\010\022\030\n\020include_emissive\030"
+    "\n \001(\010\022\037\n\027include_direct_lighting\030\013 \001(\010J\004"
+    "\010\014\020\r\"\263\002\n\030StartGIProbesBakeRequest\022\025\n\rwor"
+    "ld_file_id\030\001 \001(\t\022\033\n\023output_virtual_path\030"
+    "\002 \001(\t\022\022\n\nstate_name\030\003 \001(\t\022\035\n\025layout_sour"
+    "ce_file_id\030\004 \001(\t\0228\n\010settings\030\005 \001(\0132&.sai"
+    "lor.editor.v1.GIProbesBakeSettings\0227\n\024fa"
+    "llback_environment\030\006 \001(\0132\031.sailor.editor"
+    ".v1.Vector4\022\021\n\toverwrite\030\007 \001(\010\022\031\n\014thread"
+    "_count\030\010 \001(\rH\000\210\001\001B\017\n\r_thread_count\"\327\002\n\030G"
+    "IProbesBakeStatusResult\0222\n\005state\030\001 \001(\0162#"
+    ".sailor.editor.v1.GIProbesBakeState\022\020\n\010p"
+    "rogress\030\002 \001(\002\022\030\n\020completed_probes\030\003 \001(\r\022"
+    "\024\n\014total_probes\030\004 \001(\r\022\023\n\013brick_count\030\005 \001"
+    "(\r\022\023\n\013probe_count\030\006 \001(\r\022\027\n\017elapsed_secon"
+    "ds\030\007 \001(\002\022\023\n\013layout_hash\030\010 \001(\004\022\026\n\016transpo"
+    "rt_hash\030\t \001(\004\022\025\n\rlighting_hash\030\n \001(\004\022\r\n\005"
+    "stage\030\013 \001(\t\022\033\n\023output_virtual_path\030\014 \001(\t"
+    "\022\022\n\ndiagnostic\030\r \001(\t\"\253\001\n\036GlobalIlluminat"
+    "ionProbeBinding\022\014\n\004name\030\001 \001(\t\022\025\n\rasset_f"
+    "ile_id\030\002 \001(\t\022;\n\004mode\030\003 \001(\0162-.sailor.edit"
+    "or.v1.GlobalIlluminationProbeMode\022\026\n\016ini"
+    "tial_weight\030\004 \001(\002\022\017\n\007preload\030\005 \001(\010\"\341\001\n\024S"
+    "etGISettingsRequest\022@\n\006probes\030\001 \003(\01320.sa"
+    "ilor.editor.v1.GlobalIlluminationProbeBi"
+    "nding\022;\n\004mode\030\002 \001(\0162(.sailor.editor.v1.G"
+    "lobalIlluminationModeH\000\210\001\001\022A\n\016runtime_pr"
+    "obes\030\003 \001(\0132).sailor.editor.v1.RuntimeGIP"
+    "robesSettingsB\007\n\005_mode\"\203\002\n\034GlobalIllumin"
+    "ationProbeState\022\014\n\004name\030\001 \001(\t\022\025\n\rasset_f"
+    "ile_id\030\002 \001(\t\022;\n\004mode\030\003 \001(\0162-.sailor.edit"
+    "or.v1.GlobalIlluminationProbeMode\022\016\n\006wei"
+    "ght\030\004 \001(\002\022E\n\tresidency\030\005 \001(\01622.sailor.ed"
+    "itor.v1.GlobalIlluminationProbeResidency"
+    "\022\026\n\016asset_revision\030\006 \001(\004\022\022\n\ndiagnostic\030\007"
+    " \001(\t\"\244\003\n\035GlobalIlluminationStateResult\022%"
+    "\n\035max_probe_states_per_snapshot\030\001 \001(\r\022>\n"
+    "\006probes\030\002 \003(\0132..sailor.editor.v1.GlobalI"
+    "lluminationProbeState\022\022\n\ndiagnostic\030\003 \001("
+    "\t\022\031\n\021composition_count\030\004 \001(\004\022\"\n\032rejected"
+    "_composition_count\030\005 \001(\004\0226\n\004mode\030\006 \001(\0162("
+    ".sailor.editor.v1.GlobalIlluminationMode"
+    "\022\017\n\007enabled\030\007 \001(\010\022A\n\016runtime_probes\030\010 \001("
+    "\0132).sailor.editor.v1.RuntimeGIProbesSett"
+    "ings\022=\n\rruntime_state\030\t \001(\0132&.sailor.edi"
+    "tor.v1.RuntimeGIProbesState\"\231\001\n\025RemoteVi"
+    "ewportRequest\022\023\n\013viewport_id\030\001 \001(\004\022\024\n\014wi"
+    "ndow_pos_x\030\002 \001(\r\022\024\n\014window_pos_y\030\003 \001(\r\022\r"
+    "\n\005width\030\004 \001(\r\022\016\n\006height\030\005 \001(\r\022\017\n\007visible"
+    "\030\006 \001(\010\022\017\n\007focused\030\007 \001(\010\"\212\002\n\032RemoteViewpo"
+    "rtInputRequest\022\023\n\013viewport_id\030\001 \001(\004\022\014\n\004k"
+    "ind\030\002 \001(\r\022\021\n\tpointer_x\030\003 \001(\002\022\021\n\tpointer_"
+    "y\030\004 \001(\002\022\025\n\rwheel_delta_x\030\005 \001(\002\022\025\n\rwheel_"
+    "delta_y\030\006 \001(\002\022\020\n\010key_code\030\007 \001(\r\022\016\n\006butto"
+    "n\030\010 \001(\r\022\021\n\tmodifiers\030\t \001(\r\022\017\n\007pressed\030\n "
+    "\001(\010\022\017\n\007focused\030\013 \001(\010\022\020\n\010captured\030\014 \001(\010\022\014"
+    "\n\004text\030\r \001(\t\"C\n\036ManagedMutationRevisionR"
+    "equest\022\014\n\004kind\030\001 \001(\r\022\023\n\013instance_id\030\002 \001("
+    "\t\"@\n\023UpdateObjectRequest\022\023\n\013instance_id\030"
+    "\001 \001(\t\022\024\n\014yaml_changes\030\002 \001(\t\"f\n\025ReparentO"
+    "bjectRequest\022\023\n\013instance_id\030\001 \001(\t\022\032\n\022par"
+    "ent_instance_id\030\002 \001(\t\022\034\n\024keep_world_tran"
+    "sform\030\003 \001(\010\"T\n\027CreateGameObjectRequest\022\032"
+    "\n\022parent_instance_id\030\001 \001(\t\022\035\n\025preferred_"
+    "instance_id\030\002 \001(\t\"f\n\023AddComponentRequest"
+    "\022\023\n\013instance_id\030\001 \001(\t\022\033\n\023component_type_"
+    "name\030\002 \001(\t\022\035\n\025preferred_instance_id\030\003 \001("
+    "\t\"\346\001\n\030AnimatorParameterRequest\022\023\n\013instan"
+    "ce_id\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\022\025\n\013float_value"
+    "\030\003 \001(\002H\000\022\023\n\tint_value\030\004 \001(\021H\000\022\024\n\nbool_va"
+    "lue\030\005 \001(\010H\000\022*\n\007trigger\030\006 \001(\0132\027.sailor.ed"
+    "itor.v1.EmptyH\000\0220\n\rreset_trigger\030\007 \001(\0132\027"
+    ".sailor.editor.v1.EmptyH\000B\007\n\005value\"G\n\030In"
+    "stantiatePrefabRequest\022\017\n\007file_id\030\001 \001(\t\022"
+    "\032\n\022parent_instance_id\030\002 \001(\t\"p\n Instantia"
+    "tePrefabFromYamlRequest\022\023\n\013prefab_yaml\030\001"
+    " \001(\t\022\032\n\022parent_instance_id\030\002 \001(\t\022\033\n\023stri"
+    "ct_instance_ids\030\003 \001(\010\"U\n\022ViewportRayRequ"
+    "est\022\023\n\013viewport_id\030\001 \001(\004\022\024\n\014normalized_x"
+    "\030\002 \001(\002\022\024\n\014normalized_y\030\003 \001(\002\"\240\001\n Instant"
+    "iatePrefabInstanceRequest\022\017\n\007file_id\030\001 \001"
+    "(\t\022\032\n\022parent_instance_id\030\002 \001(\t\022\034\n\024apply_"
+    "world_position\030\003 \001(\010\0221\n\016world_position\030\004"
+    " \001(\0132\031.sailor.editor.v1.Vector4\"A\n\025Viewp"
+    "ortObjectRequest\022\023\n\013viewport_id\030\001 \001(\004\022\023\n"
+    "\013instance_id\030\002 \001(\t\"9\n\021PrefabLinkRequest\022"
+    "\023\n\013instance_id\030\001 \001(\t\022\017\n\007file_id\030\002 \001(\t\"\251\001"
+    "\n\030ViewportToolStateRequest\022\023\n\013viewport_i"
+    "d\030\001 \001(\004\022\?\n\toperation\030\002 \001(\0162,.sailor.edit"
     "or.v1.ViewportTransformOperation\0227\n\005spac"
     "e\030\003 \001(\0162(.sailor.editor.v1.ViewportTrans"
-    "formSpace\0222\n\017before_position\030\004 \001(\0132\031.sai"
-    "lor.editor.v1.Vector4\0222\n\017before_rotation"
-    "\030\005 \001(\0132\031.sailor.editor.v1.Vector4\022/\n\014bef"
-    "ore_scale\030\006 \001(\0132\031.sailor.editor.v1.Vecto"
-    "r4\0221\n\016after_position\030\007 \001(\0132\031.sailor.edit"
-    "or.v1.Vector4\0221\n\016after_rotation\030\010 \001(\0132\031."
-    "sailor.editor.v1.Vector4\022.\n\013after_scale\030"
-    "\t \001(\0132\031.sailor.editor.v1.Vector4\"U\n\026View"
-    "portAssetDropEvent\022\017\n\007file_id\030\001 \001(\t\022\024\n\014n"
-    "ormalized_x\030\002 \001(\002\022\024\n\014normalized_y\030\003 \001(\002\""
-    "-\n\031ViewportToolShortcutEvent\022\020\n\010key_code"
-    "\030\001 \001(\r\"\331\002\n\rViewportEvent\022\020\n\010revision\030\001 \001"
-    "(\004\022!\n\031managed_mutation_revision\030\002 \001(\004\022=\n"
-    "\tselection\030\n \001(\0132(.sailor.editor.v1.View"
-    "portSelectionEventH\000\022=\n\ttransform\030\013 \001(\0132"
-    "(.sailor.editor.v1.ViewportTransformEven"
-    "tH\000\022>\n\nasset_drop\030\014 \001(\0132(.sailor.editor."
-    "v1.ViewportAssetDropEventH\000\022D\n\rtool_shor"
-    "tcut\030\r \001(\0132+.sailor.editor.v1.ViewportTo"
-    "olShortcutEventH\000B\t\n\007payloadJ\004\010\003\020\n\"K\n\030Vi"
-    "ewportEventBatchResult\022/\n\006events\030\001 \003(\0132\037"
-    ".sailor.editor.v1.ViewportEvent\"\222\002\n\027Runt"
-    "imeGIProbesSettings\022\017\n\007version\030\001 \001(\r\022\023\n\013"
-    "include_sky\030\002 \001(\010\022\030\n\020include_emissive\030\003 "
-    "\001(\010\022\037\n\027include_direct_lighting\030\004 \001(\010\022\024\n\014"
-    "bounce_count\030\005 \001(\r\022\031\n\021min_probe_spacing\030"
-    "\006 \001(\002\022\023\n\013normal_bias\030\007 \001(\002\022\021\n\tview_bias\030"
-    "\010 \001(\002\022\030\n\020max_ray_distance\030\t \001(\002\022#\n\033sun_a"
-    "ngle_threshold_degrees\030\n \001(\002\"0\n\035RuntimeG"
-    "IProbesPreviewRequest\022\017\n\007enabled\030\001 \001(\010\"-"
-    "\n\033RuntimeGIProbesPauseRequest\022\016\n\006paused\030"
-    "\001 \001(\010\"\334\003\n\024RuntimeGIProbesState\022=\n\tlifecy"
-    "cle\030\001 \001(\0162*.sailor.editor.v1.RuntimeGIPr"
-    "obesLifecycle\022\017\n\007enabled\030\002 \001(\010\022\016\n\006paused"
-    "\030\003 \001(\010\022\027\n\017preview_enabled\030\004 \001(\010\022\030\n\020scene"
-    "_generation\030\005 \001(\004\022\033\n\023lighting_generation"
-    "\030\006 \001(\004\022\032\n\022published_revision\030\007 \001(\004\022\020\n\010ca"
-    "pacity\030\010 \001(\r\022\032\n\022active_probe_count\030\t \001(\r"
-    "\022\031\n\021ready_probe_count\030\n \001(\r\022\024\n\014worker_co"
-    "unt\030\013 \001(\r\022\027\n\017published_bytes\030\014 \001(\004\022\020\n\010co"
-    "verage\030\r \001(\002\022\022\n\nrefinement\030\016 \001(\002\022\022\n\ndiag"
-    "nostic\030\017 \001(\t\022F\n\016preview_budget\030\020 \001(\0162..s"
-    "ailor.editor.v1.RuntimeGIProbesPreviewBu"
-    "dget\"e\n#RuntimeGIProbesPreviewBudgetRequ"
-    "est\022>\n\006budget\030\001 \001(\0162..sailor.editor.v1.R"
-    "untimeGIProbesPreviewBudget\"X\n\034ModelFing"
-    "erprintStatusResult\0228\n\006status\030\001 \001(\0162(.sa"
-    "ilor.editor.v1.ModelFingerprintStatus*\360\001"
-    "\n\032ViewportTransformOperation\022,\n(VIEWPORT"
-    "_TRANSFORM_OPERATION_UNSPECIFIED\020\000\022\'\n#VI"
-    "EWPORT_TRANSFORM_OPERATION_SELECT\020\001\022*\n&V"
-    "IEWPORT_TRANSFORM_OPERATION_TRANSLATE\020\002\022"
-    "\'\n#VIEWPORT_TRANSFORM_OPERATION_ROTATE\020\003"
-    "\022&\n\"VIEWPORT_TRANSFORM_OPERATION_SCALE\020\004"
-    "*\212\001\n\026ViewportTransformSpace\022(\n$VIEWPORT_"
-    "TRANSFORM_SPACE_UNSPECIFIED\020\000\022\"\n\036VIEWPOR"
-    "T_TRANSFORM_SPACE_WORLD\020\001\022\"\n\036VIEWPORT_TR"
-    "ANSFORM_SPACE_LOCAL\020\002*\244\001\n\017EditorStatsMod"
-    "e\022!\n\035EDITOR_STATS_MODE_UNSPECIFIED\020\000\022\032\n\026"
-    "EDITOR_STATS_MODE_NONE\020\001\022\"\n\036EDITOR_STATS"
-    "_MODE_RENDER_STATS\020\002\022.\n*EDITOR_STATS_MOD"
-    "E_RENDER_STATS_AND_QUERIES\020\003*\243\005\n\020EditorR"
-    "enderMode\022\"\n\036EDITOR_RENDER_MODE_UNSPECIF"
-    "IED\020\000\022\032\n\026EDITOR_RENDER_MODE_LIT\020\001\022(\n$EDI"
-    "TOR_RENDER_MODE_AMBIENT_OCCLUSION\020\002\022\037\n\033E"
-    "DITOR_RENDER_MODE_CASCADES\020\003\022\"\n\036EDITOR_R"
-    "ENDER_MODE_LIGHT_TILES\020\004\022/\n+EDITOR_RENDE"
-    "R_MODE_GLOBAL_ILLUMINATION_ONLY\020\005\0221\n-EDI"
-    "TOR_RENDER_MODE_GLOBAL_ILLUMINATION_PROB"
-    "ES\020\006\0221\n-EDITOR_RENDER_MODE_GLOBAL_ILLUMI"
-    "NATION_BRICKS\020\007\0223\n/EDITOR_RENDER_MODE_GL"
-    "OBAL_ILLUMINATION_VALIDITY\020\010\0225\n1EDITOR_R"
-    "ENDER_MODE_GLOBAL_ILLUMINATION_VISIBILIT"
-    "Y\020\t\0224\n0EDITOR_RENDER_MODE_GLOBAL_ILLUMIN"
-    "ATION_RESIDENCY\020\n\0229\n5EDITOR_RENDER_MODE_"
-    "GLOBAL_ILLUMINATION_ASSET_IDENTITY\020\013\0223\n/"
-    "EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_F"
-    "ALLBACK\020\014\0227\n3EDITOR_RENDER_MODE_GLOBAL_I"
-    "LLUMINATION_SUBDIVISIONS\020\r*\247\002\n\021GIProbesB"
-    "akeState\022$\n GI_PROBES_BAKE_STATE_UNSPECI"
-    "FIED\020\000\022\035\n\031GI_PROBES_BAKE_STATE_IDLE\020\001\022\"\n"
-    "\036GI_PROBES_BAKE_STATE_PREPARING\020\002\022\037\n\033GI_"
-    "PROBES_BAKE_STATE_BAKING\020\003\022\037\n\033GI_PROBES_"
-    "BAKE_STATE_SAVING\020\004\022\"\n\036GI_PROBES_BAKE_ST"
-    "ATE_SUCCEEDED\020\005\022\037\n\033GI_PROBES_BAKE_STATE_"
-    "FAILED\020\006\022\"\n\036GI_PROBES_BAKE_STATE_CANCELL"
-    "ED\020\007*\244\001\n\033GlobalIlluminationProbeMode\022.\n*"
-    "GLOBAL_ILLUMINATION_PROBE_MODE_UNSPECIFI"
-    "ED\020\000\022(\n$GLOBAL_ILLUMINATION_PROBE_MODE_B"
-    "LEND\020\001\022+\n\'GLOBAL_ILLUMINATION_PROBE_MODE"
-    "_ADDITIVE\020\002*\260\001\n\026GlobalIlluminationMode\022("
-    "\n$GLOBAL_ILLUMINATION_MODE_UNSPECIFIED\020\000"
-    "\022\"\n\036GLOBAL_ILLUMINATION_MODE_NO_GI\020\001\022$\n "
-    "GLOBAL_ILLUMINATION_MODE_RUNTIME\020\002\022\"\n\036GL"
-    "OBAL_ILLUMINATION_MODE_BAKED\020\003*\355\002\n\030Runti"
-    "meGIProbesLifecycle\022+\n\'RUNTIME_GI_PROBES"
-    "_LIFECYCLE_UNSPECIFIED\020\000\022(\n$RUNTIME_GI_P"
-    "ROBES_LIFECYCLE_DISABLED\020\001\022/\n+RUNTIME_GI"
-    "_PROBES_LIFECYCLE_PREPARING_SCENE\020\002\022\'\n#R"
-    "UNTIME_GI_PROBES_LIFECYCLE_TRACING\020\003\022%\n!"
-    "RUNTIME_GI_PROBES_LIFECYCLE_READY\020\004\022&\n\"R"
-    "UNTIME_GI_PROBES_LIFECYCLE_PAUSED\020\005\022)\n%R"
-    "UNTIME_GI_PROBES_LIFECYCLE_THROTTLED\020\006\022&"
-    "\n\"RUNTIME_GI_PROBES_LIFECYCLE_FAILED\020\007*\251"
-    "\001\n\034RuntimeGIProbesPreviewBudget\0220\n,RUNTI"
-    "ME_GI_PROBES_PREVIEW_BUDGET_UNSPECIFIED\020"
-    "\000\022(\n$RUNTIME_GI_PROBES_PREVIEW_BUDGET_EC"
-    "O\020\001\022-\n)RUNTIME_GI_PROBES_PREVIEW_BUDGET_"
-    "BALANCED\020\002*\234\002\n GlobalIlluminationProbeRe"
-    "sidency\0223\n/GLOBAL_ILLUMINATION_PROBE_RES"
-    "IDENCY_UNSPECIFIED\020\000\0220\n,GLOBAL_ILLUMINAT"
-    "ION_PROBE_RESIDENCY_UNLOADED\020\001\022/\n+GLOBAL"
-    "_ILLUMINATION_PROBE_RESIDENCY_LOADING\020\002\022"
-    "0\n,GLOBAL_ILLUMINATION_PROBE_RESIDENCY_R"
-    "ESIDENT\020\003\022.\n*GLOBAL_ILLUMINATION_PROBE_R"
-    "ESIDENCY_FAILED\020\004*\261\001\n\026ModelFingerprintSt"
-    "atus\022(\n$MODEL_FINGERPRINT_STATUS_UNAVAIL"
-    "ABLE\020\000\022$\n MODEL_FINGERPRINT_STATUS_PENDI"
-    "NG\020\001\022\"\n\036MODEL_FINGERPRINT_STATUS_READY\020\002"
-    "\022#\n\037MODEL_FINGERPRINT_STATUS_FAILED\020\003B\"\252"
-    "\002\037SailorEditor.Protocol.Generatedb\006proto"
-    "3"
+    "formSpace\"(\n\020SelectionRequest\022\024\n\014instanc"
+    "e_ids\030\001 \003(\t\"%\n\025ShowMainWindowRequest\022\014\n\004"
+    "show\030\001 \001(\010\"\210\001\n\034RenderPathTracedImageRequ"
+    "est\022\023\n\013output_path\030\001 \001(\t\022\023\n\013instance_id\030"
+    "\002 \001(\t\022\016\n\006height\030\003 \001(\r\022\031\n\021samples_per_pix"
+    "el\030\004 \001(\r\022\023\n\013max_bounces\030\005 \001(\r\"\033\n\nBoolRes"
+    "ult\022\r\n\005value\030\001 \001(\010\"\034\n\013Int32Result\022\r\n\005val"
+    "ue\030\001 \001(\005\"\035\n\014UInt32Result\022\r\n\005value\030\001 \001(\r\""
+    "\035\n\014UInt64Result\022\r\n\005value\030\001 \001(\004\"0\n\014String"
+    "Result\022\021\n\thas_value\030\001 \001(\010\022\r\n\005value\030\002 \001(\t"
+    "\"\"\n\020StringListResult\022\016\n\006values\030\001 \003(\t\"\204\001\n"
+    "\026AssetReloadStateResult\022\021\n\tavailable\030\001 \001"
+    "(\010\022\032\n\022request_generation\030\002 \001(\004\022\034\n\024comple"
+    "ted_generation\030\003 \001(\004\022\035\n\025successful_gener"
+    "ation\030\004 \001(\004\":\n\020InstanceIdResult\022\021\n\tsucce"
+    "eded\030\001 \001(\010\022\023\n\013instance_id\030\002 \001(\t\"9\n\rVecto"
+    "r4Result\022(\n\005value\030\001 \001(\0132\031.sailor.editor."
+    "v1.Vector4\"\223\001\n\027ViewportToolStateResult\022\?"
+    "\n\toperation\030\001 \001(\0162,.sailor.editor.v1.Vie"
+    "wportTransformOperation\0227\n\005space\030\002 \001(\0162("
+    ".sailor.editor.v1.ViewportTransformSpace"
+    "\"\250\002\n\023AnimatorStateResult\022\026\n\016has_controll"
+    "er\030\001 \001(\010\022\033\n\023controller_revision\030\002 \001(\004\022\027\n"
+    "\017active_state_id\030\003 \001(\004\022\031\n\021active_state_n"
+    "ame\030\004 \001(\t\022\031\n\021active_state_time\030\005 \001(\002\022\025\n\r"
+    "transitioning\030\006 \001(\010\022\034\n\024destination_state"
+    "_id\030\007 \001(\004\022\036\n\026destination_state_name\030\010 \001("
+    "\t\022\036\n\026destination_state_time\030\t \001(\002\022\030\n\020tra"
+    "nsition_alpha\030\n \001(\002\"5\n\007Vector4\022\t\n\001x\030\001 \001("
+    "\002\022\t\n\001y\030\002 \001(\002\022\t\n\001z\030\003 \001(\002\022\t\n\001w\030\004 \001(\002\"6\n\026Vi"
+    "ewportSelectionEvent\022\034\n\024selected_instanc"
+    "e_id\030\001 \001(\t\"\326\003\n\026ViewportTransformEvent\022\023\n"
+    "\013instance_id\030\001 \001(\t\022\?\n\toperation\030\002 \001(\0162,."
+    "sailor.editor.v1.ViewportTransformOperat"
+    "ion\0227\n\005space\030\003 \001(\0162(.sailor.editor.v1.Vi"
+    "ewportTransformSpace\0222\n\017before_position\030"
+    "\004 \001(\0132\031.sailor.editor.v1.Vector4\0222\n\017befo"
+    "re_rotation\030\005 \001(\0132\031.sailor.editor.v1.Vec"
+    "tor4\022/\n\014before_scale\030\006 \001(\0132\031.sailor.edit"
+    "or.v1.Vector4\0221\n\016after_position\030\007 \001(\0132\031."
+    "sailor.editor.v1.Vector4\0221\n\016after_rotati"
+    "on\030\010 \001(\0132\031.sailor.editor.v1.Vector4\022.\n\013a"
+    "fter_scale\030\t \001(\0132\031.sailor.editor.v1.Vect"
+    "or4\"U\n\026ViewportAssetDropEvent\022\017\n\007file_id"
+    "\030\001 \001(\t\022\024\n\014normalized_x\030\002 \001(\002\022\024\n\014normaliz"
+    "ed_y\030\003 \001(\002\"-\n\031ViewportToolShortcutEvent\022"
+    "\020\n\010key_code\030\001 \001(\r\"\331\002\n\rViewportEvent\022\020\n\010r"
+    "evision\030\001 \001(\004\022!\n\031managed_mutation_revisi"
+    "on\030\002 \001(\004\022=\n\tselection\030\n \001(\0132(.sailor.edi"
+    "tor.v1.ViewportSelectionEventH\000\022=\n\ttrans"
+    "form\030\013 \001(\0132(.sailor.editor.v1.ViewportTr"
+    "ansformEventH\000\022>\n\nasset_drop\030\014 \001(\0132(.sai"
+    "lor.editor.v1.ViewportAssetDropEventH\000\022D"
+    "\n\rtool_shortcut\030\r \001(\0132+.sailor.editor.v1"
+    ".ViewportToolShortcutEventH\000B\t\n\007payloadJ"
+    "\004\010\003\020\n\"K\n\030ViewportEventBatchResult\022/\n\006eve"
+    "nts\030\001 \003(\0132\037.sailor.editor.v1.ViewportEve"
+    "nt\"\222\002\n\027RuntimeGIProbesSettings\022\017\n\007versio"
+    "n\030\001 \001(\r\022\023\n\013include_sky\030\002 \001(\010\022\030\n\020include_"
+    "emissive\030\003 \001(\010\022\037\n\027include_direct_lightin"
+    "g\030\004 \001(\010\022\024\n\014bounce_count\030\005 \001(\r\022\031\n\021min_pro"
+    "be_spacing\030\006 \001(\002\022\023\n\013normal_bias\030\007 \001(\002\022\021\n"
+    "\tview_bias\030\010 \001(\002\022\030\n\020max_ray_distance\030\t \001"
+    "(\002\022#\n\033sun_angle_threshold_degrees\030\n \001(\002\""
+    "0\n\035RuntimeGIProbesPreviewRequest\022\017\n\007enab"
+    "led\030\001 \001(\010\"-\n\033RuntimeGIProbesPauseRequest"
+    "\022\016\n\006paused\030\001 \001(\010\"\334\003\n\024RuntimeGIProbesStat"
+    "e\022=\n\tlifecycle\030\001 \001(\0162*.sailor.editor.v1."
+    "RuntimeGIProbesLifecycle\022\017\n\007enabled\030\002 \001("
+    "\010\022\016\n\006paused\030\003 \001(\010\022\027\n\017preview_enabled\030\004 \001"
+    "(\010\022\030\n\020scene_generation\030\005 \001(\004\022\033\n\023lighting"
+    "_generation\030\006 \001(\004\022\032\n\022published_revision\030"
+    "\007 \001(\004\022\020\n\010capacity\030\010 \001(\r\022\032\n\022active_probe_"
+    "count\030\t \001(\r\022\031\n\021ready_probe_count\030\n \001(\r\022\024"
+    "\n\014worker_count\030\013 \001(\r\022\027\n\017published_bytes\030"
+    "\014 \001(\004\022\020\n\010coverage\030\r \001(\002\022\022\n\nrefinement\030\016 "
+    "\001(\002\022\022\n\ndiagnostic\030\017 \001(\t\022F\n\016preview_budge"
+    "t\030\020 \001(\0162..sailor.editor.v1.RuntimeGIProb"
+    "esPreviewBudget\"e\n#RuntimeGIProbesPrevie"
+    "wBudgetRequest\022>\n\006budget\030\001 \001(\0162..sailor."
+    "editor.v1.RuntimeGIProbesPreviewBudget\"X"
+    "\n\034ModelFingerprintStatusResult\0228\n\006status"
+    "\030\001 \001(\0162(.sailor.editor.v1.ModelFingerpri"
+    "ntStatus*\360\001\n\032ViewportTransformOperation\022"
+    ",\n(VIEWPORT_TRANSFORM_OPERATION_UNSPECIF"
+    "IED\020\000\022\'\n#VIEWPORT_TRANSFORM_OPERATION_SE"
+    "LECT\020\001\022*\n&VIEWPORT_TRANSFORM_OPERATION_T"
+    "RANSLATE\020\002\022\'\n#VIEWPORT_TRANSFORM_OPERATI"
+    "ON_ROTATE\020\003\022&\n\"VIEWPORT_TRANSFORM_OPERAT"
+    "ION_SCALE\020\004*\212\001\n\026ViewportTransformSpace\022("
+    "\n$VIEWPORT_TRANSFORM_SPACE_UNSPECIFIED\020\000"
+    "\022\"\n\036VIEWPORT_TRANSFORM_SPACE_WORLD\020\001\022\"\n\036"
+    "VIEWPORT_TRANSFORM_SPACE_LOCAL\020\002*\244\001\n\017Edi"
+    "torStatsMode\022!\n\035EDITOR_STATS_MODE_UNSPEC"
+    "IFIED\020\000\022\032\n\026EDITOR_STATS_MODE_NONE\020\001\022\"\n\036E"
+    "DITOR_STATS_MODE_RENDER_STATS\020\002\022.\n*EDITO"
+    "R_STATS_MODE_RENDER_STATS_AND_QUERIES\020\003*"
+    "\243\005\n\020EditorRenderMode\022\"\n\036EDITOR_RENDER_MO"
+    "DE_UNSPECIFIED\020\000\022\032\n\026EDITOR_RENDER_MODE_L"
+    "IT\020\001\022(\n$EDITOR_RENDER_MODE_AMBIENT_OCCLU"
+    "SION\020\002\022\037\n\033EDITOR_RENDER_MODE_CASCADES\020\003\022"
+    "\"\n\036EDITOR_RENDER_MODE_LIGHT_TILES\020\004\022/\n+E"
+    "DITOR_RENDER_MODE_GLOBAL_ILLUMINATION_ON"
+    "LY\020\005\0221\n-EDITOR_RENDER_MODE_GLOBAL_ILLUMI"
+    "NATION_PROBES\020\006\0221\n-EDITOR_RENDER_MODE_GL"
+    "OBAL_ILLUMINATION_BRICKS\020\007\0223\n/EDITOR_REN"
+    "DER_MODE_GLOBAL_ILLUMINATION_VALIDITY\020\010\022"
+    "5\n1EDITOR_RENDER_MODE_GLOBAL_ILLUMINATIO"
+    "N_VISIBILITY\020\t\0224\n0EDITOR_RENDER_MODE_GLO"
+    "BAL_ILLUMINATION_RESIDENCY\020\n\0229\n5EDITOR_R"
+    "ENDER_MODE_GLOBAL_ILLUMINATION_ASSET_IDE"
+    "NTITY\020\013\0223\n/EDITOR_RENDER_MODE_GLOBAL_ILL"
+    "UMINATION_FALLBACK\020\014\0227\n3EDITOR_RENDER_MO"
+    "DE_GLOBAL_ILLUMINATION_SUBDIVISIONS\020\r*\247\002"
+    "\n\021GIProbesBakeState\022$\n GI_PROBES_BAKE_ST"
+    "ATE_UNSPECIFIED\020\000\022\035\n\031GI_PROBES_BAKE_STAT"
+    "E_IDLE\020\001\022\"\n\036GI_PROBES_BAKE_STATE_PREPARI"
+    "NG\020\002\022\037\n\033GI_PROBES_BAKE_STATE_BAKING\020\003\022\037\n"
+    "\033GI_PROBES_BAKE_STATE_SAVING\020\004\022\"\n\036GI_PRO"
+    "BES_BAKE_STATE_SUCCEEDED\020\005\022\037\n\033GI_PROBES_"
+    "BAKE_STATE_FAILED\020\006\022\"\n\036GI_PROBES_BAKE_ST"
+    "ATE_CANCELLED\020\007*\244\001\n\033GlobalIlluminationPr"
+    "obeMode\022.\n*GLOBAL_ILLUMINATION_PROBE_MOD"
+    "E_UNSPECIFIED\020\000\022(\n$GLOBAL_ILLUMINATION_P"
+    "ROBE_MODE_BLEND\020\001\022+\n\'GLOBAL_ILLUMINATION"
+    "_PROBE_MODE_ADDITIVE\020\002*\260\001\n\026GlobalIllumin"
+    "ationMode\022(\n$GLOBAL_ILLUMINATION_MODE_UN"
+    "SPECIFIED\020\000\022\"\n\036GLOBAL_ILLUMINATION_MODE_"
+    "NO_GI\020\001\022$\n GLOBAL_ILLUMINATION_MODE_RUNT"
+    "IME\020\002\022\"\n\036GLOBAL_ILLUMINATION_MODE_BAKED\020"
+    "\003*\355\002\n\030RuntimeGIProbesLifecycle\022+\n\'RUNTIM"
+    "E_GI_PROBES_LIFECYCLE_UNSPECIFIED\020\000\022(\n$R"
+    "UNTIME_GI_PROBES_LIFECYCLE_DISABLED\020\001\022/\n"
+    "+RUNTIME_GI_PROBES_LIFECYCLE_PREPARING_S"
+    "CENE\020\002\022\'\n#RUNTIME_GI_PROBES_LIFECYCLE_TR"
+    "ACING\020\003\022%\n!RUNTIME_GI_PROBES_LIFECYCLE_R"
+    "EADY\020\004\022&\n\"RUNTIME_GI_PROBES_LIFECYCLE_PA"
+    "USED\020\005\022)\n%RUNTIME_GI_PROBES_LIFECYCLE_TH"
+    "ROTTLED\020\006\022&\n\"RUNTIME_GI_PROBES_LIFECYCLE"
+    "_FAILED\020\007*\251\001\n\034RuntimeGIProbesPreviewBudg"
+    "et\0220\n,RUNTIME_GI_PROBES_PREVIEW_BUDGET_U"
+    "NSPECIFIED\020\000\022(\n$RUNTIME_GI_PROBES_PREVIE"
+    "W_BUDGET_ECO\020\001\022-\n)RUNTIME_GI_PROBES_PREV"
+    "IEW_BUDGET_BALANCED\020\002*\234\002\n GlobalIllumina"
+    "tionProbeResidency\0223\n/GLOBAL_ILLUMINATIO"
+    "N_PROBE_RESIDENCY_UNSPECIFIED\020\000\0220\n,GLOBA"
+    "L_ILLUMINATION_PROBE_RESIDENCY_UNLOADED\020"
+    "\001\022/\n+GLOBAL_ILLUMINATION_PROBE_RESIDENCY"
+    "_LOADING\020\002\0220\n,GLOBAL_ILLUMINATION_PROBE_"
+    "RESIDENCY_RESIDENT\020\003\022.\n*GLOBAL_ILLUMINAT"
+    "ION_PROBE_RESIDENCY_FAILED\020\004*\261\001\n\026ModelFi"
+    "ngerprintStatus\022(\n$MODEL_FINGERPRINT_STA"
+    "TUS_UNAVAILABLE\020\000\022$\n MODEL_FINGERPRINT_S"
+    "TATUS_PENDING\020\001\022\"\n\036MODEL_FINGERPRINT_STA"
+    "TUS_READY\020\002\022#\n\037MODEL_FINGERPRINT_STATUS_"
+    "FAILED\020\003B\"\252\002\037SailorEditor.Protocol.Gener"
+    "atedb\006proto3"
 };
 static ::absl::once_flag descriptor_table_editor_5fengine_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_editor_5fengine_2eproto = {
     false,
     false,
-    17441,
+    17252,
     descriptor_table_protodef_editor_5fengine_2eproto,
     "editor_engine.proto",
     &descriptor_table_editor_5fengine_2eproto_once,
     nullptr,
     0,
-    66,
+    65,
     schemas,
     file_default_instances,
     TableStruct_editor_5fengine_2eproto::offsets,
@@ -3918,19 +3872,6 @@ void ProtocolRequest::set_allocated_retry_remote_viewport(::sailor::editor::v1::
     _impl_.command_.retry_remote_viewport_ = retry_remote_viewport;
   }
   // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.ProtocolRequest.retry_remote_viewport)
-}
-void ProtocolRequest::set_allocated_set_remote_viewport_mac_host_handle(::sailor::editor::v1::RemoteViewportHostRequest* set_remote_viewport_mac_host_handle) {
-  ::google::protobuf::Arena* message_arena = GetArena();
-  clear_command();
-  if (set_remote_viewport_mac_host_handle) {
-    ::google::protobuf::Arena* submessage_arena = set_remote_viewport_mac_host_handle->GetArena();
-    if (message_arena != submessage_arena) {
-      set_remote_viewport_mac_host_handle = ::google::protobuf::internal::GetOwnedMessage(message_arena, set_remote_viewport_mac_host_handle, submessage_arena);
-    }
-    set_has_set_remote_viewport_mac_host_handle();
-    _impl_.command_.set_remote_viewport_mac_host_handle_ = set_remote_viewport_mac_host_handle;
-  }
-  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.ProtocolRequest.set_remote_viewport_mac_host_handle)
 }
 void ProtocolRequest::set_allocated_send_remote_viewport_input(::sailor::editor::v1::RemoteViewportInputRequest* send_remote_viewport_input) {
   ::google::protobuf::Arena* message_arena = GetArena();
@@ -4655,9 +4596,6 @@ ProtocolRequest::ProtocolRequest(
       case kRetryRemoteViewport:
         _impl_.command_.retry_remote_viewport_ = ::google::protobuf::Message::CopyConstruct<::sailor::editor::v1::ViewportIdRequest>(arena, *from._impl_.command_.retry_remote_viewport_);
         break;
-      case kSetRemoteViewportMacHostHandle:
-        _impl_.command_.set_remote_viewport_mac_host_handle_ = ::google::protobuf::Message::CopyConstruct<::sailor::editor::v1::RemoteViewportHostRequest>(arena, *from._impl_.command_.set_remote_viewport_mac_host_handle_);
-        break;
       case kSendRemoteViewportInput:
         _impl_.command_.send_remote_viewport_input_ = ::google::protobuf::Message::CopyConstruct<::sailor::editor::v1::RemoteViewportInputRequest>(arena, *from._impl_.command_.send_remote_viewport_input_);
         break;
@@ -4997,14 +4935,6 @@ void ProtocolRequest::clear_command() {
         delete _impl_.command_.retry_remote_viewport_;
       } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
         ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.command_.retry_remote_viewport_);
-      }
-      break;
-    }
-    case kSetRemoteViewportMacHostHandle: {
-      if (GetArena() == nullptr) {
-        delete _impl_.command_.set_remote_viewport_mac_host_handle_;
-      } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
-        ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.command_.set_remote_viewport_mac_host_handle_);
       }
       break;
     }
@@ -5436,16 +5366,16 @@ const ::google::protobuf::internal::ClassData* ProtocolRequest::GetClassData() c
   return _class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<1, 71, 69, 0, 15> ProtocolRequest::_table_ = {
+const ::_pbi::TcParseTable<1, 70, 68, 0, 15> ProtocolRequest::_table_ = {
   {
     0,  // no _has_bits_
     0, // no _extensions_
     101, 8,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    508,  // skipmap
+    536871420,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    71,  // num_field_entries
-    69,  // num_aux_entries
+    70,  // num_field_entries
+    68,  // num_aux_entries
     offsetof(decltype(_table_), aux_entries),
     _class_data_.base(),
     nullptr,  // post_loop_handler
@@ -5462,7 +5392,7 @@ const ::_pbi::TcParseTable<1, 71, 69, 0, 15> ProtocolRequest::_table_ = {
      {8, 63, 0, PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.protocol_version_)}},
   }}, {{
     33, 0, 5,
-    0, 25, 2, 41, 57344, 56, 65535, 69, 65511, 69,
+    0, 24, 2, 40, 57344, 55, 65535, 68, 65511, 68,
     65535, 65535
   }}, {{
     // uint32 protocol_version = 1;
@@ -5531,152 +5461,149 @@ const ::_pbi::TcParseTable<1, 71, 69, 0, 15> ProtocolRequest::_table_ = {
     // .sailor.editor.v1.ViewportIdRequest retry_remote_viewport = 29;
     {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.retry_remote_viewport_), _Internal::kOneofCaseOffset + 0, 19,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
-    // .sailor.editor.v1.RemoteViewportHostRequest set_remote_viewport_mac_host_handle = 30;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_remote_viewport_mac_host_handle_), _Internal::kOneofCaseOffset + 0, 20,
-    (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.RemoteViewportInputRequest send_remote_viewport_input = 31;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.send_remote_viewport_input_), _Internal::kOneofCaseOffset + 0, 21,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.send_remote_viewport_input_), _Internal::kOneofCaseOffset + 0, 20,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.CountRequest pull_editor_viewport_events = 32;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.pull_editor_viewport_events_), _Internal::kOneofCaseOffset + 0, 22,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.pull_editor_viewport_events_), _Internal::kOneofCaseOffset + 0, 21,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.ManagedMutationRevisionRequest get_editor_managed_mutation_revision = 33;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.get_editor_managed_mutation_revision_), _Internal::kOneofCaseOffset + 0, 23,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.get_editor_managed_mutation_revision_), _Internal::kOneofCaseOffset + 0, 22,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.UpdateObjectRequest update_object = 34;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.update_object_), _Internal::kOneofCaseOffset + 0, 24,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.update_object_), _Internal::kOneofCaseOffset + 0, 23,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.ReparentObjectRequest reparent_object = 35;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.reparent_object_), _Internal::kOneofCaseOffset + 0, 25,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.reparent_object_), _Internal::kOneofCaseOffset + 0, 24,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.CreateGameObjectRequest create_game_object = 36;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.create_game_object_), _Internal::kOneofCaseOffset + 0, 26,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.create_game_object_), _Internal::kOneofCaseOffset + 0, 25,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.InstanceIdRequest destroy_object = 37;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.destroy_object_), _Internal::kOneofCaseOffset + 0, 27,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.destroy_object_), _Internal::kOneofCaseOffset + 0, 26,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.InstanceIdRequest reset_component_to_defaults = 38;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.reset_component_to_defaults_), _Internal::kOneofCaseOffset + 0, 28,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.reset_component_to_defaults_), _Internal::kOneofCaseOffset + 0, 27,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.AddComponentRequest add_component = 39;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.add_component_), _Internal::kOneofCaseOffset + 0, 29,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.add_component_), _Internal::kOneofCaseOffset + 0, 28,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.InstanceIdRequest remove_component = 40;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.remove_component_), _Internal::kOneofCaseOffset + 0, 30,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.remove_component_), _Internal::kOneofCaseOffset + 0, 29,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.InstantiatePrefabRequest instantiate_prefab = 41;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.instantiate_prefab_), _Internal::kOneofCaseOffset + 0, 31,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.instantiate_prefab_), _Internal::kOneofCaseOffset + 0, 30,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.InstantiatePrefabFromYamlRequest instantiate_prefab_from_yaml = 42;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.instantiate_prefab_from_yaml_), _Internal::kOneofCaseOffset + 0, 32,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.instantiate_prefab_from_yaml_), _Internal::kOneofCaseOffset + 0, 31,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.SelectionRequest set_editor_selection = 43;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_editor_selection_), _Internal::kOneofCaseOffset + 0, 33,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_editor_selection_), _Internal::kOneofCaseOffset + 0, 32,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.ShowMainWindowRequest show_main_window = 44;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.show_main_window_), _Internal::kOneofCaseOffset + 0, 34,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.show_main_window_), _Internal::kOneofCaseOffset + 0, 33,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.RenderPathTracedImageRequest render_path_traced_image = 45;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.render_path_traced_image_), _Internal::kOneofCaseOffset + 0, 35,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.render_path_traced_image_), _Internal::kOneofCaseOffset + 0, 34,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.Empty serialize_engine_types = 46;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.serialize_engine_types_), _Internal::kOneofCaseOffset + 0, 36,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.serialize_engine_types_), _Internal::kOneofCaseOffset + 0, 35,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.Empty is_engine_main_thread_ready = 47;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.is_engine_main_thread_ready_), _Internal::kOneofCaseOffset + 0, 37,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.is_engine_main_thread_ready_), _Internal::kOneofCaseOffset + 0, 36,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.Empty is_engine_running = 48;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.is_engine_running_), _Internal::kOneofCaseOffset + 0, 38,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.is_engine_running_), _Internal::kOneofCaseOffset + 0, 37,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.ViewportRayRequest trace_viewport_ray = 49;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.trace_viewport_ray_), _Internal::kOneofCaseOffset + 0, 39,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.trace_viewport_ray_), _Internal::kOneofCaseOffset + 0, 38,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.InstantiatePrefabInstanceRequest instantiate_prefab_instance = 51;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.instantiate_prefab_instance_), _Internal::kOneofCaseOffset + 0, 40,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.instantiate_prefab_instance_), _Internal::kOneofCaseOffset + 0, 39,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.ViewportObjectRequest focus_editor_camera = 52;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.focus_editor_camera_), _Internal::kOneofCaseOffset + 0, 41,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.focus_editor_camera_), _Internal::kOneofCaseOffset + 0, 40,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.PrefabLinkRequest set_prefab_link = 53;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_prefab_link_), _Internal::kOneofCaseOffset + 0, 42,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_prefab_link_), _Internal::kOneofCaseOffset + 0, 41,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.InstanceIdRequest break_prefab_link = 54;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.break_prefab_link_), _Internal::kOneofCaseOffset + 0, 43,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.break_prefab_link_), _Internal::kOneofCaseOffset + 0, 42,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.ViewportToolStateRequest set_viewport_tool_state = 55;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_viewport_tool_state_), _Internal::kOneofCaseOffset + 0, 44,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_viewport_tool_state_), _Internal::kOneofCaseOffset + 0, 43,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.ViewportIdRequest get_viewport_tool_state = 56;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.get_viewport_tool_state_), _Internal::kOneofCaseOffset + 0, 45,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.get_viewport_tool_state_), _Internal::kOneofCaseOffset + 0, 44,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.UpdateAssetRequest update_asset = 57;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.update_asset_), _Internal::kOneofCaseOffset + 0, 46,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.update_asset_), _Internal::kOneofCaseOffset + 0, 45,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.CreateModelInstanceRequest create_model_instance = 58;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.create_model_instance_), _Internal::kOneofCaseOffset + 0, 47,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.create_model_instance_), _Internal::kOneofCaseOffset + 0, 46,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.AnimatorParameterRequest set_animator_parameter = 59;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_animator_parameter_), _Internal::kOneofCaseOffset + 0, 48,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_animator_parameter_), _Internal::kOneofCaseOffset + 0, 47,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.InstanceIdRequest get_animator_state = 60;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.get_animator_state_), _Internal::kOneofCaseOffset + 0, 49,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.get_animator_state_), _Internal::kOneofCaseOffset + 0, 48,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.EditorSimulationRequest set_editor_simulation = 61;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_editor_simulation_), _Internal::kOneofCaseOffset + 0, 50,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_editor_simulation_), _Internal::kOneofCaseOffset + 0, 49,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.Empty get_editor_simulation_state = 62;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.get_editor_simulation_state_), _Internal::kOneofCaseOffset + 0, 51,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.get_editor_simulation_state_), _Internal::kOneofCaseOffset + 0, 50,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.FileIdRequest preview_audio_asset = 63;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.preview_audio_asset_), _Internal::kOneofCaseOffset + 0, 52,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.preview_audio_asset_), _Internal::kOneofCaseOffset + 0, 51,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.EditorStatsModeRequest set_editor_stats_mode = 64;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_editor_stats_mode_), _Internal::kOneofCaseOffset + 0, 53,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_editor_stats_mode_), _Internal::kOneofCaseOffset + 0, 52,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.EditorRenderModeRequest set_editor_render_mode = 65;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_editor_render_mode_), _Internal::kOneofCaseOffset + 0, 54,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_editor_render_mode_), _Internal::kOneofCaseOffset + 0, 53,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.Empty get_editor_render_mode = 66;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.get_editor_render_mode_), _Internal::kOneofCaseOffset + 0, 55,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.get_editor_render_mode_), _Internal::kOneofCaseOffset + 0, 54,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.StartGIProbesBakeRequest start_gi_probes_bake = 67;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.start_gi_probes_bake_), _Internal::kOneofCaseOffset + 0, 56,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.start_gi_probes_bake_), _Internal::kOneofCaseOffset + 0, 55,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.Empty get_gi_probes_bake_status = 68;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.get_gi_probes_bake_status_), _Internal::kOneofCaseOffset + 0, 57,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.get_gi_probes_bake_status_), _Internal::kOneofCaseOffset + 0, 56,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.Empty cancel_gi_probes_bake = 69;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.cancel_gi_probes_bake_), _Internal::kOneofCaseOffset + 0, 58,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.cancel_gi_probes_bake_), _Internal::kOneofCaseOffset + 0, 57,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.SetGISettingsRequest set_gi_settings = 70;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_gi_settings_), _Internal::kOneofCaseOffset + 0, 59,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_gi_settings_), _Internal::kOneofCaseOffset + 0, 58,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.Empty get_global_illumination_state = 71;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.get_global_illumination_state_), _Internal::kOneofCaseOffset + 0, 60,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.get_global_illumination_state_), _Internal::kOneofCaseOffset + 0, 59,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.RuntimeGIProbesPreviewRequest set_runtime_gi_probes_preview = 72;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_runtime_gi_probes_preview_), _Internal::kOneofCaseOffset + 0, 61,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_runtime_gi_probes_preview_), _Internal::kOneofCaseOffset + 0, 60,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.RuntimeGIProbesPauseRequest set_runtime_gi_probes_paused = 73;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_runtime_gi_probes_paused_), _Internal::kOneofCaseOffset + 0, 62,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_runtime_gi_probes_paused_), _Internal::kOneofCaseOffset + 0, 61,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.Empty restart_runtime_gi_probes = 74;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.restart_runtime_gi_probes_), _Internal::kOneofCaseOffset + 0, 63,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.restart_runtime_gi_probes_), _Internal::kOneofCaseOffset + 0, 62,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.Empty rebuild_runtime_gi_probes_scene = 75;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.rebuild_runtime_gi_probes_scene_), _Internal::kOneofCaseOffset + 0, 64,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.rebuild_runtime_gi_probes_scene_), _Internal::kOneofCaseOffset + 0, 63,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.RuntimeGIProbesPreviewBudgetRequest set_runtime_gi_probes_preview_budget = 76;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_runtime_gi_probes_preview_budget_), _Internal::kOneofCaseOffset + 0, 65,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_runtime_gi_probes_preview_budget_), _Internal::kOneofCaseOffset + 0, 64,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.ViewportIdRequest capture_remote_viewport_frame_evidence = 77;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.capture_remote_viewport_frame_evidence_), _Internal::kOneofCaseOffset + 0, 66,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.capture_remote_viewport_frame_evidence_), _Internal::kOneofCaseOffset + 0, 65,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.FileIdRequest request_model_fingerprint = 100;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.request_model_fingerprint_), _Internal::kOneofCaseOffset + 0, 67,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.request_model_fingerprint_), _Internal::kOneofCaseOffset + 0, 66,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
     // .sailor.editor.v1.FileIdRequest get_model_fingerprint_status = 101;
-    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.get_model_fingerprint_status_), _Internal::kOneofCaseOffset + 0, 68,
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.get_model_fingerprint_status_), _Internal::kOneofCaseOffset + 0, 67,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
   }}, {{
     {::_pbi::TcParser::GetTable<::sailor::editor::v1::InitializeRequest>()},
@@ -5699,7 +5626,6 @@ const ::_pbi::TcParseTable<1, 71, 69, 0, 15> ProtocolRequest::_table_ = {
     {::_pbi::TcParser::GetTable<::sailor::editor::v1::ViewportIdRequest>()},
     {::_pbi::TcParser::GetTable<::sailor::editor::v1::ViewportIdRequest>()},
     {::_pbi::TcParser::GetTable<::sailor::editor::v1::ViewportIdRequest>()},
-    {::_pbi::TcParser::GetTable<::sailor::editor::v1::RemoteViewportHostRequest>()},
     {::_pbi::TcParser::GetTable<::sailor::editor::v1::RemoteViewportInputRequest>()},
     {::_pbi::TcParser::GetTable<::sailor::editor::v1::CountRequest>()},
     {::_pbi::TcParser::GetTable<::sailor::editor::v1::ManagedMutationRevisionRequest>()},
@@ -5913,12 +5839,6 @@ PROTOBUF_NOINLINE void ProtocolRequest::Clear() {
             case kRetryRemoteViewport: {
               target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
                   29, *this_._impl_.command_.retry_remote_viewport_, this_._impl_.command_.retry_remote_viewport_->GetCachedSize(), target,
-                  stream);
-              break;
-            }
-            case kSetRemoteViewportMacHostHandle: {
-              target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
-                  30, *this_._impl_.command_.set_remote_viewport_mac_host_handle_, this_._impl_.command_.set_remote_viewport_mac_host_handle_->GetCachedSize(), target,
                   stream);
               break;
             }
@@ -6368,12 +6288,6 @@ PROTOBUF_NOINLINE void ProtocolRequest::Clear() {
             case kRetryRemoteViewport: {
               total_size += 2 +
                             ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.command_.retry_remote_viewport_);
-              break;
-            }
-            // .sailor.editor.v1.RemoteViewportHostRequest set_remote_viewport_mac_host_handle = 30;
-            case kSetRemoteViewportMacHostHandle: {
-              total_size += 2 +
-                            ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.command_.set_remote_viewport_mac_host_handle_);
               break;
             }
             // .sailor.editor.v1.RemoteViewportInputRequest send_remote_viewport_input = 31;
@@ -6875,15 +6789,6 @@ void ProtocolRequest::MergeImpl(::google::protobuf::MessageLite& to_msg, const :
               ::google::protobuf::Message::CopyConstruct<::sailor::editor::v1::ViewportIdRequest>(arena, *from._impl_.command_.retry_remote_viewport_);
         } else {
           _this->_impl_.command_.retry_remote_viewport_->MergeFrom(from._internal_retry_remote_viewport());
-        }
-        break;
-      }
-      case kSetRemoteViewportMacHostHandle: {
-        if (oneof_needs_init) {
-          _this->_impl_.command_.set_remote_viewport_mac_host_handle_ =
-              ::google::protobuf::Message::CopyConstruct<::sailor::editor::v1::RemoteViewportHostRequest>(arena, *from._impl_.command_.set_remote_viewport_mac_host_handle_);
-        } else {
-          _this->_impl_.command_.set_remote_viewport_mac_host_handle_->MergeFrom(from._internal_set_remote_viewport_mac_host_handle());
         }
         break;
       }
@@ -15074,269 +14979,6 @@ void RemoteViewportRequest::InternalSwap(RemoteViewportRequest* PROTOBUF_RESTRIC
 }
 
 ::google::protobuf::Metadata RemoteViewportRequest::GetMetadata() const {
-  return ::google::protobuf::Message::GetMetadataImpl(GetClassData()->full());
-}
-// ===================================================================
-
-class RemoteViewportHostRequest::_Internal {
- public:
-};
-
-RemoteViewportHostRequest::RemoteViewportHostRequest(::google::protobuf::Arena* arena)
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-    : ::google::protobuf::Message(arena, _class_data_.base()) {
-#else   // PROTOBUF_CUSTOM_VTABLE
-    : ::google::protobuf::Message(arena) {
-#endif  // PROTOBUF_CUSTOM_VTABLE
-  SharedCtor(arena);
-  // @@protoc_insertion_point(arena_constructor:sailor.editor.v1.RemoteViewportHostRequest)
-}
-RemoteViewportHostRequest::RemoteViewportHostRequest(
-    ::google::protobuf::Arena* arena, const RemoteViewportHostRequest& from)
-    : RemoteViewportHostRequest(arena) {
-  MergeFrom(from);
-}
-inline PROTOBUF_NDEBUG_INLINE RemoteViewportHostRequest::Impl_::Impl_(
-    ::google::protobuf::internal::InternalVisibility visibility,
-    ::google::protobuf::Arena* arena)
-      : _cached_size_{0} {}
-
-inline void RemoteViewportHostRequest::SharedCtor(::_pb::Arena* arena) {
-  new (&_impl_) Impl_(internal_visibility(), arena);
-  ::memset(reinterpret_cast<char *>(&_impl_) +
-               offsetof(Impl_, viewport_id_),
-           0,
-           offsetof(Impl_, host_handle_kind_) -
-               offsetof(Impl_, viewport_id_) +
-               sizeof(Impl_::host_handle_kind_));
-}
-RemoteViewportHostRequest::~RemoteViewportHostRequest() {
-  // @@protoc_insertion_point(destructor:sailor.editor.v1.RemoteViewportHostRequest)
-  SharedDtor(*this);
-}
-inline void RemoteViewportHostRequest::SharedDtor(MessageLite& self) {
-  RemoteViewportHostRequest& this_ = static_cast<RemoteViewportHostRequest&>(self);
-  this_._internal_metadata_.Delete<::google::protobuf::UnknownFieldSet>();
-  ABSL_DCHECK(this_.GetArena() == nullptr);
-  this_._impl_.~Impl_();
-}
-
-inline void* RemoteViewportHostRequest::PlacementNew_(const void*, void* mem,
-                                        ::google::protobuf::Arena* arena) {
-  return ::new (mem) RemoteViewportHostRequest(arena);
-}
-constexpr auto RemoteViewportHostRequest::InternalNewImpl_() {
-  return ::google::protobuf::internal::MessageCreator::ZeroInit(sizeof(RemoteViewportHostRequest),
-                                            alignof(RemoteViewportHostRequest));
-}
-PROTOBUF_CONSTINIT
-PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::google::protobuf::internal::ClassDataFull RemoteViewportHostRequest::_class_data_ = {
-    ::google::protobuf::internal::ClassData{
-        &_RemoteViewportHostRequest_default_instance_._instance,
-        &_table_.header,
-        nullptr,  // OnDemandRegisterArenaDtor
-        nullptr,  // IsInitialized
-        &RemoteViewportHostRequest::MergeImpl,
-        ::google::protobuf::Message::GetNewImpl<RemoteViewportHostRequest>(),
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-        &RemoteViewportHostRequest::SharedDtor,
-        ::google::protobuf::Message::GetClearImpl<RemoteViewportHostRequest>(), &RemoteViewportHostRequest::ByteSizeLong,
-            &RemoteViewportHostRequest::_InternalSerialize,
-#endif  // PROTOBUF_CUSTOM_VTABLE
-        PROTOBUF_FIELD_OFFSET(RemoteViewportHostRequest, _impl_._cached_size_),
-        false,
-    },
-    &RemoteViewportHostRequest::kDescriptorMethods,
-    &descriptor_table_editor_5fengine_2eproto,
-    nullptr,  // tracker
-};
-const ::google::protobuf::internal::ClassData* RemoteViewportHostRequest::GetClassData() const {
-  ::google::protobuf::internal::PrefetchToLocalCache(&_class_data_);
-  ::google::protobuf::internal::PrefetchToLocalCache(_class_data_.tc_table);
-  return _class_data_.base();
-}
-PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<2, 3, 0, 0, 2> RemoteViewportHostRequest::_table_ = {
-  {
-    0,  // no _has_bits_
-    0, // no _extensions_
-    3, 24,  // max_field_number, fast_idx_mask
-    offsetof(decltype(_table_), field_lookup_table),
-    4294967288,  // skipmap
-    offsetof(decltype(_table_), field_entries),
-    3,  // num_field_entries
-    0,  // num_aux_entries
-    offsetof(decltype(_table_), field_names),  // no aux_entries
-    _class_data_.base(),
-    nullptr,  // post_loop_handler
-    ::_pbi::TcParser::GenericFallback,  // fallback
-    #ifdef PROTOBUF_PREFETCH_PARSE_TABLE
-    ::_pbi::TcParser::GetTable<::sailor::editor::v1::RemoteViewportHostRequest>(),  // to_prefetch
-    #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
-  }, {{
-    {::_pbi::TcParser::MiniParse, {}},
-    // uint64 viewport_id = 1;
-    {::_pbi::TcParser::SingularVarintNoZag1<::uint64_t, offsetof(RemoteViewportHostRequest, _impl_.viewport_id_), 63>(),
-     {8, 63, 0, PROTOBUF_FIELD_OFFSET(RemoteViewportHostRequest, _impl_.viewport_id_)}},
-    // uint32 host_handle_kind = 2;
-    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(RemoteViewportHostRequest, _impl_.host_handle_kind_), 63>(),
-     {16, 63, 0, PROTOBUF_FIELD_OFFSET(RemoteViewportHostRequest, _impl_.host_handle_kind_)}},
-    // uint64 host_handle_value = 3;
-    {::_pbi::TcParser::SingularVarintNoZag1<::uint64_t, offsetof(RemoteViewportHostRequest, _impl_.host_handle_value_), 63>(),
-     {24, 63, 0, PROTOBUF_FIELD_OFFSET(RemoteViewportHostRequest, _impl_.host_handle_value_)}},
-  }}, {{
-    65535, 65535
-  }}, {{
-    // uint64 viewport_id = 1;
-    {PROTOBUF_FIELD_OFFSET(RemoteViewportHostRequest, _impl_.viewport_id_), 0, 0,
-    (0 | ::_fl::kFcSingular | ::_fl::kUInt64)},
-    // uint32 host_handle_kind = 2;
-    {PROTOBUF_FIELD_OFFSET(RemoteViewportHostRequest, _impl_.host_handle_kind_), 0, 0,
-    (0 | ::_fl::kFcSingular | ::_fl::kUInt32)},
-    // uint64 host_handle_value = 3;
-    {PROTOBUF_FIELD_OFFSET(RemoteViewportHostRequest, _impl_.host_handle_value_), 0, 0,
-    (0 | ::_fl::kFcSingular | ::_fl::kUInt64)},
-  }},
-  // no aux_entries
-  {{
-  }},
-};
-
-PROTOBUF_NOINLINE void RemoteViewportHostRequest::Clear() {
-// @@protoc_insertion_point(message_clear_start:sailor.editor.v1.RemoteViewportHostRequest)
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  ::uint32_t cached_has_bits = 0;
-  // Prevent compiler warnings about cached_has_bits being unused
-  (void) cached_has_bits;
-
-  ::memset(&_impl_.viewport_id_, 0, static_cast<::size_t>(
-      reinterpret_cast<char*>(&_impl_.host_handle_kind_) -
-      reinterpret_cast<char*>(&_impl_.viewport_id_)) + sizeof(_impl_.host_handle_kind_));
-  _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
-}
-
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-        ::uint8_t* RemoteViewportHostRequest::_InternalSerialize(
-            const MessageLite& base, ::uint8_t* target,
-            ::google::protobuf::io::EpsCopyOutputStream* stream) {
-          const RemoteViewportHostRequest& this_ = static_cast<const RemoteViewportHostRequest&>(base);
-#else   // PROTOBUF_CUSTOM_VTABLE
-        ::uint8_t* RemoteViewportHostRequest::_InternalSerialize(
-            ::uint8_t* target,
-            ::google::protobuf::io::EpsCopyOutputStream* stream) const {
-          const RemoteViewportHostRequest& this_ = *this;
-#endif  // PROTOBUF_CUSTOM_VTABLE
-          // @@protoc_insertion_point(serialize_to_array_start:sailor.editor.v1.RemoteViewportHostRequest)
-          ::uint32_t cached_has_bits = 0;
-          (void)cached_has_bits;
-
-          // uint64 viewport_id = 1;
-          if (this_._internal_viewport_id() != 0) {
-            target = stream->EnsureSpace(target);
-            target = ::_pbi::WireFormatLite::WriteUInt64ToArray(
-                1, this_._internal_viewport_id(), target);
-          }
-
-          // uint32 host_handle_kind = 2;
-          if (this_._internal_host_handle_kind() != 0) {
-            target = stream->EnsureSpace(target);
-            target = ::_pbi::WireFormatLite::WriteUInt32ToArray(
-                2, this_._internal_host_handle_kind(), target);
-          }
-
-          // uint64 host_handle_value = 3;
-          if (this_._internal_host_handle_value() != 0) {
-            target = stream->EnsureSpace(target);
-            target = ::_pbi::WireFormatLite::WriteUInt64ToArray(
-                3, this_._internal_host_handle_value(), target);
-          }
-
-          if (PROTOBUF_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
-            target =
-                ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
-                    this_._internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance), target, stream);
-          }
-          // @@protoc_insertion_point(serialize_to_array_end:sailor.editor.v1.RemoteViewportHostRequest)
-          return target;
-        }
-
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-        ::size_t RemoteViewportHostRequest::ByteSizeLong(const MessageLite& base) {
-          const RemoteViewportHostRequest& this_ = static_cast<const RemoteViewportHostRequest&>(base);
-#else   // PROTOBUF_CUSTOM_VTABLE
-        ::size_t RemoteViewportHostRequest::ByteSizeLong() const {
-          const RemoteViewportHostRequest& this_ = *this;
-#endif  // PROTOBUF_CUSTOM_VTABLE
-          // @@protoc_insertion_point(message_byte_size_start:sailor.editor.v1.RemoteViewportHostRequest)
-          ::size_t total_size = 0;
-
-          ::uint32_t cached_has_bits = 0;
-          // Prevent compiler warnings about cached_has_bits being unused
-          (void)cached_has_bits;
-
-          ::_pbi::Prefetch5LinesFrom7Lines(&this_);
-           {
-            // uint64 viewport_id = 1;
-            if (this_._internal_viewport_id() != 0) {
-              total_size += ::_pbi::WireFormatLite::UInt64SizePlusOne(
-                  this_._internal_viewport_id());
-            }
-            // uint64 host_handle_value = 3;
-            if (this_._internal_host_handle_value() != 0) {
-              total_size += ::_pbi::WireFormatLite::UInt64SizePlusOne(
-                  this_._internal_host_handle_value());
-            }
-            // uint32 host_handle_kind = 2;
-            if (this_._internal_host_handle_kind() != 0) {
-              total_size += ::_pbi::WireFormatLite::UInt32SizePlusOne(
-                  this_._internal_host_handle_kind());
-            }
-          }
-          return this_.MaybeComputeUnknownFieldsSize(total_size,
-                                                     &this_._impl_._cached_size_);
-        }
-
-void RemoteViewportHostRequest::MergeImpl(::google::protobuf::MessageLite& to_msg, const ::google::protobuf::MessageLite& from_msg) {
-  auto* const _this = static_cast<RemoteViewportHostRequest*>(&to_msg);
-  auto& from = static_cast<const RemoteViewportHostRequest&>(from_msg);
-  // @@protoc_insertion_point(class_specific_merge_from_start:sailor.editor.v1.RemoteViewportHostRequest)
-  ABSL_DCHECK_NE(&from, _this);
-  ::uint32_t cached_has_bits = 0;
-  (void) cached_has_bits;
-
-  if (from._internal_viewport_id() != 0) {
-    _this->_impl_.viewport_id_ = from._impl_.viewport_id_;
-  }
-  if (from._internal_host_handle_value() != 0) {
-    _this->_impl_.host_handle_value_ = from._impl_.host_handle_value_;
-  }
-  if (from._internal_host_handle_kind() != 0) {
-    _this->_impl_.host_handle_kind_ = from._impl_.host_handle_kind_;
-  }
-  _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(from._internal_metadata_);
-}
-
-void RemoteViewportHostRequest::CopyFrom(const RemoteViewportHostRequest& from) {
-// @@protoc_insertion_point(class_specific_copy_from_start:sailor.editor.v1.RemoteViewportHostRequest)
-  if (&from == this) return;
-  Clear();
-  MergeFrom(from);
-}
-
-
-void RemoteViewportHostRequest::InternalSwap(RemoteViewportHostRequest* PROTOBUF_RESTRICT other) {
-  using std::swap;
-  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
-  ::google::protobuf::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(RemoteViewportHostRequest, _impl_.host_handle_kind_)
-      + sizeof(RemoteViewportHostRequest::_impl_.host_handle_kind_)
-      - PROTOBUF_FIELD_OFFSET(RemoteViewportHostRequest, _impl_.viewport_id_)>(
-          reinterpret_cast<char*>(&_impl_.viewport_id_),
-          reinterpret_cast<char*>(&other->_impl_.viewport_id_));
-}
-
-::google::protobuf::Metadata RemoteViewportHostRequest::GetMetadata() const {
   return ::google::protobuf::Message::GetMetadataImpl(GetClassData()->full());
 }
 // ===================================================================
