@@ -385,15 +385,28 @@ namespace Sailor::Tests
 					{
 						if (layout.m_type == EShaderBindingType::UniformBuffer || layout.m_type == EShaderBindingType::StorageBuffer)
 						{
-							TVector<uint8_t> zeros;
+							TVector<uint8_t> values;
 							// Match the GI producer: reflection does not size this flat SSBO header.
 							const size_t size = layout.m_name == "globalIlluminationHeader"_h ? sizeof(RHIGlobalIlluminationGpuHeader) :
 								(std::max)({ layout.m_size, layout.m_paddedSize, 16u });
-							zeros.Resize(size);
+							values.Resize(size);
+							if (layout.m_name == "light"_h)
+							{
+								RHILightShaderData sunlight;
+								sunlight.m_type = static_cast<uint32_t>(ELightType::Directional);
+								sunlight.m_direction = glm::vec3(0, 0, -1);
+								sunlight.m_intensity = glm::vec3(2);
+								std::memcpy(values.GetData(), &sunlight, sizeof(sunlight));
+							}
+							else if (layout.m_name == "lightsGrid"_h)
+							{
+								const glm::uvec2 grid(0, 1);
+								std::memcpy(values.GetData(), &grid, sizeof(grid));
+							}
 							auto binding = layout.m_type == EShaderBindingType::StorageBuffer ?
-								driver->AddSsboToShaderBindings(scene.m_rhiLightsData, layout.m_name, zeros.Num(), 1, layout.m_binding, true) :
-								driver->AddBufferToShaderBindings(scene.m_rhiLightsData, layout.m_name, zeros.Num(), layout.m_binding, layout.m_type);
-							commands->UpdateShaderBinding(upload, binding, zeros.GetData(), zeros.Num());
+								driver->AddSsboToShaderBindings(scene.m_rhiLightsData, layout.m_name, values.Num(), 1, layout.m_binding, true) :
+								driver->AddBufferToShaderBindings(scene.m_rhiLightsData, layout.m_name, values.Num(), layout.m_binding, layout.m_type);
+							commands->UpdateShaderBinding(upload, binding, values.GetData(), values.Num());
 						}
 						else
 						{
@@ -406,14 +419,6 @@ namespace Sailor::Tests
 								"surface environment samplers must bind");
 						}
 					}
-					RHILightShaderData sunlight;
-					sunlight.m_type = static_cast<uint32_t>(ELightType::Directional);
-					sunlight.m_direction = glm::vec3(0, 0, -1);
-					sunlight.m_intensity = glm::vec3(2);
-					commands->UpdateShaderBinding(upload, scene.m_rhiLightsData->GetOrAddShaderBinding("light"_h), &sunlight, sizeof(sunlight));
-					const glm::uvec2 grid(0, 1);
-					commands->UpdateShaderBinding(upload, scene.m_rhiLightsData->GetOrAddShaderBinding("lightsGrid"_h), &grid, sizeof(grid));
-
 					auto mesh = inputMesh;
 					if (!mesh)
 					{
