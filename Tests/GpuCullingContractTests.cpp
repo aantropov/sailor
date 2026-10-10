@@ -1934,7 +1934,8 @@ renderTargets:
 
 	void TestDepthSamplingBarrierScopes()
 	{
-		constexpr VkPipelineStageFlags depthStages = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+		constexpr VkPipelineStageFlags depthStages = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+			VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 		struct QueueCase
 		{
 			VkQueueFlags m_flags;
@@ -1951,8 +1952,10 @@ renderTargets:
 		};
 		for (const auto& queue : queues)
 		{
-			const VkAccessFlags depthRead = queue.m_graphics ? VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT : 0u;
-			const VkAccessFlags depthWrite = queue.m_graphics ? VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT : 0u;
+			const VkAccessFlags depthRead = queue.m_graphics ?
+				VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT : 0u;
+			const VkAccessFlags depthWrite = queue.m_graphics ?
+				VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT : 0u;
 			const VkAccessFlags shaderRead = queue.m_shaderStages ? VK_ACCESS_SHADER_READ_BIT : 0u;
 			const VkPipelineStageFlags samplingStages = queue.m_shaderStages ? queue.m_shaderStages : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 			const VkPipelineStageFlags attachmentStages = queue.m_graphics ? depthStages : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
@@ -1963,7 +1966,7 @@ renderTargets:
 			{
 				Require(VulkanCommandBuffer::GetAccessFlags(layout, queue.m_flags) == (depthRead | depthWrite) &&
 					VulkanCommandBuffer::GetPipelineStage(layout, queue.m_flags) == attachmentStages,
-					"depth attachment writes and later reads must synchronize early and late tests only on a graphics queue");
+					"depth attachments must synchronize depth tests and fixed-function resolves only on graphics queues");
 			}
 			Require(VulkanCommandBuffer::GetAccessFlags(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, queue.m_flags) == shaderRead &&
 				VulkanCommandBuffer::GetPipelineStage(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, queue.m_flags) == samplingStages,
@@ -1974,7 +1977,7 @@ renderTargets:
 			{
 				Require(VulkanCommandBuffer::GetAccessFlags(layout, queue.m_flags) == (depthRead | shaderRead) &&
 					VulkanCommandBuffer::GetPipelineStage(layout, queue.m_flags) == readOnlyStages,
-					"read-only depth layouts must cover shader sampling and depth tests without claiming a depth write");
+					"read-only depth layouts must cover sampling, depth tests and resolve reads without claiming writes");
 			}
 			for (VkImageLayout layout : { VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL,
 				VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL })

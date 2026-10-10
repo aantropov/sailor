@@ -1071,8 +1071,11 @@ VkQueueFlags VulkanCommandBuffer::GetQueueFlags() const
 VkAccessFlags VulkanCommandBuffer::GetAccessFlags(VkImageLayout layout, VkQueueFlags queueFlags)
 {
 	const bool bGraphics = (queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0;
-	const VkAccessFlags depthRead = bGraphics ? VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT : 0u;
-	const VkAccessFlags depthWrite = bGraphics ? VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT : 0u;
+	// Fixed-function resolves use color attachment accesses even for depth/stencil images.
+	const VkAccessFlags depthRead = bGraphics ?
+		VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT : 0u;
+	const VkAccessFlags depthWrite = bGraphics ?
+		VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT : 0u;
 	const VkAccessFlags shaderRead = GetShaderPipelineStages(queueFlags) ? VK_ACCESS_SHADER_READ_BIT : 0u;
 
 	switch (layout)
@@ -1109,7 +1112,8 @@ VkPipelineStageFlags VulkanCommandBuffer::GetPipelineStage(VkImageLayout layout,
 {
 	const bool bGraphics = (queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0;
 	const VkPipelineStageFlags depthStages = bGraphics ?
-		VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT : 0u;
+		VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT |
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : 0u;
 	const VkPipelineStageFlags shaderStages = GetShaderPipelineStages(queueFlags);
 
 	// An unavailable operation contributes no accesses on this queue. Its layout
