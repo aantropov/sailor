@@ -120,6 +120,20 @@ namespace Sailor::Tests { void RunEditorMessageViewTests(); }
 namespace Sailor::Tests { void RunEditorViewportCommandTests(); }
 namespace Sailor::Tests { int RunEditorSimulationTests(int argc, const char** argv); }
 
+namespace Sailor::Tests
+{
+	class GarbageCollectionProbe : public TSubmodule<GarbageCollectionProbe>
+	{
+	public:
+		void CollectGarbage() override
+		{
+			++m_numCollections;
+		}
+
+		uint64_t m_numCollections = 0;
+	};
+}
+
 extern "C" SAILOR_SHARED_API int32_t SailorProtocolStopLocalHost(bool bShutdownEngine) noexcept;
 extern "C" SAILOR_SHARED_API int32_t SailorProtocolStartLocalHost(const uint8_t* requestData, uint32_t requestSize,
 	uint16_t port, const char* token, uint32_t tokenSize) noexcept;
@@ -6922,17 +6936,6 @@ frame: []
 		std::cout << "EngineLoop: one active world, dormant candidates, deferred promotion and retained frame commands passed\n";
 	}
 
-	class GarbageCollectionProbe : public TSubmodule<GarbageCollectionProbe>
-	{
-	public:
-		void CollectGarbage() override
-		{
-			++m_numCollections;
-		}
-
-		uint64_t m_numCollections = 0;
-	};
-
 	void TestAppFramePacing()
 	{
 		auto* renderer = App::GetSubmodule<Renderer>();
@@ -6947,7 +6950,7 @@ frame: []
 		auto graph = renderer->GetFrameGraph()->GetRHI();
 		const auto nodes = graph->GetGraph();
 		graph->GetGraph().Clear();
-		auto* garbage = App::AddSubmodule(TSubmodule<GarbageCollectionProbe>::Make());
+		auto* garbage = App::AddSubmodule(TSubmodule<Tests::GarbageCollectionProbe>::Make());
 		Win32::GlobalInput::ApplyEvent({ Platform::InputEvent::Type::Reset });
 		FrameState warm(world.GetRawPtr(), 16, {}, { 32, 24 });
 		engine->ProcessCpuFrame(warm);
@@ -6995,7 +6998,7 @@ frame: []
 				Win32::GlobalInput::ApplyEvent({ Platform::InputEvent::Type::Reset });
 				engine->ExitWorld(world.GetRawPtr());
 				engine->ProcessPendingWorldExits();
-				App::RemoveSubmodule<GarbageCollectionProbe>();
+				App::RemoveSubmodule<Tests::GarbageCollectionProbe>();
 			});
 		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
 		VkResult signalResult = VK_ERROR_UNKNOWN;
