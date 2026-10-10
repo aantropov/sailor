@@ -55,7 +55,7 @@ namespace Sailor::Tests
 	enum class MissingVulkanFeature
 	{
 		None, Anisotropy, FirstInstance, IndependentBlend, RuntimeArray,
-		SampledImageIndexing, VariableDescriptorCount, PartiallyBound, DynamicRendering
+		SampledImageIndexing, VariableDescriptorCount, PartiallyBound, DynamicRendering, PresentFences
 	};
 
 	enum class ValidationLayerInventory

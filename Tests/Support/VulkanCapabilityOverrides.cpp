@@ -198,6 +198,11 @@ namespace
 			}
 			if (next->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES && missing == MissingVulkanFeature::DynamicRendering)
 				reinterpret_cast<VkPhysicalDeviceDynamicRenderingFeatures*>(next)->dynamicRendering = VK_FALSE;
+			if (next->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT &&
+				missing == MissingVulkanFeature::PresentFences)
+			{
+				reinterpret_cast<VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT*>(next)->swapchainMaintenance1 = VK_FALSE;
+			}
 		}
 	}
 

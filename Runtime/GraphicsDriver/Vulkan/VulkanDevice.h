@@ -201,6 +201,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		bool m_bSupportsHostQueryReset = false;
 		bool m_bSupportsSamplerFilterMinmax = false;
 		bool m_bSupportsMetalObjects = false;
+		bool m_bSupportsPresentFences = false;
 
 		VkMemoryRequirements m_memoryRequirements_StagingBuffer;
 
@@ -239,6 +240,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TVector<VulkanSemaphorePtr> m_renderFinishedSemaphores;
 		TVector<VulkanFencePtr> m_syncFences;
 		TVector<VulkanFencePtr> m_syncImages;
+		TVector<VulkanFencePtr> m_presentFences;
 		TVector<bool> m_swapchainImagesInitialized;
 		std::optional<uint32_t> m_acquiredImageFlight;
 		size_t m_currentFrame = 0;

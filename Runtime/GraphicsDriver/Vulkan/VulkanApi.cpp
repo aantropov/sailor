@@ -315,6 +315,14 @@ void VulkanApi::Initialize(Platform::Window* viewport, RHI::EMsaaSamples msaaSam
 	{
 		extensions.Add(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
 	}
+	s_pInstance->m_bIsSurfaceMaintenance1Enabled =
+		hasInstanceExtension(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME) &&
+		hasInstanceExtension(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+	if (s_pInstance->m_bIsSurfaceMaintenance1Enabled)
+	{
+		extensions.Add(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+		extensions.Add(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+	}
 
 #ifndef _SHIPPING
 	// Debug markers require this instance extension even without validation layers.

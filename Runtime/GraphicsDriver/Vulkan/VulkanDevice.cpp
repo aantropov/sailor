@@ -170,7 +170,9 @@ bool VulkanDevice::BeginConditionalDestroy()
 {
 	// Keep device resources alive if pending work could not be drained.
 	if (!m_bIsDeviceLost && (!ConsumeAcquiredImage() || WaitIdle() != VK_SUCCESS) && !m_bIsDeviceLost)
+	{
 		return false;
+	}
 
 	CleanupSwapChain();
 
@@ -183,6 +185,7 @@ bool VulkanDevice::BeginConditionalDestroy()
 		pair.m_second.Clear();
 	}
 
+	m_presentFences.Clear();
 	m_renderFinishedSemaphores.Clear();
 	m_imageAvailableSemaphores.Clear();
 	m_syncImages.Clear();
@@ -456,6 +459,7 @@ TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 
 void VulkanDevice::CreateFrameSyncSemaphores()
 {
+	m_presentFences.Clear();
 	m_imageAvailableSemaphores.Clear();
 	m_renderFinishedSemaphores.Clear();
 	m_syncFences.Clear();
@@ -485,7 +489,10 @@ bool VulkanDevice::RecreateSwapchain(Platform::Window* pViewport)
 		return false;
 	}
 
-	if (!ConsumeAcquiredImage() || WaitIdle() != VK_SUCCESS) return false;
+	if (!ConsumeAcquiredImage() || WaitIdle() != VK_SUCCESS)
+	{
+		return false;
+	}
 
 	if (!CreateSwapchain(pViewport))
 	{
@@ -563,6 +570,20 @@ bool VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	if (hasDeviceExtension(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME))
 	{
 		deviceExtensions.Add(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
+	}
+	VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT swapchainMaintenance{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT };
+	if (VulkanApi::GetInstance()->IsSurfaceMaintenance1Enabled() &&
+		hasDeviceExtension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME))
+	{
+		VkPhysicalDeviceFeatures2 presentFeatures{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &swapchainMaintenance };
+		vkGetPhysicalDeviceFeatures2(physicalDevice, &presentFeatures);
+		m_bSupportsPresentFences = swapchainMaintenance.swapchainMaintenance1 == VK_TRUE;
+		if (m_bSupportsPresentFences)
+		{
+			deviceExtensions.Add(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
+			swapchainMaintenance.pNext = features.m_base.pNext;
+			features.m_base.pNext = &swapchainMaintenance;
+		}
 	}
 
 	VkPhysicalDeviceVulkan12Properties core12Properties{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES };
@@ -766,6 +787,18 @@ VkResult VulkanDevice::WaitIdle()
 		const VkResult queueResult = queue->WaitIdle();
 		if (queueResult == VK_ERROR_DEVICE_LOST) m_bIsDeviceLost = true;
 		if (queueResult != VK_SUCCESS) result = queueResult;
+	}
+	// Queue idle alone does not release the presentation engine's resource references.
+	if (result == VK_SUCCESS && !m_bIsDeviceLost)
+	{
+		for (const auto& fence : m_presentFences)
+		{
+			result = fence->Wait();
+			if (result != VK_SUCCESS)
+			{
+				break;
+			}
+		}
 	}
 	return result;
 }
@@ -1052,7 +1085,49 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 	presentInfo.swapchainCount = 1;
 	presentInfo.pSwapchains = swapChains;
 	presentInfo.pImageIndices = &m_currentSwapchainImageIndex;
-	const VkResult presentResult = m_presentQueue->Present(presentInfo);
+	VkResult presentResult = VK_SUCCESS;
+	VulkanFencePtr presentFence;
+	VkSwapchainPresentFenceInfoEXT fenceInfo{ VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT };
+	if (m_bSupportsPresentFences)
+	{
+		// Reuse completed presents without stalling the next frame on presentation.
+		for (size_t i = 0; i < m_presentFences.Num(); ++i)
+		{
+			const VkResult status = m_presentFences[i]->Status();
+			if (status == VK_NOT_READY)
+			{
+				continue;
+			}
+			presentResult = status;
+			if (status == VK_SUCCESS)
+			{
+				presentFence = m_presentFences[i];
+				m_presentFences.RemoveAtSwap(i);
+				presentResult = presentFence->Reset();
+			}
+			break;
+		}
+		if (presentResult == VK_SUCCESS)
+		{
+			if (!presentFence)
+			{
+				presentFence = VulkanFencePtr::Make(VulkanDevicePtr(this));
+			}
+			fenceInfo.swapchainCount = 1;
+			fenceInfo.pFences = presentFence->GetHandle();
+			presentInfo.pNext = &fenceInfo;
+		}
+	}
+	if (presentResult == VK_SUCCESS)
+	{
+		presentResult = m_presentQueue->Present(presentInfo);
+		// OOM leaves presentation unqueued; its unsignaled fence must not be drained.
+		if (presentFence && presentResult != VK_ERROR_OUT_OF_HOST_MEMORY &&
+			presentResult != VK_ERROR_OUT_OF_DEVICE_MEMORY && presentResult != VK_ERROR_DEVICE_LOST)
+		{
+			m_presentFences.Add(std::move(presentFence));
+		}
+	}
 
 	if (presentResult == VK_ERROR_OUT_OF_DATE_KHR)
 	{

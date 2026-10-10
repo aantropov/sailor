@@ -682,6 +682,7 @@ namespace
 		PFN_vkQueuePresentKHR m_present = nullptr;
 		VkSwapchainKHR m_swapchain = VK_NULL_HANDLE;
 		VkSemaphore m_wait = VK_NULL_HANDLE;
+		VkFence m_fence = VK_NULL_HANDLE;
 		uint32_t m_image = 0u;
 		bool m_bIsPending = false;
 		bool m_bWasSemaphoreReused = false;
@@ -710,15 +711,44 @@ namespace
 	VKAPI_ATTR VkResult VKAPI_CALL DeferFirstPresentation(VkQueue queue, const VkPresentInfoKHR* info)
 	{
 		auto& pending = *deferredPresentation;
-		if (!pending.m_wait && info->waitSemaphoreCount == 1u && info->swapchainCount == 1u && !info->pNext)
+		const auto* fences = static_cast<const VkSwapchainPresentFenceInfoEXT*>(info->pNext);
+		if (!pending.m_wait && info->waitSemaphoreCount == 1u && info->swapchainCount == 1u &&
+			(!fences || (fences->sType == VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT &&
+				fences->swapchainCount == 1u && !fences->pNext)))
 		{
 			pending.m_swapchain = info->pSwapchains[0];
 			pending.m_wait = info->pWaitSemaphores[0];
+			pending.m_fence = fences ? fences->pFences[0] : VK_NULL_HANDLE;
 			pending.m_image = info->pImageIndices[0];
 			pending.m_bIsPending = true;
 			return VK_SUCCESS;
 		}
 		return pending.m_present(queue, info);
+	}
+
+	bool SupportsPresentFences(VkPhysicalDevice device)
+	{
+		uint32_t count = 0u;
+		Require(vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr) == VK_SUCCESS,
+			"present-fence dependencies must be queryable");
+		TVector<VkExtensionProperties> extensions(count);
+		Require(vkEnumerateInstanceExtensionProperties(nullptr, &count, extensions.GetData()) == VK_SUCCESS,
+			"present-fence dependencies must be enumerable");
+		bool bHasSurfaceMaintenance = false, bHasSurfaceCapabilities = false;
+		for (const auto& extension : extensions)
+		{
+			bHasSurfaceMaintenance |= std::strcmp(extension.extensionName, VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME) == 0;
+			bHasSurfaceCapabilities |= std::strcmp(extension.extensionName, VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME) == 0;
+		}
+		if (!bHasSurfaceMaintenance || !bHasSurfaceCapabilities ||
+			!VulkanApi::GetSupportedDeviceExtensions(device).Contains(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME))
+		{
+			return false;
+		}
+		VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT maintenance{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT };
+		VkPhysicalDeviceFeatures2 features{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &maintenance };
+		vkGetPhysicalDeviceFeatures2(device, &features);
+		return maintenance.swapchainMaintenance1 == VK_TRUE;
 	}
 
 	void TestDelayedPresentation()
@@ -731,6 +761,7 @@ namespace
 			return;
 		}
 		Require(device->WaitIdle() == VK_SUCCESS, "delayed presentation must start with drained queues");
+		const bool bSupportsPresentFences = SupportsPresentFences(device->GetPhysicalDevice());
 		auto graphics = device->GetGraphicsQueue();
 		auto present = VulkanSubmissionTestAccess::PresentQueue(*device);
 		DeferredPresentation pending;
@@ -748,6 +779,10 @@ namespace
 			info.pWaitSemaphores = &pending.m_wait;
 			info.pSwapchains = &pending.m_swapchain;
 			info.pImageIndices = &pending.m_image;
+			VkSwapchainPresentFenceInfoEXT fenceInfo{ VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT };
+			fenceInfo.swapchainCount = 1u;
+			fenceInfo.pFences = &pending.m_fence;
+			info.pNext = pending.m_fence ? &fenceInfo : nullptr;
 			const auto result = present->Present(info);
 			pending.m_bIsPending = false;
 			return result;
@@ -779,14 +814,100 @@ namespace
 				"graphics completion must not permit signaling a semaphore still held by presentation");
 			Require(bSubmitted && pending.m_bIsPending && fence->Wait(5000000000ull) == VK_SUCCESS,
 				"real graphics must complete while the first presentation is still pending");
+			Require((pending.m_fence != VK_NULL_HANDLE) == bSupportsPresentFences,
+				"presentation must use the native completion fence when its feature and dependencies are supported");
+			if (pending.m_fence)
+			{
+				Require(vkGetFenceStatus(*device, pending.m_fence) == VK_NOT_READY,
+					"graphics completion must not complete or recycle the pending presentation fence");
+			}
 			CheckReadback(frame, true);
+		}
+		if (pending.m_fence)
+		{
+			FenceDispatchOverride dispatch(*device);
+			observedFences[0] = pending.m_fence;
+			fenceResults[0] = VK_NOT_READY;
+			fenceWaitResult = VK_TIMEOUT;
+			fenceWaitCalls = 0u;
+			Require(device->WaitIdle() == VK_TIMEOUT && fenceWaitCalls == 1u,
+				"draining graphics queues must still wait for outstanding presentation");
+			const auto retainedSwapchain = device->GetSwapchain();
+			const auto retainedSemaphore = VulkanSubmissionTestAccess::PresentSemaphore(*device);
+			Require(!device->FixLostDevice(App::GetMainWindow().GetRawPtr()) &&
+				!device->BeginConditionalDestroy() && device->GetSwapchain() == retainedSwapchain &&
+				VulkanSubmissionTestAccess::PresentSemaphore(*device) == retainedSemaphore,
+				"resize and shutdown must retain swapchain resources while presentation cannot drain");
 		}
 		const auto result = release();
 		Require(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR,
 			"the delayed presentation must finally consume its original image semaphore");
 		Require(device->WaitIdle() == VK_SUCCESS, "delayed presentation must drain before teardown");
+		Require(!pending.m_fence || vkGetFenceStatus(*device, pending.m_fence) == VK_SUCCESS,
+			"the real presentation fence must signal before its resources can retire");
 		std::cout << "Delayed presentation: " << frames << " native GPU readbacks across "
-			<< device->GetMaxFramesInFlight() << " flights; pending image semaphore was not reused\n";
+			<< device->GetMaxFramesInFlight() << " flights; pending image semaphore was not reused; present fence="
+			<< bSupportsPresentFences << '\n';
+	}
+
+	thread_local VkResult presentFailure = VK_SUCCESS;
+	thread_local VkFence rejectedPresentFence = VK_NULL_HANDLE;
+	PFN_vkQueuePresentKHR forwardPresent = nullptr;
+
+	VKAPI_ATTR VkResult VKAPI_CALL RejectPresentation(VkQueue queue, const VkPresentInfoKHR* info)
+	{
+		const auto* fences = static_cast<const VkSwapchainPresentFenceInfoEXT*>(info->pNext);
+		rejectedPresentFence = fences ? fences->pFences[0] : VK_NULL_HANDLE;
+		if (presentFailure == VK_ERROR_OUT_OF_HOST_MEMORY || presentFailure == VK_ERROR_OUT_OF_DEVICE_MEMORY)
+		{
+			return presentFailure;
+		}
+		// OUT_OF_DATE and SURFACE_LOST still enqueue the waits and presentation fence.
+		const auto result = forwardPresent(queue, info);
+		return result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR ? presentFailure : result;
+	}
+
+	void TestPresentationErrors()
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto queue = VulkanSubmissionTestAccess::PresentQueue(*device);
+		for (const auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY,
+			VK_ERROR_OUT_OF_DATE_KHR, VK_ERROR_SURFACE_LOST_KHR })
+		{
+			uint32_t flight = 0u;
+			bool bHasImage = false;
+			Require(device->BeginRenderSubmission(flight, bHasImage) && bHasImage,
+				"presentation failure must follow a real image acquisition");
+			auto fence = VulkanSubmissionTestAccess::FlightFence(*device);
+			auto frame = RecordFrame(1300u + static_cast<uint32_t>(-error));
+			presentFailure = error;
+			forwardPresent = VulkanSubmissionTestAccess::ExchangePresent(*queue, RejectPresentation);
+			{
+				Tests::ScopeExit restore([&]() { VulkanSubmissionTestAccess::ExchangePresent(*queue, forwardPresent); });
+				Require(!device->PresentFrame({}, { frame.command->m_vulkan.m_commandBuffer }, {}) &&
+					device->WasLastFrameSubmitSuccessful(), "presentation failure must not undo accepted graphics work");
+			}
+			Require(fence->Wait(5000000000ull) == VK_SUCCESS, "graphics must complete despite presentation failure");
+			CheckReadback(frame, true);
+			if (error == VK_ERROR_OUT_OF_HOST_MEMORY || error == VK_ERROR_OUT_OF_DEVICE_MEMORY)
+			{
+				FenceDispatchOverride dispatch(*device);
+				observedFences[0] = rejectedPresentFence;
+				fenceWaitResult = VK_TIMEOUT;
+				fenceWaitCalls = 0u;
+				Require(device->WaitIdle() == VK_SUCCESS && fenceWaitCalls == 0u,
+					"an unqueued presentation must not leave an unsignalable fence in the drain");
+			}
+			else
+			{
+				Require(device->WaitIdle() == VK_SUCCESS && (!rejectedPresentFence ||
+					vkGetFenceStatus(*device, rejectedPresentFence) == VK_SUCCESS),
+					"an enqueued failed presentation must signal its real fence before recovery");
+			}
+			Require(device->FixLostDevice(App::GetMainWindow().GetRawPtr()),
+				"presentation failure must permit swapchain recovery after its resources drain");
+		}
+		std::cout << "Presentation errors: OOM, OUT_OF_DATE and SURFACE_LOST drained and recovered\n";
 	}
 
 	struct FailedFrame
@@ -7058,6 +7179,7 @@ frame: []
 			if (present && !lost)
 			{
 				OnRender([]() { TestDelayedPresentation(); });
+				OnRender([]() { TestPresentationErrors(); });
 			}
 			for (VkResult error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
 			{
@@ -7268,6 +7390,13 @@ int main(int argc, const char** argv)
 		if (mode == "--gpu-render-contracts" || mode == "--gpu-render-contracts-msaa2") return Tests::RunRenderContractsGpu(argc, argv);
 #if defined(__APPLE__)
 		if (mode == "--gpu-capabilities") return RunBootstrapGpu(argc, argv, false, false, true);
+		if (mode == "--gpu-present-no-maintenance")
+		{
+			auto& missing = Tests::GetVulkanCapabilityOverrides().missingFeature;
+			missing = Tests::MissingVulkanFeature::PresentFences;
+			Tests::ScopeExit restore([&]() { missing = Tests::MissingVulkanFeature::None; });
+			return RunGpu(argc, argv, true, false);
+		}
 		if (mode == "--gpu-app-bootstrap") return RunAppBootstrapGpu(argc, argv);
 		if (mode == "--gpu-landscape") return Tests::RunLandscapeGpu(argc, argv);
 		if (mode == "--gpu-pathtracer-khr")
@@ -7287,7 +7416,8 @@ int main(int argc, const char** argv)
 			return 0;
 		}
 #else
-		if (mode == "--gpu-capabilities" || mode == "--gpu-app-bootstrap" || mode == "--gpu-pathtracer-khr")
+		if (mode == "--gpu-capabilities" || mode == "--gpu-app-bootstrap" || mode == "--gpu-pathtracer-khr" ||
+			mode == "--gpu-present-no-maintenance")
 		{
 			std::cerr << "This native Vulkan test requires the macOS interposer\n";
 			return 77;

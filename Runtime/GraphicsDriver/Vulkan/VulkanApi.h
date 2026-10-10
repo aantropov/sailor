@@ -149,6 +149,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API VulkanDevicePtr GetMainDevice() const;
 
 		SAILOR_API bool IsEnabledValidationLayers() const { return bIsEnabledValidationLayers; }
+		bool IsSurfaceMaintenance1Enabled() const { return m_bIsSurfaceMaintenance1Enabled; }
 		SAILOR_API __forceinline static VkInstance& GetVkInstance() { return s_pInstance->m_vkInstance; }
 
 		SAILOR_API static VulkanQueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device, VulkanSurfacePtr surface);
@@ -310,6 +311,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		VkDebugUtilsMessengerEXT m_debugMessenger = 0;
 		bool bIsEnabledValidationLayers = false;
+		bool m_bIsSurfaceMaintenance1Enabled = false;
 
 		VkInstance m_vkInstance = 0;
 		VulkanDevicePtr m_device;
