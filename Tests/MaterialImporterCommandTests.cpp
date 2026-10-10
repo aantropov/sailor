@@ -1132,6 +1132,8 @@ namespace
 		Require(coldDuringReload->GetResult() == coldShader && coldShader && coldShader->IsReady() &&
 			coldShader->GetComputeShaderRHI() && coldShader->GetDebugComputeShaderRHI(),
 			"a cold load must not wait behind a pending Render publication");
+		Require(coldDuringReload->GetThreadType() == EThreadType::RHI,
+			"native shader creation must finish on RHI while Render publication is held");
 		writeInclude(0.875f);
 		auto second = compiler->OnEffectiveContentChanged("QueuedShader.glsl");
 		preparation = ShaderCompilerTestAccess::GetLastPreparation(*compiler);

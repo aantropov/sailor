@@ -977,21 +977,45 @@ Tasks::TaskPtr<ShaderCompiler::ShaderReloadResults> ShaderCompiler::ReloadShader
 		return Tasks::TaskPtr<ShaderReloadResults>::Make(ShaderReloadResults{});
 	}
 
-	auto prepare = Tasks::CreateTaskWithResult<PreparedShaderReload>("Prepare Shader Reload"_h,
-		[this, assetInfos, invalidate]() { return PrepareShaderReload(assetInfos, invalidate); });
-	auto publish = Tasks::CreateTaskWithResult<ShaderReloadResults>("Publish Shader Reload"_h,
-		[prepare]()
+	auto prepared = TSharedPtr<PreparedShaderReload>::Make();
+	auto prepare = Tasks::CreateTask("Prepare Shader Reload"_h,
+		[this, assetInfos, invalidate, prepared]() { *prepared = PrepareShaderReload(assetInfos, invalidate); });
+	auto create = Tasks::CreateTask("Create Shader Reload Resources"_h,
+		[prepared]()
 		{
-			const auto& prepared = prepare->GetResult();
-			for (const auto& shader : prepared.m_resources)
+			TSet<FileId> failed;
+			for (auto& shader : prepared->m_resources)
+			{
+				if (!CreateShaderResources(shader.m_second))
+				{
+					failed.Insert(shader.m_first->GetFileId());
+				}
+			}
+			if (!failed.IsEmpty())
+			{
+				for (auto& result : prepared->m_results)
+				{
+					result.m_second &= !failed.Contains(result.m_first);
+				}
+				prepared->m_resources.RemoveAll([&failed](const auto& shader)
+					{
+						return failed.Contains(shader.m_first->GetFileId());
+					});
+			}
+		}, EThreadType::RHI);
+	create->Join(prepare);
+	auto publish = Tasks::CreateTaskWithResult<ShaderReloadResults>("Publish Shader Reload"_h,
+		[prepared]()
+		{
+			for (const auto& shader : prepared->m_resources)
 			{
 				auto target = shader.m_first;
 				PublishShaderResources(target, shader.m_second);
 				target->TraceHotReload(nullptr);
 			}
-			return prepared.m_results;
+			return prepared->m_results;
 		}, EThreadType::Render);
-	publish->Join(prepare);
+	publish->Join(create);
 
 	m_promises.LockAll();
 	prepare->Join(m_lastShaderPreparation);
@@ -1011,6 +1035,7 @@ Tasks::TaskPtr<ShaderCompiler::ShaderReloadResults> ShaderCompiler::ReloadShader
 	m_lastShaderPublication = publish;
 	m_promises.UnlockAll();
 	prepare->Run();
+	create->Run();
 	publish->Run();
 	return publish;
 }
@@ -1563,6 +1588,7 @@ Tasks::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(FileId uid, ShaderSetPtr
 	}
 	SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath());
 
+	Tasks::TaskPtr<bool> prepare;
 	Tasks::TaskPtr<ShaderSetPtr> newPromise;
 	{
 		auto& promises = m_promises.At_Lock(uid);
@@ -1584,12 +1610,17 @@ Tasks::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(FileId uid, ShaderSetPtr
 		}
 
 		auto pShader = ShaderSetPtr::Make(m_allocator, uid, defines);
+		auto resources = TSharedPtr<ShaderResources>::Make();
+		prepare = Tasks::CreateTaskWithResult<bool>("Prepare shader"_h,
+			[this, uid, permutation, resources]()
+			{
+				return PrepareShaderResources(uid, permutation, *resources);
+			});
 		newPromise = Tasks::CreateTaskWithResult<ShaderSetPtr>(
 			"Load shader"_h,
-			[pShader, this, uid, permutation]() mutable
+			[pShader, this, uid, permutation, prepare, resources]() mutable
 			{
-				ShaderResources resources;
-				if (!PrepareShaderResources(uid, permutation, resources))
+				if (!prepare->GetResult() || !CreateShaderResources(*resources))
 				{
 					{
 						auto& failedPromises = m_promises.At_Lock(uid);
@@ -1602,16 +1633,18 @@ Tasks::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(FileId uid, ShaderSetPtr
 					pShader.DestroyObject(m_allocator);
 					return ShaderSetPtr{};
 				}
-				PublishShaderResources(pShader, resources);
+				PublishShaderResources(pShader, *resources);
 				return pShader;
-			});
-		newPromise->Join(m_lastShaderPreparation);
+			}, EThreadType::RHI);
+		prepare->Join(m_lastShaderPreparation);
+		newPromise->Join(prepare);
 
 		promises.Add({ permutation, newPromise });
 		shaders.Add({ permutation, pShader });
 		outShader = pShader;
 	}
-	App::GetSubmodule<Tasks::Scheduler>()->Run(newPromise);
+	prepare->Run();
+	newPromise->Run();
 	return newPromise;
 }
 
@@ -1638,7 +1671,6 @@ bool ShaderCompiler::PrepareShaderResources(const FileId& uid, uint32_t permutat
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	auto& pRhiDriver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	AssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid);
 	if (!assetInfo)
 	{
@@ -1648,15 +1680,34 @@ bool ShaderCompiler::PrepareShaderResources(const FileId& uid, uint32_t permutat
 			permutation);
 		return false;
 	}
-	const std::string assetFilename = assetInfo->GetAssetFilepath();
+	resources.m_assetFilename = assetInfo->GetAssetFilepath();
 
-	ShaderCache::PermutationSpirv spirv;
-	if (!GetSpirvPermutation(uid, permutation, spirv))
+	if (!GetSpirvPermutation(uid, permutation, resources.m_spirv))
 	{
 		SAILOR_LOG_ERROR("Failed to load SPIR-V for shader %s permutation %u", uid.ToString().c_str(), permutation);
 		return false;
 	}
 
+	auto pShaderAsset = LoadShaderAsset(uid);
+	if (!pShaderAsset)
+	{
+		SAILOR_LOG_ERROR(
+			"Could not reload shader metadata for shader %s permutation %u",
+			uid.ToString().c_str(),
+			permutation);
+		return false;
+	}
+	resources.m_colorAttachments = pShaderAsset->GetColorAttachments();
+	resources.m_depthStencilAttachment = pShaderAsset->GetDepthStencilAttachment();
+	return true;
+}
+
+bool ShaderCompiler::CreateShaderResources(ShaderResources& resources)
+{
+	SAILOR_PROFILE_FUNCTION();
+	auto& pRhiDriver = RHI::Renderer::GetDriver();
+	const auto& spirv = resources.m_spirv;
+	const auto& assetFilename = resources.m_assetFilename;
 	auto createShader = [&](RHI::EShaderStage stage,
 		const RHI::ShaderByteCode& byteCode,
 		RHI::RHIShaderPtr& outShader,
@@ -1670,10 +1721,9 @@ bool ShaderCompiler::PrepareShaderResources(const FileId& uid, uint32_t permutat
 		if (!outShader)
 		{
 			SAILOR_LOG_ERROR(
-				"Failed to create %.*s for shader %s permutation %u",
+				"Failed to create %.*s for shader %s",
 				static_cast<int>(debugName.size()), debugName.empty() ? "" : debugName.data(),
-				uid.ToString().c_str(),
-				permutation);
+				assetFilename.c_str());
 			return false;
 		}
 		pRhiDriver->SetDebugName(outShader, std::format("{} {}", debugName, assetFilename));
@@ -1720,23 +1770,12 @@ bool ShaderCompiler::PrepareShaderResources(const FileId& uid, uint32_t permutat
 	if (!bRegularReady || !bDebugReady)
 	{
 		SAILOR_LOG_ERROR(
-			"Prepared an incomplete regular/debug shader set for shader %s permutation %u",
-			uid.ToString().c_str(),
-			permutation);
+			"Prepared an incomplete regular/debug shader set for shader %s",
+			assetFilename.c_str());
 		return false;
 	}
 
-	auto pShaderAsset = LoadShaderAsset(uid);
-	if (!pShaderAsset)
-	{
-		SAILOR_LOG_ERROR(
-			"Could not reload shader metadata for shader %s permutation %u",
-			uid.ToString().c_str(),
-			permutation);
-		return false;
-	}
-	resources.m_colorAttachments = pShaderAsset->GetColorAttachments();
-	resources.m_depthStencilAttachment = pShaderAsset->GetDepthStencilAttachment();
+	resources.m_spirv = {};
 	return true;
 }
 

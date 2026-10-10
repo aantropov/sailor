@@ -159,6 +159,9 @@ namespace Sailor
 		using ShaderReloadResults = TVector<TPair<FileId, bool>>;
 		struct ShaderResources
 		{
+			// Worker prepares bytecode; RHI consumes it before publication.
+			ShaderCache::PermutationSpirv m_spirv;
+			std::string m_assetFilename;
 			RHI::RHIShaderPtr m_vertex, m_fragment, m_compute;
 			RHI::RHIShaderPtr m_debugVertex, m_debugFragment, m_debugCompute;
 			TVector<RHI::EFormat> m_colorAttachments;
@@ -208,6 +211,7 @@ namespace Sailor
 		SAILOR_API static TVector<std::string> GetDefines(const TVector<std::string>& defines, uint32_t permutation);
 
 		bool PrepareShaderResources(const FileId& uid, uint32_t permutation, ShaderResources& resources);
+		static bool CreateShaderResources(ShaderResources& resources);
 		static void PublishShaderResources(ShaderSetPtr shader, const ShaderResources& resources);
 
 		static bool SaveShaderCacheAndCombineResult(
