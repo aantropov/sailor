@@ -21,6 +21,16 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 		return;
 	}
 
+	if (!m_pComputeShader)
+	{
+		auto computeShaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeLightCulling.shader");
+		App::GetSubmodule<ShaderCompiler>()->LoadShader(computeShaderInfo->GetFileId(), m_pComputeShader);
+	}
+	if (!m_pComputeShader || !m_pComputeShader->IsReady())
+	{
+		return;
+	}
+
 	auto linearDepthAttachment = GetResolvedAttachment("linearDepth"_h, frameGraph.GetRawPtr());
 	if (!linearDepthAttachment)
 	{
@@ -64,11 +74,6 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 		driver->AddSamplerToShaderBindings(bindings, "linearDepth"_h, linearDepthAttachment, 2u);
 	}
 
-	if (!m_pComputeShader)
-	{
-		auto computeShaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeLightCulling.shader");
-		App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(computeShaderInfo->GetFileId(), m_pComputeShader);
-	}
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdCompute);
 

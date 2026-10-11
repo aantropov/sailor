@@ -136,11 +136,12 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 	{
 		if (auto shaderInfo = assetRegistry->GetAssetInfoPtr("Experimental/MeshParticles/ComputeParticles.shader"))
 		{
-			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderInfo->GetFileId(), m_pComputeShader);
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pComputeShader);
 		}
 	}
 
-	if (m_mesh == nullptr || !m_mesh->IsReady() || !m_material.IsValid() || !m_material->IsReady() || !m_shadowMaterial.IsValid() || !m_shadowMaterial->IsReady())
+	if (!m_pComputeShader || !m_pComputeShader->IsReady() ||
+		m_mesh == nullptr || !m_mesh->IsReady() || !m_material.IsValid() || !m_material->IsReady() || !m_shadowMaterial.IsValid() || !m_shadowMaterial->IsReady())
 	{
 		return;
 	}
