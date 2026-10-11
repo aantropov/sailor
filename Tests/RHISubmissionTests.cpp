@@ -5,6 +5,8 @@
 
 #include <iostream>
 #include <stdexcept>
+#include <barrier>
+#include <thread>
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -125,6 +127,37 @@ namespace
 		Require(!driver.SubmitCommandList_Immediate({}),
 			"immediate submission must report refusal without accessing a global renderer");
 	}
+
+	void TestReadinessPublication()
+	{
+		auto resource = MakeResource();
+		auto dependency = MakeResource();
+		std::barrier step(2);
+		bool bValid = true;
+		std::thread reader([&]()
+			{
+				for (uint32_t i = 0; i < 256u; ++i)
+				{
+					step.arrive_and_wait();
+					bValid &= !resource->IsReady() && !resource->HasInitializationFailed();
+					step.arrive_and_wait();
+					step.arrive_and_wait();
+					bValid &= resource->IsReady() && !resource->HasInitializationFailed();
+					step.arrive_and_wait();
+				}
+			});
+		for (uint32_t i = 0; i < 256u; ++i)
+		{
+			resource->AddDependency(dependency);
+			step.arrive_and_wait();
+			step.arrive_and_wait();
+			resource->ClearDependencies();
+			step.arrive_and_wait();
+			step.arrive_and_wait();
+		}
+		reader.join();
+		Require(bValid, "readiness readers must observe both new uploads and completed dependencies");
+	}
 }
 
 int main()
@@ -137,6 +170,7 @@ int main()
 		TestRepeatedTrackingAndFailureStayTerminal();
 		TestUnsubmittedFenceStaysPending();
 		TestImmediateRefusalWithoutRenderer();
+		TestReadinessPublication();
 		std::cout << "RHI submission tests passed\n";
 		return 0;
 	}

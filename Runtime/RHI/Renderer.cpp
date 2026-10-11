@@ -77,9 +77,13 @@ void IDelayedInitialization::TraceVisit(class TRefPtr<RHIResource> visitor, bool
 
 			if (it != std::end(m_dependencies))
 			{
-				m_bInitializationFailed |= status == RHI::EFenceStatus::Failed;
+				if (status == RHI::EFenceStatus::Failed)
+				{
+					m_bHasInitializationFailed.store(true, std::memory_order_release);
+				}
 				std::iter_swap(it, m_dependencies.end() - 1);
 				m_dependencies.RemoveLast();
+				m_bHasDependencies.store(!m_dependencies.IsEmpty(), std::memory_order_release);
 				bShouldRemoveFromList = true;
 			}
 			m_dependenciesLock.Unlock();
@@ -89,18 +93,12 @@ void IDelayedInitialization::TraceVisit(class TRefPtr<RHIResource> visitor, bool
 
 bool IDelayedInitialization::IsReady() const
 {
-	m_dependenciesLock.Lock();
-	const bool bIsReady = !m_bInitializationFailed && m_dependencies.IsEmpty();
-	m_dependenciesLock.Unlock();
-	return bIsReady;
+	return !m_bHasDependencies.load(std::memory_order_acquire) && !HasInitializationFailed();
 }
 
 bool IDelayedInitialization::HasInitializationFailed() const
 {
-	m_dependenciesLock.Lock();
-	const bool bFailed = m_bInitializationFailed;
-	m_dependenciesLock.Unlock();
-	return bFailed;
+	return m_bHasInitializationFailed.load(std::memory_order_acquire);
 }
 
 Renderer::Renderer(Platform::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)

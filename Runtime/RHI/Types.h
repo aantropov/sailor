@@ -896,6 +896,7 @@ namespace Sailor::RHI
 		{
 			m_dependenciesLock.Lock();
 			m_dependencies.Add(std::move(dependency));
+			m_bHasDependencies.store(true, std::memory_order_release);
 			m_dependenciesLock.Unlock();
 		}
 
@@ -903,6 +904,7 @@ namespace Sailor::RHI
 		{
 			m_dependenciesLock.Lock();
 			m_dependencies.Clear();
+			m_bHasDependencies.store(false, std::memory_order_release);
 			m_dependenciesLock.Unlock();
 		}
 
@@ -911,6 +913,7 @@ namespace Sailor::RHI
 	protected:
 		mutable SpinLock m_dependenciesLock;
 		TVector<TRefPtr<RHIResource>> m_dependencies;
+		std::atomic<bool> m_bHasDependencies{ false };
 	};
 
 	class SAILOR_API IObservable
@@ -986,7 +989,7 @@ namespace Sailor::RHI
 		bool HasInitializationFailed() const;
 
 	protected:
-		bool m_bInitializationFailed = false;
+		std::atomic<bool> m_bHasInitializationFailed{ false };
 	};
 
 	// Used as composing approach to build the object by functionality
