@@ -1,0 +1,172 @@
+#include "Time.h"
+
+#include <chrono>
+#include <algorithm>
+#include <cmath>
+#include "Memory/LockFreeHeapAllocator.h"
+#include "Containers/Vector.h"
+
+#if defined(_WIN32)
+#include "Sailor.h"
+#include "Tasks/Tasks.h"
+#include "Tasks/Scheduler.h"
+#endif
+
+using namespace Sailor;
+using namespace Sailor::Utils;
+
+FrameTimeStats Utils::CalculateFrameTimeStats(std::span<const float> seconds)
+{
+	FrameTimeStats result;
+	TVector<float> sorted;
+	sorted.Reserve(seconds.size());
+	for (float duration : seconds)
+	{
+		if (duration > 0.0f && std::isfinite(duration))
+		{
+			sorted.Add(duration);
+			result.m_elapsedSeconds += duration;
+		}
+	}
+	result.m_numFrames = sorted.Num();
+	if (sorted.IsEmpty()) return result;
+	std::sort(sorted.begin(), sorted.end());
+	result.m_sustainedFps = static_cast<double>(result.m_numFrames) / result.m_elapsedSeconds;
+	result.m_minMs = *sorted.First() * 1000.0f;
+	result.m_maxMs = *sorted.Last() * 1000.0f;
+	result.m_meanMs = static_cast<float>(result.m_elapsedSeconds / result.m_numFrames * 1000.0);
+	const auto percentile = [&](double fraction)
+	{
+		const size_t rank = static_cast<size_t>(std::ceil(fraction * result.m_numFrames));
+		return sorted[rank - 1] * 1000.0f;
+	};
+	result.m_p50Ms = percentile(0.50);
+	result.m_p95Ms = percentile(0.95);
+	result.m_p99Ms = percentile(0.99);
+	return result;
+}
+
+int64_t Utils::GetCurrentTimeMs()
+{
+	return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
+int64_t Utils::GetCurrentTimeMicro()
+{
+	return (int64_t)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
+int64_t Utils::GetCurrentTimeNano()
+{
+	return (int64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
+#if !defined(_WIN32)
+namespace
+{
+	int64_t GetElapsedTimeMicro()
+	{
+		return std::chrono::duration_cast<std::chrono::microseconds>(
+			std::chrono::steady_clock::now().time_since_epoch()).count();
+	}
+}
+#endif
+
+void Utils::Timer::Start()
+{
+#if defined(_WIN32)
+	LARGE_INTEGER li;
+	if (!QueryPerformanceFrequency(&li))
+	{
+		SAILOR_LOG("QueryPerformanceFrequency failed!");
+	}
+
+	m_pcFrequence = double(li.QuadPart) / 1000.0;
+
+	QueryPerformanceCounter(&li);
+	m_counterStart = li.QuadPart;
+#else
+	m_pcFrequence = 1000.0;
+	m_counterStart = GetElapsedTimeMicro();
+#endif
+
+	m_bIsStarted = true;
+}
+
+void Utils::Timer::Stop()
+{
+	if (!m_bIsStarted)
+	{
+		return;
+	}
+
+#if defined(_WIN32)
+	LARGE_INTEGER li;
+	QueryPerformanceCounter(&li);
+	m_counterEnd = li.QuadPart;
+#else
+	m_counterEnd = GetElapsedTimeMicro();
+#endif
+
+	m_counterAcc += m_counterEnd - m_counterStart;
+
+	m_bIsStarted = false;
+}
+
+int64_t Utils::Timer::ResultMs() const
+{
+	if (m_pcFrequence == 0.0)
+	{
+		return 0;
+	}
+
+	if (m_bIsStarted)
+	{
+#if defined(_WIN32)
+		LARGE_INTEGER li;
+		QueryPerformanceCounter(&li);
+		return int64_t(double(li.QuadPart - m_counterStart) / m_pcFrequence);
+#else
+		return int64_t((GetElapsedTimeMicro() - m_counterStart) / 1000);
+#endif
+	}
+#if defined(_WIN32)
+	return int64_t(double(m_counterEnd - m_counterStart) / m_pcFrequence);
+#else
+	return int64_t((m_counterEnd - m_counterStart) / 1000);
+#endif
+}
+
+int64_t Utils::Timer::ResultAccumulatedMs() const
+{
+	if (m_pcFrequence == 0.0)
+	{
+		return 0;
+	}
+
+	if (m_bIsStarted)
+	{
+#if defined(_WIN32)
+		LARGE_INTEGER li;
+		QueryPerformanceCounter(&li);
+		return int64_t(double(li.QuadPart - m_counterStart + m_counterAcc) / m_pcFrequence);
+#else
+		return int64_t((GetElapsedTimeMicro() - m_counterStart + m_counterAcc) / 1000);
+#endif
+	}
+
+#if defined(_WIN32)
+	return int64_t((double)m_counterAcc / m_pcFrequence);
+#else
+	return int64_t(m_counterAcc / 1000);
+#endif
+}
+
+void Utils::Timer::Clear()
+{
+	m_counterStart = 0;
+	m_counterEnd = 0;
+	m_counterAcc = 0;
+	m_pcFrequence = 0.0;
+	m_bIsStarted = false;
+}

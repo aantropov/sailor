@@ -1,6 +1,7 @@
 #pragma once
 
 #include "RHI/Batch.hpp"
+#include "RHI/Shader.h"
 
 namespace Sailor::RHI
 {
@@ -39,7 +40,7 @@ namespace Sailor::RHI
 				if (bindings)
 				{
 					const RHIShaderBindingPtr* binding = nullptr;
-					if (bindings->GetShaderBindings().Find("material", binding) && *binding)
+					if (bindings->GetShaderBindings().Find("material"_h, binding) && *binding)
 					{
 						entry.m_materialInstance = (*binding)->GetStorageInstanceIndex();
 					}

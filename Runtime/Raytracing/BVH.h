@@ -2,6 +2,7 @@
 #include "Core/Defines.h"
 #include "Math/Bounds.h"
 #include "Containers/Vector.h"
+#include <functional>
 
 using namespace Sailor;
 
@@ -48,14 +49,18 @@ namespace Sailor::Raytracing
 		}
 
 		SAILOR_SHARED_API void BuildBVH(const TVector<Math::Triangle>& tris);
-		bool IntersectBVH(const Math::Ray& ray, Math::RaycastHit& outResult, const uint nodeIdx, float maxRayLength = std::numeric_limits<float>::max(), uint32_t ignoreTriangle = (uint32_t)(-1)) const;
+		// A cancelled build is not traceable; it may be retried or discarded.
+		SAILOR_SHARED_API bool BuildBVH(const TVector<Math::Triangle>& tris, const std::function<bool()>& shouldContinue);
+		SAILOR_SHARED_API bool IntersectBVH(const Math::Ray& ray, Math::RaycastHit& outResult, const uint nodeIdx, float maxRayLength = std::numeric_limits<float>::max(), uint32_t ignoreTriangle = (uint32_t)(-1)) const;
 
 	protected:
 
-		void UpdateNodeBounds(uint32_t nodeIdx, const TVector<Math::Triangle>& tris);
-		void Subdivide(uint32_t nodeIdx, const TVector<Math::Triangle>& tris);
+		struct BuildProgress;
+		bool UpdateNodeBounds(uint32_t nodeIdx, const TVector<Math::Triangle>& tris, BuildProgress& progress);
+		bool Subdivide(uint32_t nodeIdx, const TVector<Math::Triangle>& tris, BuildProgress& progress);
 		float EvaluateSAH(const BVHNode& node, const TVector<Math::Triangle>& tris, int32_t axis, float pos) const;
-		float FindBestSplitPlane(const BVHNode& node, const TVector<Math::Triangle>& tris, int32_t& outAxis, float& outSplitPos) const;
+		bool FindBestSplitPlane(const BVHNode& node, const TVector<Math::Triangle>& tris,
+			int32_t& outAxis, float& outSplitPos, float& outCost, BuildProgress& progress) const;
 
 		TVector<BVHNode> m_nodes;
 		TVector<uint32_t> m_triIdx;

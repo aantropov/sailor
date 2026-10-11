@@ -21,6 +21,7 @@ namespace Sailor
 			(uint8_t)EWorldBehaviourBit::EditorTick;
 
 
+		// The frame belongs to GetWorld(); other attached worlds remain dormant.
 		SAILOR_API void ProcessCpuFrame(FrameState& currentInputState);
 		SAILOR_API uint32_t GetCpuFps() const { return m_cpuFps; }
 		SAILOR_API uint32_t GetFpsCap() const { return m_fpsCap; }
@@ -35,12 +36,13 @@ namespace Sailor
 		SAILOR_API void ProcessPendingDependencyResolution();
 
 		SAILOR_API const TVector<TSharedPtr<World>>& GetWorlds() const { return m_worlds; }
-		SAILOR_API TSharedPtr<World> GetWorld() const { return m_worlds[0]; }
+		SAILOR_API TSharedPtr<World> GetWorld() const { return m_worlds.IsEmpty() ? TSharedPtr<World>{} : m_worlds[0]; }
 
 	protected:
 
 		uint32_t m_fpsCap = 0u;
 		uint32_t m_cpuFps = 0u;
+		// First is active; the rest are staged worlds promoted by deferred exits.
 		TVector<TSharedPtr<World>> m_worlds;
 		TVector<WorldPtr> m_pendingWorldsToExit;
 	};

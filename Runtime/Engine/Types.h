@@ -5,6 +5,8 @@
 
 namespace Sailor
 {
+	class Component;
+
 	using ModelPtr = TObjectPtr<class Model>;
 	using MaterialPtr = TObjectPtr<class Material>;
 	using TexturePtr = TObjectPtr<class Texture>;
@@ -18,7 +20,7 @@ namespace Sailor
 	using ObjectPtr = TObjectPtr<class Object>;
 	using FrameGraphPtr = TObjectPtr<class FrameGraph>;
 
-	using ComponentPtr = TObjectPtr<class Component>;
+	using ComponentPtr = TObjectPtr<Component>;
 	using CameraComponentPtr = TObjectPtr<class CameraComponent>;
 	using MeshRendererComponentPtr = TObjectPtr<class MeshRendererComponent>;
 	using PathTracerProxyComponentPtr = TObjectPtr<class PathTracerProxyComponent>;

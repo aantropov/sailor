@@ -11,8 +11,7 @@ using namespace Sailor;
 
 FrameGraphAssetInfoHandler::FrameGraphAssetInfoHandler(AssetRegistry* assetRegistry)
 {
-	m_supportedExtensions.Emplace("renderer");
-	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
+	assetRegistry->RegisterAssetInfoHandler(GetAssetInfoExtensions<FrameGraphAssetInfo>(), this);
 }
 
 void FrameGraphAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const

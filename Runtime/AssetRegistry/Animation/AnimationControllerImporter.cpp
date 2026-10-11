@@ -83,7 +83,7 @@ void AnimationControllerImporter::OnUpdateAssetInfo(
 		AnimationControllerAsset definition;
 		TVector<std::string> errors;
 		if (ReadControllerAsset(uid, definition, errors) &&
-			(*controllerIt).m_second->Initialize(definition, &errors))
+			(*controllerIt).m_second->Initialize(definition, errors))
 		{
 #ifdef SAILOR_EDITOR
 			(*controllerIt).m_second->TraceHotReload(nullptr);
@@ -100,7 +100,7 @@ void AnimationControllerImporter::OnUpdateAssetInfo(
 		AnimationSetAsset definition;
 		TVector<std::string> errors;
 		if (ReadAnimationSetAsset(uid, definition, errors) &&
-			(*setIt).m_second->Initialize(definition, &errors))
+			(*setIt).m_second->Initialize(definition, errors))
 		{
 #ifdef SAILOR_EDITOR
 			(*setIt).m_second->TraceHotReload(nullptr);
@@ -156,7 +156,7 @@ bool AnimationControllerImporter::LoadController_Immediate(
 	}
 
 	auto controller = AnimationControllerPtr::Make(m_allocator, uid);
-	if (!controller->Initialize(definition, &errors))
+	if (!controller->Initialize(definition, errors))
 	{
 		LogErrors(uid, "animation controller", errors);
 		controller.DestroyObject(m_allocator);
@@ -196,7 +196,7 @@ bool AnimationControllerImporter::LoadAnimationSet_Immediate(
 	}
 
 	auto set = AnimationSetPtr::Make(m_allocator, uid);
-	if (!set->Initialize(definition, &errors))
+	if (!set->Initialize(definition, errors))
 	{
 		LogErrors(uid, "animation set", errors);
 		set.DestroyObject(m_allocator);

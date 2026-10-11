@@ -3,6 +3,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "Submodules/EditorRemote/RemoteViewportFoundation.h"
@@ -11,11 +12,11 @@ using namespace Sailor::EditorRemote;
 
 namespace
 {
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -70,6 +71,11 @@ namespace
 
 		Require(input.Validate().IsOk(), "input packet should validate");
 		Require((input.m_modifiers & InputModifier::Shift) == InputModifier::Shift, "modifier bitmask should work");
+
+		InputPacket textInput = input;
+		textInput.m_kind = InputKind::Text;
+		textInput.m_text = "sea";
+		Require(textInput.Validate().IsOk(), "committed text should be accepted as viewport input");
 
 		InputPacket invalidInput = input;
 		invalidInput.m_kind = static_cast<InputKind>(255);

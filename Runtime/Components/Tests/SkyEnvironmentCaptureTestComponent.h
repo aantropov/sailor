@@ -27,7 +27,6 @@ namespace Sailor
 		TSharedPtr<CaptureState> m_capture;
 		Tasks::TaskPtr<CheckResult> m_check;
 		Tasks::TaskPtr<bool> m_localPublicationCheck;
-		bool m_bHandoffComplete = false;
 		bool m_bSkyCaptureComplete = false;
 		uint32_t m_expectedLocalSamples = 0;
 	};

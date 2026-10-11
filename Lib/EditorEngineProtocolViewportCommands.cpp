@@ -1,15 +1,15 @@
 #include "EditorEngineProtocolInternal.h"
 
 #include "Memory/UniquePtr.hpp"
+#include "Editor/EditorRuntimeBridge.h"
+#include "Editor/EditorViewportEvent.h"
 #include "Protocol/Generated/editor_engine.pb.h"
 #include "Sailor.h"
 #include "Settings/GraphicsSettings.h"
 
-#include <yaml-cpp/yaml.h>
-
 #include <cmath>
 #include <string>
-#include <vector>
+#include <type_traits>
 
 namespace Sailor::Protocol::EditorEngineProtocolCommands
 {
@@ -120,226 +120,79 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		value->set_w(w);
 	}
 
-	static bool TryReadVector4(const YAML::Node& node, Vector4& outVector, const char* fieldName, std::string& outError)
+	static void WriteVector4(Vector4& output, const glm::vec4& value)
 	{
-		if (!node || !node.IsSequence() || node.size() != 4)
-		{
-			outError = std::string("Viewport event field '") + fieldName + "' must contain exactly four numbers.";
-			return false;
-		}
-
-		float values[4]{};
-		for (size_t i = 0; i < 4; ++i)
-		{
-			values[i] = node[i].as<float>();
-			if (!std::isfinite(values[i]))
-			{
-				outError = std::string("Viewport event field '") + fieldName + "' contains a non-finite value.";
-				return false;
-			}
-		}
-
-		outVector.set_x(values[0]);
-		outVector.set_y(values[1]);
-		outVector.set_z(values[2]);
-		outVector.set_w(values[3]);
-		return true;
+		output.set_x(value.x);
+		output.set_y(value.y);
+		output.set_z(value.z);
+		output.set_w(value.w);
 	}
 
-	static bool TryParseTransformOperation(const std::string& value, ViewportTransformOperation& outOperation)
+	static ViewportTransformOperation ToProtocolOperation(EditorViewport::ETransformOperation operation)
 	{
 		using namespace sailor::editor::v1;
-		if (value == "Select")
+		switch (operation)
 		{
-			outOperation = VIEWPORT_TRANSFORM_OPERATION_SELECT;
-			return true;
+		case EditorViewport::ETransformOperation::Select: return VIEWPORT_TRANSFORM_OPERATION_SELECT;
+		case EditorViewport::ETransformOperation::Translate: return VIEWPORT_TRANSFORM_OPERATION_TRANSLATE;
+		case EditorViewport::ETransformOperation::Rotate: return VIEWPORT_TRANSFORM_OPERATION_ROTATE;
+		case EditorViewport::ETransformOperation::Scale: return VIEWPORT_TRANSFORM_OPERATION_SCALE;
 		}
-		if (value == "Translate")
-		{
-			outOperation = VIEWPORT_TRANSFORM_OPERATION_TRANSLATE;
-			return true;
-		}
-		if (value == "Rotate")
-		{
-			outOperation = VIEWPORT_TRANSFORM_OPERATION_ROTATE;
-			return true;
-		}
-		if (value == "Scale")
-		{
-			outOperation = VIEWPORT_TRANSFORM_OPERATION_SCALE;
-			return true;
-		}
-
-		return false;
+		return VIEWPORT_TRANSFORM_OPERATION_UNSPECIFIED;
 	}
 
-	static bool TryParseTransformSpace(const std::string& value, ViewportTransformSpace& outSpace)
+	static ViewportTransformSpace ToProtocolSpace(EditorViewport::ETransformSpace space)
 	{
 		using namespace sailor::editor::v1;
-		if (value == "World")
+		switch (space)
 		{
-			outSpace = VIEWPORT_TRANSFORM_SPACE_WORLD;
-			return true;
+		case EditorViewport::ETransformSpace::World: return VIEWPORT_TRANSFORM_SPACE_WORLD;
+		case EditorViewport::ETransformSpace::Local: return VIEWPORT_TRANSFORM_SPACE_LOCAL;
 		}
-		if (value == "Local")
-		{
-			outSpace = VIEWPORT_TRANSFORM_SPACE_LOCAL;
-			return true;
-		}
-
-		return false;
+		return VIEWPORT_TRANSFORM_SPACE_UNSPECIFIED;
 	}
 
-	static bool TryConvertViewportEventUnchecked(const char* serializedEvent,
-		ViewportEvent& outEvent,
-		std::string& outError)
+	static void WriteViewportEvent(const EditorViewport::Event& event, ViewportEvent& output)
 	{
-		if (!serializedEvent || serializedEvent[0] == '\0')
+		output.set_revision(event.m_revision);
+		output.set_managed_mutation_revision(event.m_managedMutationRevision);
+		std::visit([&output](const auto& value)
 		{
-			outError = "The native viewport event is empty.";
-			return false;
-		}
-
-		const YAML::Node event = YAML::Load(serializedEvent);
-		if (!event || !event.IsMap())
-		{
-			outError = "The native viewport event must be a YAML mapping.";
-			return false;
-		}
-
-		const YAML::Node kindNode = event["kind"];
-		const YAML::Node revisionNode = event["revision"];
-		const YAML::Node managedMutationRevisionNode = event["managedMutationRevision"];
-		if (!kindNode.IsScalar() || !revisionNode.IsScalar() || !managedMutationRevisionNode.IsScalar())
-		{
-			outError = "The native viewport event is missing its envelope fields.";
-			return false;
-		}
-
-		const std::string kind = kindNode.as<std::string>();
-		outEvent.set_revision(revisionNode.as<uint64_t>());
-		outEvent.set_managed_mutation_revision(managedMutationRevisionNode.as<uint64_t>());
-
-		if (kind == "selection")
-		{
-			const YAML::Node selectedInstanceIdNode = event["selectedInstanceId"];
-			if (!selectedInstanceIdNode.IsScalar())
+			using T = std::decay_t<decltype(value)>;
+			if constexpr (std::is_same_v<T, EditorViewport::SelectionEvent>)
 			{
-				outError = "The native viewport selection event is missing selectedInstanceId.";
-				return false;
+				auto* selection = output.mutable_selection();
+				if (value.m_instanceId) selection->set_selected_instance_id(value.m_instanceId.ToString());
 			}
-
-			outEvent.mutable_selection()->set_selected_instance_id(selectedInstanceIdNode.as<std::string>());
-			return true;
-		}
-
-		if (kind == "assetDrop")
-		{
-			const YAML::Node fileIdNode = event["fileId"];
-			const YAML::Node normalizedXNode = event["normalizedX"];
-			const YAML::Node normalizedYNode = event["normalizedY"];
-			if (!fileIdNode.IsScalar() || !normalizedXNode.IsScalar() || !normalizedYNode.IsScalar())
+			else if constexpr (std::is_same_v<T, EditorViewport::AssetDropEvent>)
 			{
-				outError = "The native viewport asset drop event is missing scalar fields.";
-				return false;
+				auto* drop = output.mutable_asset_drop();
+				drop->set_file_id(value.m_fileId);
+				drop->set_normalized_x(value.m_position.x);
+				drop->set_normalized_y(value.m_position.y);
 			}
-
-			const float normalizedX = normalizedXNode.as<float>();
-			const float normalizedY = normalizedYNode.as<float>();
-			if (!std::isfinite(normalizedX) || !std::isfinite(normalizedY) || normalizedX < 0.0f ||
-				normalizedX > 1.0f || normalizedY < 0.0f || normalizedY > 1.0f)
+			else if constexpr (std::is_same_v<T, EditorViewport::ToolShortcutEvent>)
 			{
-				outError = "The native viewport asset drop coordinates are invalid.";
-				return false;
+				output.mutable_tool_shortcut()->set_key_code(value.m_keyCode);
 			}
-
-			auto* assetDrop = outEvent.mutable_asset_drop();
-			assetDrop->set_file_id(fileIdNode.as<std::string>());
-			assetDrop->set_normalized_x(normalizedX);
-			assetDrop->set_normalized_y(normalizedY);
-			return true;
-		}
-
-		if (kind == "toolShortcut")
-		{
-			const YAML::Node keyCodeNode = event["keyCode"];
-			if (!keyCodeNode.IsScalar())
+			else if constexpr (std::is_same_v<T, EditorViewport::TransformEvent>)
 			{
-				outError = "The native viewport tool shortcut event is missing keyCode.";
-				return false;
+				auto* transform = output.mutable_transform();
+				transform->set_instance_id(value.m_instanceId.ToString());
+				transform->set_operation(ToProtocolOperation(value.m_operation));
+				transform->set_space(ToProtocolSpace(value.m_space));
+				const auto& beforeRotation = value.m_before.GetRotation();
+				const auto& afterRotation = value.m_after.GetRotation();
+				WriteVector4(*transform->mutable_before_position(), value.m_before.m_position);
+				WriteVector4(*transform->mutable_before_rotation(),
+					{ beforeRotation.x, beforeRotation.y, beforeRotation.z, beforeRotation.w });
+				WriteVector4(*transform->mutable_before_scale(), value.m_before.m_scale);
+				WriteVector4(*transform->mutable_after_position(), value.m_after.m_position);
+				WriteVector4(*transform->mutable_after_rotation(),
+					{ afterRotation.x, afterRotation.y, afterRotation.z, afterRotation.w });
+				WriteVector4(*transform->mutable_after_scale(), value.m_after.m_scale);
 			}
-
-			const uint32_t keyCode = keyCodeNode.as<uint32_t>();
-			if (keyCode != 'Q' && keyCode != 'W' && keyCode != 'E' && keyCode != 'R' && keyCode != 'T')
-			{
-				outError = "The native viewport tool shortcut key is unsupported.";
-				return false;
-			}
-
-			outEvent.mutable_tool_shortcut()->set_key_code(keyCode);
-			return true;
-		}
-
-		if (kind != "transform")
-		{
-			outError = "Unsupported native viewport event kind '" + kind + "'.";
-			return false;
-		}
-
-		const YAML::Node instanceIdNode = event["instanceId"];
-		const YAML::Node operationNode = event["operation"];
-		const YAML::Node spaceNode = event["space"];
-		if (!instanceIdNode.IsScalar() || !operationNode.IsScalar() || !spaceNode.IsScalar())
-		{
-			outError = "The native viewport transform event is missing scalar fields.";
-			return false;
-		}
-
-		auto* transform = outEvent.mutable_transform();
-		transform->set_instance_id(instanceIdNode.as<std::string>());
-
-		ViewportTransformOperation operation{};
-		const std::string operationValue = operationNode.as<std::string>();
-		if (!TryParseTransformOperation(operationValue, operation))
-		{
-			outError = "Unsupported viewport transform operation '" + operationValue + "'.";
-			return false;
-		}
-		transform->set_operation(operation);
-
-		ViewportTransformSpace space{};
-		const std::string spaceValue = spaceNode.as<std::string>();
-		if (!TryParseTransformSpace(spaceValue, space))
-		{
-			outError = "Unsupported viewport transform space '" + spaceValue + "'.";
-			return false;
-		}
-		transform->set_space(space);
-
-		return TryReadVector4(
-				   event["beforePosition"], *transform->mutable_before_position(), "beforePosition", outError) &&
-			   TryReadVector4(
-				   event["beforeRotation"], *transform->mutable_before_rotation(), "beforeRotation", outError) &&
-			   TryReadVector4(event["beforeScale"], *transform->mutable_before_scale(), "beforeScale", outError) &&
-			   TryReadVector4(
-				   event["afterPosition"], *transform->mutable_after_position(), "afterPosition", outError) &&
-			   TryReadVector4(
-				   event["afterRotation"], *transform->mutable_after_rotation(), "afterRotation", outError) &&
-			   TryReadVector4(event["afterScale"], *transform->mutable_after_scale(), "afterScale", outError);
-	}
-
-	static bool TryConvertViewportEvent(const char* serializedEvent, ViewportEvent& outEvent, std::string& outError)
-	{
-		try
-		{
-			return TryConvertViewportEventUnchecked(serializedEvent, outEvent, outError);
-		}
-		catch (const YAML::Exception& exception)
-		{
-			outEvent.Clear();
-			outError = "Failed to parse the native viewport event: " + std::string(exception.what());
-			return false;
-		}
+		}, event.m_payload);
 	}
 
 	static void DispatchViewportEvents(const sailor::editor::v1::CountRequest& request,
@@ -347,49 +200,21 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies)
 	{
 		const uint32_t requestedCount = request.max_count();
-		if (!ValidateBatchCount(requestedCount, response))
-		{
-			return;
-		}
+		if (!ValidateBatchCount(requestedCount, response)) return;
 
-		auto events =
-			requestedCount > 0 ? Sailor::TUniquePtr<char*[]>::Make(requestedCount) : Sailor::TUniquePtr<char*[]>{};
-		std::vector<Sailor::TUniquePtr<char[]>> ownedEvents;
-		ownedEvents.reserve(requestedCount);
-		const uint32_t numEvents =
-			dependencies.m_pullEditorViewportEvents
-				? dependencies.m_pullEditorViewportEvents(dependencies.m_context, events.GetRawPtr(), requestedCount)
-				: Sailor::App::PullEditorViewportEvents(events.GetRawPtr(), requestedCount);
-		for (uint32_t i = 0; i < requestedCount; ++i)
-		{
-			ownedEvents.emplace_back(events[i]);
-		}
-		if (numEvents > requestedCount)
-		{
-			SetError(response, "The native viewport event source exceeded the requested batch capacity.");
-			return;
-		}
-
+		const auto events = dependencies.m_pullEditorViewportEvents
+			? dependencies.m_pullEditorViewportEvents(dependencies.m_context, requestedCount)
+			: Sailor::EditorRuntime::PullEditorViewportEvents(requestedCount);
 		SetSuccess(response);
 		auto* result = response.mutable_viewport_event_batch_result();
-		for (uint32_t i = 0; i < numEvents; ++i)
-		{
-			std::string error;
-			ViewportEvent event;
-			if (!TryConvertViewportEvent(events[i], event, error))
-			{
-				continue;
-			}
-
-			result->add_events()->CopyFrom(event);
-		}
+		for (const auto& event : events) WriteViewportEvent(event, *result->add_events());
 	}
 
 	static void DispatchRemoteViewportDiagnostics(const sailor::editor::v1::ViewportIdRequest& request,
 		ProtocolResponse& response)
 	{
 		char* value = nullptr;
-		const uint32_t length = Sailor::App::GetEditorRemoteViewportDiagnostics(request.viewport_id(), &value);
+		const uint32_t length = Sailor::EditorRuntime::GetEditorRemoteViewportDiagnostics(request.viewport_id(), &value);
 		Sailor::TUniquePtr<char[]> ownedValue(value);
 		SetStringResult(response, value, length);
 	}
@@ -408,7 +233,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		float worldX = 0.0f;
 		float worldY = 0.0f;
 		float worldZ = 0.0f;
-		if (!Sailor::App::TraceViewportRay(
+		if (!Sailor::EditorRuntime::TraceViewportRay(
 				request.viewport_id(), request.normalized_x(), request.normalized_y(), worldX, worldY, worldZ))
 		{
 			SetError(response, "Failed to trace the viewport ray.");
@@ -429,7 +254,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 
 		uint32_t operation = 0;
 		uint32_t space = 0;
-		if (!Sailor::App::GetEditorViewportToolState(operation, space))
+		if (!Sailor::EditorRuntime::GetEditorViewportToolState(operation, space))
 		{
 			SetError(response, "Failed to read the viewport tool state.");
 			return;
@@ -493,7 +318,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		case ProtocolRequest::kSetViewport:
 		{
 			const auto& viewport = request.set_viewport();
-			Sailor::App::SetEditorViewport(
+			Sailor::EditorRuntime::SetEditorViewport(
 				viewport.window_pos_x(), viewport.window_pos_y(), viewport.width(), viewport.height());
 			SetEmptyResult(response);
 			break;
@@ -502,7 +327,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		case ProtocolRequest::kSetEditorRenderTargetSize:
 		{
 			const auto& size = request.set_editor_render_target_size();
-			Sailor::App::SetEditorRenderTargetSize(size.width(), size.height());
+			Sailor::EditorRuntime::SetEditorRenderTargetSize(size.width(), size.height());
 			SetEmptyResult(response);
 			break;
 		}
@@ -511,7 +336,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		{
 			const auto& viewport = request.upsert_remote_viewport();
 			SetBoolResult(response,
-				Sailor::App::UpsertEditorRemoteViewport(viewport.viewport_id(),
+				Sailor::EditorRuntime::UpsertEditorRemoteViewport(viewport.viewport_id(),
 					viewport.window_pos_x(),
 					viewport.window_pos_y(),
 					viewport.width(),
@@ -523,37 +348,42 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 
 		case ProtocolRequest::kDestroyRemoteViewport:
 			SetBoolResult(
-				response, Sailor::App::DestroyEditorRemoteViewport(request.destroy_remote_viewport().viewport_id()));
+				response, Sailor::EditorRuntime::DestroyEditorRemoteViewport(request.destroy_remote_viewport().viewport_id()));
 			break;
 
 		case ProtocolRequest::kGetRemoteViewportState:
 			SetUInt32Result(
-				response, Sailor::App::GetEditorRemoteViewportState(request.get_remote_viewport_state().viewport_id()));
+				response, Sailor::EditorRuntime::GetEditorRemoteViewportState(request.get_remote_viewport_state().viewport_id()));
 			break;
 
 		case ProtocolRequest::kGetRemoteViewportDiagnostics:
 			DispatchRemoteViewportDiagnostics(request.get_remote_viewport_diagnostics(), response);
 			break;
 
-		case ProtocolRequest::kRetryRemoteViewport:
-			SetBoolResult(
-				response, Sailor::App::RetryEditorRemoteViewport(request.retry_remote_viewport().viewport_id()));
-			break;
-
-		case ProtocolRequest::kSetRemoteViewportMacHostHandle:
+		case ProtocolRequest::kCaptureRemoteViewportFrameEvidence:
 		{
-			const auto& host = request.set_remote_viewport_mac_host_handle();
-			SetBoolResult(response,
-				Sailor::App::SetEditorRemoteViewportMacHostHandle(
-					host.viewport_id(), host.host_handle_kind(), host.host_handle_value()));
+			std::string diagnostic;
+			if (Sailor::EditorRuntime::CaptureEditorRemoteViewportFrameEvidence(request.capture_remote_viewport_frame_evidence().viewport_id(), diagnostic))
+			{
+				SetStringResult(response, diagnostic.data(), static_cast<uint32_t>(diagnostic.size()));
+			}
+			else
+			{
+				SetError(response, diagnostic);
+			}
 			break;
 		}
+
+		case ProtocolRequest::kRetryRemoteViewport:
+			SetBoolResult(
+				response, Sailor::EditorRuntime::RetryEditorRemoteViewport(request.retry_remote_viewport().viewport_id()));
+			break;
 
 		case ProtocolRequest::kSendRemoteViewportInput:
 		{
 			const auto& input = request.send_remote_viewport_input();
 			SetBoolResult(response,
-				Sailor::App::SendEditorRemoteViewportInput(input.viewport_id(),
+				Sailor::EditorRuntime::SendEditorRemoteViewportInput(input.viewport_id(),
 					input.kind(),
 					input.pointer_x(),
 					input.pointer_y(),
@@ -564,7 +394,8 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 					input.modifiers(),
 					input.pressed(),
 					input.focused(),
-					input.captured()));
+					input.captured(),
+					input.text()));
 			break;
 		}
 
@@ -573,16 +404,8 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			break;
 
 		case ProtocolRequest::kRenderPathTracedImage:
-		{
-			const auto& render = request.render_path_traced_image();
-			SetBoolResult(response,
-				Sailor::App::RenderPathTracedImage(render.output_path().c_str(),
-					render.instance_id().c_str(),
-					render.height(),
-					render.samples_per_pixel(),
-					render.max_bounces()));
+			SetError(response, "Path-traced image export is not supported by the editor.");
 			break;
-		}
 
 		case ProtocolRequest::kTraceViewportRay:
 			DispatchTraceViewportRay(request.trace_viewport_ray(), response);
@@ -592,7 +415,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		{
 			const auto& focus = request.focus_editor_camera();
 			SetBoolResult(
-				response, focus.viewport_id() != 0 && Sailor::App::FocusEditorCamera(focus.instance_id().c_str()));
+				response, focus.viewport_id() != 0 && Sailor::EditorRuntime::FocusEditorCamera(focus.instance_id().c_str()));
 			break;
 		}
 
@@ -601,7 +424,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			const auto& state = request.set_viewport_tool_state();
 			SetBoolResult(response,
 				state.viewport_id() != 0 &&
-					Sailor::App::SetEditorViewportToolState(
+					Sailor::EditorRuntime::SetEditorViewportToolState(
 						static_cast<uint32_t>(state.operation()), static_cast<uint32_t>(state.space())));
 			break;
 		}

@@ -4,7 +4,7 @@
 
 namespace Sailor::LightingECSInternal
 {
-	TSharedPtr<TVector<LightingECS::LightShaderData>> AcquireLightsSnapshot(
+	TSharedPtr<const TVector<LightingECS::LightShaderData>> AcquireLightsSnapshot(
 		TVector<TSharedPtr<TVector<LightingECS::LightShaderData>>>& pool,
 		const TVector<LightingECS::LightShaderData>& source);
 

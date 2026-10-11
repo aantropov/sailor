@@ -12,7 +12,11 @@
 #include "VulkanPipileneStates.h"
 
 using namespace Sailor;
-class FrameState;
+
+namespace Sailor
+{
+	class FrameState;
+}
 
 namespace Sailor::Platform
 {
@@ -24,7 +28,12 @@ using namespace Sailor::Memory;
 namespace Sailor::GraphicsDriver::Vulkan
 {
 	using VulkanDeviceMemoryAllocator = TBlockAllocator<Sailor::Memory::GlobalVulkanMemoryAllocator, VulkanMemoryPtr>;
-	using VulkanBufferAllocator = TBlockAllocator<Sailor::Memory::GlobalVulkanBufferAllocator, VulkanBufferMemoryPtr>;
+
+	enum class EVulkanMemoryClass
+	{
+		Linear,
+		OptimalImage
+	};
 
 	// Thread independent resources
 	struct ThreadContext
@@ -46,7 +55,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API VulkanDevice(Platform::Window* pViewport, RHI::EMsaaSamples requestMsaa);
 		SAILOR_API virtual ~VulkanDevice();
 
-		SAILOR_API void BeginConditionalDestroy();
+		SAILOR_API bool BeginConditionalDestroy();
 		SAILOR_API void Shutdown();
 
 		SAILOR_API VkPhysicalDevice GetPhysicalDevice() const { return m_physicalDevice; }
@@ -56,12 +65,13 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API const TUniquePtr<VulkanSamplerCache>& GetSamplers() const { return m_samplers; }
 		SAILOR_API TUniquePtr<VulkanPipelineStateBuilder>& GetPipelineBuilder() { return m_pipelineBuilder; }
 
-		SAILOR_API void WaitIdle();
+		SAILOR_API VkResult WaitIdle();
 		SAILOR_API void WaitIdlePresentQueue();
 
 		SAILOR_API bool BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSwapchainImage);
 		SAILOR_API bool AcquireNextImage();
 		SAILOR_API uint32_t GetMaxFramesInFlight() const;
+		VulkanFencePtr GetCurrentFrameFence() const { return m_syncFences[m_currentFrame]; }
 
 		SAILOR_API VulkanImageViewPtr GetBackBuffer() const;
 		SAILOR_API VulkanImageViewPtr GetDepthBuffer() const;
@@ -85,12 +95,16 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API bool IsMultiDrawIndirectSupported() const { return m_bSupportsMultiDrawIndirect; };
 		SAILOR_API bool IsDescriptorUpdateAfterBindSupported() const { return m_bSupportsDescriptorUpdateAfterBind; }
 		SAILOR_API bool IsHostQueryResetSupported() const { return m_bSupportsHostQueryReset; }
+		SAILOR_API bool IsSamplerFilterMinmaxSupported() const { return m_bSupportsSamplerFilterMinmax; }
+		SAILOR_API bool IsMetalObjectsSupported() const { return m_bSupportsMetalObjects; }
 		SAILOR_API float GetMaxAllowedAnisotropy() const { return m_physicalDeviceProperties.limits.maxSamplerAnisotropy; };
 		SAILOR_API VkSampleCountFlagBits GetMaxAllowedMsaaSamples() const { return m_maxAllowedMsaaSamples; };
 		SAILOR_API VkSampleCountFlagBits GetCurrentMsaaSamples() const { return m_currentMsaaSamples; };
+		SAILOR_API const VkPhysicalDeviceDepthStencilResolveProperties& GetDepthStencilResolveProperties() const { return m_depthStencilResolveProperties; }
 		SAILOR_API const VkMemoryRequirements& GetMemoryRequirements_StagingBuffer() const { return m_memoryRequirements_StagingBuffer; }
 		SAILOR_API const VkDeviceSize& GetMinUboOffsetAlignment() const { return m_physicalDeviceProperties.limits.minUniformBufferOffsetAlignment; }
 		SAILOR_API const VkDeviceSize& GetMinSsboOffsetAlignment() const { return m_physicalDeviceProperties.limits.minStorageBufferOffsetAlignment; }
+		SAILOR_API uint32_t GetMaxPushConstantsSize() const { return m_physicalDeviceProperties.limits.maxPushConstantsSize; }
 		SAILOR_API const VkDeviceSize& GetBufferImageGranuality() const { return m_physicalDeviceProperties.limits.bufferImageGranularity; }
 
 		template<typename TData>
@@ -129,7 +143,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API ThreadContext& GetCurrentThreadContext();
 		SAILOR_API ThreadContext& GetOrAddThreadContext(DWORD threadId);
-		SAILOR_API VulkanDeviceMemoryAllocator& GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements);
+		SAILOR_API VulkanDeviceMemoryAllocator& GetMemoryAllocator(VkMemoryPropertyFlags properties,
+			VkMemoryRequirements requirements, EVulkanMemoryClass memoryClass);
 		SAILOR_API TSharedPtr<VulkanBufferAllocator> GetStagingBufferAllocator() { return GetCurrentThreadContext().m_stagingBufferAllocator; }
 		SAILOR_API VulkanStateViewportPtr GetCurrentFrameViewport() const { return m_pCurrentFrameViewport; }
 		SAILOR_API const auto& GetMemoryAllocators() const { return m_memoryAllocators; }
@@ -143,6 +158,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API VulkanSwapchainPtr GetSwapchain() { return m_swapchain; }
 
 		SAILOR_API uint32_t GetNumSubmittedCommandBufers() const { return m_numSubmittedCommandBuffers; }
+		bool IsDeviceLost() const { return m_bIsDeviceLost.load(); }
 
 		SAILOR_API VulkanQueuePtr GetGraphicsQueue() { return m_graphicsQueue; }
 
@@ -150,13 +166,19 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void vkCmdDebugMarkerBegin(VulkanCommandBufferPtr cmdBuffer, const VkDebugMarkerMarkerInfoEXT* markerInfo);
 		SAILOR_API void vkCmdDebugMarkerEnd(VulkanCommandBufferPtr cmdBuffer);
 		SAILOR_API void SetDebugName(VkObjectType type, uint64_t objectHandle, const std::string& name);
+		void SetDebugName(VkObjectType type, uint64_t objectHandle, StringHash name)
+		{
+#ifndef _SHIPPING
+			SetDebugName(type, objectHandle, name.ToString());
+#endif
+		}
 
 	protected:
 
 		SAILOR_API TUniquePtr<ThreadContext> CreateThreadContext();
 
-		SAILOR_API void CreateLogicalDevice(VkPhysicalDevice physicalDevice);
-		SAILOR_API void CreateWin32Surface(const Platform::Window* pViewport);
+		SAILOR_API bool CreateLogicalDevice(VkPhysicalDevice physicalDevice);
+		SAILOR_API void CreateSurface(const Platform::Window* pViewport);
 		SAILOR_API bool CreateSwapchain(Platform::Window* pViewport);
 		SAILOR_API bool RecreateSwapchain(Platform::Window* pViewport);
 		SAILOR_API VulkanStateViewportPtr CreateSwapchainViewport() const;
@@ -164,14 +186,22 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void CreateFrameDependencies();
 		SAILOR_API void CreateFrameSyncSemaphores();
 		SAILOR_API void CleanupSwapChain();
+		void PrepareFrameCommands(const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers,
+			bool hasSwapchainImage, TVector<VkCommandBuffer>& outCommands);
+		bool SubmitFrame(const VkSubmitInfo& submitInfo);
+		bool ConsumeAcquiredImage();
 
 		VkPhysicalDeviceProperties m_physicalDeviceProperties{};
+		VkPhysicalDeviceDepthStencilResolveProperties m_depthStencilResolveProperties{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_STENCIL_RESOLVE_PROPERTIES };
 
 		VkSampleCountFlagBits m_maxAllowedMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
 		VkSampleCountFlagBits m_currentMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
 		bool m_bSupportsMultiDrawIndirect = false;
 		bool m_bSupportsDescriptorUpdateAfterBind = false;
 		bool m_bSupportsHostQueryReset = false;
+		bool m_bSupportsSamplerFilterMinmax = false;
+		bool m_bSupportsMetalObjects = false;
+		bool m_bSupportsPresentFences = false;
 
 		VkMemoryRequirements m_memoryRequirements_StagingBuffer;
 
@@ -192,6 +222,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		VkPhysicalDevice m_physicalDevice = 0;
 		VkDevice m_device = 0;
+		PFN_vkGetFenceStatus m_getFenceStatus{};
+		PFN_vkWaitForFences m_waitForFences{};
 		VulkanQueueFamilyIndices m_queueFamilies;
 
 		// Swapchain
@@ -203,13 +235,18 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VulkanStateViewportPtr m_pCurrentFrameViewport;
 
 		// Frame sync
+		const uint32_t m_maxFramesInFlight;
 		TVector<VulkanSemaphorePtr> m_imageAvailableSemaphores;
 		TVector<VulkanSemaphorePtr> m_renderFinishedSemaphores;
 		TVector<VulkanFencePtr> m_syncFences;
 		TVector<VulkanFencePtr> m_syncImages;
+		TVector<VulkanFencePtr> m_presentFences;
+		TVector<bool> m_swapchainImagesInitialized;
+		std::optional<uint32_t> m_acquiredImageFlight;
 		size_t m_currentFrame = 0;
 		uint32_t m_currentSwapchainImageIndex = 0;
-		bool m_bNeedToTransitSwapchainToPresent = true;
+		bool m_bDepthBufferInitialized = false;
+		VkResult m_frameSubmissionError = VK_SUCCESS;
 
 		std::atomic<bool> m_bIsSwapChainOutdated = true;
 		std::atomic<bool> m_bIsSwapChainSuboptimal = false;
@@ -219,18 +256,28 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		TConcurrentMap<DWORD, TUniquePtr<ThreadContext>> m_threadContext;
 
-		// We're sharing the same device memory between the different buffers
-		TConcurrentMap<uint64_t, TUniquePtr<VulkanDeviceMemoryAllocator>, 16u, ERehashPolicy::Never> m_memoryAllocators;
+		struct MemoryAllocatorKey
+		{
+			VkMemoryPropertyFlags m_properties = 0;
+			uint32_t m_memoryTypeBits = 0;
+			EVulkanMemoryClass m_memoryClass = EVulkanMemoryClass::Linear;
+
+			bool operator==(const MemoryAllocatorKey& rhs) const = default;
+
+			size_t GetHash() const
+			{
+				size_t hash{};
+				HashCombine(hash, m_properties, m_memoryTypeBits, static_cast<uint32_t>(m_memoryClass));
+				return hash;
+			}
+		};
+
+		// Linear resources and optimal images must not share device-memory blocks.
+		TConcurrentMap<MemoryAllocatorKey, TUniquePtr<VulkanDeviceMemoryAllocator>, 16u, ERehashPolicy::Never> m_memoryAllocators;
 
 		// Dynamic rendering extension
 		PFN_vkCmdBeginRendering pVkCmdBeginRendering{};
 		PFN_vkCmdEndRendering pVkCmdEndRendering{};
-		PFN_vkCmdBeginRenderingKHR pVkCmdBeginRenderingKHR{};
-		PFN_vkCmdEndRenderingKHR pVkCmdEndRenderingKHR{};
-		bool m_bSupportsDynamicRenderingCore13 = false;
-		bool m_bSupportsDynamicRenderingKHR = false;
-		bool m_bLoggedMissingBeginRendering = false;
-		bool m_bLoggedMissingEndRendering = false;
 
 		PFN_vkSetDebugUtilsObjectNameEXT m_pSetDebugUtilsObjectNameEXT{};
 		PFN_vkCmdDebugMarkerBeginEXT m_pCmdDebugMarkerBegin{};
@@ -240,10 +287,13 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TSet<string> supportedDeviceExtensions{};
 
 		// Stats
-		uint32_t m_numSubmittedCommandBuffersAcc = 0;
+		std::atomic<uint32_t> m_numSubmittedCommandBuffersAcc = 0;
 		uint32_t m_numSubmittedCommandBuffers = 0;
 
-		bool m_bIsDeviceLost = false;
+		std::atomic<bool> m_bIsDeviceLost = false;
 		bool m_bLastFrameSubmitSuccessful = false;
+		friend class VulkanFence;
+		friend class VulkanSubmissionTestAccess;
+		friend class FrameGraphNodeTestAccess;
 	};
 }

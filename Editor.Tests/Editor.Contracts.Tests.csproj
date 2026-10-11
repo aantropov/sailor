@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="ModelContextProtocol" Version="2.1.0" />
     <PackageReference Include="xunit" Version="2.9.2" />
@@ -50,6 +51,18 @@
     <Compile Include="WorkspaceCMakeIntegrationHarness.cs" />
     <Compile Include="WorkspaceTwoWorkspaceCloseoutIntegrationTests.cs" />
     <Compile Include="EngineTypeMetadataContractTests.cs" />
+    <Compile Include="ReflectedValueTests.cs" />
+    <Compile Include="McpReflectedSchemaTests.cs" />
+    <Compile Include="McpLandscapeAuthoringTests.cs" />
+    <Compile Include="..\Editor\Utility\EngineTypes.cs" Link="Utility\EngineTypes.cs" />
+    <Compile Include="..\Editor\Utility\Math.cs" Link="Utility\Math.cs" />
+    <Compile Include="..\Editor\Utility\SerializationUtils.cs" Link="Utility\SerializationUtils.cs" />
+    <Compile Include="..\Editor\Utility\Observable.cs" Link="Utility\Observable.cs" />
+    <Compile Include="..\Editor\Utility\ObservableList.cs" Link="Utility\ObservableList.cs" />
+    <Compile Include="..\Editor\Utility\ObservableDictionary.cs" Link="Utility\ObservableDictionary.cs" />
+    <Compile Include="..\Editor\Utility\ObservableRecord.cs" Link="Utility\ObservableRecord.cs" />
+    <Compile Include="..\Editor\Utility\ReflectedValueCodec.cs" Link="Utility\ReflectedValueCodec.cs" />
+    <Compile Include="..\Editor\ViewModels\ObservableScalarLists.cs" Link="ViewModels\ObservableScalarLists.cs" />
     <Compile Include="EditorTypeCatalogContractTests.cs" />
     <Compile Include="NumericRangeEditorInteractionTests.cs" />
     <Compile Include="NumericValueConverterTests.cs" />
@@ -101,6 +114,9 @@
     <Compile Include="EditorEngineProtocolTests.cs" />
     <Compile Include="EngineProtocolClientTests.cs" />
     <Compile Include="LocalEngineProtocolTransportTests.cs" />
+    <Compile Include="AssetReimportIntegrationTests.cs" />
+    <Compile Include="UnsupportedExportIntegrationTests.cs" />
+    <Compile Include="Support/NativeEditorHost.cs" />
     <Compile Include="MacEngineLibraryLoaderTests.cs" />
     <Compile Include="..\Editor\Protocol\MacEngineLibraryLoader.cs" Link="Protocol\MacEngineLibraryLoader.cs" />
     <Compile Include="..\Editor\Protocol\ClientWebSocketEngineProtocolTransport.cs" Link="Protocol\ClientWebSocketEngineProtocolTransport.cs" />
@@ -173,6 +189,10 @@
     <Compile Include="..\Editor\Mcp\McpEndpointDiscovery.cs" Link="Mcp\McpEndpointDiscovery.cs" />
     <Compile Include="..\Editor\Mcp\McpLoopbackAuthentication.cs" Link="Mcp\McpLoopbackAuthentication.cs" />
     <Compile Include="..\Editor\Mcp\McpYamlUtilities.cs" Link="Mcp\McpYamlUtilities.cs" />
+    <Compile Include="..\Editor\Mcp\McpSceneContracts.cs" Link="Mcp\McpSceneContracts.cs" />
+    <Compile Include="..\Editor\Mcp\McpComponentSchemaBuilder.cs" Link="Mcp\McpComponentSchemaBuilder.cs" />
+    <Compile Include="..\Editor\Mcp\McpLandscapeContracts.cs" Link="Mcp\McpLandscapeContracts.cs" />
+    <Compile Include="..\Editor\Mcp\McpLandscapeAuthoring.cs" Link="Mcp\McpLandscapeAuthoring.cs" />
     <Compile Include="..\Editor\Mcp\LandscapeVegetationBinary.cs" Link="Mcp\LandscapeVegetationBinary.cs" />
     <Compile Include="..\Editor\McpBridge\McpBridgeOptions.cs" Link="McpBridge\McpBridgeOptions.cs" />
     <Compile Include="..\Editor\McpBridge\McpBridgeRunner.cs" Link="McpBridge\McpBridgeRunner.cs" />

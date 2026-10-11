@@ -2,19 +2,21 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "Submodules/EditorRemote/RemoteViewportWindowsTransport.h"
+#include "Support/ViewportBindingLifecycle.h"
 
 using namespace Sailor::EditorRemote;
 
 namespace
 {
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -56,6 +58,14 @@ namespace
 			inOutState.m_transport.m_width = viewport.m_width;
 			inOutState.m_transport.m_height = viewport.m_height;
 			inOutState.m_transport.m_pixelFormat = viewport.m_pixelFormat;
+			m_liveSurfaces.push_back(inOutState.m_key);
+			if (std::exchange(m_invalidTransport, false)) inOutState.m_transport.m_width = 0;
+			if (std::exchange(m_mismatchedExtent, false)) ++inOutState.m_transport.m_width;
+			if (!m_nextCreatedFailure.IsOk())
+			{
+				m_lastFailure = std::exchange(m_nextCreatedFailure, Failure::Ok());
+				return m_lastFailure;
+			}
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
 		}
@@ -111,6 +121,7 @@ namespace
 				return failure;
 			}
 
+			std::erase(m_liveSurfaces, state.m_key);
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
 		}
@@ -121,6 +132,10 @@ namespace
 		}
 
 		std::vector<WindowsViewportSurfaceKey> m_createCalls{};
+		std::vector<WindowsViewportSurfaceKey> m_liveSurfaces{};
+		Failure m_nextCreatedFailure = Failure::Ok();
+		bool m_invalidTransport = false;
+		bool m_mismatchedExtent = false;
 		std::vector<WindowsViewportSurfaceKey> m_beginCalls{};
 		std::vector<WindowsViewportSurfaceKey> m_exportCalls{};
 		std::vector<WindowsViewportSurfaceKey> m_releaseCalls{};
@@ -137,10 +152,7 @@ namespace
 	public:
 		Failure ImportSurface(const ViewportDescriptor& viewport, const TransportDescriptor& transport, ConnectionEpoch epoch, SurfaceGeneration generation) override
 		{
-			m_importViewport = viewport;
-			m_importTransport = transport;
-			m_importEpoch = epoch;
-			m_importGeneration = generation;
+			if (m_onImport) m_onImport();
 			if (!m_nextImportFailure.IsOk())
 			{
 				m_lastFailure = m_nextImportFailure;
@@ -149,6 +161,10 @@ namespace
 				return failure;
 			}
 
+			m_importViewport = viewport;
+			m_importTransport = transport;
+			m_importEpoch = epoch;
+			m_importGeneration = generation;
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
 		}
@@ -180,6 +196,7 @@ namespace
 		}
 
 		ViewportDescriptor m_importViewport{};
+		std::function<void()> m_onImport;
 		TransportDescriptor m_importTransport{};
 		ConnectionEpoch m_importEpoch = 0;
 		SurfaceGeneration m_importGeneration = 0;
@@ -189,6 +206,31 @@ namespace
 		Failure m_nextPresentFailure = Failure::Ok();
 		Failure m_lastFailure = Failure::Ok();
 	};
+
+	void TestWindowsLoopbackResizeIsTransactional()
+	{
+		Sailor::Tests::TestViewportResizeIsTransactional<WindowsViewportLoopbackBinding, FakeWindowsSharedSurfaceProvider, FakeWindowsViewportPresenter>(MakeViewport());
+	}
+
+	void TestWindowsLoopbackImportAndRetirementFailures()
+	{
+		Sailor::Tests::TestViewportImportAndRetirementFailures<WindowsViewportLoopbackBinding, FakeWindowsSharedSurfaceProvider, FakeWindowsViewportPresenter>(MakeViewport());
+	}
+
+	void TestWindowsLoopbackRecoveryUsesElapsedTime()
+	{
+		Sailor::Tests::TestViewportRecoveryUsesElapsedTime<WindowsViewportLoopbackBinding, FakeWindowsSharedSurfaceProvider, FakeWindowsViewportPresenter>(MakeViewport());
+	}
+
+	void TestWindowsLoopbackResizeAndRecoveryLoop()
+	{
+		Sailor::Tests::TestViewportResizeAndRecoveryLoop<WindowsViewportLoopbackBinding, FakeWindowsSharedSurfaceProvider, FakeWindowsViewportPresenter>(MakeViewport());
+	}
+
+	void TestWindowsLoopbackFrameFlood()
+	{
+		Sailor::Tests::TestViewportFrameFlood<WindowsViewportLoopbackBinding, FakeWindowsSharedSurfaceProvider, FakeWindowsViewportPresenter>(MakeViewport());
+	}
 
 	void TestWindowsBackendCreateResizeExportAndRelease()
 	{
@@ -247,48 +289,42 @@ namespace
 		Require(backend.GetLastFailure().m_nativeCode == 903, "backend should retain provider release failure");
 	}
 
-	void TestWindowsNativeHostImportPresentResetAndFailures()
+	void TestWindowsBackendRetriesPreparedFrame()
 	{
-		FakeWindowsViewportPresenter presenter{};
-		WindowsViewportNativeHost host{ presenter };
-		auto viewport = MakeViewport(41);
-		TransportDescriptor transport{};
-		transport.m_transportType = TransportType::WinSharedHandle;
-		transport.m_syncMode = SyncMode::ExplicitFence;
-		transport.m_protocolVersion = 1;
-		transport.m_width = viewport.m_width;
-		transport.m_height = viewport.m_height;
-		transport.m_pixelFormat = viewport.m_pixelFormat;
-		transport.m_ready = true;
-		transport.m_nativeHandles = { WindowsSharedSurfaceHandle{ 0x1111ull, 0x2222ull, 0x3333ull, 99ull, viewport.m_width * 4u, 1u } };
+		FakeWindowsSharedSurfaceProvider provider;
+		WindowsViewportTransportBackend backend(provider);
+		const auto viewport = MakeViewport(33);
+		TransportDescriptor transport;
+		Require(backend.EnsureSurface(viewport, 5, 1, transport).IsOk(), "retry fixture must create a surface");
+		provider.m_nextBeginFailure = Failure::FromDomain(ErrorDomain::Transport, 904, "copy pending");
+		Require(!backend.BeginFrame(viewport, 5, 1).IsOk(), "pending copy must fail begin");
+		FramePacket frame;
+		Require(!backend.ExportFrame(viewport, 5, 1, frame).IsOk() && provider.m_exportCalls.empty(),
+			"an incomplete begin must not reach the provider export");
+		Require(backend.BeginFrame(viewport, 5, 1).IsOk(), "begin must retry the pending provider copy");
+		Require(backend.BeginFrame(viewport, 5, 1).IsOk() && provider.m_beginCalls.size() == 2u,
+			"a prepared frame must not begin another provider copy before export");
+		provider.m_nextExportFailure = Failure::FromDomain(ErrorDomain::Transport, 905, "export failed");
+		Require(!backend.ExportFrame(viewport, 5, 1, frame).IsOk(), "export failure must reach the caller");
+		Require(backend.BeginFrame(viewport, 5, 1).IsOk() && provider.m_beginCalls.size() == 2u,
+			"retry after export failure must reuse the prepared frame");
+		Require(backend.ExportFrame(viewport, 5, 1, frame).IsOk() && frame.m_frameIndex == 1u,
+			"only successful export may advance the frame index");
+		Require(!backend.ExportFrame(viewport, 5, 1, frame).IsOk(), "one begin permits only one successful export");
+		Require(backend.BeginFrame(viewport, 5, 1).IsOk() && provider.m_beginCalls.size() == 3u,
+			"the next frame must begin a fresh provider copy");
+		Require(backend.ExportFrame(viewport, 5, 1, frame).IsOk() && frame.m_frameIndex == 2u,
+			"subsequent export must advance once");
+	}
 
-		Require(host.ImportTransport(viewport, transport, 9, 3).IsOk(), "windows host should import a valid shared-handle transport");
-		Require(presenter.m_importEpoch == 9 && presenter.m_importGeneration == 3, "presenter should observe imported epoch/generation");
+	void TestWindowsLoopbackPresentFailure()
+	{
+		Sailor::Tests::TestViewportPresentFailure<WindowsViewportLoopbackBinding, FakeWindowsSharedSurfaceProvider, FakeWindowsViewportPresenter>(MakeViewport());
+	}
 
-		FramePacket frame{};
-		frame.m_viewportId = 41;
-		frame.m_connectionEpoch = 9;
-		frame.m_generation = 3;
-		frame.m_frameIndex = 17;
-		frame.m_width = viewport.m_width;
-		frame.m_height = viewport.m_height;
-		frame.m_sync.m_requiresExplicitRelease = true;
-		Require(host.AcceptFrame(frame).IsOk(), "host should accept frames for the imported generation");
-		Require(host.PresentLatestFrame(41).IsOk(), "host should present the latest accepted frame");
-		Require(presenter.m_presentCalls.size() == 1 && presenter.m_presentCalls.front().m_frameIndex == 17, "presenter should receive the latest frame");
-
-		FramePacket staleFrame = frame;
-		staleFrame.m_generation = 2;
-		Require(!host.AcceptFrame(staleFrame).IsOk(), "host should reject stale-generation frames");
-		Require(host.GetLastFailure().m_code == ResultCode::RecreateRequired, "stale host frame should map to recreate-required session failure");
-
-		TransportDescriptor wrongTransport = transport;
-		wrongTransport.m_transportType = TransportType::MailboxCpuCopy;
-		Require(!host.ImportTransport(viewport, wrongTransport, 9, 3).IsOk(), "windows host should reject non-Windows transports");
-
-		host.ResetViewport(41);
-		Require(!host.PresentLatestFrame(41).IsOk(), "reset should drop the imported frame before the next present");
-		Require(!presenter.m_resets.empty() && presenter.m_resets.back() == 41, "reset should be forwarded to the presenter");
+	void TestWindowsLoopbackProducerFailure()
+	{
+		Sailor::Tests::TestViewportProducerFailure<WindowsViewportLoopbackBinding, FakeWindowsSharedSurfaceProvider, FakeWindowsViewportPresenter>(MakeViewport());
 	}
 }
 
@@ -296,8 +332,15 @@ int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "WindowsBackendCreateResizeExportAndRelease", TestWindowsBackendCreateResizeExportAndRelease },
+		{ "WindowsLoopbackRecoveryUsesElapsedTime", TestWindowsLoopbackRecoveryUsesElapsedTime },
+		{ "WindowsLoopbackResizeAndRecoveryLoop", TestWindowsLoopbackResizeAndRecoveryLoop },
+		{ "WindowsLoopbackFrameFlood", TestWindowsLoopbackFrameFlood },
+		{ "WindowsLoopbackResizeIsTransactional", TestWindowsLoopbackResizeIsTransactional },
+		{ "WindowsLoopbackImportAndRetirementFailures", TestWindowsLoopbackImportAndRetirementFailures },
 		{ "WindowsBackendFailurePropagationAndOrdering", TestWindowsBackendFailurePropagationAndOrdering },
-		{ "WindowsNativeHostImportPresentResetAndFailures", TestWindowsNativeHostImportPresentResetAndFailures },
+		{ "WindowsBackendRetriesPreparedFrame", TestWindowsBackendRetriesPreparedFrame },
+		{ "WindowsLoopbackPresentFailure", TestWindowsLoopbackPresentFailure },
+		{ "WindowsLoopbackProducerFailure", TestWindowsLoopbackProducerFailure },
 	};
 
 	for (const auto& test : tests)

@@ -11,6 +11,27 @@ namespace
 {
 	constexpr float ProbeBakeRayNormalBias = 0.0001f;
 	constexpr float ProbeBakeRayDirectionBias = 0.0003f;
+
+	bool GetIndirectLights(const TVector<LightProxy>& lights, TVector<LightProxy>& bakedLights,
+		const PathTracer::ScenePreparationProgressCallback& progress, const PathTracer::ScenePreparationProgress& state)
+	{
+		if (progress && !progress(state)) return false;
+		bakedLights.Reserve(lights.Num());
+		for (size_t index = 0u; index < lights.Num(); ++index)
+		{
+			if (index != 0u && index % 256u == 0u && progress && !progress(state)) return false;
+			const LightProxy& source = lights[index];
+			if (!std::isfinite(source.m_indirectLightingIntensity) ||
+				source.m_indirectLightingIntensity <= 0.0f)
+			{
+				continue;
+			}
+			LightProxy light = source;
+			light.m_intensity *= light.m_indirectLightingIntensity;
+			bakedLights.Add(std::move(light));
+		}
+		return !progress || progress(state);
+	}
 }
 
 bool GIProbesPathTracer::Initialize(
@@ -22,21 +43,26 @@ bool GIProbesPathTracer::Initialize(
 	const PathTracer::ScenePreparationProgressCallback& progress,
 	const PathTracer::ScenePreparationWarningCallback& warning)
 {
-	SAILOR_PROFILE_FUNCTION();
-	TVector<LightProxy> bakedLights;
-	bakedLights.Reserve(lights.Num());
-	for (const LightProxy& source : lights)
-	{
-		if (!std::isfinite(source.m_indirectLightingIntensity) ||
-			source.m_indirectLightingIntensity <= 0.0f)
-		{
-			continue;
-		}
-		LightProxy light = source;
-		light.m_intensity *= light.m_indirectLightingIntensity;
-		bakedLights.Add(std::move(light));
-	}
+	return InitializeInternal(instances, materials, nullptr, lights,
+		settings, fallbackEnvironment, progress, warning);
+}
 
+bool GIProbesPathTracer::InitializeSnapshot(
+	const TVector<PathTracer::TLASInstance>& instances,
+	const PathTracer::MaterialSnapshots& materials,
+	const TVector<LightProxy>& lights,
+	const GIProbesBakeSettings& settings,
+	const glm::vec3& fallbackEnvironment,
+	const PathTracer::ScenePreparationProgressCallback& progress,
+	const PathTracer::ScenePreparationWarningCallback& warning)
+{
+	return InitializeInternal(instances, {}, &materials, lights,
+		settings, fallbackEnvironment, progress, warning);
+}
+
+void GIProbesPathTracer::ConfigureParameters(
+	const GIProbesBakeSettings& settings, const glm::vec3& fallbackEnvironment)
+{
 	m_params = {};
 	m_params.m_maxBounces = settings.m_bounceCount;
 	m_params.m_numSamples = 1u;
@@ -54,6 +80,53 @@ bool GIProbesPathTracer::Initialize(
 	m_params.m_bIncludeDirectLighting = settings.m_bIncludeDirectLighting;
 	m_params.m_bIncludeEnvironment = settings.m_bIncludeSky;
 	m_params.m_bIncludeEmissive = settings.m_bIncludeEmissive;
+}
+
+bool GIProbesPathTracer::InitializeLighting(
+	const GIProbesPathTracer& source,
+	const PathTracer::MaterialSnapshots& materials,
+	const TVector<LightProxy>& lights,
+	const GIProbesBakeSettings& settings,
+	const glm::vec3& fallbackEnvironment,
+	const PathTracer::ScenePreparationProgressCallback& progress)
+{
+	if (!source.m_bInitialized)
+	{
+		return false;
+	}
+	m_bInitialized = false;
+	m_pathTracer.UsePreparedGeometry(source.m_pathTracer);
+	if (!m_pathTracer.UpdatePreparedEmission(materials, progress))
+	{
+		return false;
+	}
+	TVector<LightProxy> bakedLights;
+	const size_t instanceCount = m_pathTracer.GetLastScenePreparationStats().m_geometryInstanceCount;
+	if (!GetIndirectLights(lights, bakedLights, progress,
+		{ PathTracer::EScenePreparationStage::Geometry, instanceCount, instanceCount })) return false;
+	m_pathTracer.m_lightProxies = std::move(bakedLights);
+	m_pathTracer.ClearRuntimeEnvironment();
+	ConfigureParameters(settings, fallbackEnvironment);
+	m_bInitialized = true;
+	return true;
+}
+
+bool GIProbesPathTracer::InitializeInternal(
+	const TVector<PathTracer::TLASInstance>& instances,
+	const TVector<MaterialPtr>& runtimeMaterials,
+	const PathTracer::MaterialSnapshots* snapshotMaterials,
+	const TVector<LightProxy>& lights,
+	const GIProbesBakeSettings& settings,
+	const glm::vec3& fallbackEnvironment,
+	const PathTracer::ScenePreparationProgressCallback& progress,
+	const PathTracer::ScenePreparationWarningCallback& warning)
+{
+	SAILOR_PROFILE_FUNCTION();
+	m_bInitialized = false;
+	TVector<LightProxy> bakedLights;
+	if (!GetIndirectLights(lights, bakedLights, progress,
+		{ PathTracer::EScenePreparationStage::Geometry, 0u, instances.Num() })) return false;
+	ConfigureParameters(settings, fallbackEnvironment);
 	const auto reportWarning = [&warning](const std::string& diagnostic)
 	{
 		if (warning)
@@ -63,14 +136,11 @@ bool GIProbesPathTracer::Initialize(
 		}
 		SAILOR_LOG("[Warning] GI bake: %s", diagnostic.c_str());
 	};
-	const bool bHasGeometry = m_pathTracer.InitializeScene(
-		instances,
-		materials,
-		bakedLights,
-		false,
-		progress,
-		true,
-		reportWarning);
+	const bool bHasGeometry = snapshotMaterials ?
+		m_pathTracer.InitializeSceneSnapshot(instances, *snapshotMaterials,
+			bakedLights, false, progress, true, reportWarning) :
+		m_pathTracer.InitializeScene(instances, runtimeMaterials,
+			bakedLights, false, progress, true, reportWarning);
 	m_bInitialized = bHasGeometry;
 	return m_bInitialized;
 }
@@ -82,10 +152,18 @@ void GIProbesPathTracer::SetEnvironmentLinear(
 	m_pathTracer.SetRuntimeEnvironmentLinear(image, extent);
 }
 
+bool GIProbesPathTracer::SetEnvironmentLinear(const TVector<glm::vec4>& image, const glm::uvec2& extent,
+	const std::function<bool()>& shouldContinue)
+{
+	if (m_pathTracer.SetRuntimeEnvironmentLinear(image, extent, shouldContinue)) return true;
+	m_bInitialized = false;
+	return false;
+}
+
 bool GIProbesPathTracer::SamplePrimaryDirection(
 	const glm::vec3& uniformDirection,
-	uint32_t sampleIndex,
-	uint32_t sampleCount,
+	uint32_t,
+	uint32_t,
 	uint32_t randomSeed,
 	glm::vec3& outDirection,
 	float& outPdf,
@@ -95,26 +173,18 @@ bool GIProbesPathTracer::SamplePrimaryDirection(
 		0.07957747154594766788f;
 	outDirection = uniformDirection;
 	outPdf = UniformSpherePdf;
-	if (!m_pathTracer.m_bUseRuntimeEnvironmentImportance ||
-		sampleCount < 2u)
+	if (!m_pathTracer.m_bUseRuntimeEnvironmentImportance)
 	{
 		outDiagnostic.clear();
 		return true;
 	}
 
-	const uint32_t importanceSampleCount = sampleCount / 2u;
-	const uint32_t uniformSampleCount =
-		sampleCount - importanceSampleCount;
-	const float importanceFraction =
-		static_cast<float>(importanceSampleCount) /
-		static_cast<float>(sampleCount);
-	const float uniformFraction =
-		static_cast<float>(uniformSampleCount) /
-		static_cast<float>(sampleCount);
+	// The seed is already mixed per ray. One bit chooses the technique; the remaining
+	// bits seed importance sampling. The mixture stays the same for every prefix/budget.
 	float directionImportancePdf = 0.0f;
-	if ((sampleIndex & 1u) != 0u)
+	if ((randomSeed & 1u) != 0u)
 	{
-		uint32_t importanceRandomState = randomSeed;
+		uint32_t importanceRandomState = randomSeed >> 1u;
 		if (!m_pathTracer.SampleRuntimeEnvironmentImportance(
 				importanceRandomState,
 				outDirection,
@@ -131,8 +201,7 @@ bool GIProbesPathTracer::SamplePrimaryDirection(
 			m_pathTracer.RuntimeEnvironmentImportancePdf(outDirection);
 	}
 
-	outPdf = uniformFraction * UniformSpherePdf +
-		importanceFraction * directionImportancePdf;
+	outPdf = 0.5f * (UniformSpherePdf + directionImportancePdf);
 	outDiagnostic.clear();
 	return std::isfinite(outPdf) && outPdf > 0.0f;
 }

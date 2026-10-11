@@ -50,7 +50,7 @@ size_t RHIShaderBinding::GetCompatibilityHash() const
 	return hash;
 }
 
-bool RHIShaderBinding::FindVariableInUniformBuffer(const std::string& variable, ShaderLayoutBindingMember& outVariable) const
+bool RHIShaderBinding::FindVariableInUniformBuffer(StringHash variable, ShaderLayoutBindingMember& outVariable) const
 {
 	auto it = std::find_if(m_bindingLayout.m_members.begin(), m_bindingLayout.m_members.end(), [&variable](const RHI::ShaderLayoutBindingMember& shaderLayoutBinding)
 	{

@@ -13,12 +13,11 @@ public sealed record McpLandscapeVegetationProfile
     public float MinScale { get; init; } = 0.75f;
     public float MaxScale { get; init; } = 1.25f;
     public float GroundOffset { get; init; }
-    public string Shadows { get; init; } = "NearOnly";
+    public string ShadowMode { get; init; } = "NearOnly";
     public float ShadowDistance { get; init; } = 35.0f;
     public uint MinLod { get; init; }
     public uint MaxLod { get; init; } = 2;
-    public float Lod1ScreenCoverage { get; init; } = 0.25f;
-    public float Lod2ScreenCoverage { get; init; } = 0.05f;
+    public float[] ScreenCoverageThresholds { get; init; } = [0.25f, 0.05f];
     public float CullDistance { get; init; } = 120.0f;
     public float ColliderRadius { get; init; }
     public float ColliderHeight { get; init; } = 2.0f;

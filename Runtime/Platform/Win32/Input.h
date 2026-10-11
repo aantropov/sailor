@@ -1,5 +1,6 @@
 #pragma once
 #include "Sailor.h"
+#include "Platform/InputEvent.h"
 
 namespace Sailor::Win32
 {
@@ -55,6 +56,12 @@ namespace Sailor::Win32
 		SAILOR_API static void SetCursorPosition(int32_t x, int32_t y);
 		SAILOR_API static void AddMouseWheelDelta(float delta);
 		SAILOR_API static void Reset();
+
+		// Native producers only enqueue values. The CPU-frame owner drains them;
+		// embedded editors discard hidden-window events and supply remote input.
+		SAILOR_API static void QueueNativeEvent(Platform::InputEvent event);
+		SAILOR_API static void ProcessPendingEvents(bool bAcceptNativeInput);
+		SAILOR_API static void ApplyEvent(const Platform::InputEvent& event);
 
 	protected:
 

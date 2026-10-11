@@ -22,11 +22,11 @@ namespace Sailor
 		SAILOR_API const AnimationSetPtr& GetAnimationSet() const { return GetData().GetAnimationSet(); }
 		SAILOR_API void SetAnimationSet(const AnimationSetPtr& animationSet);
 
-		SAILOR_API bool SetFloat(const std::string& name, float value);
-		SAILOR_API bool SetInt(const std::string& name, int32_t value);
-		SAILOR_API bool SetBool(const std::string& name, bool value);
-		SAILOR_API bool SetTrigger(const std::string& name);
-		SAILOR_API bool ResetTrigger(const std::string& name);
+		SAILOR_API bool SetFloat(StringHash name, float value);
+		SAILOR_API bool SetInt(StringHash name, int32_t value);
+		SAILOR_API bool SetBool(StringHash name, bool value);
+		SAILOR_API bool SetTrigger(StringHash name);
+		SAILOR_API bool ResetTrigger(StringHash name);
 
 		SAILOR_API void Play();
 		SAILOR_API void Stop();

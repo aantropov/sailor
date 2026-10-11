@@ -1,6 +1,7 @@
 #pragma once
 #include "Sailor.h"
 #include "Components/Tests/TestCaseComponent.h"
+#include "FrameGraph/CopyTextureToRamNode.h"
 
 namespace Sailor
 {
@@ -51,12 +52,12 @@ namespace Sailor
 		float m_rayBiasScale = 1.0f;
 		bool m_bPendingPathTracerConfig = false;
 
-		SAILOR_API virtual const char* GetTestType() const override { return "Visual"; }
+		SAILOR_API virtual const char* GetTestType() const override { return "CaptureSmoke"; }
 
 		uint32_t m_framesSinceStart = 0;
-		uint32_t m_framesAfterCaptureRequest = 0;
 		int64_t m_startTimeMs = 0;
-		bool m_bCaptureRequested = false;
+		int64_t m_captureRequestedAtMs = 0;
+		Framegraph::CopyTextureToRamNode::CaptureTask m_capture;
 	};
 }
 

@@ -37,51 +37,147 @@ uint64_t Sailor::ComputeGIProbesRepresentationHash(
 	return hash;
 }
 
-uint64_t Sailor::ComputeGIProbesLayoutHash(
-	const GIProbesData& data) noexcept
+namespace
+{
+	template<typename TContinue>
+	bool ComputeLayoutHash(const GIProbesData& data, uint64_t& outHash, const TContinue& shouldContinue)
+	{
+		if (!shouldContinue()) return false;
+		uint64_t hash = Fnv1aOffsetBasis;
+		HashValues(
+			hash,
+			data.m_volumeMin.x,
+			data.m_volumeMin.y,
+			data.m_volumeMin.z,
+			data.m_volumeMax.x,
+			data.m_volumeMax.y,
+			data.m_volumeMax.z);
+		const uint32_t numBricks = static_cast<uint32_t>(data.m_bricks.Num());
+		const uint32_t numProbes = static_cast<uint32_t>(data.m_probes.Num());
+		HashValue(hash, numBricks);
+		HashValue(hash, numProbes);
+
+		for (size_t index = 0u; index < data.m_bricks.Num(); ++index)
+		{
+			if (index % 256u == 0u && !shouldContinue()) return false;
+			const GIProbeBrick& brick = data.m_bricks[index];
+			HashValues(
+				hash,
+				brick.m_min.x,
+				brick.m_min.y,
+				brick.m_min.z,
+				brick.m_max.x,
+				brick.m_max.y,
+				brick.m_max.z);
+			HashValue(hash, brick.m_subdivisionLevel);
+			HashValue(hash, brick.m_firstProbeIndex);
+			HashValue(hash, brick.m_probeCount);
+			HashValue(hash, brick.m_probeCounts.x);
+			HashValue(hash, brick.m_probeCounts.y);
+			HashValue(hash, brick.m_probeCounts.z);
+		}
+
+		for (size_t index = 0u; index < data.m_probes.Num(); ++index)
+		{
+			if (index % 256u == 0u && !shouldContinue()) return false;
+			const GIProbe& probe = data.m_probes[index];
+			HashValues(
+				hash,
+				probe.m_position.x,
+				probe.m_position.y,
+				probe.m_position.z);
+		}
+
+		if (!shouldContinue()) return false;
+		outHash = hash;
+		return true;
+	}
+}
+
+uint64_t Sailor::ComputeGIProbesLayoutHash(const GIProbesData& data) noexcept
+{
+	uint64_t hash = 0u;
+	ComputeLayoutHash(data, hash, []() noexcept { return true; });
+	return hash;
+}
+
+bool Sailor::ComputeGIProbesLayoutHash(const GIProbesData& data,
+	uint64_t& outHash, const std::function<bool()>& shouldContinue)
+{
+	return ComputeLayoutHash(data, outHash, [&]() { return !shouldContinue || shouldContinue(); });
+}
+
+bool Sailor::ComputeGIProbesTransportHash(
+	const GIProbesData& data,
+	uint64_t& outHash,
+	const std::atomic<bool>* cancel) noexcept
+{
+	uint64_t layoutHash = data.m_layoutHash;
+	if (layoutHash == 0u && !ComputeLayoutHash(data, layoutHash,
+		[cancel]() noexcept { return !cancel || !cancel->load(std::memory_order_acquire); }))
+	{
+		return false;
+	}
+	uint64_t hash = Fnv1aOffsetBasis;
+	HashValue(hash, layoutHash);
+	HashValues(hash,
+		data.m_bakeSettings.m_maxSubdivisionLevel,
+		data.m_bakeSettings.m_minProbeSpacing,
+		data.m_bakeSettings.m_normalBias,
+		data.m_bakeSettings.m_viewBias,
+		data.m_bakeSettings.m_maxRayDistance);
+	for (size_t index = 0u; index < data.m_probes.Num(); ++index)
+	{
+		if (index % 256u == 0u && cancel && cancel->load(std::memory_order_acquire))
+		{
+			return false;
+		}
+		const GIProbe& probe = data.m_probes[index];
+		HashValues(hash, probe.m_relocationOffset.x, probe.m_relocationOffset.y, probe.m_relocationOffset.z);
+		HashValues(hash, probe.m_validity, probe.m_flags);
+		for (const glm::vec2& moments : probe.m_visibility)
+		{
+			HashValues(hash, moments.x, moments.y);
+		}
+		for (const float visibility : probe.m_environmentVisibility)
+		{
+			HashValue(hash, visibility);
+		}
+	}
+	if (cancel && cancel->load(std::memory_order_acquire))
+	{
+		return false;
+	}
+	outHash = hash;
+	return true;
+}
+
+bool Sailor::ComputeGIProbesLightingHash(const GIProbesData& data,
+	uint64_t& outHash, const std::atomic<bool>* cancel) noexcept
 {
 	uint64_t hash = Fnv1aOffsetBasis;
-	HashValues(
-		hash,
-		data.m_volumeMin.x,
-		data.m_volumeMin.y,
-		data.m_volumeMin.z,
-		data.m_volumeMax.x,
-		data.m_volumeMax.y,
-		data.m_volumeMax.z);
-	const uint32_t numBricks = static_cast<uint32_t>(data.m_bricks.Num());
-	const uint32_t numProbes = static_cast<uint32_t>(data.m_probes.Num());
-	HashValue(hash, numBricks);
-	HashValue(hash, numProbes);
-
-	for (const GIProbeBrick& brick : data.m_bricks)
+	HashValue(hash, data.m_layoutHash);
+	HashValue(hash, data.m_bakeSettings.m_raysPerProbe);
+	HashValue(hash, data.m_bakeSettings.m_bounceCount);
+	HashValue(hash, data.m_bakeSettings.m_randomSeed);
+	HashValue(hash, data.m_bakeSettings.m_skyIndirectIntensity);
+	for (size_t i = 0; i < data.m_probes.Num(); ++i)
 	{
-		HashValues(
-			hash,
-			brick.m_min.x,
-			brick.m_min.y,
-			brick.m_min.z,
-			brick.m_max.x,
-			brick.m_max.y,
-			brick.m_max.z);
-		HashValue(hash, brick.m_subdivisionLevel);
-		HashValue(hash, brick.m_firstProbeIndex);
-		HashValue(hash, brick.m_probeCount);
-		HashValue(hash, brick.m_probeCounts.x);
-		HashValue(hash, brick.m_probeCounts.y);
-		HashValue(hash, brick.m_probeCounts.z);
+		if (i % 256u == 0u && cancel && cancel->load(std::memory_order_acquire))
+		{
+			return false;
+		}
+		for (const glm::vec3& coefficient : data.m_probes[i].m_irradiance)
+		{
+			HashValues(hash, coefficient.x, coefficient.y, coefficient.z);
+		}
 	}
-
-	for (const GIProbe& probe : data.m_probes)
+	if (cancel && cancel->load(std::memory_order_acquire))
 	{
-		HashValues(
-			hash,
-			probe.m_position.x,
-			probe.m_position.y,
-			probe.m_position.z);
+		return false;
 	}
-
-	return hash;
+	outHash = hash;
+	return true;
 }
 
 float Sailor::CalculateGIProbeVisibilityMaxDistance(
@@ -111,7 +207,19 @@ float Sailor::CalculateGIProbeVisibilityMaxDistance(
 
 bool GIProbesData::Validate(std::string& outDiagnostic) const
 {
+	return Validate(outDiagnostic, {});
+}
+
+bool GIProbesData::Validate(std::string& outDiagnostic, const std::function<bool()>& shouldContinue) const
+{
 	outDiagnostic.clear();
+	const auto continueValidation = [&]()
+	{
+		if (!shouldContinue || shouldContinue()) return true;
+		outDiagnostic = "GI probe validation was cancelled";
+		return false;
+	};
+	if (!continueValidation()) return false;
 	if (m_formatVersion != GIProbesFormatVersion)
 	{
 		outDiagnostic = "unsupported GI probes data version";
@@ -187,8 +295,10 @@ bool GIProbesData::Validate(std::string& outDiagnostic) const
 	}
 
 	uint64_t coveredProbeCount = 0u;
-	for (const GIProbeBrick& brick : m_bricks)
+	for (size_t index = 0u; index < m_bricks.Num(); ++index)
 	{
+		if (index % 256u == 0u && !continueValidation()) return false;
+		const GIProbeBrick& brick = m_bricks[index];
 		if (!Math::AllFinite(brick.m_min) ||
 			!Math::AllFinite(brick.m_max) ||
 			glm::any(glm::lessThanEqual(brick.m_max, brick.m_min)) ||
@@ -238,8 +348,10 @@ bool GIProbesData::Validate(std::string& outDiagnostic) const
 		return false;
 	}
 
-	for (const GIProbe& probe : m_probes)
+	for (size_t index = 0u; index < m_probes.Num(); ++index)
 	{
+		if (index % 256u == 0u && !continueValidation()) return false;
+		const GIProbe& probe = m_probes[index];
 		constexpr uint32_t KnownProbeFlags =
 			EGIProbeFlag::Valid |
 			EGIProbeFlag::Relocated |
@@ -289,7 +401,8 @@ bool GIProbesData::Validate(std::string& outDiagnostic) const
 		}
 	}
 
-	const uint64_t expectedLayoutHash = ComputeGIProbesLayoutHash(*this);
+	uint64_t expectedLayoutHash = 0u;
+	if (!ComputeLayoutHash(*this, expectedLayoutHash, continueValidation)) return false;
 	if (m_layoutHash != 0u && m_layoutHash != expectedLayoutHash)
 	{
 		outDiagnostic = "the stored layout hash does not match the spatial payload";
@@ -307,7 +420,7 @@ bool GIProbesData::Validate(std::string& outDiagnostic) const
 		return false;
 	}
 
-	return true;
+	return continueValidation();
 }
 
 bool GIProbesData::IsCompositionCompatibleWith(

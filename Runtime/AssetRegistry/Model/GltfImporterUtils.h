@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <limits>
 #include <string>
+#include <string_view>
 
 namespace tinygltf
 {
@@ -80,7 +81,7 @@ namespace Sailor::GltfImporterUtils
 		float unitScale);
 
 	SAILOR_SHARED_API MaterialAlphaModeSettings ResolveMaterialAlphaMode(
-		const std::string& alphaMode,
+		std::string_view alphaMode,
 		bool bHasTransmission = false);
 
 	SAILOR_SHARED_API MaterialTransmissionSettings ResolveMaterialTransmission(

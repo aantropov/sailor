@@ -140,26 +140,19 @@ vec3 Math::Rand3dTo3d(vec3 value)
 	);
 }
 
-vec3 Math::Mod(vec3 divident, int divisor)
+vec3 Math::Mod(vec3 dividend, int divisor)
 {
-	int x = ((int)divident.x + divisor * 100) % (divisor);
-	int y = ((int)divident.y + divisor * 100) % (divisor);
-	int z = ((int)divident.z + divisor * 100) % (divisor);
-
-	return vec3(x, y, z);
+	return glm::mod(dividend, vec3(static_cast<float>(divisor)));
 }
 
 float Math::Frac(float num)
 {
-	float f = (num - (int)(num));
-	if (f < 0) f *= -1;
-
-	return f;
+	return glm::fract(num);
 }
 
 vec3 Math::Frac(vec3 v)
 {
-	return vec3((v.x - (int)(v.x)), (v.y - (int)(v.y)), (v.z - (int)(v.z)));
+	return glm::fract(v);
 }
 
 float Math::EaseInOut(float interpolator)
@@ -215,7 +208,6 @@ vec3 Math::TiledVoronoiNoise3D(vec3 value, uint32_t period)
 
 	// First pass to find the closest cell
 	float minDistToCell = 10;
-	vec3 toClosestCell;
 	vec3 closestCell;
 
 	for (int x1 = -1; x1 <= 1; x1++) {
@@ -228,47 +220,18 @@ vec3 Math::TiledVoronoiNoise3D(vec3 value, uint32_t period)
 				vec3 tiledCell = Mod(cell, period);
 				vec3 cellPosition = cell + Rand3dTo3d(tiledCell);
 				vec3 toCell = cellPosition - value;
-				float distToCell = (float)toCell.length();
+				float distToCell = glm::length(toCell);
 				if (distToCell < minDistToCell)
 				{
 					minDistToCell = distToCell;
 					closestCell = cell;
-					toClosestCell = toCell;
 				}
 			}
 		}
 	}
 
-	// Second pass to find the distance to the closest edge
-	float minEdgeDistance = 10;
-
-	/*
-	for (int x2 = -1; x2 <= 1; x2++) {
-
-		for (int y2 = -1; y2 <= 1; y2++) {
-
-			for (int z2 = -1; z2 <= 1; z2++) {
-				vec3 cell = baseCell + vec3(x2, y2, z2);
-				vec3 tiledCell = Mod(cell, period);
-				vec3 cellPosition = cell + Rand3dTo3d(tiledCell);
-				vec3 toCell = cellPosition - value;
-
-				vec3 diffToClosestCell = abs(closestCell - cell);
-				bool isClosestCell = diffToClosestCell.x + diffToClosestCell.y + diffToClosestCell.z < 0.1;
-				if (!isClosestCell) {
-					vec3 toCenter = (toClosestCell + toCell) * 0.5f;
-					vec3 cellDifference = (toCell - toClosestCell);
-					cellDifference = normalize(cellDifference);
-					float edgeDistance = glm::dot(toCenter, cellDifference);
-					minEdgeDistance = min(minEdgeDistance, edgeDistance);
-				}
-			}
-		}
-	}*/
-
-	float random = Rand3dTo1d(closestCell);
-	return vec3(minDistToCell, random, minEdgeDistance);
-
+	const float random = Rand3dTo1d(Mod(closestCell, period));
+	return vec3(minDistToCell, random, 10.0f);
 }
 
 float Math::Perlin3D(vec3 P)

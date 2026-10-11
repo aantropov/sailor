@@ -46,10 +46,10 @@ namespace Sailor::AssetRegistryInternal
 	std::string Lowercase(std::string value);
 	std::string PathKey(const std::filesystem::path& path);
 	std::string VirtualPathKey(std::string path);
-	bool IsSafeVirtualPath(const std::string& path);
+	bool IsSafeVirtualPath(std::string_view path);
 	bool IsInside(const std::filesystem::path& root, const std::filesystem::path& candidate);
 	std::string MountFileKey(const AssetMountDescriptor& mount, const std::string& virtualPath);
-	std::string Extension(const std::string& path);
+	std::string Extension(std::string_view path);
 	std::string HandlerExtension(const StagedAssetRecord& record);
 	bool CandidateMatches(const AssetMountCandidate* winner, const AssetMountCandidate& candidate);
 	bool SameEffectiveContent(const AssetRegistry::AssetReadLocation& left,
@@ -59,6 +59,6 @@ namespace Sailor::AssetRegistryInternal
 		std::string& outFilename,
 		std::string& outAssetInfoType,
 		std::string& outError);
-	FileId ParseFileId(const std::string& value);
+	FileId ParseFileId(std::string_view value);
 	void DeleteAssetInfos(TMap<FileId, AssetInfoPtr>& assetInfos);
 }

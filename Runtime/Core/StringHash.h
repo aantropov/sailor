@@ -46,5 +46,38 @@ namespace Sailor
 		static const std::string& GetStrFromHashedStringsTable(StringHash Hash);
 	};
 
-	SAILOR_API /*[[nodiscard]]*/ __forceinline constexpr StringHash operator""_h(const char* str, std::size_t size) { return StringHash{std::string_view(str, size)}; }
+	namespace Internal
+	{
+		template<size_t N>
+		struct TStringLiteral
+		{
+			char m_chars[N];
+
+			constexpr TStringLiteral(const char (&value)[N])
+			{
+				for (size_t i = 0; i < N; ++i) m_chars[i] = value[i];
+			}
+		};
+
+		template<TStringLiteral Literal>
+		void RegisterStringLiteral()
+		{
+			static const bool bRegistered = []
+			{
+				constexpr std::string_view text(Literal.m_chars, sizeof(Literal.m_chars) - 1);
+				constexpr StringHash hash(text);
+				StringHash::AddToHashedStringsTable(hash, text);
+				return true;
+			}();
+			(void)bRegistered;
+		}
+	}
+
+	template<Internal::TStringLiteral Literal>
+	[[nodiscard]] constexpr StringHash operator""_h()
+	{
+		constexpr StringHash hash(std::string_view(Literal.m_chars, sizeof(Literal.m_chars) - 1));
+		if (!std::is_constant_evaluated()) Internal::RegisterStringLiteral<Literal>();
+		return hash;
+	}
 };

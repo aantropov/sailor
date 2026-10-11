@@ -32,7 +32,6 @@ message ProtocolRequest {
 		ViewportIdRequest get_remote_viewport_state = 27;
 		ViewportIdRequest get_remote_viewport_diagnostics = 28;
 		ViewportIdRequest retry_remote_viewport = 29;
-		RemoteViewportHostRequest set_remote_viewport_mac_host_handle = 30;
 		RemoteViewportInputRequest send_remote_viewport_input = 31;
 		CountRequest pull_editor_viewport_events = 32;
 		ManagedMutationRevisionRequest get_editor_managed_mutation_revision = 33;
@@ -58,7 +57,7 @@ message ProtocolRequest {
 		InstanceIdRequest break_prefab_link = 54;
 		ViewportToolStateRequest set_viewport_tool_state = 55;
 		ViewportIdRequest get_viewport_tool_state = 56;
-		FileIdRequest update_asset = 57;
+		UpdateAssetRequest update_asset = 57;
 		CreateModelInstanceRequest create_model_instance = 58;
 		AnimatorParameterRequest set_animator_parameter = 59;
 		InstanceIdRequest get_animator_state = 60;
@@ -78,13 +77,17 @@ message ProtocolRequest {
 		Empty restart_runtime_gi_probes = 74;
 		Empty rebuild_runtime_gi_probes_scene = 75;
 		RuntimeGIProbesPreviewBudgetRequest set_runtime_gi_probes_preview_budget = 76;
+		ViewportIdRequest capture_remote_viewport_frame_evidence = 77;
+		FileIdRequest request_model_fingerprint = 100;
+		FileIdRequest get_model_fingerprint_status = 101;
 	}
 
 	reserved 3 to 9;
+	reserved 30;
 	reserved 50;
 	reserved "create_model_game_object";
 	reserved "resolve_viewport_drop_position";
-	reserved 77 to 99;
+	reserved 78 to 99;
 }
 
 message ProtocolResponse {
@@ -111,6 +114,7 @@ message ProtocolResponse {
 		EditorRenderModeResult editor_render_mode_result = 23;
 		GIProbesBakeStatusResult gi_probes_bake_status_result = 24;
 		GlobalIlluminationStateResult global_illumination_state_result = 25;
+		ModelFingerprintStatusResult model_fingerprint_status_result = 100;
 	}
 
 	reserved 6 to 9;
@@ -127,6 +131,11 @@ message CountRequest {
 
 message FileIdRequest {
 	string file_id = 1;
+}
+
+message UpdateAssetRequest {
+	string file_id = 1;
+	bool reimport = 2;
 }
 
 message CreateModelInstanceRequest {
@@ -263,12 +272,6 @@ message RemoteViewportRequest {
 	bool focused = 7;
 }
 
-message RemoteViewportHostRequest {
-	uint64 viewport_id = 1;
-	uint32 host_handle_kind = 2;
-	uint64 host_handle_value = 3;
-}
-
 message RemoteViewportInputRequest {
 	uint64 viewport_id = 1;
 	uint32 kind = 2;
@@ -282,6 +285,7 @@ message RemoteViewportInputRequest {
 	bool pressed = 10;
 	bool focused = 11;
 	bool captured = 12;
+	string text = 13;
 }
 
 message ManagedMutationRevisionRequest {
@@ -587,6 +591,7 @@ message RuntimeGIProbesSettings {
 	float normal_bias = 7;
 	float view_bias = 8;
 	float max_ray_distance = 9;
+	float sun_angle_threshold_degrees = 10;
 }
 
 message RuntimeGIProbesPreviewRequest {
@@ -618,4 +623,15 @@ message RuntimeGIProbesState {
 
 message RuntimeGIProbesPreviewBudgetRequest {
 	RuntimeGIProbesPreviewBudget budget = 1;
+}
+
+enum ModelFingerprintStatus {
+	MODEL_FINGERPRINT_STATUS_UNAVAILABLE = 0;
+	MODEL_FINGERPRINT_STATUS_PENDING = 1;
+	MODEL_FINGERPRINT_STATUS_READY = 2;
+	MODEL_FINGERPRINT_STATUS_FAILED = 3;
+}
+
+message ModelFingerprintStatusResult {
+	ModelFingerprintStatus status = 1;
 }

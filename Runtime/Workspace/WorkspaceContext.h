@@ -71,7 +71,7 @@ namespace Sailor::Workspace
 		bool m_bLegacy = false;
 
 		friend struct WorkspaceContextResolveResult;
-		friend WorkspaceContextResolveResult ResolveWorkspaceContext(
+		friend SAILOR_SHARED_API WorkspaceContextResolveResult ResolveWorkspaceContext(
 			const std::filesystem::path&,
 			const std::filesystem::path&) noexcept;
 	};

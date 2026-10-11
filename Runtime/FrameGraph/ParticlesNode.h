@@ -79,12 +79,14 @@ namespace Sailor::Framegraph
 				}
 			};
 
-			SAILOR_API static const char* GetName() { return m_name; }
+			SAILOR_API static StringHash GetName() { return "ExperimentalParticles"_h; }
 
 			SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override;
 			SAILOR_API virtual void Clear() override;
 
 		protected:
+
+			SAILOR_API bool InitializeBuffers(const TVector<PerInstanceData>& instances);
 
 			ParticleInfo m_particlesHeader;
 			TVector<ParticleData> m_particlesDataBinary;
@@ -104,9 +106,12 @@ namespace Sailor::Framegraph
 			uint32_t m_numInstances = 0;
 			ShaderSetPtr m_pComputeShader{};
 
-			static const char* m_name;
 		};
 	}
 
+#ifdef _SAILOR_IMPORT_
+	extern template class TFrameGraphNode<Experimental::ParticlesNode>;
+#else
 	template class TFrameGraphNode<Experimental::ParticlesNode>;
+#endif
 };

@@ -3,6 +3,7 @@ using SailorEditor.Content;
 using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using SailorEngine;
+using SailorEditor;
 
 namespace Editor.Tests;
 

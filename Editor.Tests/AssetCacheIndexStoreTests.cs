@@ -38,6 +38,19 @@ public class AssetCacheIndexStoreTests
     }
 
     [Fact]
+    public void Parse_RejectsExpandedRevisionLayoutAtVersionOne()
+    {
+        var result = AssetCacheIndexStore.Parse(
+            "AssetCache.yaml",
+            CreateCacheYaml(Path.GetFullPath("Duck.glb"), includeUnusedRevisionFields: true),
+            "workspace-test");
+
+        Assert.Equal(AssetCacheIndexStatus.Corrupt, result.Status);
+        Assert.Null(result.Entries);
+        Assert.Contains("sourceRevision", result.Diagnostic, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Parse_RejectsUnknownLegacyEntryFields()
     {
         var yaml = CreateCacheYaml(
@@ -55,7 +68,8 @@ public class AssetCacheIndexStoreTests
 
     static string CreateCacheYaml(
         string sourcePath,
-        string? extraEntryField = null)
+        string? extraEntryField = null,
+        bool includeUnusedRevisionFields = false)
     {
         var escapedSourcePath = sourcePath
             .Replace("\\", "\\\\", StringComparison.Ordinal)
@@ -69,15 +83,18 @@ public class AssetCacheIndexStoreTests
                   sourcePath: "{{escapedSourcePath}}"
                   sourceRevision:
                     modificationTimeNanoseconds: 2
-                    fileSize: 3
-                    contentHash: 0
                   metadataFilename: Duck.glb.asset
                   metadataRevision:
                     modificationTimeNanoseconds: 4
-                    fileSize: 5
-                    contentHash: 0
                   assetInfoType: Sailor::ModelAssetInfo
             """;
+        if (includeUnusedRevisionFields)
+        {
+            payload = payload.Replace(
+                "        modificationTimeNanoseconds:",
+                "        fileSize: 0\n        contentHash: 0\n        modificationTimeNanoseconds:",
+                StringComparison.Ordinal);
+        }
         if (!string.IsNullOrWhiteSpace(extraEntryField))
         {
             payload = payload.Replace(

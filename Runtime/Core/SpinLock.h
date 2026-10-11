@@ -27,23 +27,12 @@ namespace Sailor
 
 		SAILOR_API __forceinline bool TryLock() noexcept
 		{
-			if (!m_lock.test(std::memory_order_acquire))
-			{
-				Lock();
-				return true;
-			}
-
-			return false;
+			return !m_lock.test_and_set(std::memory_order_acquire);
 		}
 
 		SAILOR_API __forceinline bool CanLock() noexcept
 		{
-			if (!m_lock.test(std::memory_order_acquire))
-			{
-				return true;
-			}
-
-			return false;
+			return !m_lock.test(std::memory_order_acquire);
 		}
 
 		SAILOR_API __forceinline void Unlock() noexcept

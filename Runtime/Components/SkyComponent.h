@@ -12,6 +12,7 @@ namespace Sailor
 	public:
 
 		SAILOR_API SkyComponent();
+		SAILOR_API virtual void Initialize() override;
 
 		SAILOR_API virtual void BeginPlay() override;
 		SAILOR_API virtual void EndPlay() override;

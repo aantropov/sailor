@@ -54,5 +54,10 @@ namespace Sailor
 		ObjectAllocatorPtr m_allocator;
 
 		SAILOR_API bool ImportAnimation(FileId uid, AnimationPtr& outAnimation);
+
+	private:
+		SAILOR_API bool ImportAnimation(FileId uid, AnimationAssetInfoPtr info, AnimationPtr& outAnimation);
+
+		friend class AnimationImporterTestAccess;
 	};
 }

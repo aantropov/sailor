@@ -2,6 +2,7 @@
 
 #include "Containers/Vector.h"
 #include "Core/Defines.h"
+#include "Landscape/LandscapeSettings.h"
 #include "Math/Bounds.h"
 
 #include <cstdint>
@@ -46,7 +47,7 @@ namespace Sailor::GlobalIlluminationLandscapeTestScene
 	inline constexpr float MinimumReceiverIrradianceEnergy = 0.015f;
 
 	SAILOR_SHARED_API const TVector<Box>& GetBoxes();
-	SAILOR_SHARED_API TVector<float> GetLandscapeSculptStamps();
+	SAILOR_SHARED_API TVector<LandscapeSculptStamp> GetLandscapeSculptStamps();
 	SAILOR_SHARED_API float SampleLandscapeHeight(float x, float z);
 	SAILOR_SHARED_API void BuildBakeTriangles(
 		TVector<Math::Triangle>& outTriangles,

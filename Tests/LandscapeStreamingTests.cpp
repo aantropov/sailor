@@ -1,6 +1,6 @@
 #include "AssetRegistry/Landscape/LandscapeVegetationAsset.h"
 #include "ECS/LandscapeECS.h"
-#include "ECS/LandscapeStreaming.h"
+#include "Landscape/LandscapeStreaming.h"
 
 #include <chrono>
 #include <filesystem>
@@ -10,6 +10,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 
 using namespace Sailor;
@@ -41,24 +42,26 @@ namespace
 		std::filesystem::path m_path{};
 	};
 
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
 	void RequireCoordinates(
 		const TVector<uint32_t>& actual,
 		std::initializer_list<uint32_t> expected,
-		const std::string& message)
+		std::string_view message)
 	{
-		Require(actual.Num() == expected.size(), message + ": unexpected coordinate count");
+		if (actual.Num() != expected.size())
+			throw std::runtime_error(std::string(message) + ": unexpected coordinate count");
 		size_t index = 0u;
 		for (uint32_t coordinate : expected)
 		{
-			Require(actual[index] == coordinate, message + ": unexpected coordinate value");
+			if (actual[index] != coordinate)
+				throw std::runtime_error(std::string(message) + ": unexpected coordinate value");
 			++index;
 		}
 	}

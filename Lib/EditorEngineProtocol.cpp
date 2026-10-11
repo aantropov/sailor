@@ -1,21 +1,24 @@
 #include "EditorEngineProtocolInternal.h"
 #include "EditorEngineProtocolLifecycle.h"
+#include "EditorEngineWebSocketServer.h"
 
+#include "Editor/EditorRuntimeBridge.h"
 #include "Memory/UniquePtr.hpp"
 #include "Protocol/Generated/editor_engine.pb.h"
 #include "Sailor.h"
 #include "Tasks/Scheduler.h"
 #include "Tasks/Tasks.h"
+#include "Submodules/EditorRemote/RemoteViewportMacNativeBridge.h"
 
 #include <exception>
+#include <climits>
 #include <limits>
 #include <new>
 #include <stdexcept>
 #include <string>
 
 bool Sailor::Protocol::DispatchEditorEngineProtocolOperationOnEditorThread(void*,
-	const EditorEngineProtocolDependencies::FEditorEngineProtocolOperation operation,
-	void* operationContext)
+	EditorEngineProtocolDependencies::FEditorEngineProtocolOperation operation)
 {
 	if (!operation)
 	{
@@ -30,17 +33,16 @@ bool Sailor::Protocol::DispatchEditorEngineProtocolOperationOnEditorThread(void*
 
 	if (scheduler->IsEditorThread())
 	{
-		operation(operationContext);
+		operation();
 		return true;
 	}
 
 	auto task = Sailor::Tasks::CreateTask(
-		"Editor protocol operation",
-		[operation, operationContext]() { operation(operationContext); },
+		"Editor protocol operation"_h,
+		std::move(operation),
 		Sailor::EThreadType::Editor);
 	scheduler->Run(task);
-	task->Wait();
-	return task->IsFinished();
+	return true;
 }
 
 namespace
@@ -66,33 +68,41 @@ namespace
 		Sailor::App::Start();
 	}
 
-	struct TEditorProtocolDispatchContext final
+	bool ShutdownOwnedLocalHost(Sailor::Protocol::TEditorEngineProtocolLifecycleGate& gate,
+		const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies) noexcept
 	{
-		const ProtocolRequest* m_request = nullptr;
-		ProtocolResponse* m_response = nullptr;
-		const Sailor::Protocol::EditorEngineProtocolDependencies* m_dependencies = nullptr;
-		std::exception_ptr m_exception{};
-		bool m_bExecuted = false;
-	};
-
-	void ExecuteDispatchedEditorProtocolRequest(void* context) noexcept
-	{
-		auto& dispatchContext = *static_cast<TEditorProtocolDispatchContext*>(context);
+		Sailor::Protocol::StopEditorEngineWebSocketServer();
 		try
 		{
-			Sailor::Protocol::DispatchEditorEngineProtocolRequest(
-				*dispatchContext.m_request, *dispatchContext.m_response, *dispatchContext.m_dependencies);
+			const bool bSucceeded = dependencies.m_shutdown ?
+				dependencies.m_shutdown(dependencies.m_context) : Sailor::App::Shutdown();
+			if (bSucceeded)
+			{
+				gate.Reset();
+				return true;
+			}
 		}
 		catch (...)
 		{
-			dispatchContext.m_exception = std::current_exception();
 		}
-		dispatchContext.m_bExecuted = true;
+		gate.CompleteShutdown(false);
+		return false;
 	}
 
-	void DispatchRequestOnEditorThread(const ProtocolRequest& request,
+	struct TEditorProtocolDispatchContext final
+	{
+		ProtocolRequest m_request;
+		ProtocolResponse m_response;
+		Sailor::Protocol::EditorEngineProtocolDependencies m_dependencies;
+		std::exception_ptr m_exception{};
+		std::atomic<Sailor::Protocol::TEditorEngineProtocolLifecycleGate::EEditorDispatchState> m_state{
+			Sailor::Protocol::TEditorEngineProtocolLifecycleGate::EEditorDispatchState::Queued};
+	};
+
+	void DispatchRequestOnEditorThread(ProtocolRequest& request,
 		ProtocolResponse& response,
-		const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies)
+		const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies,
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate& gate)
 	{
 		if (!dependencies.m_dispatchEditorOperation)
 		{
@@ -100,23 +110,51 @@ namespace
 			return;
 		}
 
-		TEditorProtocolDispatchContext context{&request, &response, &dependencies, {}, false};
+		using State = Sailor::Protocol::TEditorEngineProtocolLifecycleGate::EEditorDispatchState;
+		auto context = Sailor::TSharedPtr<TEditorProtocolDispatchContext>::Make();
+		context->m_request.Swap(&request);
+		context->m_response.Swap(&response);
+		context->m_dependencies = dependencies;
 		const bool bDispatched = dependencies.m_dispatchEditorOperation(
-			dependencies.m_editorDispatchContext, ExecuteDispatchedEditorProtocolRequest, &context);
-		if (!bDispatched || !context.m_bExecuted)
+			dependencies.m_editorDispatchContext, [context, &gate]()
+			{
+				auto expected = State::Queued;
+				if (!context->m_state.compare_exchange_strong(expected, State::Executing))
+				{
+					// A cancelled task can remain queued after its caller and host
+					// session have ended. Do not enter the gate or App in that case.
+					return;
+				}
+				try
+				{
+					DispatchRequest(context->m_request, context->m_response, context->m_dependencies);
+				}
+				catch (...)
+				{
+					context->m_exception = std::current_exception();
+				}
+				gate.CompleteEditorDispatch(context->m_state);
+			});
+		const bool bCompleted = bDispatched && gate.WaitForEditorDispatch(context->m_state);
+		response.Swap(&context->m_response);
+		if (!bDispatched)
 		{
-			throw std::runtime_error("Failed to execute the Engine protocol operation on the Editor worker.");
+			throw std::runtime_error("Failed to queue the Engine protocol operation on the Editor worker.");
 		}
-		if (context.m_exception)
+		if (!bCompleted)
 		{
-			std::rethrow_exception(context.m_exception);
+			SetError(response, "Engine protocol operation was cancelled during host shutdown.");
+			return;
+		}
+		if (context->m_exception)
+		{
+			std::rethrow_exception(context->m_exception);
 		}
 	}
 
 	enum class EProtocolLifecycleCompletion : uint8_t
 	{
 		None,
-		Initialization,
 		Operation,
 		Shutdown
 	};
@@ -137,16 +175,12 @@ namespace
 		{
 			switch (m_completion)
 			{
-			case EProtocolLifecycleCompletion::Initialization:
-				m_gate.CompleteInitialization(m_bSucceeded);
-				break;
-
 			case EProtocolLifecycleCompletion::Operation:
 				m_gate.ReleaseOperation();
 				break;
 
 			case EProtocolLifecycleCompletion::Shutdown:
-				m_gate.CompleteShutdown();
+				m_gate.CompleteShutdown(m_bSucceeded);
 				break;
 
 			case EProtocolLifecycleCompletion::None:
@@ -166,7 +200,19 @@ namespace
 		bool m_bSucceeded = false;
 	};
 
-	void DispatchRequestWithLifecycleAdmission(const ProtocolRequest& request,
+	bool RequestStop(Sailor::Protocol::TEditorEngineProtocolLifecycleGate& gate,
+		const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies)
+	{
+		if (!gate.TryAcquireStop())
+		{
+			return false;
+		}
+		const TProtocolLifecycleCompletion completion(gate, EProtocolLifecycleCompletion::Operation);
+		StopEngine(dependencies);
+		return true;
+	}
+
+	void DispatchRequestWithLifecycleAdmission(ProtocolRequest& request,
 		ProtocolResponse& response,
 		const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies)
 	{
@@ -189,9 +235,19 @@ namespace
 				return;
 			}
 
-			TProtocolLifecycleCompletion completion(gate, EProtocolLifecycleCompletion::Initialization);
-			DispatchRequest(request, response, dependencies);
-			completion.MarkSucceeded();
+			try
+			{
+				DispatchRequest(request, response, dependencies);
+			}
+			catch (...)
+			{
+				gate.CompleteInitialization(false);
+				throw;
+			}
+			if (!gate.CompleteInitialization(response.success()))
+			{
+				SetError(response, "Engine initialization was superseded by shutdown.");
+			}
 			return;
 		}
 
@@ -209,15 +265,11 @@ namespace
 		}
 
 		case ProtocolRequest::kStop:
-			if (gate.NoteStopRequested())
+			if (RequestStop(gate, dependencies))
 			{
-				DispatchRequest(request, response, dependencies);
 				gate.WaitForStartDrainAndJoin();
 			}
-			else
-			{
-				SetEmptyResult(response);
-			}
+			SetEmptyResult(response);
 			return;
 
 		case ProtocolRequest::kShutdown:
@@ -228,7 +280,7 @@ namespace
 				return;
 			}
 
-			const TProtocolLifecycleCompletion completion(gate, EProtocolLifecycleCompletion::Shutdown);
+			TProtocolLifecycleCompletion completion(gate, EProtocolLifecycleCompletion::Shutdown);
 			// Initialization owns partially built App state. Once it drains,
 			// Stop can safely release a blocking Start before the remaining
 			// regular operation leases are joined.
@@ -237,6 +289,10 @@ namespace
 			gate.WaitForShutdownDrain();
 			gate.WaitForStartDrainAndJoin();
 			DispatchRequest(request, response, dependencies);
+			if (response.success())
+			{
+				completion.MarkSucceeded();
+			}
 			return;
 		}
 
@@ -264,11 +320,37 @@ namespace
 			}
 			else
 			{
-				DispatchRequestOnEditorThread(request, response, dependencies);
+				DispatchRequestOnEditorThread(request, response, dependencies, gate);
 			}
 			return;
 		}
 		}
+	}
+
+	bool PrepareResponse(const ProtocolRequest& request, ProtocolResponse& response)
+	{
+		response.set_protocol_version(EditorEngineProtocolVersion);
+		response.set_request_id(request.request_id());
+		response.set_supports_strict_instance_ids(true);
+		if (request.protocol_version() != EditorEngineProtocolVersion)
+		{
+			SetError(response,
+				"Unsupported protocol version " + std::to_string(request.protocol_version()) + "; expected " +
+					std::to_string(EditorEngineProtocolVersion) + ".");
+			return false;
+		}
+		if (request.request_id() == 0)
+		{
+			SetError(response, "Protocol request_id must be non-zero.");
+			return false;
+		}
+		std::string embeddedNullField;
+		if (TryFindEmbeddedNull(request, embeddedNullField))
+		{
+			SetError(response, "Protocol string field '" + embeddedNullField + "' contains an embedded NUL byte.");
+			return false;
+		}
+		return true;
 	}
 
 	EEditorEngineTransportStatus SerializeResponse(const ProtocolResponse& response,
@@ -300,6 +382,32 @@ namespace
 		*responseData = serializedResponse.Release();
 		return EEditorEngineTransportStatus::Ok;
 	}
+}
+
+bool Sailor::Protocol::SetMacViewportHost(uint64_t viewportId, uintptr_t layer)
+{
+	auto& gate = GetEditorEngineProtocolLifecycleGate();
+	std::string error;
+	if (!gate.TryAcquireOperation(error, false))
+	{
+		return false;
+	}
+	const TProtocolLifecycleCompletion completion(gate, EProtocolLifecycleCompletion::Operation);
+	return EditorRuntime::SetEditorRemoteViewportMacHostHandle(viewportId,
+		static_cast<uint32_t>(EditorRemote::MacNativeHostHandleKind::CAMetalLayer), layer);
+}
+
+bool Sailor::Protocol::SetWindowsViewportHost(uint64_t viewportId, void* swapChainPanelInspectable, float compositionScale)
+{
+	auto& gate = GetEditorEngineProtocolLifecycleGate();
+	std::string error;
+	if (!gate.TryAcquireOperation(error, false))
+	{
+		return false;
+	}
+	// Keep binding on the UI caller while shutdown drains this operation.
+	const TProtocolLifecycleCompletion completion(gate, EProtocolLifecycleCompletion::Operation);
+	return EditorRuntime::SetEditorRemoteViewportWindowsHost(viewportId, swapChainPanelInspectable, compositionScale);
 }
 
 int32_t Sailor::Protocol::InvokeEditorEngineProtocol(const uint8_t* requestData,
@@ -343,31 +451,9 @@ int32_t Sailor::Protocol::InvokeEditorEngineProtocol(const uint8_t* requestData,
 	}
 
 	ProtocolResponse response;
-	response.set_protocol_version(EditorEngineProtocolVersion);
-	response.set_request_id(request.request_id());
-	response.set_supports_strict_instance_ids(true);
-
-	if (request.protocol_version() != EditorEngineProtocolVersion)
+	if (PrepareResponse(request, response))
 	{
-		SetError(response,
-			"Unsupported protocol version " + std::to_string(request.protocol_version()) + "; expected " +
-				std::to_string(EditorEngineProtocolVersion) + ".");
-	}
-	else if (request.request_id() == 0)
-	{
-		SetError(response, "Protocol request_id must be non-zero.");
-	}
-	else
-	{
-		std::string embeddedNullField;
-		if (TryFindEmbeddedNull(request, embeddedNullField))
-		{
-			SetError(response, "Protocol string field '" + embeddedNullField + "' contains an embedded NUL byte.");
-		}
-		else
-		{
-			DispatchRequestWithLifecycleAdmission(request, response, dependencies);
-		}
+		DispatchRequestWithLifecycleAdmission(request, response, dependencies);
 	}
 
 	return static_cast<int32_t>(SerializeResponse(response, responseData, responseSize));
@@ -378,12 +464,122 @@ void Sailor::Protocol::FreeEditorEngineProtocolBuffer(uint8_t* buffer) noexcept
 	delete[] buffer;
 }
 
-void Sailor::Protocol::WaitForEditorEngineProtocolStartDrain()
+void Sailor::Protocol::RequestEditorEngineProtocolStop()
 {
-	GetEditorEngineProtocolLifecycleGate().WaitForStartDrainAndJoin();
+	RequestStop(GetEditorEngineProtocolLifecycleGate(), EditorEngineProtocolDependencies{});
 }
 
-void Sailor::Protocol::ResetEditorEngineProtocolLifecycle()
+bool Sailor::Protocol::TryDrainEditorEngineProtocolForShutdown(
+	const EditorEngineProtocolDependencies& dependencies)
 {
-	GetEditorEngineProtocolLifecycleGate().Reset();
+	auto& gate = dependencies.m_lifecycleGate ? *dependencies.m_lifecycleGate : GetEditorEngineProtocolLifecycleGate();
+	std::string error;
+	// Protocol shutdown may finish App before the local host closes its socket.
+	if (!gate.TryBeginShutdown(error, true))
+	{
+		return false;
+	}
+	gate.WaitForInitializationDrain();
+	EditorEngineProtocolCommands::StopEngine(dependencies);
+	gate.WaitForShutdownDrain();
+	gate.WaitForStartDrainAndJoin();
+	return true;
+}
+
+Sailor::Protocol::EEditorEngineWebSocketHostStatus Sailor::Protocol::StartEditorEngineLocalHost(
+	const uint8_t* requestData, uint32_t requestSize, uint16_t port,
+	const char* authorizationToken, uint32_t authorizationTokenSize,
+	const EditorEngineProtocolDependencies& dependencies) noexcept
+{
+	using Status = EEditorEngineWebSocketHostStatus;
+	try
+	{
+		if (!requestData || requestSize == 0 || requestSize > EditorEngineProtocolMaxPayloadSize ||
+			requestSize > INT_MAX || !authorizationToken || authorizationTokenSize == 0)
+		{
+			return Status::InvalidArguments;
+		}
+		ProtocolRequest request;
+		if (!request.ParseFromArray(requestData, static_cast<int>(requestSize)) ||
+			request.command_case() != ProtocolRequest::kInitialize)
+		{
+			return Status::InvalidArguments;
+		}
+		ProtocolResponse response;
+		if (!dependencies.m_bAllowInitialize || !PrepareResponse(request, response))
+		{
+			return Status::InitializationFailed;
+		}
+		auto& gate = dependencies.m_lifecycleGate ? *dependencies.m_lifecycleGate : GetEditorEngineProtocolLifecycleGate();
+		std::string error;
+		if (!gate.TryBeginInitialization(error))
+		{
+			return Status::AlreadyRunning;
+		}
+
+		bool bOwnsServer = false;
+		Status status = Status::ExecutionFailed;
+		try
+		{
+			status = static_cast<Status>(StartEditorEngineWebSocketServer(port, authorizationToken, authorizationTokenSize));
+			if (status == Status::Ok)
+			{
+				bOwnsServer = true;
+				DispatchRequest(request, response, dependencies);
+				status = response.success() ? Status::Ok : Status::InitializationFailed;
+			}
+		}
+		catch (...)
+		{
+			status = Status::ExecutionFailed;
+		}
+
+		// Complete construction and claim rollback atomically. A concurrent Stop
+		// may already own teardown; that caller must be the only one to finish it.
+		if (!gate.CompleteInitialization(status == Status::Ok, true))
+		{
+			return Status::InitializationFailed;
+		}
+		if (status == Status::Ok)
+		{
+			return status;
+		}
+		if (!bOwnsServer)
+		{
+			gate.Reset();
+			return status;
+		}
+		return ShutdownOwnedLocalHost(gate, dependencies) ? status : Status::ShutdownFailed;
+	}
+	catch (...)
+	{
+		return Status::ExecutionFailed;
+	}
+}
+
+bool Sailor::Protocol::StopEditorEngineLocalHost(bool bShutdownEngine,
+	const EditorEngineProtocolDependencies& dependencies) noexcept
+{
+	auto& gate = dependencies.m_lifecycleGate ? *dependencies.m_lifecycleGate : GetEditorEngineProtocolLifecycleGate();
+	try
+	{
+		if (bShutdownEngine)
+		{
+			if (!TryDrainEditorEngineProtocolForShutdown(dependencies))
+			{
+				return false;
+			}
+			return ShutdownOwnedLocalHost(gate, dependencies);
+		}
+		RequestStop(gate, dependencies);
+		StopEditorEngineWebSocketServer();
+		gate.WaitForStartDrainAndJoin();
+		return true;
+	}
+	catch (...)
+	{
+		StopEditorEngineWebSocketServer();
+		gate.CompleteShutdown(false);
+		return false;
+	}
 }

@@ -3,6 +3,7 @@ includes:
 - Shaders/Math.glsl
 defines:
 - OCCLUSION_CULLING
+- DEPTH_INSTANCE_LAYOUT
 glslCommon: |
   #version 450
   #extension GL_ARB_separate_shader_objects : enable
@@ -193,6 +194,14 @@ glslCompute: |
         // Candidate indices are immutable for the logical view. Phase 0 copies
         // them into a separate output range before phase 1 compacts that range.
         uint instanceId = instanceIndices.instance[candidateIndex];
+
+        // Bind-pose bounds do not enclose animated vertices. Keep skinned
+        // instances without running frustum or Hi-Z tests on those bounds.
+        if (data.instance[instanceId].skeletonOffset != 0xFFFFFFFFu)
+        {
+          instanceIndices.instance[compactIndex] = instanceId;
+          return;
+        }
 
         bool bIsCulled = FrustumCulling(instanceId);
         #ifdef OCCLUSION_CULLING

@@ -264,7 +264,8 @@ void DebugContext::Tick(RHI::RHICommandListPtr transferCmd, float deltaTime)
 		auto shaderFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Gizmo.shader");
 		ShaderSetPtr pShader;
 
-		if (!App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderFileId->GetFileId(), pShader))
+		App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderFileId->GetFileId(), pShader);
+		if (!pShader || !pShader->IsReady())
 		{
 			return;
 		}
@@ -405,7 +406,7 @@ void DebugContext::DrawDebugMesh(
 	RHI::RHICommandListPtr secondaryDrawCmdList,
 	const glm::mat4x4& viewProjection,
 	const DrawSnapshot& snapshot,
-	const glm::ivec2& renderExtent) const
+	const glm::ivec2& renderExtent)
 {
 	if (!snapshot.m_vertexBuffer ||
 		!snapshot.m_indexBuffer ||

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Components/Component.h"
-#include "Workspace/WorkspaceTypeMetadata.h"
+#include "Workspace/WorkspaceModuleApi.h"
 
 #include <new>
 #include <string>
@@ -9,6 +9,11 @@
 
 namespace Sailor::Workspace
 {
+	template<typename... TTypes>
+	struct TWorkspaceTypeList
+	{
+	};
+
 	namespace Internal
 	{
 		template<typename TType>
@@ -34,27 +39,12 @@ namespace Sailor::Workspace
 		uint32_t CollectWorkspaceTypeV1(const WorkspaceHostApiV1& hostApi)
 		{
 			const TypeInfo& typeInfo = TypeInfo::Get<TType>();
-			const std::string& typeName = typeInfo.Name();
-			const std::string& baseTypeName = typeInfo.Base();
-			const WorkspaceDefaultObjectSnapshot& defaultObject =
-				GetWorkspaceDefaultObjectSnapshot<TType>();
-			if (defaultObject.m_serializedDefaultValues.empty())
-			{
-				return static_cast<uint32_t>(EWorkspaceModuleResult::SerializationFailed);
-			}
 			const WorkspaceTypeDescriptorV1 descriptor
 			{
 				static_cast<uint32_t>(sizeof(WorkspaceTypeDescriptorV1)),
-				typeName.data(),
-				static_cast<uint64_t>(typeName.size()),
-				baseTypeName.data(),
-				static_cast<uint64_t>(baseTypeName.size()),
 				&typeInfo,
 				static_cast<uint64_t>(sizeof(TType)),
 				static_cast<uint64_t>(alignof(TType)),
-				defaultObject.m_serializedDefaultValues.data(),
-				static_cast<uint64_t>(defaultObject.m_serializedDefaultValues.size()),
-				GetWorkspaceTypeDescriptorFlags<TType>(),
 				&ConstructWorkspaceTypeV1<TType>
 			};
 

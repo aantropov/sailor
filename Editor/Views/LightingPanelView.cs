@@ -181,6 +181,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
     Entry? runtimeNormalBiasEntry;
     Entry? runtimeViewBiasEntry;
     Entry? runtimeMaxDistanceEntry;
+    Entry? runtimeSunAngleThresholdEntry;
     CheckBox? runtimeIncludeSky;
     CheckBox? runtimeIncludeEmissive;
     CheckBox? runtimeIncludeDirect;
@@ -619,7 +620,8 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         ReadFloat(
             runtimeMaxDistanceEntry!,
             "Runtime maximum ray distance",
-            positive: true));
+            positive: true),
+        ReadFloat(runtimeSunAngleThresholdEntry!, "Sun refresh angle (degrees)", positive: false));
 
     View BuildRuntimeCard()
     {
@@ -643,6 +645,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         runtimeNormalBiasEntry = FloatEntry(settings.NormalBias);
         runtimeViewBiasEntry = FloatEntry(settings.ViewBias);
         runtimeMaxDistanceEntry = FloatEntry(settings.MaxRayDistance);
+        runtimeSunAngleThresholdEntry = FloatEntry(settings.SunAngleThresholdDegrees);
         runtimeIncludeSky = new CheckBox { IsChecked = settings.IncludeSky };
         runtimeIncludeEmissive = new CheckBox
         {
@@ -657,6 +660,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         card.Children.Add(Labeled("Normal bias", runtimeNormalBiasEntry));
         card.Children.Add(Labeled("View bias", runtimeViewBiasEntry));
         card.Children.Add(Labeled("Maximum ray distance", runtimeMaxDistanceEntry));
+        card.Children.Add(Labeled("Sun refresh angle (degrees)", runtimeSunAngleThresholdEntry));
         card.Children.Add(Labeled("Include sky", runtimeIncludeSky));
         card.Children.Add(Labeled("Include emissive", runtimeIncludeEmissive));
         card.Children.Add(Labeled("Include direct lighting", runtimeIncludeDirect));

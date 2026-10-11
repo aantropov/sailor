@@ -95,7 +95,6 @@ renderTargets:
   height: RenderHeight/2
   bIsCompatibleWithComputeShaders: true
   bGenerateMips: true
-  reduction: Min
 
 - name: AO
   format: R8_UNORM
@@ -157,10 +156,17 @@ frame:
   - depthStencil: DepthBuffer
   - depthHighZ: DepthHighZ
 
+# Opaque depth is the current-frame occluder for the masked prepass.
+- name: DepthHighZ
+  renderTargets:
+  - src: DepthBuffer
+  - dst: DepthHighZ
+
 - name: DepthPrepass
   string:
   - Tag: Masked
-  - GPUCulling: false
+  - GPUCulling: true
+  - OcclusionCulling: true
   - VirtualizeInstancePayloads: true
   renderTargets:
   - depthStencil: DepthBuffer
@@ -264,7 +270,7 @@ frame:
 - name: DepthHighZ
 ############################
   renderTargets:
-  - src: HalfDepth
+  - src: DepthBuffer
   - dst: DepthHighZ
 
 ############################
@@ -348,6 +354,12 @@ frame:
   - maxAccumulatedSamples: 32
   renderTargets:
   - color: Main
+
+# Restore the resolved overlay to the scene target before MSAA geometry resumes.
+- name: Blit
+  renderTargets:
+  - src: Main
+  - dst: Main
   
 ############################
 - name: RenderScene
@@ -389,7 +401,7 @@ frame:
   - transmissionFramebuffer: Secondary
 
 ############################
-- name: PostProcess
+- name: MotionBlur
 ############################
   string:
   - shader: Shaders/MotionBlur.shader

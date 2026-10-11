@@ -1,14 +1,20 @@
 #pragma once
 
 #include "Core/Defines.h"
+#include "Containers/Vector.h"
 
 #include <cstdint>
+#include <functional>
 #include <string>
+#include <string_view>
 
 namespace google::protobuf
 {
 	class Message;
 }
+
+namespace Sailor::EditorViewport { struct Event; }
+namespace Sailor { enum class EAppInitializationResult : uint8_t; }
 
 namespace sailor::editor::v1
 {
@@ -20,6 +26,7 @@ namespace sailor::editor::v1
 namespace Sailor::Protocol
 {
 	class TEditorEngineProtocolLifecycleGate;
+	enum class EEditorEngineWebSocketHostStatus : int32_t;
 
 	enum class EEditorEngineTransportStatus : int32_t
 	{
@@ -37,33 +44,28 @@ namespace Sailor::Protocol
 
 	struct EditorEngineProtocolDependencies
 	{
-		using FEditorEngineProtocolOperation = void (*)(void* context);
-		// Must return only after operation has completed. The protocol caller
-		// owns operationContext and synchronously consumes its response/error.
+		using FEditorEngineProtocolOperation = std::function<void()>;
+		// Accept owned work for execution on the Editor thread. False means the
+		// operation was not retained; completion belongs to the protocol caller.
 		using FDispatchEditorEngineProtocolOperation = bool (*)(void* dispatchContext,
-			FEditorEngineProtocolOperation operation,
-			void* operationContext);
-		using FPullEditorViewportEvents = uint32_t (*)(void* context, char** events, uint32_t capacity);
+			FEditorEngineProtocolOperation operation);
+		using FPullEditorViewportEvents = TVector<EditorViewport::Event> (*)(void* context, uint32_t capacity);
 		using FLifecycleRoutine = void (*)(void* context);
 
 		void* m_context = nullptr;
 		FPullEditorViewportEvents m_pullEditorViewportEvents = nullptr;
+		EAppInitializationResult (*m_initialize)(void* context, const char** arguments, int32_t count) = nullptr;
 		FLifecycleRoutine m_start = nullptr;
 		FLifecycleRoutine m_stop = nullptr;
-		FLifecycleRoutine m_shutdown = nullptr;
+		bool (*m_shutdown)(void* context) = nullptr;
 		TEditorEngineProtocolLifecycleGate* m_lifecycleGate = nullptr;
 		void* m_editorDispatchContext = nullptr;
 		FDispatchEditorEngineProtocolOperation m_dispatchEditorOperation = nullptr;
 		bool m_bAllowInitialize = true;
 	};
 
-	bool DispatchEditorEngineProtocolOperationOnEditorThread(void* dispatchContext,
-		EditorEngineProtocolDependencies::FEditorEngineProtocolOperation operation,
-		void* operationContext);
-
-	void DispatchEditorEngineProtocolRequest(const sailor::editor::v1::ProtocolRequest& request,
-		sailor::editor::v1::ProtocolResponse& response,
-		const EditorEngineProtocolDependencies& dependencies);
+	SAILOR_SHARED_API bool DispatchEditorEngineProtocolOperationOnEditorThread(void* dispatchContext,
+		EditorEngineProtocolDependencies::FEditorEngineProtocolOperation operation);
 
 	namespace EditorEngineProtocolCommands
 	{
@@ -71,7 +73,7 @@ namespace Sailor::Protocol
 			sailor::editor::v1::ProtocolResponse& response,
 			const EditorEngineProtocolDependencies& dependencies);
 		void StopEngine(const EditorEngineProtocolDependencies& dependencies);
-		void SetError(sailor::editor::v1::ProtocolResponse& response, const std::string& error);
+		void SetError(sailor::editor::v1::ProtocolResponse& response, std::string_view error);
 		void SetEmptyResult(sailor::editor::v1::ProtocolResponse& response);
 		void SetBoolResult(sailor::editor::v1::ProtocolResponse& response, bool value);
 		void SetStringResult(sailor::editor::v1::ProtocolResponse& response, const char* value, uint32_t length);
@@ -100,6 +102,15 @@ namespace Sailor::Protocol
 		const EditorEngineProtocolDependencies& dependencies);
 
 	void FreeEditorEngineProtocolBuffer(uint8_t* buffer) noexcept;
-	void WaitForEditorEngineProtocolStartDrain();
-	void ResetEditorEngineProtocolLifecycle();
+	SAILOR_SHARED_API EEditorEngineWebSocketHostStatus StartEditorEngineLocalHost(
+		const uint8_t* requestData, uint32_t requestSize, uint16_t port,
+		const char* authorizationToken, uint32_t authorizationTokenSize,
+		const EditorEngineProtocolDependencies& dependencies = {}) noexcept;
+	SAILOR_SHARED_API bool StopEditorEngineLocalHost(bool bShutdownEngine,
+		const EditorEngineProtocolDependencies& dependencies = {}) noexcept;
+	bool SetMacViewportHost(uint64_t viewportId, uintptr_t layer);
+	bool SetWindowsViewportHost(uint64_t viewportId, void* swapChainPanelInspectable, float compositionScale);
+	void RequestEditorEngineProtocolStop();
+	SAILOR_SHARED_API bool TryDrainEditorEngineProtocolForShutdown(
+		const EditorEngineProtocolDependencies& dependencies = {});
 }

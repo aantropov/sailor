@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <memory>
 #include "Core/Defines.h"
 #include "Containers/Vector.h"
@@ -41,7 +42,7 @@ namespace Sailor::Memory
 				size_t m_first = InvalidIndexUINT64;
 				bool m_bIsInFreeList = true;
 
-				bool IsEmpty() const { return m_occupiedSpace == sizeof(Header); }
+				bool IsEmpty() const { return m_occupiedSpace == sizeof(Header) + m_first; }
 				inline Header* MoveHeader(Header* block, int64_t shift);
 
 				void* Allocate(size_t size, size_t alignment);
@@ -144,7 +145,7 @@ namespace Sailor::Memory
 
 	private:
 
-		inline size_t CalculateAlignedSize(size_t blockSize) const;
+		inline size_t CalculateAlignedSize(size_t blockSize, size_t alignment = 8) const;
 		TVector<TUniquePtr<Internal::SmallPoolAllocator>, Memory::MallocAllocator> m_smallAllocators;
 		Internal::PoolAllocator m_allocator;
 	};

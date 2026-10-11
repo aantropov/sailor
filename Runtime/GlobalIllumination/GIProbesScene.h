@@ -1,6 +1,6 @@
 #pragma once
 
-#include "FrameGraph/SkyParameters.h"
+#include "FrameGraph/EnvironmentSource.h"
 #include "GlobalIllumination/GIProbesData.h"
 #include "Math/Bounds.h"
 #include "Raytracing/GIProbesPathTracer.h"
@@ -28,28 +28,34 @@ namespace Sailor
 	{
 		uint64_t m_geometry = 0u;
 		uint64_t m_lighting = 0u;
+		glm::vec3 m_sunDirection{};
 
 		bool operator==(const GIProbesSceneRevision&) const noexcept = default;
+		bool HasChanges(const GIProbesSceneRevision& previous, float sunAngleThresholdDegrees) const noexcept;
 	};
 
 	struct SAILOR_SHARED_API GIProbesSceneSnapshot final
 	{
 		TVector<Raytracing::PathTracer::TLASInstance> m_instances{};
-		TVector<MaterialPtr> m_materials{};
-		TVector<uint64_t> m_materialRevisions{};
+		Raytracing::PathTracer::MaterialSnapshots m_materials{};
 		TVector<Raytracing::LightProxy> m_lights{};
 		TVector<Math::AABB> m_geometryBounds{};
-		SkyParameters m_skyParameters{};
+		EnvironmentSource m_environment;
+		TextureImporter::CpuTextureSnapshot m_environmentPixels;
 		Math::AABB m_worldBounds{};
-		glm::vec3 m_fallbackEnvironment{ 0.03f };
-		float m_skyIndirectIntensity = 1.0f;
 		uint64_t m_geometryHash = 0u;
 		uint64_t m_lightingHash = 0u;
 		uint64_t m_sourceWorldHash = 0u;
 		GIProbesSceneRevision m_observedRevision{};
-		bool m_bHasSkyEnvironment = false;
+	};
 
+	// Owner-thread validation is separate from the values consumed by background work.
+	struct SAILOR_SHARED_API GIProbesSceneMaterialWatch final
+	{
+		Raytracing::PathTracer::MaterialSnapshotCache m_materials;
+		TVector<MaterialPtr> m_slots;
 		bool HasUnchangedMaterials() const noexcept;
+		bool HasUnchangedSurfaces() const noexcept;
 	};
 
 	using GIProbesSceneSnapshotPtr = TSharedPtr<GIProbesSceneSnapshot>;
@@ -71,6 +77,14 @@ namespace Sailor
 		const GIProbesSceneCaptureRequest& request,
 		GIProbesSceneSnapshot& outScene,
 		std::string& outDiagnostic,
+		const GIProbesSceneWarningCallback& warning = {},
+		GIProbesSceneMaterialWatch* materialWatch = nullptr);
+
+	SAILOR_SHARED_API bool CaptureGIProbesSceneLighting(
+		World* world,
+		const GIProbesSceneCaptureRequest& request,
+		GIProbesSceneSnapshot& outScene,
+		std::string& outDiagnostic,
 		const GIProbesSceneWarningCallback& warning = {});
 
 	SAILOR_SHARED_API bool ObserveGIProbesSceneRevision(
@@ -86,5 +100,6 @@ namespace Sailor
 		GIProbesPreparedScene& outPreparedScene,
 		std::string& outDiagnostic,
 		const Raytracing::PathTracer::ScenePreparationProgressCallback& progress = {},
-		const GIProbesSceneWarningCallback& warning = {});
+		const GIProbesSceneWarningCallback& warning = {},
+		const GIProbesPreparedScene* previous = nullptr);
 }

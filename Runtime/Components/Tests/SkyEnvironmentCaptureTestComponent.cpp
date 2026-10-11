@@ -1,6 +1,6 @@
 #include "Components/Tests/SkyEnvironmentCaptureTestComponent.h"
+#include "Platform/Time.h"
 #include "Components/CameraComponent.h"
-#include "Components/SkyComponent.h"
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
 #include "FrameGraph/EnvironmentNode.h"
@@ -60,8 +60,8 @@ struct SkyEnvironmentCaptureTestComponent::CaptureState
 			return {};
 		}
 
-		auto sky = m_frameGraph->GetGraphNode("Sky").DynamicCast<Framegraph::SkyNode>();
-		auto environment = m_frameGraph->GetGraphNode("Environment").DynamicCast<Framegraph::EnvironmentNode>();
+		auto sky = m_frameGraph->GetGraphNode("Sky"_h).DynamicCast<Framegraph::SkyNode>();
+		auto environment = m_frameGraph->GetGraphNode("Environment"_h).DynamicCast<Framegraph::EnvironmentNode>();
 		if (!sky || !environment)
 		{
 			return { false, "Sky and Environment nodes are required." };
@@ -86,8 +86,8 @@ struct SkyEnvironmentCaptureTestComponent::CaptureState
 			return { false, "Sky and Environment published different parameter snapshots." };
 		}
 
-		constexpr const char* samplers[] = {
-			"g_skyCubemap", "g_envCubemap", "g_irradianceCubemap", "g_sheenEnvCubemap"
+		const StringHash samplers[] = {
+			"g_skyCubemap"_h, "g_envCubemap"_h, "g_irradianceCubemap"_h, "g_sheenEnvCubemap"_h
 		};
 		std::array<RHI::RHITexturePtr, 4> textures;
 		for (size_t i = 0; i < textures.size(); ++i)
@@ -95,10 +95,10 @@ struct SkyEnvironmentCaptureTestComponent::CaptureState
 			textures[i] = m_frameGraph->GetSampler(samplers[i]);
 			if (!textures[i])
 			{
-				return { false, std::format("Published environment has no {}.", samplers[i]) };
+				return { false, std::format("Published environment has no {}.", samplers[i].ToString()) };
 			}
 		}
-		if (m_frameGraph->GetSampler("g_rawEnvCubemap") != textures[0])
+		if (m_frameGraph->GetSampler("g_rawEnvCubemap"_h) != textures[0])
 		{
 			return { false, "Environment consumed a different cubemap from the published Sky." };
 		}
@@ -150,7 +150,7 @@ struct SkyEnvironmentCaptureTestComponent::CaptureState
 		{
 			if (textures[i] == m_publishedTextures[i])
 			{
-				return { false, std::format("Completed capture reused the previous {}.", samplers[i]) };
+				return { false, std::format("Completed capture reused the previous {}.", samplers[i].ToString()) };
 			}
 		}
 
@@ -169,15 +169,15 @@ struct SkyEnvironmentCaptureTestComponent::CaptureState
 
 	bool MatchesLocalPublication(uint32_t samples, const std::array<RHI::RHITexturePtr, 2>& textures)
 	{
-		auto environment = m_frameGraph->GetGraphNode("Environment").DynamicCast<Framegraph::EnvironmentNode>();
+		auto environment = m_frameGraph->GetGraphNode("Environment"_h).DynamicCast<Framegraph::EnvironmentNode>();
 		const auto actual = environment->GetLocalReflectionParameters();
 		const auto expected = samples ? LocalParameters(samples) : Framegraph::LocalReflectionParameters{};
 		return environment->IsLocalReflectionReady() == (samples != 0) &&
 			environment->GetLocalReflectionSamples() == samples &&
 			actual.m_positionBlend == expected.m_positionBlend && actual.m_minEnabled == expected.m_minEnabled &&
 			actual.m_max == expected.m_max &&
-			m_frameGraph->GetSampler("g_localEnvCubemap") == textures[0] &&
-			m_frameGraph->GetSampler("g_localSheenEnvCubemap") == textures[1];
+			m_frameGraph->GetSampler("g_localEnvCubemap"_h) == textures[0] &&
+			m_frameGraph->GetSampler("g_localSheenEnvCubemap"_h) == textures[1];
 	}
 
 	bool MatchesPendingLocalPublication(uint32_t previousSamples, uint32_t pendingSamples)
@@ -187,7 +187,7 @@ struct SkyEnvironmentCaptureTestComponent::CaptureState
 			return true;
 		}
 		const std::array<RHI::RHITexturePtr, 2> textures = {
-			m_frameGraph->GetSampler("g_localEnvCubemap"), m_frameGraph->GetSampler("g_localSheenEnvCubemap")
+			m_frameGraph->GetSampler("g_localEnvCubemap"_h), m_frameGraph->GetSampler("g_localSheenEnvCubemap"_h)
 		};
 		return textures[0] && textures[1] && textures[0] != m_localTextures[0] && textures[1] != m_localTextures[1] &&
 			MatchesLocalPublication(pendingSamples, textures);
@@ -199,7 +199,7 @@ struct SkyEnvironmentCaptureTestComponent::CaptureState
 		{
 			return {};
 		}
-		auto environment = m_frameGraph->GetGraphNode("Environment").DynamicCast<Framegraph::EnvironmentNode>();
+		auto environment = m_frameGraph->GetGraphNode("Environment"_h).DynamicCast<Framegraph::EnvironmentNode>();
 		if (samples && environment->GetLocalReflectionSamples() != samples)
 		{
 			const bool bCoherent = samples == 1u ? MatchesLocalPublication(0u, m_localTextures) :
@@ -208,7 +208,7 @@ struct SkyEnvironmentCaptureTestComponent::CaptureState
 				CheckResult{ false, "Pending local reflection has neither the prior nor a coherent intermediate publication." };
 		}
 		const std::array<RHI::RHITexturePtr, 2> textures = {
-			m_frameGraph->GetSampler("g_localEnvCubemap"), m_frameGraph->GetSampler("g_localSheenEnvCubemap")
+			m_frameGraph->GetSampler("g_localEnvCubemap"_h), m_frameGraph->GetSampler("g_localSheenEnvCubemap"_h)
 		};
 		if (!MatchesLocalPublication(samples, textures))
 		{
@@ -256,9 +256,9 @@ SkyEnvironmentCaptureTestComponent::~SkyEnvironmentCaptureTestComponent() = defa
 bool SkyEnvironmentCaptureTestComponent::QueueLocalReflection(
 	uint32_t pendingSamples, uint32_t finalSamples, uint32_t publishedSamples)
 {
-	auto environment = m_capture->m_frameGraph->GetGraphNode("Environment").DynamicCast<Framegraph::EnvironmentNode>();
+	auto environment = m_capture->m_frameGraph->GetGraphNode("Environment"_h).DynamicCast<Framegraph::EnvironmentNode>();
 	std::promise<void> releaseRender;
-	Tasks::CreateTask("Hold Render for local reflection submissions",
+	Tasks::CreateTask("Hold Render for local reflection submissions"_h,
 		[ready = releaseRender.get_future().share()]() { ready.wait(); }, EThreadType::Render)->Run();
 	const auto submitImage = [&](uint32_t samples)
 	{
@@ -275,7 +275,7 @@ bool SkyEnvironmentCaptureTestComponent::QueueLocalReflection(
 	}
 	if (pendingSamples != finalSamples)
 	{
-		m_localPublicationCheck = Tasks::CreateTaskWithResult<bool>("Observe coherent local reflection update",
+		m_localPublicationCheck = Tasks::CreateTaskWithResult<bool>("Observe coherent local reflection update"_h,
 			[capture = m_capture, publishedSamples, pendingSamples]()
 			{
 				return capture->MatchesPendingLocalPublication(publishedSamples, pendingSamples);
@@ -330,39 +330,31 @@ void SkyEnvironmentCaptureTestComponent::Tick(float)
 		m_check.Clear();
 		if (result.m_bPassed)
 		{
-			if (m_bHandoffComplete)
+			bool bQueued = true;
+			if (!m_bSkyCaptureComplete)
 			{
-				bool bQueued = true;
-				if (!m_bSkyCaptureComplete)
-				{
-					AddJournalEvent("SkyEnvironmentCaptureEvidence", result.m_message);
-					m_bSkyCaptureComplete = true;
-					bQueued = QueueLocalReflection(1u, 1u, 0u);
-				}
-				else if (m_expectedLocalSamples == 1u)
-				{
-					bQueued = QueueLocalReflection(2u, 4u, 1u);
-				}
-				else if (m_expectedLocalSamples == 4u)
-				{
-					bQueued = QueueLocalReflection(8u, 0u, 4u);
-				}
-				else
-				{
-					AddJournalEvent("LocalReflectionEvidence", result.m_message);
-					MarkPassed();
-					return;
-				}
-				if (!bQueued)
-				{
-					MarkFailed("Valid local reflection image was rejected.");
-					return;
-				}
+				AddJournalEvent("SkyEnvironmentCaptureEvidence", result.m_message);
+				m_bSkyCaptureComplete = true;
+				bQueued = QueueLocalReflection(1u, 1u, 0u);
+			}
+			else if (m_expectedLocalSamples == 1u)
+			{
+				bQueued = QueueLocalReflection(2u, 4u, 1u);
+			}
+			else if (m_expectedLocalSamples == 4u)
+			{
+				bQueued = QueueLocalReflection(8u, 0u, 4u);
 			}
 			else
 			{
-				AddJournalEvent("SkyComponentHandoffEvidence", result.m_message);
-				m_bHandoffComplete = true;
+				AddJournalEvent("LocalReflectionEvidence", result.m_message);
+				MarkPassed();
+				return;
+			}
+			if (!bQueued)
+			{
+				MarkFailed("Valid local reflection image was rejected.");
+				return;
 			}
 		}
 		else if (!result.m_message.empty())
@@ -379,51 +371,9 @@ void SkyEnvironmentCaptureTestComponent::Tick(float)
 		{
 			return;
 		}
-		if (!m_bHandoffComplete)
-		{
-			auto sky = renderer->GetFrameGraph()->GetRHI()->GetGraphNode("Sky").DynamicCast<Framegraph::SkyNode>();
-			if (!sky)
-			{
-				MarkFailed("Sky component handoff requires a Sky node.");
-				return;
-			}
-
-			// Keep Render behind the producer's lifetime without waiting on Main.
-			std::promise<void> releaseRender;
-			Tasks::CreateTask("Hold Render for sky producer destruction",
-				[ready = releaseRender.get_future().share()]() { ready.wait(); }, EThreadType::Render)->Run();
-			{
-				SkyComponent producer;
-				producer.SetCloudsDensity(0.25f);
-				producer.Tick(0.0f);
-				const SkyParameters expected = producer.GetSkyParameters();
-				auto updateCheck = Tasks::CreateTaskWithResult<bool>("Observe copied sky component parameters",
-					[sky, expected]() { return sky->GetSkyParams() == expected; }, EThreadType::Render);
-				updateCheck->Run();
-				producer.SetCloudsDensity(0.75f);
-				producer.EndPlay();
-				m_check = Tasks::CreateTaskWithResult<CheckResult>("Observe ordered sky component reset",
-					[sky, updateCheck]() -> CheckResult
-					{
-						if (!updateCheck->GetResult())
-						{
-							return { false, "Queued sky update did not preserve parameters after producer mutation and destruction." };
-						}
-						if (!(sky->GetSkyParams() == SkyParameters{}))
-						{
-							return { false, "Sky component EndPlay did not reset parameters after its queued update." };
-						}
-						return { true, "SkyComponent Tick and EndPlay reached Render in update/reset order; "
-							"copied parameters survived producer mutation and destruction before Render was released." };
-					}, EThreadType::Render);
-				m_check->Run();
-			}
-			releaseRender.set_value();
-			return;
-		}
 		m_capture = TSharedPtr<CaptureState>::Make(renderer->GetFrameGraph()->GetRHI());
 	}
-	m_check = Tasks::CreateTaskWithResult<CheckResult>("Validate sky environment capture",
+	m_check = Tasks::CreateTaskWithResult<CheckResult>("Validate sky environment capture"_h,
 		[capture = m_capture, bLocal = m_bSkyCaptureComplete, samples = m_expectedLocalSamples,
 		publication = m_localPublicationCheck]() -> CheckResult
 		{

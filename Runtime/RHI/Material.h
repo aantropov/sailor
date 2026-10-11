@@ -23,18 +23,19 @@ namespace Sailor::RHI
 		SAILOR_API void UpdateLayoutShaderBinding(const ShaderLayoutBinding& layout);
 		SAILOR_API void SetLayoutShaderBindings(TVector<RHI::ShaderLayoutBinding> layoutBindings);
 		SAILOR_API const TVector<RHI::ShaderLayoutBinding>& GetLayoutBindings() const { return m_layoutBindings; }
-		SAILOR_API RHI::RHIShaderBindingPtr& GetOrAddShaderBinding(const std::string& binding);
+		SAILOR_API RHI::RHIShaderBindingPtr& GetOrAddShaderBinding(StringHash binding);
 
-		SAILOR_API void RemoveShaderBinding(const std::string& binding);
+		SAILOR_API void RemoveShaderBinding(StringHash binding);
 		SAILOR_API const auto& GetShaderBindings() const { return m_shaderBindings; }
 
-		static SAILOR_API void ParseParameter(const std::string& parameter, std::string& outBinding, std::string& outVariable);
+		static SAILOR_API void ParseParameter(StringHash parameter, StringHash& outBinding, StringHash& outVariable);
 
-		SAILOR_API bool HasBinding(const std::string& binding) const;
-		SAILOR_API bool HasParameter(const std::string& parameter) const;
+		SAILOR_API bool HasBinding(StringHash binding) const;
+		SAILOR_API bool HasParameter(StringHash parameter) const;
+		SAILOR_API bool HasParameter(StringHash binding, StringHash variable) const;
 
 		SAILOR_API bool NeedsStorageBuffer() const { return m_bNeedsStorageBuffer; }
-		SAILOR_API uint32_t GetStorageInstanceIndex(const std::string& binding) const;
+		SAILOR_API uint32_t GetStorageInstanceIndex(StringHash binding) const;
 
 		SAILOR_API size_t GetCompatibilityHashCode() const { return m_compatibilityHashCode; }
 		SAILOR_API void RecalculateCompatibility();
@@ -48,7 +49,7 @@ namespace Sailor::RHI
 		SAILOR_API bool PerInstanceDataStoredInSsbo() const;
 
 		TVector<RHI::ShaderLayoutBinding> m_layoutBindings;
-		TConcurrentMap<std::string, RHI::RHIShaderBindingPtr> m_shaderBindings;
+		TConcurrentMap<StringHash, RHI::RHIShaderBindingPtr> m_shaderBindings;
 		bool m_bNeedsStorageBuffer = false;
 		size_t m_compatibilityHashCode = 0;
 		std::atomic<uint64_t> m_descriptorRevision{ 0 };
@@ -86,13 +87,14 @@ namespace Sailor::RHI
 
 	using RHIMaterialVersionPtr = TRefPtr<RHIMaterialVersion>;
 
-	class RHIMaterial : public RHIResource
+	class RHIMaterial : public RHIResource, public IObservable
 	{
 	public:
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 		struct Vulkan
 		{
-			GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr GetOrAddPipeline(const TVector<VkFormat>& colorAttachments, VkFormat depthStencilAttachment);
+			GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr GetOrAddPipeline(const TVector<VkFormat>& colorAttachments,
+				VkFormat depthStencilAttachment, VkSampleCountFlagBits samples);
 			TVector<GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr> m_pipelines{};
 			SpinLock m_pipelinesLock;
 
@@ -117,6 +119,7 @@ namespace Sailor::RHI
 		SAILOR_API void SetBindings(RHIShaderBindingSetPtr bindings);
 		SAILOR_API void StageBindings(RHIShaderBindingSetPtr bindings);
 		SAILOR_API bool TryPublishPendingBindings();
+		SAILOR_API void TraceVisit(RHIResourcePtr visitor, bool& bShouldRemoveFromList) override;
 		SAILOR_API static uint64_t GetGlobalPublishedVersionRevision();
 		SAILOR_API static uint64_t BeginSubmissionVersionCapture(uint64_t submissionId);
 		SAILOR_API static void EndSubmissionVersionCapture(uint64_t submissionId);

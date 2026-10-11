@@ -1,9 +1,9 @@
 #include "AssetRegistry/Landscape/LandscapeVegetationAsset.h"
+#include "Platform/AtomicFile.h"
 
 #include "AssetRegistry/AssetRegistry.h"
 #include "Containers/Set.h"
 #include "Math/Math.h"
-#include "Workspace/WorkspaceCacheContract.h"
 
 #include <array>
 #include <bit>
@@ -326,11 +326,11 @@ bool LandscapeVegetationAssetData::Save(
 		return Fail("Landscape vegetation writer produced an unexpected byte count.", outDiagnostic);
 	}
 
-	return Workspace::AtomicReplaceWorkspaceCacheBinary(
+	return Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(
 		filepath,
 		bytes.GetData(),
 		static_cast<uint64_t>(bytes.Num()),
-		outDiagnostic);
+		outDiagnostic));
 }
 
 bool LandscapeVegetationAssetData::Load(
@@ -544,8 +544,7 @@ IAssetInfoHandler* LandscapeVegetationAssetInfo::GetHandler()
 LandscapeVegetationAssetInfoHandler::LandscapeVegetationAssetInfoHandler(
 	AssetRegistry* assetRegistry)
 {
-	m_supportedExtensions.Emplace("vegetation");
-	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
+	assetRegistry->RegisterAssetInfoHandler(GetAssetInfoExtensions<LandscapeVegetationAssetInfo>(), this);
 }
 
 void LandscapeVegetationAssetInfoHandler::GetDefaultMeta(

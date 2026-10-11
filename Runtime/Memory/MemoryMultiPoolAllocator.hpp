@@ -1,5 +1,6 @@
 #pragma once
 #include "Memory.h"
+#include "MemoryPoolAllocator.hpp"
 #include <algorithm>
 #include "Containers/Map.h"
 
@@ -38,21 +39,21 @@ namespace Sailor::Memory
 
 		virtual ~TMultiPoolAllocator()
 		{
-			for (auto it : m_layout)
+			for (auto it = m_layout.begin(); it != m_layout.end(); ++it)
 			{
-				delete (it).second;
+				delete it.Value();
 			}
-			m_layout.clear();
+			m_layout.Clear();
 		}
 
 	private:
 
 		TPoolAllocator<TGlobalAllocator, TPtr>* GetOrAddAllocator(size_t size)
 		{
-			auto poolAllocator = m_layout.find(size);
+			auto poolAllocator = m_layout.Find(size);
 			if (poolAllocator != m_layout.end())
 			{
-				return (*poolAllocator).second;
+				return poolAllocator.Value();
 			}
 
 			auto res = new TPoolAllocator<TGlobalAllocator, TPtr>(10 * size, size);

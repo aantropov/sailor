@@ -18,7 +18,7 @@ VulkanSwapchainImage::VulkanSwapchainImage(VkImage image, VulkanDevicePtr device
 
 VulkanSwapchainImage::~VulkanSwapchainImage()
 {
-	m_deviceMemory = 0;
+	m_deviceMemory.Clear();
 	m_image = VK_NULL_HANDLE;
 }
 
@@ -143,7 +143,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 
 		m_swapchainImageViews[i]->Compile();
 
-		m_device->SetDebugName(VK_OBJECT_TYPE_IMAGE, (uint64_t)((VkImage)*m_swapchainImages[i]), "Swapchain Image");
+		m_device->SetDebugName(VK_OBJECT_TYPE_IMAGE, (uint64_t)((VkImage)*m_swapchainImages[i]), "Swapchain Image"_h);
 	}
 
 	VkFormat depthFormat = device->GetDepthFormat();
@@ -167,11 +167,9 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 	{
 		// We are using device memory allocator to fastly recreate the swapchain
 		auto requirements = m_depthBuffer->GetMemoryRequirements();
-		
-		//requirements.size += device->GetBufferImageGranuality();
-		//requirements.alignment = std::max(requirements.alignment, device->GetBufferImageGranuality());
 
-		auto memoryPtr = device->GetMemoryAllocator(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, requirements).Allocate(requirements.size, requirements.alignment);
+		auto memoryPtr = device->GetMemoryAllocator(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, requirements, EVulkanMemoryClass::OptimalImage)
+			.Allocate(requirements.size, requirements.alignment);
 		m_depthBuffer->Bind(memoryPtr);
 	}
 	else
@@ -188,7 +186,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 		m_stencilBufferView->Compile();
 	}
 
-	m_device->SetDebugName(VK_OBJECT_TYPE_IMAGE, (uint64_t)((VkImage)*m_depthBuffer), "Depth Buffer");
+	m_device->SetDebugName(VK_OBJECT_TYPE_IMAGE, (uint64_t)((VkImage)*m_depthBuffer), "Depth Buffer"_h);
 }
 
 VulkanSwapchain::~VulkanSwapchain()

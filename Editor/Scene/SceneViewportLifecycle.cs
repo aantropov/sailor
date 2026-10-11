@@ -48,7 +48,8 @@ public interface ISceneViewportBackend
         RemoteViewportInputModifier modifiers = RemoteViewportInputModifier.None,
         bool pressed = false,
         bool focused = false,
-        bool captured = false);
+        bool captured = false,
+        string text = "");
 }
 
 public sealed class SceneViewportLifecycleAdapter(ISceneViewportBackend backend, ulong viewportId)
@@ -60,17 +61,7 @@ public sealed class SceneViewportLifecycleAdapter(ISceneViewportBackend backend,
     public bool Sync(SceneViewportFrame frame)
     {
         _destroyed = false;
-
-        if (frame.HasNativeHost)
-        {
-            backend.BindMacHost(viewportId, frame.NativeHostHandle, frame.NativeHostScale);
-            _observedHostHandle = frame.NativeHostHandle;
-        }
-        else if (_observedHostHandle != 0)
-        {
-            backend.BindMacHost(viewportId, 0, 1);
-            _observedHostHandle = 0;
-        }
+        SetNativeHost(frame.NativeHostHandle, frame.NativeHostScale);
 
         if (!frame.EditorViewport.IsEmpty)
             backend.SetEditorViewport(frame.EditorViewport);
@@ -85,6 +76,16 @@ public sealed class SceneViewportLifecycleAdapter(ISceneViewportBackend backend,
             return false;
 
         return backend.TryUpdateViewport(viewportId, frame.RemoteRect, frame.IsVisible, frame.IsFocused);
+    }
+
+    public void SetNativeHost(nint handle, double scale = 1)
+    {
+        if (handle != 0 || _observedHostHandle != 0)
+        {
+            backend.BindMacHost(viewportId, handle, handle != 0 ? scale : 1);
+        }
+        _observedHostHandle = handle;
+        if (handle != 0) _destroyed = false;
     }
 
     public void Retry() => backend.RetryViewport(viewportId);
@@ -127,8 +128,9 @@ public sealed class SceneViewportLifecycleAdapter(ISceneViewportBackend backend,
         RemoteViewportInputModifier modifiers = RemoteViewportInputModifier.None,
         bool pressed = false,
         bool focused = false,
-        bool captured = false)
-        => backend.SendInput(viewportId, kind, pointerX, pointerY, wheelDeltaX, wheelDeltaY, keyCode, button, modifiers, pressed, focused, captured);
+        bool captured = false,
+        string text = "")
+        => backend.SendInput(viewportId, kind, pointerX, pointerY, wheelDeltaX, wheelDeltaY, keyCode, button, modifiers, pressed, focused, captured, text);
 }
 
 public static class SceneViewportStatusText

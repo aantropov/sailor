@@ -7,6 +7,11 @@
 
 namespace Sailor::AnimationPose
 {
+	SAILOR_API bool ResolveFrame(const Animation& animation, float time, bool bLoop, float& outFrame);
+	// Samples a frame already normalized by ResolveFrame.
+	SAILOR_API void SampleFrame(const Animation& animation, float frame,
+		TVector<Math::Transform>& outLocalPose, uint32_t& outFrameIndex, float& outLerp);
+
 	SAILOR_API bool Sample(
 		const AnimationPtr& animation,
 		float time,

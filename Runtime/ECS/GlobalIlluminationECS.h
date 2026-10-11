@@ -55,7 +55,7 @@ namespace Sailor
 		static constexpr const char* DisplayName = "Global Illumination ECS";
 
 		SAILOR_API void BeginPlay() override;
-		SAILOR_API Tasks::ITaskPtr Tick(float deltaTime) override;
+		SAILOR_API void Tick(float deltaTime) override;
 		SAILOR_API void EndPlay() override;
 		SAILOR_API uint32_t GetOrder() const override { return 175u; }
 
@@ -150,12 +150,13 @@ namespace Sailor
 		void TickBakedProvider();
 		void TickRuntimeProvider(float deltaTime);
 		bool BeginRuntimeScenePreparation(std::string& outDiagnostic);
-		void ConsumeRuntimeScenePreparation(
+		SAILOR_API void ConsumeRuntimeScenePreparation(
 			const glm::vec3& priorityPosition);
 		bool StartRuntimeSolver(
 			const glm::vec3& priorityPosition,
-			std::string& outDiagnostic);
-		RuntimeGIProbesQualitySettings ResolveRuntimeQualitySettings() const noexcept;
+			std::string& outDiagnostic,
+			bool bReuseExistingProbes = true);
+		SAILOR_API RuntimeGIProbesQualitySettings ResolveRuntimeQualitySettings() const noexcept;
 		void PublishRuntimeSnapshotIfNeeded();
 		void StopRuntimeProvider(bool bClearSnapshot);
 		bool HasRuntimeProviderState() const;
@@ -190,10 +191,14 @@ namespace Sailor
 		Tasks::TaskPtr<RuntimeScenePreparationResult>
 			m_runtimeScenePreparationTask{};
 		TSharedPtr<std::atomic<bool>> m_runtimeScenePreparationCancel{};
+		GIProbesSceneMaterialWatch m_runtimeSceneMaterialWatch;
+		GIProbesSceneSnapshotPtr m_runtimeSceneSnapshot;
 		GIProbesPreparedScenePtr m_runtimePreparedScene{};
+		GIProbesSceneRevision m_runtimePreparationRevision{};
 		RuntimeGIProbesQualitySettings m_runtimeObservedQuality{};
 		uint64_t m_runtimeScenePreparationRequestId = 0u;
 		uint64_t m_runtimePublishedRevision = 0u;
+		uint64_t m_runtimeStartedPublishedRevision = 0u;
 		std::string m_runtimePreparationDiagnostic{};
 		bool m_bRuntimeObservedQualityValid = false;
 		bool m_bRuntimePreviewEnabled = false;
@@ -202,6 +207,8 @@ namespace Sailor
 		bool m_bRuntimePreparationFailed = false;
 		float m_runtimeRevisionPollSeconds = 0.0f;
 		float m_runtimePreparationRetrySeconds = 0.0f;
+
+		friend class GlobalIlluminationECSTestAccess;
 	};
 
 	template class ECS::TSystem<GlobalIlluminationECS, GlobalIlluminationECSData>;

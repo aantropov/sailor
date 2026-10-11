@@ -138,7 +138,12 @@ namespace SailorEditor
             builder.Services.AddSingleton<McpWorkspaceOperations>();
             builder.Services.AddSingleton<McpCSharpEvaluator>();
             builder.Services.AddSingleton<IWorkspaceProcessRunner, WorkspaceProcessRunner>();
-            builder.Services.AddSingleton<WorkspaceBuildService>();
+            builder.Services.AddSingleton(services => new WorkspaceBuildService(
+                services.GetRequiredService<WorkspaceLifecycleService>(),
+                services.GetRequiredService<IWorkspaceProcessRunner>(),
+                services.GetRequiredService<EngineService>().EngineWorkingDirectory,
+                Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+                    OperatingSystem.IsMacCatalyst() ? "../Resources/EngineSDK" : "EngineSDK"))));
             builder.Services.AddSingleton<WorkspaceCacheService>();
             builder.Services.AddSingleton<McpEditorHostService>();
             builder.Services.AddTransient<MainPage>();

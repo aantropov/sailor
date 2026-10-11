@@ -4,6 +4,7 @@
 #include "Containers/Vector.h"
 #include "Core/SpinLock.h"
 #include "RHI/Types.h"
+#include "RHI/Fence.h"
 
 #include <atomic>
 #include <cstdint>
@@ -85,16 +86,15 @@ namespace Sailor::RHI
 		void BeginSubmission(
 			uint64_t submissionId,
 			uint32_t flightSlot,
-			uint64_t sceneRevision = 0ull,
 			uint64_t materialRevision = 0ull,
 			uint64_t resourceGeneration = 0ull)
 		{
 			m_lock.Lock();
 			m_submissionId = submissionId;
 			m_flightSlot = flightSlot;
-			m_sceneRevision = sceneRevision;
 			m_materialRevision = materialRevision;
 			m_resourceGeneration = resourceGeneration;
+			m_frameCompletion.Clear();
 			m_resourceReadySemaphore.Clear();
 			m_retainedResources.Clear(false);
 			m_expiredFrameGraphResourcesScratch.Clear(false);
@@ -153,7 +153,7 @@ namespace Sailor::RHI
 			return result;
 		}
 
-		void RetainResource(RHIResourcePtr resource)
+		void RetainResource(RHIResourceConstPtr resource)
 		{
 			if (!resource)
 			{
@@ -187,22 +187,30 @@ namespace Sailor::RHI
 		}
 
 		uint64_t GetSubmissionId() const { return m_submissionId; }
+		uint64_t GetResourceGeneration() const { return m_resourceGeneration; }
+		RHIFencePtr GetOrCreateFrameCompletion() const
+		{
+			m_lock.Lock();
+			if (!m_frameCompletion) m_frameCompletion = RHIFencePtr::Make();
+			auto completion = m_frameCompletion;
+			m_lock.Unlock();
+			return completion;
+		}
+		RHIFencePtr GetFrameCompletion() const { return m_frameCompletion; }
 		uint32_t GetFlightSlot() const { return m_flightSlot; }
-		uint64_t GetSceneRevision() const { return m_sceneRevision; }
 		uint64_t GetMaterialRevision() const { return m_materialRevision; }
-		const RHISemaphorePtr& GetResourceReadySemaphore() const { return m_resourceReadySemaphore; }
 
 	private:
 		mutable SpinLock m_lock;
 		uint64_t m_submissionId = 0ull;
 		uint32_t m_flightSlot = 0u;
-		uint64_t m_sceneRevision = 0ull;
 		uint64_t m_materialRevision = 0ull;
 		uint64_t m_resourceGeneration = 0ull;
 		mutable TMap<RHIFrameGraphResourceKey, RHIFrameGraphSubmissionResourcePtr> m_frameGraphResources;
 		TVector<RHIFrameGraphResourceKey> m_expiredFrameGraphResourcesScratch;
-		TVector<RHIResourcePtr> m_retainedResources;
+		TVector<RHIResourceConstPtr> m_retainedResources;
 		RHISemaphorePtr m_resourceReadySemaphore{};
+		mutable RHIFencePtr m_frameCompletion{};
 	};
 
 	using RHIRenderSubmissionContextPtr = TRefPtr<RHIRenderSubmissionContext>;

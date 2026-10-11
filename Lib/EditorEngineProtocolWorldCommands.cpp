@@ -1,6 +1,10 @@
 #include "EditorEngineProtocolInternal.h"
 
 #include "Memory/UniquePtr.hpp"
+#include "Editor/EditorRuntimeBridge.h"
+#include "Editor/EditorScene.h"
+#include "Editor/EditorInterop.h"
+#include "Engine/InstanceId.h"
 #include "Protocol/Generated/editor_engine.pb.h"
 #include "Sailor.h"
 
@@ -40,7 +44,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 	static void DispatchSerializeCurrentWorld(ProtocolResponse& response)
 	{
 		char* value = nullptr;
-		const uint32_t length = Sailor::App::SerializeCurrentWorld(&value);
+		const uint32_t length = Sailor::EditorRuntime::SerializeCurrentWorld(&value);
 		Sailor::TUniquePtr<char[]> ownedValue(value);
 		SetStringResult(response, value, length);
 	}
@@ -48,7 +52,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 	static void DispatchSerializeEngineTypes(ProtocolResponse& response)
 	{
 		char* value = nullptr;
-		const uint32_t length = Sailor::App::SerializeEngineTypes(&value);
+		const uint32_t length = Sailor::EditorRuntime::SerializeEngineTypes(&value);
 		Sailor::TUniquePtr<char[]> ownedValue(value);
 		SetStringResult(response, value, length);
 	}
@@ -56,7 +60,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 	static void DispatchSerializeEditorTypes(ProtocolResponse& response)
 	{
 		char* value = nullptr;
-		const uint32_t length = Sailor::App::SerializeEditorTypes(&value);
+		const uint32_t length = Sailor::EditorRuntime::SerializeEditorTypes(&value);
 		Sailor::TUniquePtr<char[]> ownedValue(value);
 		SetStringResult(response, value, length);
 	}
@@ -64,7 +68,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 	static void DispatchSerializeWorkspaceCacheIdentity(ProtocolResponse& response)
 	{
 		char* value = nullptr;
-		const uint32_t length = Sailor::App::SerializeWorkspaceCacheIdentity(&value);
+		const uint32_t length = Sailor::EditorRuntime::SerializeWorkspaceCacheIdentity(&value);
 		Sailor::TUniquePtr<char[]> ownedValue(value);
 		SetStringResult(response, value, length);
 	}
@@ -73,7 +77,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		ProtocolResponse& response)
 	{
 		char* instanceId = nullptr;
-		const bool bSucceeded = Sailor::App::CreateEditorGameObject(
+		const bool bSucceeded = Sailor::EditorRuntime::CreateEditorGameObject(
 			request.parent_instance_id().c_str(), request.preferred_instance_id().c_str(), &instanceId);
 		Sailor::TUniquePtr<char[]> ownedInstanceId(instanceId);
 
@@ -100,7 +104,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 
 		char* instanceId = nullptr;
 		const auto& worldPosition = request.world_position();
-		const bool bSucceeded = Sailor::App::CreateEditorModelInstance(request.model_file_id().c_str(),
+		const bool bSucceeded = Sailor::EditorRuntime::CreateEditorModelInstance(request.model_file_id().c_str(),
 			request.name().c_str(),
 			request.parent_instance_id().c_str(),
 			request.create_hierarchy(),
@@ -117,7 +121,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 	static void DispatchAddComponent(const sailor::editor::v1::AddComponentRequest& request, ProtocolResponse& response)
 	{
 		char* instanceId = nullptr;
-		const bool bSucceeded = Sailor::App::AddEditorComponent(request.instance_id().c_str(),
+		const bool bSucceeded = Sailor::EditorRuntime::AddEditorComponent(request.instance_id().c_str(),
 			request.component_type_name().c_str(),
 			request.preferred_instance_id().c_str(),
 			&instanceId);
@@ -144,7 +148,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 
 		char* instanceId = nullptr;
 		const Vector4& worldPosition = request.world_position();
-		const bool bSucceeded = Sailor::App::InstantiateEditorPrefabInstance(request.file_id().c_str(),
+		const bool bSucceeded = Sailor::EditorRuntime::InstantiateEditorPrefabInstance(request.file_id().c_str(),
 			request.parent_instance_id().c_str(),
 			request.apply_world_position(),
 			worldPosition.x(),
@@ -157,14 +161,14 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 
 	static void DispatchSelection(const sailor::editor::v1::SelectionRequest& request, ProtocolResponse& response)
 	{
-		YAML::Node selection(YAML::NodeType::Sequence);
+		TVector<InstanceId> selection;
+		selection.Reserve(request.instance_ids_size());
 		for (const auto& instanceId : request.instance_ids())
 		{
-			selection.push_back(instanceId);
+			selection.Emplace(instanceId);
 		}
 
-		const std::string serializedSelection = YAML::Dump(selection);
-		SetBoolResult(response, Sailor::App::SetEditorSelection(serializedSelection.c_str()));
+		SetBoolResult(response, Sailor::EditorRuntime::SetEditorSelection(std::move(selection)));
 	}
 
 	static void DispatchAnimatorParameter(const sailor::editor::v1::AnimatorParameterRequest& request,
@@ -200,7 +204,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		}
 
 		SetBoolResult(response,
-			Sailor::App::SetEditorAnimatorParameter(
+			Sailor::EditorRuntime::SetEditorAnimatorParameter(
 				request.instance_id().c_str(), request.name().c_str(), valueKind, floatValue, intValue, boolValue));
 	}
 
@@ -214,21 +218,19 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		uint64_t destinationStateId = 0;
 		float destinationStateTime = 0.0f;
 		float transitionAlpha = 0.0f;
-		char* activeStateName = nullptr;
-		char* destinationStateName = nullptr;
-		const bool bFound = Sailor::App::GetEditorAnimatorState(request.instance_id().c_str(),
+		std::string activeStateName;
+		std::string destinationStateName;
+		const bool bFound = Sailor::EditorRuntime::GetEditorAnimatorState(request.instance_id().c_str(),
 			bHasController,
 			controllerRevision,
 			activeStateId,
-			&activeStateName,
+			activeStateName,
 			activeStateTime,
 			bTransitioning,
 			destinationStateId,
-			&destinationStateName,
+			destinationStateName,
 			destinationStateTime,
 			transitionAlpha);
-		Sailor::TUniquePtr<char[]> ownedActiveStateName(activeStateName);
-		Sailor::TUniquePtr<char[]> ownedDestinationStateName(destinationStateName);
 		if (!bFound)
 		{
 			SetError(response, "Animator component was not found.");
@@ -240,11 +242,11 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		result->set_has_controller(bHasController);
 		result->set_controller_revision(controllerRevision);
 		result->set_active_state_id(activeStateId);
-		result->set_active_state_name(activeStateName ? activeStateName : "");
+		result->set_active_state_name(activeStateName);
 		result->set_active_state_time(activeStateTime);
 		result->set_transitioning(bTransitioning);
 		result->set_destination_state_id(destinationStateId);
-		result->set_destination_state_name(destinationStateName ? destinationStateName : "");
+		result->set_destination_state_name(destinationStateName);
 		result->set_destination_state_time(destinationStateTime);
 		result->set_transition_alpha(transitionAlpha);
 	}
@@ -278,26 +280,26 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			break;
 
 		case ProtocolRequest::kLoadEditorWorld:
-			SetBoolResult(response, Sailor::App::LoadEditorWorld(request.load_editor_world().file_id().c_str()));
+			SetBoolResult(response, Sailor::EditorRuntime::LoadEditorWorld(request.load_editor_world().file_id().c_str()));
 			break;
 
 		case ProtocolRequest::kCreateEditorWorld:
-			SetBoolResult(response, Sailor::App::CreateEditorWorld());
+			SetBoolResult(response, Sailor::EditorRuntime::CreateEditorWorld());
 			break;
 
 		case ProtocolRequest::kSetEditorSimulation:
-			SetBoolResult(response, Sailor::App::SetEditorSimulationEnabled(request.set_editor_simulation().enabled()));
+			SetBoolResult(response, Sailor::EditorRuntime::SetEditorSimulationEnabled(request.set_editor_simulation().enabled()));
 			break;
 
 		case ProtocolRequest::kGetEditorSimulationState:
-			SetBoolResult(response, Sailor::App::IsEditorSimulationEnabled());
+			SetBoolResult(response, Sailor::EditorRuntime::IsEditorSimulationEnabled());
 			break;
 
 		case ProtocolRequest::kGetEditorManagedMutationRevision:
 		{
 			const auto& mutation = request.get_editor_managed_mutation_revision();
 			SetUInt64Result(response,
-				Sailor::App::GetEditorManagedMutationRevision(mutation.kind(), mutation.instance_id().c_str()));
+				Sailor::EditorRuntime::GetEditorManagedMutationRevision(mutation.kind(), mutation.instance_id().c_str()));
 			break;
 		}
 
@@ -305,7 +307,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		{
 			const auto& update = request.update_object();
 			SetBoolResult(
-				response, Sailor::App::UpdateEditorObject(update.instance_id().c_str(), update.yaml_changes().c_str()));
+				response, Sailor::EditorRuntime::UpdateEditorObject(update.instance_id().c_str(), update.yaml_changes().c_str()));
 			break;
 		}
 
@@ -313,7 +315,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		{
 			const auto& reparent = request.reparent_object();
 			SetBoolResult(response,
-				Sailor::App::ReparentEditorObject(reparent.instance_id().c_str(),
+				Sailor::EditorRuntime::ReparentEditorObject(reparent.instance_id().c_str(),
 					reparent.parent_instance_id().c_str(),
 					reparent.keep_world_transform()));
 			break;
@@ -324,12 +326,12 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			break;
 
 		case ProtocolRequest::kDestroyObject:
-			SetBoolResult(response, Sailor::App::DestroyEditorObject(request.destroy_object().instance_id().c_str()));
+			SetBoolResult(response, Sailor::EditorRuntime::DestroyEditorObject(request.destroy_object().instance_id().c_str()));
 			break;
 
 		case ProtocolRequest::kResetComponentToDefaults:
 			SetBoolResult(response,
-				Sailor::App::ResetEditorComponentToDefaults(
+				Sailor::EditorRuntime::ResetEditorComponentToDefaults(
 					request.reset_component_to_defaults().instance_id().c_str()));
 			break;
 
@@ -339,14 +341,14 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 
 		case ProtocolRequest::kRemoveComponent:
 			SetBoolResult(
-				response, Sailor::App::RemoveEditorComponent(request.remove_component().instance_id().c_str()));
+				response, Sailor::EditorRuntime::RemoveEditorComponent(request.remove_component().instance_id().c_str()));
 			break;
 
 		case ProtocolRequest::kInstantiatePrefab:
 		{
 			const auto& instantiate = request.instantiate_prefab();
 			SetBoolResult(response,
-				Sailor::App::InstantiateEditorPrefab(
+				Sailor::EditorRuntime::InstantiateEditorPrefab(
 					instantiate.file_id().c_str(), instantiate.parent_instance_id().c_str()));
 			break;
 		}
@@ -355,7 +357,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		{
 			const auto& instantiate = request.instantiate_prefab_from_yaml();
 			char* instanceId = nullptr;
-			const bool bSucceeded = Sailor::App::InstantiateEditorPrefabFromYaml(instantiate.prefab_yaml().c_str(),
+			const bool bSucceeded = Sailor::EditorRuntime::InstantiateEditorPrefabFromYaml(instantiate.prefab_yaml().c_str(),
 				instantiate.parent_instance_id().c_str(),
 				instantiate.strict_instance_ids(),
 				&instanceId);
@@ -380,13 +382,13 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		{
 			const auto& link = request.set_prefab_link();
 			SetBoolResult(
-				response, Sailor::App::SetEditorPrefabLink(link.instance_id().c_str(), link.file_id().c_str()));
+				response, Sailor::EditorRuntime::SetEditorPrefabLink(link.instance_id().c_str(), link.file_id().c_str()));
 			break;
 		}
 
 		case ProtocolRequest::kBreakPrefabLink:
 			SetBoolResult(
-				response, Sailor::App::BreakEditorPrefabLink(request.break_prefab_link().instance_id().c_str()));
+				response, Sailor::EditorRuntime::BreakEditorPrefabLink(request.break_prefab_link().instance_id().c_str()));
 			break;
 
 		default:

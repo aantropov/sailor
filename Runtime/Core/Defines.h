@@ -23,12 +23,20 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 # endif
 #endif
 
+// Template statics with module-owned lifetimes must not coalesce across DLLs.
+#if !defined(_WIN32) && (defined(__GNUC__) || defined(__clang__))
+# define SAILOR_MODULE_LOCAL __attribute__((visibility("hidden")))
+#else
+# define SAILOR_MODULE_LOCAL
+#endif
+
 #if !defined(_MSC_VER) && !defined(__forceinline)
 # define __forceinline
 #endif
 
 #include <cassert>
 #include <cstdio>
+#include <string_view>
 #if !defined(_WIN32)
 #include <thread>
 #include <chrono>
@@ -107,6 +115,27 @@ struct RECT
 #ifndef VK_LWIN
 #define VK_LWIN 0x5B
 #endif
+#ifndef VK_RWIN
+#define VK_RWIN 0x5C
+#endif
+#ifndef VK_LSHIFT
+#define VK_LSHIFT 0xA0
+#endif
+#ifndef VK_RSHIFT
+#define VK_RSHIFT 0xA1
+#endif
+#ifndef VK_LCONTROL
+#define VK_LCONTROL 0xA2
+#endif
+#ifndef VK_RCONTROL
+#define VK_RCONTROL 0xA3
+#endif
+#ifndef VK_LMENU
+#define VK_LMENU 0xA4
+#endif
+#ifndef VK_RMENU
+#define VK_RMENU 0xA5
+#endif
 
 inline DWORD GetCurrentThreadId()
 {
@@ -141,7 +170,9 @@ inline void Sleep(uint32_t ms)
 #define SAILOR_PROFILE_SCOPE(Msg) ZoneScopedN(Msg)
 /* Should we use instead? ZoneTransientN(___tracy_scoped_zone, Msg, true) */
 
-#define SAILOR_PROFILE_TEXT(Msg) ZoneText(Msg, strlen(Msg))
+#define SAILOR_PROFILE_TEXT(Msg) do { \
+	[&](std::string_view profileText) { ZoneText(profileText.data(), profileText.size()); }(Msg); \
+} while (false)
 #define SAILOR_PROFILE_BLOCK(HashMsg) //SAILOR_PROFILE_BLOCK_STR(HashMsg.ToString().c_str())
 #define SAILOR_PROFILE_END_BLOCK(HashMsg) //SAILOR_PROFILE_END_BLOCK_STR(HashMsg.ToString().c_str())
 #define SAILOR_PROFILE_END_FRAME() FrameMark

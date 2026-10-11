@@ -1,6 +1,8 @@
 #pragma once
 
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <compare>
 #include <cstdint>
@@ -15,6 +17,12 @@ namespace Sailor::EditorRemote
 	using ConnectionEpoch = uint64_t;
 	using SurfaceGeneration = uint64_t;
 	using FrameIndex = uint64_t;
+
+	inline uint64_t GetMonotonicTimeMs()
+	{
+		return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::steady_clock::now().time_since_epoch()).count());
+	}
 
 	enum class ErrorDomain : uint8_t;
 	enum class ResultCode : uint8_t;
@@ -131,6 +139,7 @@ namespace Sailor::EditorRemote
 		Key,
 		Focus,
 		Capture,
+		Text,
 	};
 
 	enum class InputModifier : uint16_t
@@ -406,6 +415,7 @@ namespace Sailor::EditorRemote
 		bool m_focused = false;
 		bool m_captured = false;
 		uint64_t m_timestampNs = 0;
+		std::string m_text;
 
 		Failure Validate() const
 		{
@@ -419,7 +429,7 @@ namespace Sailor::EditorRemote
 				static_cast<uint16_t>(InputModifier::MouseMiddle);
 			const auto kind = static_cast<uint8_t>(m_kind);
 			const bool bValidKind = kind >= static_cast<uint8_t>(InputKind::PointerMove) &&
-				kind <= static_cast<uint8_t>(InputKind::Capture);
+				kind <= static_cast<uint8_t>(InputKind::Text);
 			const bool bValidModifiers =
 				(static_cast<uint16_t>(m_modifiers) & ~validModifiers) == 0;
 			const bool bFiniteCoordinates =
@@ -577,7 +587,7 @@ namespace Sailor::EditorRemote
 	class SessionStateMachine
 	{
 	public:
-		SessionState GetState() const { return m_state; }
+		SessionState GetState() const { return m_state.load(std::memory_order_relaxed); }
 
 		Failure TransitionTo(SessionState nextState)
 		{
@@ -641,7 +651,8 @@ namespace Sailor::EditorRemote
 		}
 
 	private:
-		SessionState m_state = SessionState::Created;
+		// Transitions have one owner; status readers do not need the transport lock.
+		std::atomic<SessionState> m_state{ SessionState::Created };
 	};
 
 	enum class GuardDecision : uint8_t

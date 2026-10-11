@@ -11,14 +11,10 @@ namespace Sailor::Framegraph
 	class RenderImGuiNode : public TFrameGraphNode<RenderImGuiNode>
 	{
 	public:
-		SAILOR_API static const char* GetName() { return m_name; }
+		SAILOR_API static StringHash GetName() { return "RenderImGui"_h; }
 
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override {}
-
-	protected:
-
-		static const char* m_name;
 	};
 
 	template class TFrameGraphNode<RenderImGuiNode>;

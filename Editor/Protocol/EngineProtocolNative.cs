@@ -33,14 +33,17 @@ internal static class EngineProtocolNative
 
 #if MACCATALYST
 #if DEBUG
-    const string EngineLibrary = "Sailor-Debug";
+    public const string Configuration = "Debug";
 #else
-    const string EngineLibrary = "Sailor-Release";
+    public const string Configuration = "Release";
 #endif
+    const string EngineLibrary = "Sailor-" + Configuration;
 #elif DEBUG
-    const string EngineLibrary = "../../../../../Sailor-RelWithDebInfo.dll";
+    public const string Configuration = "RelWithDebInfo";
+    const string EngineLibrary = "../../../../../Sailor-" + Configuration + ".dll";
 #else
-    const string EngineLibrary = "../../../../../Sailor-Release.dll";
+    public const string Configuration = "Release";
+    const string EngineLibrary = "../../../../../Sailor-" + Configuration + ".dll";
 #endif
 
     [DllImport(
@@ -67,8 +70,17 @@ internal static class EngineProtocolNative
         EntryPoint = "SailorProtocolStopLocalHost",
         ExactSpelling = true,
         CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void SailorProtocolStopLocalHost(
+    internal static extern int SailorProtocolStopLocalHost(
         [MarshalAs(UnmanagedType.I1)] bool shutdownEngine);
+
+#if MACCATALYST
+    [DllImport(
+        EngineLibrary,
+        EntryPoint = "SailorProtocolSetMacViewportHost",
+        ExactSpelling = true,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int SailorProtocolSetMacViewportHost(ulong viewportId, nint layer);
+#endif
 
 #if WINDOWS
     [DllImport(

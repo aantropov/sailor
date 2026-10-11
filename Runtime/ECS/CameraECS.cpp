@@ -6,7 +6,7 @@
 using namespace Sailor;
 using namespace Sailor::Tasks;
 
-Tasks::ITaskPtr CameraECS::Tick(float deltaTime)
+void CameraECS::Tick(float deltaTime)
 {
 	m_rhiCameras.Clear();
 	m_rhiCameraTransforms.Clear();
@@ -34,8 +34,6 @@ Tasks::ITaskPtr CameraECS::Tick(float deltaTime)
 		m_rhiCameras.Add(data);
 		m_rhiCameraTransforms.Add(Math::Transform::FromMatrix(worldMatrix));
 	}
-
-	return nullptr;
 }
 
 glm::mat4 CameraData::GetInvProjection() const

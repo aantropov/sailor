@@ -1,24 +1,27 @@
 #include <algorithm>
+#include <chrono>
 #include <functional>
 #include <future>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "Platform/Win32/Input.h"
 #include "Submodules/EditorRemote/RemoteViewportRuntime.h"
+#include "Support/ScopeExit.h"
 
 using namespace Sailor::EditorRemote;
 
 namespace
 {
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -200,17 +203,22 @@ namespace
 
 		RemoteViewportSession session{ MakeViewport(), 7 };
 		BlockingBackend backend;
+		TransportDescriptor transport;
 		Require(session.BeginNegotiation().IsOk(), "negotiation should succeed");
-		Require(session.EnsureBackendTransport(backend).IsOk(), "transport should become ready");
+		Require(session.EnsureBackendTransport(backend, transport).IsOk() && session.MarkTransportReady(transport).IsOk(),
+			"imported transport should become ready");
 		auto frame = std::async(std::launch::async, [&]() { return session.PublishFrameFromBackend(backend); });
-		backend.m_entered.get_future().wait();
-		auto input = std::async(std::launch::async, [&]()
+		std::future<bool> input;
+		Sailor::Tests::ScopeExit release([&]() { backend.m_release.set_value(); });
+		Require(backend.m_entered.get_future().wait_for(std::chrono::seconds(5)) == std::future_status::ready,
+			"frame export must enter before testing concurrent input");
+		input = std::async(std::launch::async, [&]()
 		{
 			auto packet = MakeInput(1, 0, 0);
 			return session.StampAndHandleInput(packet).IsOk() && session.IsInputCurrent(packet);
 		});
 		const bool inputCompleted = input.wait_for(std::chrono::seconds(5)) == std::future_status::ready;
-		backend.m_release.set_value();
+		release.Run();
 		Require(input.get(), "input should be stamped and accepted");
 		Require(frame.get().IsOk(), "frame export should complete after release");
 		Require(inputCompleted, "input must complete before the blocked frame export is released");
@@ -250,8 +258,11 @@ namespace
 		FakeViewportTransportBackend backend{};
 
 		Require(session.BeginNegotiation().IsOk(), "backend-driven session should start negotiation");
-		Require(session.EnsureBackendTransport(backend).IsOk(), "backend should provide transport descriptor");
-		Require(session.IsReady(), "backend transport should mark session ready");
+		TransportDescriptor transport;
+		Require(session.EnsureBackendTransport(backend, transport).IsOk(), "backend should provide transport descriptor");
+		Require(!session.IsReady() && session.GetState() == SessionState::Negotiating,
+			"backend allocation alone must not acknowledge host import");
+		Require(session.MarkTransportReady(transport).IsOk() && session.IsReady(), "host acknowledgement should mark the session ready");
 		Require(backend.m_ensureCalls.size() == 1, "ensure should be invoked exactly once");
 		Require(backend.m_ensureCalls.front().m_generation == 1, "initial ensure should use generation one");
 
@@ -270,12 +281,14 @@ namespace
 		RemoteViewportSession session{ viewport, 4 };
 		FakeViewportTransportBackend backend{};
 		Require(session.BeginNegotiation().IsOk(), "negotiation should start before backend failure tests");
+		TransportDescriptor transport;
 
 		backend.m_nextEnsureFailure = Failure::FromDomain(ErrorDomain::Transport, 41, "ensure failed");
-		Require(!session.EnsureBackendTransport(backend).IsOk(), "backend ensure failure should surface");
+		Require(!session.EnsureBackendTransport(backend, transport).IsOk(), "backend ensure failure should surface");
 		Require(session.GetFailure().m_nativeCode == 41, "session should retain backend ensure failure");
 
-		Require(session.EnsureBackendTransport(backend).IsOk(), "backend ensure should recover after injected failure");
+		Require(session.EnsureBackendTransport(backend, transport).IsOk() && session.MarkTransportReady(transport).IsOk(),
+			"backend ensure and host acknowledgement should recover after injected failure");
 		backend.m_nextExportFailure = Failure::FromDomain(ErrorDomain::Transport, 42, "export failed");
 		Require(!session.PublishFrameFromBackend(backend).IsOk(), "backend export failure should surface");
 		Require(session.GetFailure().m_nativeCode == 42, "session should retain backend export failure");
@@ -310,210 +323,25 @@ namespace
 		Require(session.MarkTransportReady(MakeTransport(resizedViewport)).IsOk(), "recreated session should negotiate new transport");
 		Require(session.GetState() == SessionState::Active, "recreated session should return active");
 	}
-
-	void TestViewportSessionManagerLifecycleAndEpochCleanup()
+	void TestRemoteViewportUsesMonotonicOrigin()
 	{
-		ViewportSessionManager manager{};
-		std::vector<std::pair<ViewportId, ConnectionEpoch>> cleanedUp{};
-		manager.SetCleanupHook([&cleanedUp](ViewportId viewportId, ConnectionEpoch epoch)
-		{
-			cleanedUp.emplace_back(viewportId, epoch);
-		});
-
-		auto& a = manager.CreateOrReplaceSession(MakeViewport(1), 11);
-		auto& b = manager.CreateOrReplaceSession(MakeViewport(2), 11);
-		auto& c = manager.CreateOrReplaceSession(MakeViewport(3), 12);
-		(void)a;
-		(void)b;
-		(void)c;
-
-		Require(manager.GetSessionCount() == 3, "manager should own created sessions");
-		Require(manager.GetViewportCountForEpoch(11) == 2, "epoch bookkeeping should group sessions");
-		Require(manager.HasViewport(2), "manager should find viewport by id");
-
-		Require(manager.DestroySession(2), "manager should destroy a specific session");
-		Require(!manager.HasViewport(2), "destroyed viewport should be removed");
-		Require(manager.GetSessionCount() == 2, "destroy should shrink session map");
-		Require(manager.GetViewportCountForEpoch(11) == 1, "epoch bookkeeping should prune removed viewport");
-
-		Require(manager.DestroySessionsForEpoch(11) == 1, "epoch cleanup should destroy remaining matching session");
-		Require(manager.GetSessionCount() == 1, "epoch cleanup should preserve other epochs");
-		Require(manager.HasViewport(3), "non-matching epoch session should remain");
-		Require(cleanedUp.size() == 2, "cleanup hook should run for both destroyed sessions");
+		const auto nowMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::steady_clock::now().time_since_epoch()).count());
+		RemoteViewportSession session{ MakeViewport() };
+		Require(session.BeginNegotiation().IsOk(), "negotiation must start on the live clock");
+		Require(session.TickTimeouts(nowMs).IsOk() && session.GetState() == SessionState::Negotiating,
+			"a new negotiation must not expire at the current monotonic clock origin");
 	}
 
-	void TestViewportSessionManagerReplacementStormPrunesEpochBookkeeping()
-	{
-		ViewportSessionManager manager{};
-
-		for (ConnectionEpoch epoch = 21; epoch < 53; ++epoch)
-		{
-			auto& session = manager.CreateOrReplaceSession(MakeViewport(91, 1280 + static_cast<uint32_t>(epoch), 720), epoch);
-			Require(session.GetConnectionEpoch() == epoch, "replacement storm should keep latest epoch on session");
-			Require(manager.GetSessionCount() == 1, "replacement storm should not multiply live sessions");
-		}
-
-		for (ConnectionEpoch epoch = 21; epoch < 52; ++epoch)
-		{
-			Require(manager.GetViewportCountForEpoch(epoch) == 0, "replacement storm should prune superseded epoch bookkeeping");
-		}
-
-		Require(manager.GetViewportCountForEpoch(52) == 1, "latest replacement should retain exactly one epoch binding");
-		Require(manager.DestroySessionsForEpoch(52) == 1, "latest epoch cleanup should destroy replaced viewport exactly once");
-		Require(manager.GetSessionCount() == 0, "replacement storm cleanup should leave manager empty");
-	}
-
-	void TestEditorBridgeServerNegotiationRoutingAndDisconnect()
-	{
-		EditorBridgeServer server{};
-		BridgeConnectionInfo disconnected{};
-		ProtocolMessage routedMessage{};
-		BridgeConnectionInfo routedConnection{};
-
-		server.SetNegotiationHandler([](const BridgeConnectionRequest& request, BridgeConnectionInfo& negotiated)
-		{
-			if (request.m_protocolVersion != 1)
-			{
-				return Failure::FromDomain(ErrorDomain::Capability, 1, "unsupported protocol");
-			}
-			negotiated.m_negotiatedCapabilityMask = request.m_capabilityMask & 0x3ull;
-			return Failure::Ok();
-		});
-		server.SetCommandHandler([&routedMessage, &routedConnection](const BridgeConnectionInfo& connection, const ProtocolMessage& message)
-		{
-			routedConnection = connection;
-			routedMessage = message;
-			return Failure::Ok();
-		});
-		server.SetDisconnectHandler([&disconnected](const BridgeConnectionInfo& connection, const Failure&)
-		{
-			disconnected = connection;
-		});
-
-		BridgeConnectionRequest request{};
-		request.m_connectionId = 99;
-		request.m_epoch = 5;
-		request.m_protocolVersion = 1;
-		request.m_capabilityMask = 0xfull;
-		Require(server.AcceptConnection(request).IsOk(), "supported connection should be accepted");
-		Require(server.GetConnectionCount() == 1, "accepted connection should be stored");
-
-		ProtocolMessage create{};
-		create.m_envelope.m_category = MessageCategory::Command;
-		create.m_envelope.m_commandType = CommandType::CreateViewport;
-		create.m_envelope.m_payload = MakeViewport(17);
-		Require(server.RouteCommand(99, create).IsOk(), "command should route through accepted connection");
-		Require(routedConnection.m_connectionId == 99, "command handler should receive negotiated connection info");
-		Require(routedConnection.m_negotiatedCapabilityMask == 0x3ull, "negotiation handler should be able to clamp capability mask");
-		Require(routedMessage.m_envelope.m_commandType == CommandType::CreateViewport, "routed message should preserve command type");
-
-		BridgeConnectionRequest badRequest = request;
-		badRequest.m_connectionId = 100;
-		badRequest.m_protocolVersion = 2;
-		Require(!server.AcceptConnection(badRequest).IsOk(), "unsupported protocol should be rejected");
-		Require(server.Disconnect(99), "disconnect should drop stored connection");
-		Require(disconnected.m_connectionId == 99, "disconnect handler should receive dropped connection info");
-		Require(server.GetConnectionCount() == 0, "disconnect should remove connection from server");
-	}
-
-	void TestEditorBridgeServerConnectionAddressStability()
-	{
-		EditorBridgeServer server{};
-		auto makeRequest = [](uint64_t connectionId, ConnectionEpoch epoch)
-		{
-			BridgeConnectionRequest request{};
-			request.m_connectionId = connectionId;
-			request.m_epoch = epoch;
-			request.m_protocolVersion = 1;
-			return request;
-		};
-
-		Require(server.AcceptConnection(makeRequest(1, 10)).IsOk(),
-			"address-stability server should accept its first connection");
-		const BridgeConnectionInfo* firstAddress = server.FindConnection(1);
-		for (uint64_t connectionId = 2; connectionId <= 64; ++connectionId)
-		{
-			Require(server.AcceptConnection(makeRequest(connectionId, connectionId + 10)).IsOk(),
-				"address-stability server should accept growth connections");
-		}
-
-		const BridgeConnectionInfo* addressAfterGrowth = server.FindConnection(1);
-		Require(firstAddress != nullptr && addressAfterGrowth == firstAddress && addressAfterGrowth->m_epoch == 10,
-			"connection address and contents should survive unrelated map growth");
-		Require(server.AcceptConnection(makeRequest(1, 99)).IsOk(),
-			"address-stability server should update an existing connection");
-		Require(server.FindConnection(1) == firstAddress && firstAddress->m_epoch == 99,
-			"same-key connection updates should preserve the published address");
-
-		EditorBridgeServer reentrantServer{};
-		for (uint64_t connectionId = 1; connectionId <= 16; ++connectionId)
-		{
-			Require(reentrantServer.AcceptConnection(makeRequest(connectionId, connectionId)).IsOk(),
-				"reentrant server should fill its initial connection capacity");
-		}
-
-		bool bHandlerReferenceStable = false;
-		reentrantServer.SetCommandHandler([&](const BridgeConnectionInfo& connection, const ProtocolMessage&)
-		{
-			const BridgeConnectionInfo* addressBeforeInsert = &connection;
-			const auto insertion = reentrantServer.AcceptConnection(makeRequest(17, 17));
-			bHandlerReferenceStable = insertion.IsOk() &&
-				addressBeforeInsert == reentrantServer.FindConnection(connection.m_connectionId) &&
-				connection.m_connectionId == 1 && connection.m_epoch == 1;
-			return Failure::Ok();
-		});
-
-		ProtocolMessage command{};
-		command.m_envelope.m_category = MessageCategory::Command;
-		Require(reentrantServer.RouteCommand(1, command).IsOk(),
-			"reentrant connection handler should accept an unrelated insertion");
-		Require(bHandlerReferenceStable,
-			"connection handler reference should survive reentrant map growth");
-	}
-
-	class FakeRenderBridge : public IEditorRenderBridge
-	{
-	public:
-		void ApplyBinding(const RenderBindingRequest& request) override
-		{
-			m_applied.push_back(request);
-		}
-
-		void ReleaseBinding(ViewportId viewportId) override
-		{
-			m_released.push_back(viewportId);
-		}
-
-		std::vector<RenderBindingRequest> m_applied{};
-		std::vector<ViewportId> m_released{};
-	};
-
-	void TestEditorRenderFacadeBoundary()
-	{
-		auto viewport = MakeViewport(44, 1920, 1080);
-		RemoteViewportSession session{ viewport, 8 };
-		Require(session.BeginNegotiation().IsOk(), "session negotiation should start");
-		Require(session.MarkTransportReady(MakeTransport(viewport)).IsOk(), "session transport should become ready");
-		FramePacket frame{};
-		Require(session.PublishFrame(frame).IsOk(), "session should publish a frame before facade sync");
-
-		FakeRenderBridge renderBridge{};
-		EditorRenderFacade facade{ renderBridge };
-		facade.SyncSession(session);
-		Require(renderBridge.m_applied.size() == 1, "facade should emit one binding request");
-		Require(renderBridge.m_applied.front().m_viewportId == 44, "binding should use viewport id only, not editor types");
-		Require(renderBridge.m_applied.front().m_ready, "binding should reflect session readiness");
-		Require(renderBridge.m_applied.front().m_lastFrameIndex == 1, "binding should expose latest frame index");
-
-		facade.ReleaseSession(44);
-		Require(renderBridge.m_released.size() == 1 && renderBridge.m_released.front() == 44, "facade should release viewport binding explicitly");
-	}
 	void TestRemoteViewportReconnectTimeoutBackoffAndDiagnostics()
 	{
 		auto viewport = MakeViewport(77, 1024, 768);
 		RemoteViewportSession session{ viewport, 5 };
-		Require(session.BeginNegotiation().IsOk(), "negotiation should arm transport timeout");
-		Require(session.TickTimeouts(1000).IsOk(), "timeout transition should be accepted");
+		constexpr uint64_t start = 60'000;
+		Require(session.BeginNegotiation(start).IsOk(), "negotiation should arm transport timeout");
+		Require(session.TickTimeouts(start + 999).IsOk() && session.GetState() == SessionState::Negotiating,
+			"transport timeout must be relative to negotiation, not zero");
+		Require(session.TickTimeouts(start + 1000).IsOk(), "timeout transition should be accepted");
 		Require(session.GetState() == SessionState::Recovering, "transport ready timeout should enter recovering");
 		Require(session.GetDiagnostics().m_lastCategory == DiagnosticCategory::Timeout, "diagnostics should classify transport timeout");
 		Require(session.GetDiagnostics().m_lastFailure.has_value() && session.GetDiagnostics().m_lastFailure->m_scope == FailureScope::Session, "transport timeout should be session-scoped");
@@ -523,10 +351,47 @@ namespace
 		Require(backoff1.m_delayMs == 100 && backoff2.m_delayMs == 200, "reconnect backoff should be bounded exponential");
 
 		Failure disconnect = Failure::FromDomain(ErrorDomain::Connection, 9, "connection dropped");
-		Require(session.MarkFailure(disconnect).IsOk(), "connection failure should be accepted");
-		Require(session.TickTimeouts(5000).IsOk(), "reconnect timeout transition should be accepted");
+		constexpr uint64_t reconnect = start + 3'600'000;
+		Require(session.MarkFailure(disconnect, reconnect).IsOk(), "connection failure should be accepted");
+		Require(session.TickTimeouts(reconnect + 4999).IsOk() && session.GetFailure() == disconnect,
+			"connection failure must keep its full reconnect interval after a long session");
+		Require(session.TickTimeouts(reconnect + 5000).IsOk(), "reconnect timeout transition should be accepted");
 		Require(session.GetState() == SessionState::Lost, "reconnect timeout should enter lost");
 		Require(session.GetDiagnostics().m_lastFailure.has_value() && session.GetDiagnostics().m_lastFailure->m_scope == FailureScope::Connection, "diagnostics should retain connection-scoped timeout failure");
+	}
+
+	void TestRemoteViewportRearmsResizeAndRecoveryTimeouts()
+	{
+		constexpr uint64_t start = 60'000;
+		constexpr uint64_t resize = start + 3'600'000;
+		auto viewport = MakeViewport();
+		RemoteViewportSession session{ viewport };
+		Require(session.BeginNegotiation(start).IsOk() && session.MarkTransportReady(MakeTransport(viewport)).IsOk(),
+			"initial session must be ready");
+		viewport.m_width += 100;
+		Require(session.HandleResize(viewport, resize).IsOk(), "late resize must start a fresh deadline");
+		for (size_t pump = 0; pump < 2000; ++pump)
+		{
+			Require(session.TickTimeouts(resize + 999).IsOk() && session.GetState() == SessionState::Resizing,
+				"repeated pumps cannot expire a deadline before elapsed time");
+		}
+		Require(session.TickTimeouts(resize + 1000).IsOk() && session.GetState() == SessionState::Recovering,
+			"resize must expire at its elapsed-time deadline");
+		Require(session.Recreate(2, resize + 2000).IsOk(), "recreation must negotiate a new epoch");
+		Require(session.TickTimeouts(resize + 2999).IsOk() && session.GetState() == SessionState::Negotiating,
+			"recreation must not inherit the expired resize deadline");
+		Require(session.TickTimeouts(resize + 3000).IsOk() && session.GetState() == SessionState::Recovering,
+			"recreation must arm another deadline, not wait forever");
+		Require(session.Recreate(3, resize + 4000).IsOk() && session.SetVisible(false).IsOk() &&
+			session.MarkTransportReady(MakeTransport(viewport)).IsOk(), "recovery must preserve hidden state");
+		Require(session.TickTimeouts(resize + 60'000).IsOk() && session.GetState() == SessionState::Paused,
+			"successful ready must cancel its pending deadline");
+		Require(session.HandleResize(viewport, resize + 70'000).IsOk() && session.Destroy().IsOk(),
+			"destroy must cancel a pending resize");
+		Require(session.TickTimeouts(resize + 80'000).IsOk() && session.GetState() == SessionState::Disposed,
+			"a destroyed session must not time out or recreate");
+		Require(!session.Recreate(4, resize + 90'000).IsOk() && session.GetConnectionEpoch() == 3,
+			"recreate must not mutate a disposed session");
 	}
 
 	void TestRemoteViewportFrameFloodKeepsLatestFrameAndStableCounters()
@@ -609,12 +474,9 @@ int main()
 		{ "RemoteViewportSessionBackendContract", TestRemoteViewportSessionBackendContract },
 		{ "RemoteViewportSessionBackendFailurePropagation", TestRemoteViewportSessionBackendFailurePropagation },
 		{ "RemoteViewportSessionResizeFailureAndRecreate", TestRemoteViewportSessionResizeFailureAndRecreate },
-		{ "ViewportSessionManagerLifecycleAndEpochCleanup", TestViewportSessionManagerLifecycleAndEpochCleanup },
-		{ "ViewportSessionManagerReplacementStormPrunesEpochBookkeeping", TestViewportSessionManagerReplacementStormPrunesEpochBookkeeping },
-		{ "EditorBridgeServerNegotiationRoutingAndDisconnect", TestEditorBridgeServerNegotiationRoutingAndDisconnect },
-		{ "EditorBridgeServerConnectionAddressStability", TestEditorBridgeServerConnectionAddressStability },
-		{ "EditorRenderFacadeBoundary", TestEditorRenderFacadeBoundary },
+		{ "RemoteViewportUsesMonotonicOrigin", TestRemoteViewportUsesMonotonicOrigin },
 		{ "RemoteViewportReconnectTimeoutBackoffAndDiagnostics", TestRemoteViewportReconnectTimeoutBackoffAndDiagnostics },
+		{ "RemoteViewportRearmsResizeAndRecoveryTimeouts", TestRemoteViewportRearmsResizeAndRecoveryTimeouts },
 		{ "RemoteViewportFrameFloodKeepsLatestFrameAndStableCounters", TestRemoteViewportFrameFloodKeepsLatestFrameAndStableCounters },
 		{ "RemoteViewportDisconnectRecreateLoopResetsEpochGenerationAndState", TestRemoteViewportDisconnectRecreateLoopResetsEpochGenerationAndState },
 		{ "GlobalInputResetClearsLifecycleState", TestGlobalInputResetClearsLifecycleState },

@@ -6,11 +6,13 @@
 #include <optional>
 #include <utility>
 
-#include "EditorViewportSession.h"
+#include "RemoteViewportBinding.h"
 #include "RemoteViewportRuntime.h"
 
 namespace Sailor::EditorRemote
 {
+	class IWindowsViewportPresenter;
+
 	struct WindowsViewportSurfaceKey
 	{
 		ViewportId m_viewportId = 0;
@@ -50,6 +52,10 @@ namespace Sailor::EditorRemote
 	class WindowsViewportTransportBackend : public IViewportTransportBackend
 	{
 	public:
+		using Provider = IWindowsSharedSurfaceProvider;
+		Failure ImportSurface(IWindowsViewportPresenter& presenter, const ViewportDescriptor& viewport,
+			const TransportDescriptor& transport, ConnectionEpoch epoch, SurfaceGeneration generation);
+
 		explicit WindowsViewportTransportBackend(IWindowsSharedSurfaceProvider& provider) :
 			m_provider(provider)
 		{
@@ -57,7 +63,12 @@ namespace Sailor::EditorRemote
 
 		Failure EnsureSurface(const ViewportDescriptor& viewport, ConnectionEpoch epoch, SurfaceGeneration generation, TransportDescriptor& outTransport) override
 		{
-			WindowsViewportSurfaceState state{};
+			auto release = ReleaseSurface(viewport.m_viewportId, epoch, generation);
+			if (!release.IsOk()) return release;
+			const WindowsViewportSurfaceKey key{ viewport.m_viewportId, epoch, generation };
+			auto& storedState = m_surfaces[key];
+			storedState = TUniquePtr<WindowsViewportSurfaceState>::Make();
+			auto& state = *storedState;
 			state.m_key = { viewport.m_viewportId, epoch, generation };
 			state.m_viewport = viewport;
 			state.m_transport.m_transportType = TransportType::WinSharedHandle;
@@ -72,29 +83,27 @@ namespace Sailor::EditorRemote
 			auto result = m_provider.CreateOrResizeSurface(viewport, epoch, generation, state);
 			if (!result.IsOk())
 			{
-				m_lastFailure = m_provider.GetLastFailure();
+				ReleaseSurface(viewport.m_viewportId, epoch, generation);
+				m_lastFailure = result;
 				return result;
 			}
 
 			state.m_transport.m_transportType = TransportType::WinSharedHandle;
 			state.m_transport.m_ready = true;
 			result = state.m_transport.Validate();
+			if (result.IsOk() && (state.m_transport.m_width != viewport.m_width ||
+				state.m_transport.m_height != viewport.m_height || state.m_transport.m_pixelFormat != viewport.m_pixelFormat))
+			{
+				result = Failure::FromDomain(ErrorDomain::Protocol, 1, "Transport does not match its viewport");
+			}
 			if (!result.IsOk())
 			{
+				ReleaseSurface(viewport.m_viewportId, epoch, generation);
 				m_lastFailure = result;
 				return result;
 			}
 
 			outTransport = state.m_transport;
-			auto& storedState = m_surfaces[state.m_key];
-			if (storedState)
-			{
-				*storedState = state;
-			}
-			else
-			{
-				storedState = TUniquePtr<WindowsViewportSurfaceState>::Make(state);
-			}
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
 		}
@@ -107,6 +116,11 @@ namespace Sailor::EditorRemote
 				m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 2, "Missing Windows transport surface for frame begin");
 				return m_lastFailure;
 			}
+			if (state->m_frameBegun)
+			{
+				m_lastFailure = Failure::Ok();
+				return Failure::Ok();
+			}
 
 			auto result = m_provider.BeginFrame(*state);
 			if (!result.IsOk())
@@ -118,6 +132,13 @@ namespace Sailor::EditorRemote
 			state->m_frameBegun = true;
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
+		}
+
+		Failure PrepareFrame(const ViewportDescriptor& viewport, ConnectionEpoch epoch, SurfaceGeneration generation, bool& outReady)
+		{
+			auto result = BeginFrame(viewport, epoch, generation);
+			outReady = result.IsOk();
+			return result;
 		}
 
 		Failure ExportFrame(const ViewportDescriptor& viewport, ConnectionEpoch epoch, SurfaceGeneration generation, FramePacket& outFrame) override
@@ -183,6 +204,21 @@ namespace Sailor::EditorRemote
 
 		size_t GetSurfaceCount() const { return m_surfaces.Num(); }
 
+		Failure ReleaseSurfaces(ViewportId viewportId, ConnectionEpoch keepEpoch = 0, SurfaceGeneration keepGeneration = 0)
+		{
+			Failure failure = Failure::Ok();
+			for (const auto& key : m_surfaces.GetKeys())
+			{
+				if (key.m_viewportId == viewportId && (key.m_epoch != keepEpoch || key.m_generation != keepGeneration))
+				{
+					auto result = ReleaseSurface(key.m_viewportId, key.m_epoch, key.m_generation);
+					if (!result.IsOk()) failure = result;
+				}
+			}
+			m_lastFailure = failure;
+			return failure;
+		}
+
 	private:
 		WindowsViewportSurfaceState* FindSurface(ViewportId viewportId, ConnectionEpoch epoch, SurfaceGeneration generation)
 		{
@@ -206,287 +242,11 @@ namespace Sailor::EditorRemote
 		virtual Failure GetLastFailure() const = 0;
 	};
 
-	class WindowsViewportNativeHost : public IEditorViewportHost
+	inline Failure WindowsViewportTransportBackend::ImportSurface(IWindowsViewportPresenter& presenter,
+		const ViewportDescriptor& viewport, const TransportDescriptor& transport, ConnectionEpoch epoch, SurfaceGeneration generation)
 	{
-	public:
-		explicit WindowsViewportNativeHost(IWindowsViewportPresenter& presenter) :
-			m_presenter(presenter)
-		{
-		}
+		return presenter.ImportSurface(viewport, transport, epoch, generation);
+	}
 
-		Failure ImportTransport(const ViewportDescriptor& viewport, const TransportDescriptor& transport, ConnectionEpoch epoch, SurfaceGeneration generation) override
-		{
-			if (transport.m_transportType != TransportType::WinSharedHandle)
-			{
-				m_lastFailure = Failure::FromDomain(ErrorDomain::Capability, 1, "Windows host supports WinSharedHandle transport only");
-				return m_lastFailure;
-			}
-
-			auto validation = transport.Validate();
-			if (!validation.IsOk())
-			{
-				m_lastFailure = validation;
-				return validation;
-			}
-
-			auto result = m_presenter.ImportSurface(viewport, transport, epoch, generation);
-			if (!result.IsOk())
-			{
-				m_lastFailure = m_presenter.GetLastFailure();
-				return result;
-			}
-
-			m_importedViewport = viewport.m_viewportId;
-			m_importedEpoch = epoch;
-			m_importedGeneration = generation;
-			m_lastAcceptedFrame.reset();
-			m_lastFailure = Failure::Ok();
-			return Failure::Ok();
-		}
-
-		Failure AcceptFrame(const FramePacket& frame) override
-		{
-			if (!m_importedViewport.has_value() || *m_importedViewport != frame.m_viewportId)
-			{
-				m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 2, "Frame rejected because no matching Windows viewport is imported");
-				return m_lastFailure;
-			}
-			if (frame.m_connectionEpoch != m_importedEpoch || frame.m_generation != m_importedGeneration)
-			{
-				m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 2, "Frame rejected because imported Windows transport generation is stale");
-				return m_lastFailure;
-			}
-
-			m_lastAcceptedFrame = frame;
-			m_lastFailure = Failure::Ok();
-			return Failure::Ok();
-		}
-
-		Failure PresentLatestFrame(ViewportId viewportId) override
-		{
-			if (!m_lastAcceptedFrame.has_value() || m_lastAcceptedFrame->m_viewportId != viewportId)
-			{
-				m_lastFailure = Failure::FromDomain(ErrorDomain::Transport, 1, "No accepted Windows frame is available for presentation");
-				return m_lastFailure;
-			}
-
-			auto result = m_presenter.PresentFrame(viewportId, *m_lastAcceptedFrame);
-			if (!result.IsOk())
-			{
-				m_lastFailure = m_presenter.GetLastFailure();
-				return result;
-			}
-
-			m_lastFailure = Failure::Ok();
-			return Failure::Ok();
-		}
-
-		void ResetViewport(ViewportId viewportId) override
-		{
-			if (m_importedViewport.has_value() && *m_importedViewport == viewportId)
-			{
-				m_importedViewport.reset();
-				m_importedEpoch = 0;
-				m_importedGeneration = 0;
-				m_lastAcceptedFrame.reset();
-			}
-			m_presenter.ResetViewport(viewportId);
-		}
-
-		Failure GetLastFailure() const override
-		{
-			return m_lastFailure;
-		}
-
-	private:
-		IWindowsViewportPresenter& m_presenter;
-		std::optional<ViewportId> m_importedViewport{};
-		ConnectionEpoch m_importedEpoch = 0;
-		SurfaceGeneration m_importedGeneration = 0;
-		std::optional<FramePacket> m_lastAcceptedFrame{};
-		Failure m_lastFailure = Failure::Ok();
-	};
-
-	class WindowsViewportLoopbackBinding
-	{
-	public:
-		WindowsViewportLoopbackBinding(
-			ViewportDescriptor descriptor,
-			IWindowsSharedSurfaceProvider& provider,
-			IWindowsViewportPresenter& presenter,
-			ConnectionEpoch epoch = 1) :
-			m_transportBackend(provider),
-			m_host(presenter),
-			m_runtimeSession(std::move(descriptor), epoch)
-		{
-		}
-
-		RemoteViewportSession& GetRuntimeSession() { return m_runtimeSession; }
-		const RemoteViewportSession& GetRuntimeSession() const { return m_runtimeSession; }
-		WindowsViewportTransportBackend& GetTransportBackend() { return m_transportBackend; }
-		const WindowsViewportTransportBackend& GetTransportBackend() const { return m_transportBackend; }
-		WindowsViewportNativeHost& GetHost() { return m_host; }
-		const WindowsViewportNativeHost& GetHost() const { return m_host; }
-
-		Failure Create()
-		{
-			auto result = m_runtimeSession.BeginNegotiation();
-			if (!result.IsOk())
-			{
-				return result;
-			}
-
-			m_visible = true;
-			m_focused = false;
-			m_created = true;
-			return EnsureTransportImported();
-		}
-
-		Failure Resize(uint32_t width, uint32_t height)
-		{
-			const auto previousEpoch = m_runtimeSession.GetConnectionEpoch();
-			const auto previousGeneration = m_runtimeSession.GetGeneration();
-			auto descriptor = m_runtimeSession.GetDescriptor();
-			descriptor.m_width = std::max(width, 1u);
-			descriptor.m_height = std::max(height, 1u);
-			auto result = m_runtimeSession.HandleResize(descriptor);
-			if (!result.IsOk())
-			{
-				return result;
-			}
-
-			result = EnsureTransportImported();
-			if (!result.IsOk())
-			{
-				return result;
-			}
-
-			return m_transportBackend.ReleaseSurface(
-				m_runtimeSession.GetViewportId(),
-				previousEpoch,
-				previousGeneration);
-		}
-
-		Failure SetVisible(bool visible)
-		{
-			m_visible = visible;
-			return m_runtimeSession.SetVisible(visible);
-		}
-
-		Failure SetFocused(bool focused)
-		{
-			m_focused = focused;
-			InputPacket input{};
-			input.m_viewportId = m_runtimeSession.GetViewportId();
-			input.m_connectionEpoch = m_runtimeSession.GetConnectionEpoch();
-			input.m_generation = m_runtimeSession.GetGeneration();
-			input.m_kind = InputKind::Focus;
-			input.m_focused = focused;
-			input.m_timestampNs = ++m_inputTimestampNs;
-			return m_runtimeSession.HandleInput(input);
-		}
-
-		Failure PumpFrame()
-		{
-			if (!m_created)
-			{
-				return Failure::FromDomain(
-					ErrorDomain::Session,
-					1,
-					"Windows loopback binding must be created before pumping frames");
-			}
-			if (m_runtimeSession.GetState() != SessionState::Active)
-			{
-				return Failure::Ok();
-			}
-
-			auto result = m_runtimeSession.PublishFrameFromBackend(m_transportBackend);
-			if (!result.IsOk())
-			{
-				return result;
-			}
-
-			result = m_host.AcceptFrame(m_runtimeSession.GetLastFrame());
-			if (!result.IsOk())
-			{
-				return result;
-			}
-
-			return m_host.PresentLatestFrame(
-				m_runtimeSession.GetDescriptor().m_viewportId);
-		}
-
-		Failure Destroy()
-		{
-			if (!m_created)
-			{
-				return Failure::Ok();
-			}
-
-			auto release = m_runtimeSession.ReleaseBackendTransport(m_transportBackend);
-			m_host.ResetViewport(m_runtimeSession.GetDescriptor().m_viewportId);
-			auto destroy = m_runtimeSession.Destroy();
-			m_created = false;
-			return !release.IsOk() ? release : destroy;
-		}
-
-	private:
-		Failure EnsureTransportImported()
-		{
-			auto result = m_runtimeSession.EnsureBackendTransport(m_transportBackend);
-			if (!result.IsOk())
-			{
-				return result;
-			}
-
-			const auto* surface = std::as_const(m_transportBackend).FindSurface(
-				m_runtimeSession.GetViewportId(),
-				m_runtimeSession.GetConnectionEpoch(),
-				m_runtimeSession.GetGeneration());
-			if (!surface)
-			{
-				return Failure::FromDomain(
-					ErrorDomain::Transport,
-					1,
-					"Windows loopback binding could not resolve imported surface");
-			}
-
-			result = m_host.ImportTransport(
-				m_runtimeSession.GetDescriptor(),
-				surface->m_transport,
-				m_runtimeSession.GetConnectionEpoch(),
-				m_runtimeSession.GetGeneration());
-			if (!result.IsOk())
-			{
-				return result;
-			}
-
-			if (!m_visible)
-			{
-				result = m_runtimeSession.SetVisible(false);
-				if (!result.IsOk())
-				{
-					return result;
-				}
-			}
-			if (m_focused)
-			{
-				result = SetFocused(true);
-				if (!result.IsOk())
-				{
-					return result;
-				}
-			}
-
-			return Failure::Ok();
-		}
-
-		WindowsViewportTransportBackend m_transportBackend;
-		WindowsViewportNativeHost m_host;
-		RemoteViewportSession m_runtimeSession;
-		uint64_t m_inputTimestampNs = 0;
-		bool m_created = false;
-		bool m_visible = true;
-		bool m_focused = false;
-	};
+	using WindowsViewportLoopbackBinding = TViewportLoopbackBinding<WindowsViewportTransportBackend, IWindowsViewportPresenter>;
 }

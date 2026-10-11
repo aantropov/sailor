@@ -1,49 +1,25 @@
 #include "AssetRegistry/Model/ModelImporter.h"
+#include "Platform/AtomicFile.h"
 
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Model/GeneratedModelAssetMetadata.h"
 #include "AssetRegistry/Model/GltfImporterUtils.h"
 #include "Core/Utils.h"
-#include "Workspace/WorkspaceCacheContract.h"
 
 #include <filesystem>
+#include <sstream>
 #include <string>
 
 #include <tiny_gltf.h>
 
 using namespace Sailor;
+using namespace Sailor::Workspace;
 
-static FileId CreateAnimationAsset(const std::string& filepath,
-	const std::string& glbFilename,
-	uint32_t animationIndex,
-	uint32_t skinIndex)
-{
-	FileId newFileId = FileId::CreateNewFileId();
-
-	YAML::Node newAnimation =
-		GeneratedModelAssetMetadata::CreateAnimation(newFileId, glbFilename, animationIndex, skinIndex);
-
-	std::ostringstream serialized;
-	serialized << newAnimation;
-	if (!serialized)
-	{
-		SAILOR_LOG_ERROR("Cannot serialize generated animation metadata: %s", filepath.c_str());
-		return {};
-	}
-
-	std::string diagnostic;
-	if (!Workspace::AtomicReplaceWorkspaceCacheText(std::filesystem::path(filepath), serialized.str(), diagnostic))
-	{
-		SAILOR_LOG_ERROR("Cannot save generated animation metadata '%s': %s", filepath.c_str(), diagnostic.c_str());
-		return {};
-	}
-
-	return newFileId;
-}
-
-bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo)
+bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo, bool& outChanged)
 {
 	SAILOR_PROFILE_FUNCTION();
+	outChanged = false;
+	AssetRegistry& assetRegistry = *m_assetRegistry;
 
 	tinygltf::Model gltfModel;
 	std::string err, warn;
@@ -56,34 +32,117 @@ bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo)
 
 	if (gltfModel.animations.empty())
 	{
-		const bool bChanged = assetInfo->GetAnimations().Num() > 0;
+		outChanged = assetInfo->GetAnimations().Num() > 0;
 		assetInfo->GetAnimations().Clear();
-		return bChanged;
+		return true;
 	}
 
 	const std::string animationsFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath());
+	TVector<FileId> registeredAnimations;
+	assetRegistry.GetAssetInfoIdsByTypeAndSource(
+		"Sailor::AnimationAssetInfo", assetInfo->GetAssetFilepath(), registeredAnimations);
+	TVector<FileId> knownAnimations = assetInfo->GetAnimations();
+	for (const FileId& fileId : registeredAnimations)
+	{
+		if (!knownAnimations.Contains(fileId))
+		{
+			knownAnimations.Add(fileId);
+		}
+	}
+
 	TVector<FileId> generatedAnimations;
 	generatedAnimations.Reserve(gltfModel.animations.size());
 
 	for (size_t i = 0; i < gltfModel.animations.size(); ++i)
 	{
+		auto matchesClip = [&](AnimationAssetInfoPtr animation)
+		{
+			std::error_code error;
+			return animation != nullptr && animation->GetAnimationIndex() == static_cast<int32_t>(i) &&
+				animation->GetSkinIndex() == 0 &&
+				std::filesystem::equivalent(PathFromUtf8(animation->GetAssetFilepath()), PathFromUtf8(assetInfo->GetAssetFilepath()), error);
+		};
+		AnimationAssetInfoPtr existingAnimation = nullptr;
+		for (const FileId& fileId : knownAnimations)
+		{
+			auto* animation = assetRegistry.GetAssetInfoPtr<AnimationAssetInfoPtr>(fileId);
+			if (matchesClip(animation))
+			{
+				existingAnimation = animation;
+				break;
+			}
+		}
+
 		std::filesystem::path outputPath;
-		if (!App::GetSubmodule<AssetRegistry>()->ResolveWorkspaceContentPathForWrite(
-				animationsFolder + assetInfo->GetAssetFilename() + "_animation_" + std::to_string(i) + ".anim.asset",
-				outputPath))
+		if (!assetRegistry.ResolveWorkspaceContentPathForWrite(
+			animationsFolder + assetInfo->GetAssetFilename() + "_animation_" + std::to_string(i) + ".anim.asset", outputPath))
 		{
 			SAILOR_LOG_ERROR(
 				"Cannot resolve generated animation output for %s.", assetInfo->GetAssetFilepath().c_str());
 			return false;
 		}
-		const FileId id = CreateAnimationAsset(outputPath.string(), assetInfo->GetAssetFilename(), (uint32_t)i, 0);
-		if (!id)
+		FileId fileId = existingAnimation ? existingAnimation->GetFileId() :
+			(i < assetInfo->GetAnimations().Num() ? assetInfo->GetAnimations()[i] : FileId::Invalid);
+		if (fileId)
 		{
+			auto* animation = assetRegistry.GetAssetInfoPtr<AnimationAssetInfoPtr>(fileId);
+			if ((animation != nullptr && !matchesClip(animation)) ||
+				!assetRegistry.CanReuseSecondaryAssetId(fileId, "Sailor::AnimationAssetInfo", PathFromUtf8(assetInfo->GetAssetFilepath()), outputPath))
+			{
+				fileId = FileId::Invalid;
+			}
+		}
+		std::error_code error;
+		const bool bMetadataExists = std::filesystem::exists(outputPath, error);
+		if (error)
+		{
+			SAILOR_LOG_ERROR("Cannot inspect animation metadata '%s': %s", PathToUtf8(outputPath).c_str(), error.message().c_str());
 			return false;
 		}
-		generatedAnimations.Add(id);
+
+		if (!bMetadataExists)
+		{
+			if (!fileId)
+			{
+				fileId = FileId::CreateNewFileId();
+			}
+			const auto sourceFilename = std::filesystem::relative(PathFromUtf8(assetInfo->GetAssetFilepath()), outputPath.parent_path(), error);
+			if (error)
+			{
+				SAILOR_LOG_ERROR("Cannot resolve the model source for animation metadata: %s", PathToUtf8(outputPath).c_str());
+				return false;
+			}
+			const YAML::Node metadata = GeneratedModelAssetMetadata::CreateAnimation(
+				fileId, PathToUtf8(sourceFilename), static_cast<uint32_t>(i), 0);
+			std::ostringstream serialized;
+			serialized << metadata;
+			if (!serialized)
+			{
+				SAILOR_LOG_ERROR("Cannot serialize generated animation metadata: %s", PathToUtf8(outputPath).c_str());
+				return false;
+			}
+
+			const std::string text = serialized.str();
+			std::string diagnostic;
+			if (!Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(outputPath, text.data(), text.size(), diagnostic,
+				Platform::EAtomicWriteMode::FailIfExists)))
+			{
+				SAILOR_LOG_ERROR("Cannot create animation metadata '%s': %s", PathToUtf8(outputPath).c_str(), diagnostic.c_str());
+				return false;
+			}
+		}
+
+		const FileId registeredId = assetRegistry.RegisterGeneratedSecondaryAssetInfo(outputPath);
+		if (!registeredId || (!bMetadataExists && fileId != registeredId) ||
+			!matchesClip(assetRegistry.GetAssetInfoPtr<AnimationAssetInfoPtr>(registeredId)))
+		{
+			SAILOR_LOG_ERROR("Animation metadata does not match its model, clip and skin: %s", PathToUtf8(outputPath).c_str());
+			return false;
+		}
+		generatedAnimations.Add(registeredId);
 	}
 
+	outChanged = generatedAnimations != assetInfo->GetAnimations();
 	assetInfo->GetAnimations() = std::move(generatedAnimations);
 	return true;
 }

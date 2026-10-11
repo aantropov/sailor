@@ -16,6 +16,7 @@
 #include "AssetRegistry/AssetFactory.h"
 #include "Engine/Types.h"
 #include "RHI/Types.h"
+#include "RHI/MaterialMetadata.h"
 #include "Engine/Object.h"
 #include "Memory/ObjectPtr.hpp"
 #include "Memory/ObjectAllocator.hpp"
@@ -34,7 +35,9 @@ namespace Sailor
 		SAILOR_API virtual bool IsReady() const override;
 		SAILOR_API bool IsDirty() const { return m_bIsDirty.load(); }
 		SAILOR_API uint64_t GetContentRevision() const { return m_contentRevision.load(std::memory_order_acquire); }
+		SAILOR_API uint64_t GetSurfaceRevision() const { return m_surfaceRevision.load(std::memory_order_acquire); }
 		SAILOR_API uint64_t GetRenderMetadataRevision() const { return m_renderMetadataRevision.load(std::memory_order_acquire); }
+		SAILOR_API const RHI::RHIMaterialMetadata& GetRenderMetadata() const { return m_renderMetadata; }
 		SAILOR_API static uint64_t GetGlobalContentRevision();
 
 		SAILOR_API virtual Tasks::ITaskPtr OnHotReload() override;
@@ -43,10 +46,12 @@ namespace Sailor
 		SAILOR_API RHI::RHIShaderBindingSetPtr GetShaderBindings() { return m_commonShaderBindings; }
 		SAILOR_API RHI::RHIShaderBindingSetPtr GetShaderBindings() const { return m_commonShaderBindings; }
 
-		SAILOR_API const TConcurrentMap<std::string, TexturePtr>& GetSamplers() const { return m_samplers; }
-		SAILOR_API const TConcurrentMap<std::string, glm::vec4>& GetUniformsVec4() const { return m_uniformsVec4; }
-		SAILOR_API const TConcurrentMap<std::string, float>& GetUniformsFloat() const { return m_uniformsFloat; }
+		SAILOR_API const TConcurrentMap<StringHash, TexturePtr>& GetSamplers() const { return m_samplers; }
+		SAILOR_API const TConcurrentMap<StringHash, glm::vec4>& GetUniformsVec4() const { return m_uniformsVec4; }
+		SAILOR_API const TConcurrentMap<StringHash, float>& GetUniformsFloat() const { return m_uniformsFloat; }
 
+		// World-owned values are edited on Main after loading. Private instances
+		// can be initialized by their creating task before publication.
 		SAILOR_API void ClearSamplers();
 		SAILOR_API void ClearUniforms();
 
@@ -61,9 +66,9 @@ namespace Sailor
 
 		const auto& GetRHIMaterials() const { return m_rhiMaterials; }
 
-		SAILOR_API void SetSampler(const std::string& name, TexturePtr value);
-		SAILOR_API void SetUniform(const std::string& name, glm::vec4 value);
-		SAILOR_API void SetUniform(const std::string& name, float value);
+		SAILOR_API void SetSampler(StringHash name, TexturePtr value);
+		SAILOR_API void SetUniform(StringHash name, glm::vec4 value);
+		SAILOR_API void SetUniform(StringHash name, float value);
 		SAILOR_API void SetShader(ShaderSetPtr shader);
 		SAILOR_API void SetRenderState(const RHI::RenderState& renderState);
 
@@ -71,24 +76,30 @@ namespace Sailor
 
 	protected:
 
-		void AdvanceContentRevision();
+		void AdvanceContentRevision(bool bSurfaceChanged = true);
 		void AdvanceRenderMetadataRevision();
+		void UpdateRenderMetadata();
 		void ForcelyUpdateUniforms();
 		void UpdateUniforms(RHI::RHICommandListPtr cmdList);
 
+		// Publishes initial CPU state; GPU readiness is checked separately.
+		std::atomic<bool> m_bIsInitialized{ false };
 		std::atomic<bool> m_bIsDirty{};
 		std::atomic<uint64_t> m_contentRevision{};
+		// Emission RGB changes lighting, but leaves the transport surface intact.
+		std::atomic<uint64_t> m_surfaceRevision{};
 		std::atomic<uint64_t> m_renderMetadataRevision{};
 
 		ShaderSetPtr m_shader{};
 		RHI::RHIShaderBindingSetPtr m_commonShaderBindings{};
 
 		RHI::RenderState m_renderState{};
+		RHI::RHIMaterialMetadata m_renderMetadata{};
 
 		TConcurrentMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr, 24, ERehashPolicy::Never> m_rhiMaterials{};
-		TConcurrentMap<std::string, TexturePtr> m_samplers{};
-		TConcurrentMap<std::string, glm::vec4> m_uniformsVec4{};
-		TConcurrentMap<std::string, float> m_uniformsFloat{};
+		TConcurrentMap<StringHash, TexturePtr> m_samplers{};
+		TConcurrentMap<StringHash, glm::vec4> m_uniformsVec4{};
+		TConcurrentMap<StringHash, float> m_uniformsFloat{};
 
 		friend class MaterialImporter;
 	};
@@ -113,6 +124,7 @@ namespace Sailor
 
 		SAILOR_API virtual ~MaterialAsset() = default;
 
+		SAILOR_API static YAML::Node Serialize(const Data& data);
 		SAILOR_API virtual YAML::Node Serialize() const override;
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 
@@ -158,6 +170,8 @@ namespace Sailor
 	protected:
 
 		SAILOR_API bool IsMaterialLoaded(FileId uid) const;
+		Tasks::TaskPtr<MaterialPtr> CreateMaterialTask(MaterialPtr material,
+			TSharedPtr<MaterialAsset> asset, bool bHotReload, const Tasks::ITaskPtr& previous);
 
 		TConcurrentMap<FileId, Tasks::TaskPtr<MaterialPtr>> m_promises;
 		TConcurrentMap<FileId, MaterialPtr> m_loadedMaterials;

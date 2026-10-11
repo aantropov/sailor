@@ -1,0 +1,18 @@
+name: PushConstants
+prefabs:
+  - gameObjects:
+      - name: GPU push constants validation
+        mobilityType: Stationary
+        position: [0, 0, 0, 1]
+        rotation: [0, 0, 0, 1]
+        scale: [1, 1, 1, 1]
+        parentIndex: 4294967295
+        instanceId: 18200000000000000001
+        components: [0]
+    components:
+      - typename: Sailor::PushConstantsTestComponent
+        overrideProperties:
+          testName: PushConstants
+          quitAfterFinish: true
+          fileId: NullFileId
+          instanceId: 1820000000000001_18200000000000000001

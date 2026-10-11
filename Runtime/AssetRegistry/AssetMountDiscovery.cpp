@@ -1,8 +1,10 @@
 #include "AssetRegistry/AssetMountDiscovery.h"
 #include "Containers/Containers.h"
+#include "Workspace/WorkspacePathEncoding.h"
 
 #include <algorithm>
 #include <cctype>
+#include <format>
 #include <functional>
 #include <set>
 #include <sstream>
@@ -12,12 +14,13 @@
 #include <utility>
 
 using namespace Sailor;
+using namespace Sailor::Workspace;
 
 namespace
 {
 	std::string PathDisplay(const std::filesystem::path& path)
 	{
-		return path.generic_string();
+		return PathToUtf8(path);
 	}
 
 	std::string PathKey(const std::filesystem::path& path)
@@ -62,7 +65,7 @@ namespace
 
 	bool IsInternalTransactionDirectory(const std::filesystem::path& path)
 	{
-		std::string directoryName = path.filename().string();
+		std::string directoryName = PathToUtf8(path.filename());
 		std::transform(
 			directoryName.begin(),
 			directoryName.end(),
@@ -94,7 +97,7 @@ namespace
 			return false;
 		}
 
-		const std::filesystem::path virtualPath(path);
+		const auto virtualPath = PathFromUtf8(path);
 		if (virtualPath.is_absolute() || virtualPath.has_root_name() || virtualPath.has_root_directory())
 		{
 			return false;
@@ -256,10 +259,9 @@ namespace
 				diagnostic.m_conflictingPath = conflicting.m_root;
 				diagnostic.m_winnerKind = winner.m_kind;
 				diagnostic.m_conflictingKind = conflicting.m_kind;
-				diagnostic.m_message = "Duplicate asset mount root '" + PathDisplay(winner.m_root) +
-					"' keeps " + std::string(magic_enum::enum_name(winner.m_kind)) +
-					" and discards " +
-					std::string(magic_enum::enum_name(conflicting.m_kind)) + ".";
+				diagnostic.m_message = std::format("Duplicate asset mount root '{}' keeps {} and discards {}.",
+					PathDisplay(winner.m_root), magic_enum::enum_name(winner.m_kind),
+					magic_enum::enum_name(conflicting.m_kind));
 				diagnostics.Add(std::move(diagnostic));
 			}
 			begin = end;
@@ -283,11 +285,9 @@ namespace
 				diagnostic.m_conflictingPath = right.m_root;
 				diagnostic.m_winnerKind = left.m_kind;
 				diagnostic.m_conflictingKind = right.m_kind;
-				diagnostic.m_message = "Asset mount roots overlap and cannot be activated: " +
-					std::string(magic_enum::enum_name(left.m_kind)) + " '" +
-					PathDisplay(left.m_root) + "' and " +
-					std::string(magic_enum::enum_name(right.m_kind)) + " '" +
-					PathDisplay(right.m_root) + "'.";
+				diagnostic.m_message = std::format("Asset mount roots overlap and cannot be activated: {} '{}' and {} '{}'.",
+					magic_enum::enum_name(left.m_kind), PathDisplay(left.m_root),
+					magic_enum::enum_name(right.m_kind), PathDisplay(right.m_root));
 				diagnostics.Add(std::move(diagnostic));
 			}
 		}
@@ -415,7 +415,7 @@ namespace
 			}
 
 			const std::filesystem::path relativePath = entry.path().lexically_relative(mount.m_root);
-			const std::string virtualPath = relativePath.generic_string();
+			const std::string virtualPath = PathToUtf8(relativePath);
 			if (!IsSafeVirtualPath(virtualPath))
 			{
 				diagnostics.Add(MakeInspectionDiagnostic(
@@ -433,7 +433,7 @@ namespace
 
 	AssetMountDiagnostic MakeCollisionDiagnostic(
 		EAssetMountDiagnosticCode code,
-		const std::string& key,
+		std::string_view key,
 		const AssetMountCandidate& winner,
 		const AssetMountCandidate& conflicting)
 	{
@@ -447,14 +447,13 @@ namespace
 		diagnostic.m_winnerFileId = winner.m_fileId;
 		diagnostic.m_conflictingFileId = conflicting.m_fileId;
 
-		const char* collisionName = code == EAssetMountDiagnosticCode::VirtualPathCollision
+		const std::string_view collisionName = code == EAssetMountDiagnosticCode::VirtualPathCollision
 			? "virtual path"
 			: "FileId";
-		diagnostic.m_message = "Asset " + std::string(collisionName) + " collision '" + key +
-			"' keeps " + std::string(magic_enum::enum_name(winner.m_mount.m_kind)) + " '" +
-			PathDisplay(winner.m_physicalPath) + "' (FileId '" + winner.m_fileId +
-			"') over " + std::string(magic_enum::enum_name(conflicting.m_mount.m_kind)) + " '" +
-			PathDisplay(conflicting.m_physicalPath) + "' (FileId '" + conflicting.m_fileId + "').";
+		diagnostic.m_message = std::format("Asset {} collision '{}' keeps {} '{}' (FileId '{}') over {} '{}' (FileId '{}').",
+			collisionName, key, magic_enum::enum_name(winner.m_mount.m_kind),
+			PathDisplay(winner.m_physicalPath), winner.m_fileId,
+			magic_enum::enum_name(conflicting.m_mount.m_kind), PathDisplay(conflicting.m_physicalPath), conflicting.m_fileId);
 		return diagnostic;
 	}
 
@@ -601,9 +600,9 @@ AssetMountResolutionResult Sailor::ResolveAssetMountCandidates(
 }
 
 const AssetMountCandidate* AssetMountResolutionResult::FindByVirtualPath(
-	const std::string& virtualPath) const noexcept
+	std::string_view virtualPath) const noexcept
 {
-	const auto it = m_virtualPathWinners.Find(VirtualPathKey(virtualPath));
+	const auto it = m_virtualPathWinners.Find(VirtualPathKey(std::string(virtualPath)));
 	return it == m_virtualPathWinners.end() ? nullptr : &m_candidates[it.Value()];
 }
 

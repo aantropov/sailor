@@ -705,6 +705,12 @@ public sealed class ProjectContentFileOperations
         var metadataCreations = new List<MetadataCreation>(metadataDocuments.Count);
         foreach (var document in metadataDocuments)
         {
+            // A standalone material copy is authored, not another output of the same glTF slot.
+            if (Path.GetExtension(group.SourcePath).Equals(".mat", StringComparison.OrdinalIgnoreCase))
+            {
+                document.Root.Children.Remove(new YamlScalarNode("sourceModel"));
+                document.Root.Children.Remove(new YamlScalarNode("sourceMaterialIndex"));
+            }
             RewriteScalarValues(document.Root, fileIdReplacements);
 
             var filenameKey = new YamlScalarNode("filename");

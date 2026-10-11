@@ -69,12 +69,14 @@ namespace Sailor::ECS
 		virtual void UnregisterComponent(size_t index) = 0;
 
 		virtual void BeginPlay() {}
-		virtual Tasks::ITaskPtr Tick(float deltaTime) = 0;
-		virtual Tasks::ITaskPtr PostTick() { return nullptr; }
+		// Finish frame-visible work before returning, including any local jobs.
+		virtual void Tick(float deltaTime) = 0;
+		virtual void PostTick() {}
 		virtual void EndPlay() {}
 
 		virtual size_t GetComponentType() const { return (size_t)-1; }
 
+		// Publication order; World runs transform and physics phases explicitly.
 		virtual uint32_t GetOrder() const { return 100; }
 
 		void UpdateGameObject(GameObjectPtr gameObject, size_t lastFrameChanges);

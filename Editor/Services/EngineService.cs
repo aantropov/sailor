@@ -47,7 +47,8 @@ namespace SailorEditor.Services
         PointerWheel = 3,
         Key = 4,
         Focus = 5,
-        Capture = 6
+        Capture = 6,
+        Text = 7
     }
 
     [Flags]
@@ -109,7 +110,8 @@ namespace SailorEditor.Services
             RemoteViewportInputModifier Modifiers,
             bool Pressed,
             bool Focused,
-            bool Captured);
+            bool Captured,
+            string Text);
 
         public const ulong SceneViewportId = 1;
 
@@ -131,16 +133,16 @@ namespace SailorEditor.Services
         EngineTypes editorTypes = new();
         int consoleDispatchScheduled = 0;
         int disposeState;
+        volatile bool nativeShutdownPending;
         int lifecycleState = (int)EngineLifecycleState.Stopped;
         long engineGeneration;
 #if WINDOWS || MACCATALYST
         readonly object remoteViewportStateLock = new();
         readonly Dictionary<ulong, RemoteViewportSessionState> remoteViewportStates = [];
         readonly Dictionary<ulong, string> remoteViewportDiagnostics = [];
-        // Windows acknowledges an upsert after applying it. Other native hosts
-        // can defer an update and still need the next layout retry.
+        // Native upsert acknowledges only an applied update on every platform.
         readonly KeyedLatestQueuedCommand<ulong, RemoteViewportUpdate> remoteViewportUpdates = new(
-            deduplicateSuccessfulValues: OperatingSystem.IsWindows());
+            deduplicateSuccessfulValues: true);
         readonly LatestQueuedCommand<Rect> editorViewportUpdate = new();
         readonly LatestQueuedCommand<(uint Width, uint Height)> renderTargetUpdate = new();
         readonly KeyedLatestQueuedCommand<ulong, RemoteViewportInput> pointerMoves = new();
@@ -716,36 +718,12 @@ namespace SailorEditor.Services
                     return;
                 }
 
-                appliedMacRemoteViewportHosts[viewportId] =
-                    (generation, hostHandle);
-            }
-
-            if (!QueuePlatformInterop(async cancellationToken =>
-            {
-                if (await protocolClient.SetRemoteViewportMacHostHandleAsync(
-                        viewportId,
-                        2u,
-                        (ulong)hostHandle,
-                        cancellationToken).ConfigureAwait(false))
+                // Transfer the native reference before the UI handler can dispose its layer.
+                if (EngineProtocolNative.SailorProtocolSetMacViewportHost(viewportId, hostHandle) != 0)
                 {
-                    return true;
+                    appliedMacRemoteViewportHosts[viewportId] = (generation, hostHandle);
                 }
-
-                lock (macRemoteViewportHostLock)
-                {
-                    if (appliedMacRemoteViewportHosts.TryGetValue(
-                            viewportId,
-                            out var pending) &&
-                        pending.Generation == generation &&
-                        pending.Handle == hostHandle)
-                    {
-                        appliedMacRemoteViewportHosts.Remove(viewportId);
-                    }
-                }
-                return false;
-            }))
-            {
-                lock (macRemoteViewportHostLock)
+                else
                 {
                     appliedMacRemoteViewportHosts.Remove(viewportId);
                 }
@@ -921,7 +899,8 @@ namespace SailorEditor.Services
             RemoteViewportInputModifier modifiers = RemoteViewportInputModifier.None,
             bool pressed = false,
             bool focused = false,
-            bool captured = false)
+            bool captured = false,
+            string text = "")
         {
 #if WINDOWS || MACCATALYST
             var input = new RemoteViewportInput(
@@ -936,7 +915,8 @@ namespace SailorEditor.Services
                 modifiers,
                 pressed,
                 focused,
-                captured);
+                captured,
+                text);
             async ValueTask<bool> SendInput(RemoteViewportInput value)
                 => await protocolClient.SendRemoteViewportInputAsync(
                     value.ViewportId,
@@ -950,7 +930,8 @@ namespace SailorEditor.Services
                     (uint)value.Modifiers,
                     value.Pressed,
                     value.Focused,
-                    value.Captured).ConfigureAwait(false);
+                    value.Captured,
+                    value.Text).ConfigureAwait(false);
 
             return kind == RemoteViewportInputKind.PointerMove
                 ? pointerMoves.Enqueue(
@@ -962,6 +943,18 @@ namespace SailorEditor.Services
 #else
             return false;
 #endif
+        }
+
+        public Task<string> CaptureRemoteViewportFrameEvidenceAsync(
+            ulong viewportId,
+            CancellationToken cancellationToken = default)
+        {
+            if (State != EngineLifecycleState.Running)
+            {
+                throw new InvalidOperationException("The Engine is not running.");
+            }
+            return protocolClient.CaptureRemoteViewportFrameEvidenceAsync(
+                viewportId, cancellationToken);
         }
 
         public string GetRemoteViewportDiagnostics(ulong viewportId)
@@ -1111,6 +1104,13 @@ namespace SailorEditor.Services
             try
             {
                 startCancellationToken.ThrowIfCancellationRequested();
+                if (nativeShutdownPending)
+                {
+                    throw new EngineLifecycleException(
+                        "The previous native session has not shut down. Stop it before starting another workspace.",
+                        LastExitCode,
+                        LastFailure);
+                }
                 generation = Interlocked.Increment(ref engineGeneration);
 #if WINDOWS || MACCATALYST
                 ResetPlatformInteropState();
@@ -1127,6 +1127,7 @@ namespace SailorEditor.Services
                 Console.WriteLine($"Starting SailorEngine interop with workspace: {launchContext.WorkspaceRoot}");
                 Volatile.Write(ref editorTypes, new EngineTypes());
 
+                nativeShutdownPending = true;
 #if WINDOWS || MACCATALYST
                 await MainThread.InvokeOnMainThreadAsync(
                     () => protocolClient.InitializeAsync(
@@ -1464,9 +1465,19 @@ namespace SailorEditor.Services
 
                 if (completionTask is null)
                 {
-                    // A prior failed session has already completed native teardown.
-                    // Its historical failure must not prevent a later candidate
-                    // workspace from entering the repair pipeline and restarting.
+                    if (nativeShutdownPending)
+                    {
+                        var shutdownFailure = await ShutdownNativeSessionAsync(
+                            stopNative: false).ConfigureAwait(false);
+                        if (nativeShutdownPending)
+                        {
+                            throw new EngineLifecycleException(
+                                "Native shutdown is still incomplete. Retry Stop before starting another workspace.",
+                                LastExitCode,
+                                shutdownFailure);
+                        }
+                    }
+                    // Historical session errors do not prevent a restart after cleanup.
                     return LastExitCode;
                 }
 
@@ -1716,8 +1727,7 @@ namespace SailorEditor.Services
                 }
 
                 var shutdownFailure = await ShutdownNativeSessionAsync(
-                    stopNative: false,
-                    destroyRemoteViewport: true).ConfigureAwait(false);
+                    stopNative: false).ConfigureAwait(false);
                 if (shutdownFailure is not null)
                 {
                     failure = CombineFailures(failure, shutdownFailure);
@@ -1928,8 +1938,7 @@ namespace SailorEditor.Services
             }
 
             var shutdownFailure = await ShutdownNativeSessionAsync(
-                stopNative: !startRequested,
-                destroyRemoteViewport: false).ConfigureAwait(false);
+                stopNative: !startRequested).ConfigureAwait(false);
             if (shutdownFailure is not null)
             {
                 failure = CombineFailures(failure, shutdownFailure);
@@ -1967,9 +1976,7 @@ namespace SailorEditor.Services
             }
         }
 
-        async Task<Exception?> ShutdownNativeSessionAsync(
-            bool stopNative,
-            bool destroyRemoteViewport)
+        async Task<Exception?> ShutdownNativeSessionAsync(bool stopNative)
         {
             Exception? failure = null;
             if (stopNative)
@@ -1982,24 +1989,13 @@ namespace SailorEditor.Services
                 }
             }
 
-            if (destroyRemoteViewport)
-            {
-                try
-                {
-                    await protocolClient.DestroyRemoteViewportAsync(
-                        SceneViewportId).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    failure = failure is null
-                        ? ex
-                        : new AggregateException(failure, ex);
-                }
-            }
-
+            // Native App shutdown owns viewport cleanup. After Stop, regular
+            // viewport commands are no longer admitted by the engine thread.
+            var shutdownCompleted = false;
             try
             {
                 await protocolClient.ShutdownAsync().ConfigureAwait(false);
+                shutdownCompleted = true;
             }
             catch (Exception ex)
             {
@@ -2008,7 +2004,7 @@ namespace SailorEditor.Services
                     : new AggregateException(failure, ex);
                 try
                 {
-                    await protocolClient.CompleteLocalShutdownFallbackAsync()
+                    shutdownCompleted = await protocolClient.CompleteLocalShutdownFallbackAsync()
                         .ConfigureAwait(false);
                 }
                 catch (Exception fallbackException)
@@ -2018,8 +2014,9 @@ namespace SailorEditor.Services
                         fallbackException);
                 }
             }
+            nativeShutdownPending = !shutdownCompleted;
 #if WINDOWS || MACCATALYST
-            ResetPlatformInteropState();
+            if (shutdownCompleted) ResetPlatformInteropState();
 #endif
             return failure;
         }
@@ -2288,6 +2285,16 @@ namespace SailorEditor.Services
                 cancellationToken: cancellationToken);
         }
 
+        public Task<bool> ReimportAssetAsync(
+            FileId fileId,
+            CancellationToken cancellationToken = default)
+        {
+            var stringId = fileId?.Value ?? string.Empty;
+            return InvokeRunningInteropAsync(
+                token => protocolClient.ReimportAssetAsync(stringId, token),
+                cancellationToken: cancellationToken);
+        }
+
         public Task<bool> PreviewAudioAssetAsync(
             FileId fileId,
             CancellationToken cancellationToken = default)
@@ -2296,6 +2303,20 @@ namespace SailorEditor.Services
             return InvokeRunningInteropAsync(
                 token => protocolClient.PreviewAudioAssetAsync(stringId, token),
                 cancellationToken: cancellationToken);
+        }
+
+        public async Task<bool> GenerateModelFingerprintAsync(
+            FileId fileId,
+            CancellationToken cancellationToken = default)
+        {
+            var generation = Volatile.Read(ref engineGeneration);
+            CancellationToken sessionToken;
+            lock (runLock)
+                sessionToken = activeSession?.PollCancellation.Token ?? default;
+            using var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, sessionToken);
+            return IsInteropRunning() && IsGenerationActive(generation) &&
+                await protocolClient.GenerateModelFingerprintAsync(fileId?.Value ?? string.Empty, operation.Token)
+                    .ConfigureAwait(false) && IsGenerationActive(generation);
         }
 
         public Task<bool> SetAnimatorFloatAsync(
@@ -3034,7 +3055,8 @@ namespace SailorEditor.Services
                     MinProbeSpacing = runtimeSettings.MinProbeSpacing,
                     NormalBias = runtimeSettings.NormalBias,
                     ViewBias = runtimeSettings.ViewBias,
-                    MaxRayDistance = runtimeSettings.MaxRayDistance
+                    MaxRayDistance = runtimeSettings.MaxRayDistance,
+                    SunAngleThresholdDegrees = runtimeSettings.SunAngleThresholdDegrees
                 }
             };
             foreach (var binding in bindings.OrderBy(
@@ -3102,7 +3124,8 @@ namespace SailorEditor.Services
                     runtimeSettings.MinProbeSpacing,
                     runtimeSettings.NormalBias,
                     runtimeSettings.ViewBias,
-                    runtimeSettings.MaxRayDistance),
+                    runtimeSettings.MaxRayDistance,
+                    runtimeSettings.SunAngleThresholdDegrees),
                 new RuntimeGIProbesRuntimeState(
                     FromProtocolRuntimeGIProbesLifecycle(
                         runtimeState.Lifecycle),
@@ -3645,51 +3668,6 @@ namespace SailorEditor.Services
                 .Select(id => id!.Value)
                 .ToArray() ?? Array.Empty<string>();
 
-        public async Task<bool> ExportPathTracedImageAsync(
-            string outputPath,
-            InstanceId? targetInstance = null,
-            uint height = 720,
-            uint samplesPerPixel = 64,
-            uint maxBounces = 4,
-            CancellationToken cancellationToken = default)
-        {
-            string strInstanceId = targetInstance?.Value ?? string.Empty;
-            EngineSession? session;
-            CancellationToken backgroundCancellationToken;
-            lock (runLock)
-            {
-                session = State == EngineLifecycleState.Running
-                    ? activeSession
-                    : null;
-                backgroundCancellationToken =
-                    session?.BackgroundCancellation.Token ?? default;
-            }
-            if (session is null)
-            {
-                return false;
-            }
-
-            try
-            {
-                using var linkedCancellation =
-                    CancellationTokenSource.CreateLinkedTokenSource(
-                        backgroundCancellationToken,
-                        cancellationToken);
-                return await protocolClient.RenderPathTracedImageAsync(
-                    outputPath,
-                    strInstanceId,
-                    height,
-                    samplesPerPixel,
-                    maxBounces,
-                    linkedCancellation.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-                when (backgroundCancellationToken.IsCancellationRequested)
-            {
-                return false;
-            }
-        }
-
         public void RunWorld(string world, bool bDebug)
             => RunWorld(world, bDebug, GetLaunchContext());
 
@@ -3724,24 +3702,32 @@ namespace SailorEditor.Services
             {
                 if (disposeTask is not null)
                 {
+                    if (disposeTask.IsFaulted)
+                    {
+                        disposeTask = Task.Run(DisposeProtocolClientAsync);
+                    }
                     return disposeTask;
                 }
 
                 Interlocked.Exchange(ref disposeState, 1);
                 disposeCancellation.Cancel();
-                if (ReferenceEquals(currentInstance, this))
-                {
-                    currentInstance = null;
-                }
                 disposeTask = Task.Run(DisposeCoreAsync);
                 return disposeTask;
             }
+        }
+
+        async Task DisposeProtocolClientAsync()
+        {
+            await protocolClient.DisposeAsync().ConfigureAwait(false);
+            nativeShutdownPending = false;
+            Interlocked.CompareExchange(ref currentInstance, null, this);
         }
 
         async Task DisposeCoreAsync()
         {
             Exception? disposalFailure = null;
             var protocolClientDisposed = false;
+            var protocolClientDrained = false;
             void DisposeProtocolClientOnce()
             {
                 if (protocolClientDisposed)
@@ -3766,7 +3752,8 @@ namespace SailorEditor.Services
                 DisposeProtocolClientOnce();
                 try
                 {
-                    await protocolClient.DisposeAsync().ConfigureAwait(false);
+                    await DisposeProtocolClientAsync().ConfigureAwait(false);
+                    protocolClientDrained = true;
                 }
                 catch (Exception exception)
                 {
@@ -3876,6 +3863,7 @@ namespace SailorEditor.Services
                 SetLifecycleState(EngineLifecycleState.Faulted);
                 Console.WriteLine(
                     $"[EngineService] Native transport disposal failed: {disposalFailure.Message}");
+                if (!protocolClientDrained) throw disposalFailure;
             }
         }
 

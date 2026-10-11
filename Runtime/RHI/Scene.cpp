@@ -133,22 +133,7 @@ SceneRangeHandle RHISceneRangeAllocator::Allocate(uint32_t count)
 	}
 
 	const uint32_t requestedCapacity = AllocateCapacity(count);
-	uint32_t slotIndex = 0u;
-	if (!m_reusableSlots.IsEmpty())
-	{
-		slotIndex = *m_reusableSlots.Last();
-		m_reusableSlots.RemoveLast();
-	}
-	else
-	{
-		slotIndex = static_cast<uint32_t>(m_slots.Num());
-		m_slots.AddDefault(1u);
-	}
-
-	auto& slot = m_slots[slotIndex];
-	slot.m_bActive = true;
-	slot.m_retirementRevision = 0ull;
-	slot.m_allocation = {};
+	PhysicalAllocation allocation;
 	for (size_t index = 0u; index < m_freeRanges.Num(); ++index)
 	{
 		auto& freeRange = m_freeRanges[index];
@@ -158,7 +143,7 @@ SceneRangeHandle RHISceneRangeAllocator::Allocate(uint32_t count)
 			continue;
 		}
 
-		slot.m_allocation = {
+		allocation = {
 			m_bufferGeneration,
 			freeRange.m_offset,
 			count,
@@ -172,17 +157,16 @@ SceneRangeHandle RHISceneRangeAllocator::Allocate(uint32_t count)
 		break;
 	}
 
-	if (!slot.m_allocation.IsValid())
+	if (!allocation.IsValid())
 	{
 		const uint64_t required = static_cast<uint64_t>(m_nextOffset) + requestedCapacity;
+		if (required > (std::numeric_limits<uint32_t>::max)())
+		{
+			return {};
+		}
 		if (required > m_capacity)
 		{
-			uint32_t newCapacity = (std::max)(1u, m_capacity);
-			while (newCapacity < required && newCapacity <= (std::numeric_limits<uint32_t>::max)() / 2u)
-			{
-				newCapacity *= 2u;
-			}
-			m_capacity = (std::max)(newCapacity, static_cast<uint32_t>(required));
+			m_capacity = AllocateCapacity(static_cast<uint32_t>(required));
 			++m_bufferGeneration;
 			if (m_bufferGeneration == 0u)
 			{
@@ -190,7 +174,7 @@ SceneRangeHandle RHISceneRangeAllocator::Allocate(uint32_t count)
 			}
 		}
 
-		slot.m_allocation = {
+		allocation = {
 			m_bufferGeneration,
 			m_nextOffset,
 			count,
@@ -198,6 +182,21 @@ SceneRangeHandle RHISceneRangeAllocator::Allocate(uint32_t count)
 		m_nextOffset += requestedCapacity;
 	}
 
+	uint32_t slotIndex = 0u;
+	if (!m_reusableSlots.IsEmpty())
+	{
+		slotIndex = *m_reusableSlots.Last();
+		m_reusableSlots.RemoveLast();
+	}
+	else
+	{
+		slotIndex = static_cast<uint32_t>(m_slots.Num());
+		m_slots.AddDefault(1u);
+	}
+	auto& slot = m_slots[slotIndex];
+	slot.m_bActive = true;
+	slot.m_retirementRevision = 0ull;
+	slot.m_allocation = allocation;
 	return { slotIndex, slot.m_generation };
 }
 
@@ -334,10 +333,10 @@ TVector<DirtySceneRange> RHISceneRangeAllocator::CoalesceDirtyRanges(
 		const auto& range = ranges[readIndex];
 		const uint64_t previousEnd = static_cast<uint64_t>(previous.m_offset) + previous.m_count;
 		const uint64_t rangeEnd = static_cast<uint64_t>(range.m_offset) + range.m_count;
-		if (range.m_offset <= previousEnd)
+		const uint64_t mergedCount = (std::max)(previousEnd, rangeEnd) - previous.m_offset;
+		if (range.m_offset <= previousEnd && mergedCount <= (std::numeric_limits<uint32_t>::max)())
 		{
-			previous.m_count = static_cast<uint32_t>(
-				(std::max)(previousEnd, rangeEnd) - previous.m_offset);
+			previous.m_count = static_cast<uint32_t>(mergedCount);
 			continue;
 		}
 		++writeIndex;
@@ -390,20 +389,17 @@ bool RHIScene::ResolveSlot(RenderInstanceHandle handle, const LogicalSlot*& outS
 	return true;
 }
 
-void RHIScene::AppendChange(
-	RenderInstanceHandle handle,
-	SceneChangeMask mask)
+void RHIScene::MarkDirty(uint32_t slotIndex)
 {
 	++m_revision;
-	m_journal.Add({ m_revision, handle, mask });
-	if (m_dirtySlotFlags.Num() <= handle.m_slot)
+	if (m_dirtySlotFlags.Num() <= slotIndex)
 	{
-		m_dirtySlotFlags.Resize(static_cast<size_t>(handle.m_slot) + 1u);
+		m_dirtySlotFlags.Resize(static_cast<size_t>(slotIndex) + 1u);
 	}
-	if (m_dirtySlotFlags[handle.m_slot] == 0u)
+	if (m_dirtySlotFlags[slotIndex] == 0u)
 	{
-		m_dirtySlotFlags[handle.m_slot] = 1u;
-		m_dirtySlots.Add(handle.m_slot);
+		m_dirtySlotFlags[slotIndex] = 1u;
+		m_dirtySlots.Add(slotIndex);
 	}
 	++m_metrics.m_numDirtyChanges;
 }
@@ -444,7 +440,7 @@ RenderInstanceHandle RHIScene::AddInstance(const RHISceneInstanceRecord& record)
 	slot.m_retirementRevision = 0ull;
 	slot.m_record = record;
 	const RenderInstanceHandle handle{ slotIndex, slot.m_generation };
-	AppendChange(handle, ToMask(ESceneChangeBit::Add));
+	MarkDirty(slotIndex);
 	BumpMobilityRevision(record.m_mobility);
 	m_bHandleListsDirty = true;
 	m_lock.Unlock();
@@ -491,7 +487,7 @@ bool RHIScene::UpdateInstanceLocked(RenderInstanceHandle handle,
 
 	const EMobilityType oldMobility = slot->m_record.m_mobility;
 	slot->m_record = record;
-	AppendChange(handle, changeMask);
+	MarkDirty(handle.m_slot);
 	BumpMobilityRevision(oldMobility);
 	if (oldMobility != record.m_mobility)
 	{
@@ -517,7 +513,7 @@ bool RHIScene::RemoveInstance(RenderInstanceHandle handle)
 
 	const EMobilityType oldMobility = slot->m_record.m_mobility;
 	slot->m_bActive = false;
-	AppendChange(handle, ToMask(ESceneChangeBit::Remove));
+	MarkDirty(handle.m_slot);
 	BumpMobilityRevision(oldMobility);
 	slot->m_retirementRevision = m_revision;
 	m_retiredSlots.Add(handle.m_slot);
@@ -545,7 +541,7 @@ RHISceneRecordRootPtr RHIScene::BuildRecordRoot()
 		return m_currentRoot;
 	}
 
-	auto root = RHISceneRecordRootPtr::Make();
+	auto root = TRefPtr<RHISceneRecordRoot>::Make();
 	if (m_currentRoot)
 	{
 		root->m_pages = m_currentRoot->m_pages;
@@ -556,10 +552,7 @@ RHISceneRecordRootPtr RHIScene::BuildRecordRoot()
 	m_cowPageScratch.Resize(
 		(m_slots.Num() + RHISceneRecordPage::NumRecords - 1u) /
 		RHISceneRecordPage::NumRecords);
-	if (!m_cowPageScratch.IsEmpty())
-	{
-		std::memset(m_cowPageScratch.GetData(), 0, m_cowPageScratch.Num());
-	}
+	std::fill(m_cowPageScratch.begin(), m_cowPageScratch.end(), nullptr);
 	for (uint32_t logicalSlotIndex : m_dirtySlots)
 	{
 		const uint32_t pageIndex = logicalSlotIndex / RHISceneRecordPage::NumRecords;
@@ -569,17 +562,18 @@ RHISceneRecordRootPtr RHIScene::BuildRecordRoot()
 			root->m_pages.Resize(pageIndex + 1u);
 		}
 
-		if (m_cowPageScratch[pageIndex] == 0u)
+		if (!m_cowPageScratch[pageIndex])
 		{
-			root->m_pages[pageIndex] = root->m_pages[pageIndex] ?
-				RHISceneRecordPagePtr::Make(*root->m_pages[pageIndex]) :
-				RHISceneRecordPagePtr::Make();
-			m_cowPageScratch[pageIndex] = 1u;
+			auto page = root->m_pages[pageIndex] ?
+				TSharedPtr<RHISceneRecordPage>::Make(*root->m_pages[pageIndex]) :
+				TSharedPtr<RHISceneRecordPage>::Make();
+			m_cowPageScratch[pageIndex] = page.GetRawPtr();
+			root->m_pages[pageIndex] = std::move(page);
 			++m_metrics.m_numCowPages;
 			m_metrics.m_copiedCpuBytes += sizeof(RHISceneRecordPage);
 		}
 
-		auto& target = root->m_pages[pageIndex]->m_slots[pageSlot];
+		auto& target = m_cowPageScratch[pageIndex]->m_slots[pageSlot];
 		const auto& source = m_slots[logicalSlotIndex];
 		target.m_generation = source.m_generation;
 		target.m_bActive = source.m_bActive;
@@ -593,6 +587,7 @@ RHISceneRecordRootPtr RHIScene::BuildRecordRoot()
 		}
 	}
 
+	m_cowPageScratch.Clear(false);
 	if (!m_dirtySlots.IsEmpty())
 	{
 		++root->m_generation;
@@ -606,9 +601,9 @@ RHISceneRecordRootPtr RHIScene::BuildRecordRoot()
 
 void RHIScene::RebuildHandleLists(RHISceneVersion& version)
 {
-	version.m_staticHandles = TSharedPtr<TVector<RenderInstanceHandle>>::Make();
-	version.m_stationaryHandles = TSharedPtr<TVector<RenderInstanceHandle>>::Make();
-	version.m_dynamicHandles = TSharedPtr<TVector<RenderInstanceHandle>>::Make();
+	auto staticHandles = TSharedPtr<TVector<RenderInstanceHandle>>::Make();
+	auto stationaryHandles = TSharedPtr<TVector<RenderInstanceHandle>>::Make();
+	auto dynamicHandles = TSharedPtr<TVector<RenderInstanceHandle>>::Make();
 	m_metrics.m_numStaticInstances = 0u;
 	m_metrics.m_numStationaryInstances = 0u;
 	m_metrics.m_numDynamicInstances = 0u;
@@ -624,19 +619,22 @@ void RHIScene::RebuildHandleLists(RHISceneVersion& version)
 		switch (slot.m_record.m_mobility)
 		{
 		case EMobilityType::Static:
-			version.m_staticHandles->Add(handle);
+			staticHandles->Add(handle);
 			++m_metrics.m_numStaticInstances;
 			break;
 		case EMobilityType::Stationary:
-			version.m_stationaryHandles->Add(handle);
+			stationaryHandles->Add(handle);
 			++m_metrics.m_numStationaryInstances;
 			break;
 		case EMobilityType::Dynamic:
-			version.m_dynamicHandles->Add(handle);
+			dynamicHandles->Add(handle);
 			++m_metrics.m_numDynamicInstances;
 			break;
 		}
 	}
+	version.m_staticHandles = std::move(staticHandles);
+	version.m_stationaryHandles = std::move(stationaryHandles);
+	version.m_dynamicHandles = std::move(dynamicHandles);
 }
 
 RHISceneVersionPtr RHIScene::PublishVersion(
@@ -657,7 +655,7 @@ RHISceneVersionPtr RHIScene::PublishVersion(
 		return result;
 	}
 
-	auto version = RHISceneVersionPtr::Make();
+	auto version = TRefPtr<RHISceneVersion>::Make();
 	version->m_sceneRevision = m_revision;
 	version->m_sceneIdentity = reinterpret_cast<uint64_t>(this);
 	version->m_staticRevision = m_staticRevision;
@@ -667,7 +665,6 @@ RHISceneVersionPtr RHIScene::PublishVersion(
 	version->m_shadowRevision = shadowRevision;
 	version->m_spatialRevision = spatialRevision;
 	version->m_recordsRoot = BuildRecordRoot();
-	version->m_staticRoot = version->m_recordsRoot;
 
 	if (m_bHandleListsDirty || !m_currentVersion)
 	{
@@ -705,16 +702,6 @@ RHISceneVersionPtr RHIScene::GetCurrentVersion() const
 	return result;
 }
 
-void RHIScene::RebuildFlight(
-	RHISceneFlightState& flight,
-	const RHISceneVersion& version)
-{
-	flight.m_stationaryHandles = version.m_stationaryHandles;
-	flight.m_stationaryDirtyHandles.Clear(false);
-	flight.m_bStationaryFullRebuild = true;
-	++flight.m_metrics.m_numFullRebuilds;
-}
-
 RHISceneFlightStatePtr RHIScene::PrepareFlight(
 	uint32_t flightSlot,
 	RHISceneVersionPtr targetVersion)
@@ -742,73 +729,8 @@ RHISceneFlightStatePtr RHIScene::PrepareFlight(
 	}
 
 	auto flight = m_flights[flightSlot];
-	flight->m_metrics = {};
-	flight->m_bStationaryFullRebuild = false;
-	flight->m_stationaryDirtyHandles.Clear(false);
-	const uint64_t firstJournalRevision = m_journal.IsEmpty() ?
-		m_revision + 1ull : m_journal[0].m_revision;
-	const bool bNeedsFullRebuild = flight->m_appliedRevision == 0ull ||
-		flight->m_appliedRevision > targetVersion->m_sceneRevision ||
-		flight->m_appliedRevision + 1ull < firstJournalRevision;
-
-	if (bNeedsFullRebuild)
-	{
-		RebuildFlight(*flight, *targetVersion);
-	}
-	else if (flight->m_appliedRevision < targetVersion->m_sceneRevision)
-	{
-		auto& coalesced = flight->m_coalescedHandlesScratch;
-		coalesced.Clear(false);
-		if (flight->m_coalescedSlotFlags.Num() < m_slots.Num())
-		{
-			flight->m_coalescedSlotFlags.Resize(m_slots.Num());
-		}
-		uint32_t numJournalChanges = 0u;
-		for (const auto& change : m_journal)
-		{
-			if (change.m_revision > flight->m_appliedRevision &&
-				change.m_revision <= targetVersion->m_sceneRevision)
-			{
-				++numJournalChanges;
-				if (flight->m_coalescedSlotFlags[change.m_handle.m_slot] == 0u)
-				{
-					flight->m_coalescedSlotFlags[change.m_handle.m_slot] = 1u;
-					coalesced.Add(change.m_handle);
-				}
-			}
-		}
-		flight->m_metrics.m_numDirtyChanges = numJournalChanges;
-		flight->m_metrics.m_numCoalescedChanges = static_cast<uint32_t>(coalesced.Num());
-		flight->m_stationaryDirtyHandles.Reserve(coalesced.Num());
-		for (const auto& handle : coalesced)
-		{
-			const RHISceneInstanceRecord* targetRecord = nullptr;
-			const RHISceneInstanceRecord* previousRecord = nullptr;
-			const bool bTouchesStationary =
-				(targetVersion->Resolve(handle, targetRecord) && targetRecord &&
-					targetRecord->m_mobility == EMobilityType::Stationary) ||
-				(flight->m_appliedVersion &&
-					flight->m_appliedVersion->Resolve(handle, previousRecord) &&
-					previousRecord &&
-					previousRecord->m_mobility == EMobilityType::Stationary);
-			if (bTouchesStationary)
-			{
-				flight->m_stationaryDirtyHandles.Add(handle);
-			}
-			flight->m_coalescedSlotFlags[handle.m_slot] = 0u;
-		}
-		flight->m_metrics.m_copiedCpuBytes +=
-			flight->m_stationaryDirtyHandles.Num() * sizeof(RenderInstanceHandle);
-	}
-
-	flight->m_stationaryHandles = targetVersion->m_stationaryHandles;
-	flight->m_dynamicHandles = targetVersion->m_dynamicHandles;
 	flight->m_appliedVersion = targetVersion;
 	flight->m_appliedRevision = targetVersion->m_sceneRevision;
-	m_metrics.m_numCoalescedChanges += flight->m_metrics.m_numCoalescedChanges;
-	m_metrics.m_numFullRebuilds += flight->m_metrics.m_numFullRebuilds;
-	m_metrics.m_copiedCpuBytes += flight->m_metrics.m_copiedCpuBytes;
-	m_metrics.m_dynamicRewriteBytes += flight->m_metrics.m_dynamicRewriteBytes;
 	m_lock.Unlock();
 	return flight;
 }
@@ -837,17 +759,6 @@ void RHIScene::CollectGarbage()
 {
 	m_lock.Lock();
 	const uint64_t minimumRetainedRevision = MinimumRetainedRevision();
-	size_t firstRetainedJournalEntry = 0u;
-	while (firstRetainedJournalEntry < m_journal.Num() &&
-		m_journal[firstRetainedJournalEntry].m_revision <= minimumRetainedRevision)
-	{
-		++firstRetainedJournalEntry;
-	}
-	if (firstRetainedJournalEntry > 0u)
-	{
-		m_journal.RemoveAt(0u, firstRetainedJournalEntry);
-	}
-
 	size_t retiredWriteIndex = 0u;
 	for (size_t retiredReadIndex = 0u;
 		retiredReadIndex < m_retiredSlots.Num();
@@ -889,12 +800,4 @@ void RHIScene::CollectGarbage()
 	}
 	m_retainedVersions.Resize(versionWriteIndex);
 	m_lock.Unlock();
-}
-
-uint64_t RHIScene::GetJournalFirstRevision() const
-{
-	m_lock.Lock();
-	const uint64_t result = m_journal.IsEmpty() ? m_revision + 1ull : m_journal[0].m_revision;
-	m_lock.Unlock();
-	return result;
 }

@@ -4,12 +4,19 @@
 #include "Physics/PhysicsTypes.h"
 #include "Physics/SoftBodyTypes.h"
 
+namespace Sailor::Tasks
+{
+	class Scheduler;
+}
+
 namespace Sailor::Physics
 {
 	class PhysicsWorld final
 	{
 	public:
 		SAILOR_API PhysicsWorld();
+		// JoltRuntime and scheduler must outlive the world.
+		SAILOR_API explicit PhysicsWorld(Tasks::Scheduler& scheduler);
 		SAILOR_API ~PhysicsWorld();
 
 		PhysicsWorld(const PhysicsWorld&) = delete;

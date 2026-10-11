@@ -9,9 +9,9 @@
 #include "Engine/World.h"
 #include "Math/Math.h"
 #include "RHI/Renderer.h"
-#include <cfloat>
+#include "Platform/Time.h"
 #include <cmath>
-#include <sstream>
+#include <format>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
 
@@ -48,10 +48,7 @@ namespace
 void PerformanceTestSetupComponent::BeginPlay()
 {
 	Component::BeginPlay();
-	m_minFps = FLT_MAX;
-	m_maxFps = 0.0f;
-	m_sumFps = 0.0;
-	m_numFpsSamples = 0;
+	m_simulationFrameTimes.Clear();
 	SpawnGrid();
 	SpawnLights();
 	EnsureCamera();
@@ -59,17 +56,13 @@ void PerformanceTestSetupComponent::BeginPlay()
 
 void PerformanceTestSetupComponent::EndPlay()
 {
-	if (m_numFpsSamples > 0)
+	const auto stats = Utils::CalculateFrameTimeStats({ m_simulationFrameTimes.GetData(), m_simulationFrameTimes.Num() });
+	if (stats.m_numFrames > 0)
 	{
-		const double avgFps = m_sumFps / (double)m_numFpsSamples;
-		std::ostringstream ss;
-		ss.setf(std::ios::fixed);
-		ss.precision(2);
-		ss << "min=" << m_minFps
-		   << " avg=" << (float)avgFps
-		   << " max=" << m_maxFps
-		   << " samples=" << (unsigned long long)m_numFpsSamples;
-		const std::string fpsSummary = ss.str();
+		const std::string fpsSummary = std::format(
+			"domain=simulation frames={} elapsed_s={:.3f} sustained_fps={:.2f} frame_ms: min={:.2f} mean={:.2f} p50={:.2f} p95={:.2f} p99={:.2f} max={:.2f}",
+			stats.m_numFrames, stats.m_elapsedSeconds, stats.m_sustainedFps, stats.m_minMs, stats.m_meanMs,
+			stats.m_p50Ms, stats.m_p95Ms, stats.m_p99Ms, stats.m_maxMs);
 
 		if (auto owner = GetOwner())
 		{
@@ -93,14 +86,7 @@ void PerformanceTestSetupComponent::EndPlay()
 
 void PerformanceTestSetupComponent::Tick(float deltaTime)
 {
-	if (deltaTime > FLT_EPSILON)
-	{
-		const float fps = 1.0f / deltaTime;
-		m_minFps = (std::min)(m_minFps, fps);
-		m_maxFps = (std::max)(m_maxFps, fps);
-		m_sumFps += fps;
-		m_numFpsSamples++;
-	}
+	m_simulationFrameTimes.Add(deltaTime);
 
 	if (!m_bAppliedRuntimeColors)
 	{
@@ -197,7 +183,7 @@ bool PerformanceTestSetupComponent::ApplyRuntimeMaterialColors()
 		for (size_t materialIndex = 0; materialIndex < mesh->GetMaterials().Num(); materialIndex++)
 		{
 			auto& mat = mesh->GetMaterials()[materialIndex];
-			if (!mat || !mat->IsReady() || !mat->GetShaderBindings() || !mat->GetShaderBindings()->HasParameter("material.baseColorFactor"))
+			if (!mat || !mat->IsReady() || !mat->GetShaderBindings() || !mat->GetShaderBindings()->HasParameter("material.baseColorFactor"_h))
 			{
 				bAllReady = false;
 				continue;
@@ -206,8 +192,8 @@ bool PerformanceTestSetupComponent::ApplyRuntimeMaterialColors()
 			if (!bAlreadyApplied)
 			{
 				auto instance = Material::CreateInstance(GetWorld(), mat);
-				instance->SetUniform("material.baseColorFactor", color);
-				commands->SetMaterialParameter(GetWorld()->GetCommandList(), instance->GetShaderBindings(), "material.baseColorFactor", color);
+				instance->SetUniform("material.baseColorFactor"_h, color);
+				commands->SetMaterialParameter(GetWorld()->GetCommandList(), instance->GetShaderBindings(), "material"_h, "baseColorFactor"_h, color);
 				mat = instance;
 			}
 

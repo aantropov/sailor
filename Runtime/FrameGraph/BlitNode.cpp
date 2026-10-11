@@ -18,10 +18,6 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 
-#ifndef _SAILOR_IMPORT_
-const char* BlitNode::m_name = "Blit";
-#endif
-
 namespace
 {
 	enum class EFormatNumericClass : uint8_t
@@ -96,9 +92,7 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 
 	if (!m_pShader)
 	{
-		const std::string shaderPath = "Shaders/Blit.shader";
-
-		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(shaderPath))
+		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Blit.shader"))
 		{
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pShader, {});
 		}
@@ -114,20 +108,8 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 		m_blitToMsaaTargetMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, msaaRenderState, m_pShader, m_shaderBindings);
 	}
 
-	RHI::RHITexturePtr src = GetResolvedAttachment("src");
-	RHI::RHITexturePtr dst = GetResolvedAttachment("dst");
-
-	for (const auto& r : m_unresolvedResourceParams)
-	{
-		if (r.First() == "src")
-		{
-			src = frameGraph->GetRenderTarget(*r.Second());
-		}
-		else if (r.First() == "dst")
-		{
-			dst = frameGraph->GetRenderTarget(*r.Second());
-		}
-	}
+	RHI::RHITexturePtr src = GetResolvedAttachment("src"_h, frameGraph.GetRawPtr());
+	RHI::RHITexturePtr dst = GetResolvedAttachment("dst"_h, frameGraph.GetRawPtr());
 
 	const bool bIsDepthFormat = RHI::IsDepthFormat(src->GetFormat()) || RHI::IsDepthFormat(dst->GetFormat());
 	const bool bForceShaderConversion =
@@ -140,14 +122,19 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 	glm::ivec4 srcRegion(0, 0, src->GetExtent().x, src->GetExtent().y);
 	glm::ivec4 dstRegion(0, 0, dst->GetExtent().x, dst->GetExtent().y);
 
-	RHISurfacePtr dstSurface = GetRHIResource("dst").DynamicCast<RHISurface>();
+	RHISurfacePtr dstSurface = GetRHIResource("dst"_h, frameGraph.GetRawPtr()).DynamicCast<RHISurface>();
 	const bool bUseFullscreenColorBlit =
 		!bIsDepthFormat &&
 		!dstSurface &&
 		m_blitToTextureMaterial &&
 		(src->GetExtent() != dst->GetExtent() || bForceShaderConversion);
 	bool bResolvedBlitSuccessful = false;
-	if (bUseFullscreenColorBlit)
+	if (src == dst)
+	{
+		// A self-blit seeds the MSAA target from its updated resolve before geometry resumes.
+		bResolvedBlitSuccessful = true;
+	}
+	else if (bUseFullscreenColorBlit)
 	{
 		// A fullscreen pass owns the native output viewport explicitly. This keeps
 		// resolution-scaled Scene View targets correctly fitted on MoltenVK instead
@@ -178,12 +165,12 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 		bool bMsaaBlitSuccessful = false;
 
 		// First try to blit MSAA src to MSAA dst
-		if (RHISurfacePtr srcSurface = GetRHIResource("src").DynamicCast<RHISurface>())
+		if (RHISurfacePtr srcSurface = GetRHIResource("src"_h, frameGraph.GetRawPtr()).DynamicCast<RHISurface>())
 		{
 			auto src2 = srcSurface->GetTarget();
 			auto dst2 = dstSurface->GetTarget();
 
-			if (srcSurface->NeedsResolve())
+			if (srcSurface->NeedsResolve() && src2 != dst2)
 			{
 				commands->ImageMemoryBarrier(commandList, src2, RHI::EImageLayout::TransferSrcOptimal);
 				commands->ImageMemoryBarrier(commandList, dst2, RHI::EImageLayout::TransferDstOptimal);
@@ -205,10 +192,10 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 		}
 	}
 
-	std::string generateMips;
+	std::string_view generateMips;
 	if (bResolvedBlitSuccessful &&
 		dst->HasMipMaps() &&
-		TryGetString("GenerateMips", generateMips) &&
+		TryGetString("GenerateMips"_h, generateMips) &&
 		generateMips == "true")
 	{
 		commands->GenerateMipMaps(commandList, dst);
@@ -229,7 +216,7 @@ void BlitNode::BlitRaw(RHI::RHICommandListPtr commandList,
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	driver->AddSamplerToShaderBindings(m_shaderBindings, "colorSampler", src, 0);
+	driver->AddSamplerToShaderBindings(m_shaderBindings, "colorSampler"_h, src, 0);
 	m_shaderBindings->RecalculateCompatibility();
 
 	auto mesh = frameGraph->GetFullscreenNdcQuad();
@@ -250,18 +237,19 @@ void BlitNode::BlitRaw(RHI::RHICommandListPtr commandList,
 	commands->BindMaterial(commandList, material);
 	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
-	commands->BindShaderBindings(commandList, material, { sceneView.m_frameBindings, m_shaderBindings });
+	if (commands->BindShaderBindings(commandList, material, { sceneView.m_frameBindings, m_shaderBindings }))
+	{
+		// TODO: Support regions
+		commands->SetViewport(commandList,
+			0, 0,
+			(float)dst->GetExtent().x, (float)dst->GetExtent().y,
+			glm::vec2(0, 0),
+			glm::vec2(dst->GetExtent().x, dst->GetExtent().y),
+			0, 1.0f);
 
-	// TODO: Support regions
-	commands->SetViewport(commandList,
-		0, 0,
-		(float)dst->GetExtent().x, (float)dst->GetExtent().y,
-		glm::vec2(0, 0),
-		glm::vec2(dst->GetExtent().x, dst->GetExtent().y),
-		0, 1.0f);
-
-	commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
-	RecordDrawCallStats(1);
+		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+		RecordDrawCallStats(1);
+	}
 	commands->EndRenderPass(commandList);
 }
 

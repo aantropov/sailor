@@ -1,29 +1,5 @@
 using SailorEditor.Commands;
 
-namespace SailorEngine
-{
-    public sealed class FileId(string value = "")
-    {
-        public string Value { get; set; } = value;
-        public bool IsEmpty() => string.IsNullOrWhiteSpace(Value);
-        public override bool Equals(object? obj) => obj is FileId other && string.Equals(Value, other.Value, StringComparison.Ordinal);
-        public override int GetHashCode() => Value.GetHashCode(StringComparison.Ordinal);
-    }
-
-    public sealed class InstanceId(string value = "")
-    {
-        public string Value { get; set; } = value;
-        public bool IsEmpty() => string.IsNullOrWhiteSpace(Value);
-    }
-
-    public sealed class Vec4
-    {
-        public float X { get; set; }
-        public float Y { get; set; }
-        public float Z { get; set; }
-        public float W { get; set; }
-    }
-}
 
 namespace SailorEditor.ViewModels
 {
@@ -44,6 +20,8 @@ namespace SailorEditor.ViewModels
     public sealed class MaterialFile : AssetFile;
     public sealed class TextureFile : AssetFile;
     public sealed class ModelFile : AssetFile;
+    public sealed class ShaderFile : AssetFile;
+    public sealed class AnimationFile : AssetFile;
     public sealed class AnimationControllerFile : AssetFile;
     public sealed class AnimationSetFile : AssetFile;
     public sealed class PrefabFile : AssetFile;
@@ -63,6 +41,11 @@ namespace SailorEditor.ViewModels
 
 namespace SailorEditor.Services
 {
+    internal sealed class EngineService
+    {
+        public SailorEngine.EngineTypes EngineTypes { get; set; } = new();
+    }
+
     public sealed class WorldService
     {
         public WorldState Current { get; } = new();
@@ -126,7 +109,7 @@ namespace SailorEditor.Commands
     public sealed class InstantiatePrefabAssetCommand(
         SailorEditor.ViewModels.AssetFile prefabFile,
         SailorEditor.ViewModels.GameObject? parent = null,
-        SailorEngine.Vec4? worldPosition = null) : IUndoableEditorCommand
+        SailorEditor.Vec4? worldPosition = null) : IUndoableEditorCommand
     {
         public string Name => nameof(InstantiatePrefabAssetCommand);
         public string Description => "Instantiate Prefab";
@@ -139,7 +122,7 @@ namespace SailorEditor.Commands
         SailorEditor.ViewModels.AssetFile modelFile,
         string objectName,
         SailorEditor.ViewModels.GameObject? parent = null,
-        SailorEngine.Vec4? worldPosition = null) : IUndoableEditorCommand
+        SailorEditor.Vec4? worldPosition = null) : IUndoableEditorCommand
     {
         public string Name => nameof(CreateModelGameObjectCommand);
         public string Description => $"Create {objectName}";

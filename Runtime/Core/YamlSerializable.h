@@ -1,11 +1,14 @@
 ﻿#pragma once
 #include "Core/Defines.h"
 #include "Core/FileRevision.h"
+#include "Core/YamlUtils.h"
 #include "Containers/Concepts.h"
 #include "Math/Math.h"
 #include "Containers/Containers.h"
 
 #include <utility>
+#include <string_view>
+#include <refl.hpp>
 #include <yaml-cpp/yaml.h>
 
 #define SERIALIZE_PROPERTY(yamlNode, variable) Sailor::Serialize(yamlNode, &(#variable)[2], variable)
@@ -13,6 +16,17 @@
 
 namespace Sailor
 {
+	namespace Attributes
+	{
+		struct YamlName : refl::attr::usage::field
+		{
+			constexpr explicit YamlName(const char* name) : m_name(name) {}
+			const char* m_name;
+		};
+
+		struct YamlOptional : refl::attr::usage::field {};
+	}
+
 	class SAILOR_SHARED_API IYamlSerializable
 	{
 	public:
@@ -23,7 +37,7 @@ namespace Sailor
 
 	inline void Serialize(
 		YAML::Node& node,
-		const std::string& name,
+		std::string_view name,
 		const FileRevision& revision)
 	{
 		node[name] = revision.Serialize();
@@ -31,7 +45,7 @@ namespace Sailor
 
 	inline bool Deserialize(
 		const YAML::Node& node,
-		const std::string& name,
+		std::string_view name,
 		FileRevision& revision)
 	{
 		if (!node[name])
@@ -48,14 +62,14 @@ namespace Sailor
 	YAML::Node SerializeEnum(typename std::enable_if< std::is_enum<T>::value, T >::type enumeration)
 	{
 		YAML::Node j;
-		j = std::string(magic_enum::enum_name(enumeration));
+		j = magic_enum::enum_name(enumeration);
 		return j;
 	}
 
 	template<typename T>
 	bool DeserializeEnum(const YAML::Node& j, typename std::enable_if< std::is_enum<T>::value, T >::type& outEnumeration)
 	{
-		auto value = magic_enum::enum_cast<T>(j.as<std::string>());
+		auto value = magic_enum::enum_cast<T>(j.as<std::string_view>());
 		if (!value)
 		{
 			return false;
@@ -65,7 +79,7 @@ namespace Sailor
 	}
 
 	template<typename T>
-	__forceinline void Serialize(YAML::Node& node, const std::string& name, const T& variable)
+	__forceinline void Serialize(YAML::Node& node, std::string_view name, const T& variable)
 	{
 		if constexpr (IsEnum<T>)
 		{
@@ -78,7 +92,7 @@ namespace Sailor
 	}
 
 	template<typename T>
-	__forceinline bool Deserialize(const YAML::Node& node, const std::string& name, T& variable)
+	__forceinline bool Deserialize(const YAML::Node& node, std::string_view name, T& variable)
 	{
 		const YAML::Node value = node[name];
 		if (value)
@@ -102,6 +116,65 @@ namespace Sailor
 		}
 
 		return false;
+	}
+
+	template<typename TMember>
+	constexpr std::string_view GetYamlFieldName(TMember member)
+	{
+		if constexpr (refl::descriptor::has_attribute<Attributes::YamlName>(member))
+		{
+			return refl::descriptor::get_attribute<Attributes::YamlName>(member).m_name;
+		}
+		const std::string_view name = member.name.c_str();
+		return name.starts_with("m_") ? name.substr(2) : name;
+	}
+
+	template<typename T>
+	YAML::Node SerializeReflected(const T& value)
+	{
+		YAML::Node node(YAML::NodeType::Map);
+		refl::util::for_each(refl::reflect<T>().members, [&](auto member)
+			{
+				if constexpr (refl::descriptor::is_field(member))
+				{
+					Sailor::Serialize(node, GetYamlFieldName(member), member(value));
+				}
+			});
+		return node;
+	}
+
+	template<typename T>
+	void DeserializeReflected(const YAML::Node& node, T& value)
+	{
+		const auto map = Utils::ValidateYamlMap(node);
+		if (!map.IsValid())
+		{
+			throw YAML::RepresentationException(node.Mark(), "expected a map with unique field names: " + map.m_fieldName);
+		}
+		refl::util::for_each(refl::reflect<T>().members, [&](auto member)
+			{
+				if constexpr (refl::descriptor::is_field(member))
+				{
+					const std::string_view name = GetYamlFieldName(member);
+					if constexpr (refl::descriptor::has_attribute<Attributes::YamlOptional>(member))
+					{
+						if (!node[name]) return;
+					}
+					try
+					{
+						if (!Sailor::Deserialize(node, name, member(value)))
+						{
+							throw YAML::BadConversion(node.Mark());
+						}
+					}
+					catch (const YAML::Exception& error)
+					{
+						using TValue = std::remove_cvref_t<decltype(member(value))>;
+						const char* separator = refl::trait::is_reflectable_v<TValue> ? "." : ": ";
+						throw YAML::RepresentationException(error.mark, std::string(name) + separator + error.msg);
+					}
+				}
+			});
 	}
 }
 
@@ -383,6 +456,10 @@ namespace YAML
 			{
 				node = Sailor::SerializeEnum<T>(rhs);
 			}
+			else if constexpr (refl::trait::is_reflectable_v<T>)
+			{
+				node = Sailor::SerializeReflected(rhs);
+			}
 			else
 			{
 				check(0);
@@ -401,6 +478,11 @@ namespace YAML
 			else if constexpr (Sailor::IsEnum<T>)
 			{
 				return Sailor::DeserializeEnum<T>(node, rhs);
+			}
+			else if constexpr (refl::trait::is_reflectable_v<T>)
+			{
+				Sailor::DeserializeReflected(node, rhs);
+				return true;
 			}
 			return false;
 		}

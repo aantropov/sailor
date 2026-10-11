@@ -27,8 +27,7 @@ void AnimationSetAssetInfo::Deserialize(const YAML::Node& inData)
 AnimationControllerAssetInfoHandler::AnimationControllerAssetInfoHandler(
 	AssetRegistry* assetRegistry)
 {
-	m_supportedExtensions.Emplace("animcontroller");
-	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
+	assetRegistry->RegisterAssetInfoHandler(GetAssetInfoExtensions<AnimationControllerAssetInfo>(), this);
 }
 
 void AnimationControllerAssetInfoHandler::GetDefaultMeta(
@@ -56,8 +55,7 @@ IAssetInfoHandler* AnimationControllerAssetInfo::GetHandler()
 AnimationSetAssetInfoHandler::AnimationSetAssetInfoHandler(
 	AssetRegistry* assetRegistry)
 {
-	m_supportedExtensions.Emplace("animset");
-	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
+	assetRegistry->RegisterAssetInfoHandler(GetAssetInfoExtensions<AnimationSetAssetInfo>(), this);
 }
 
 void AnimationSetAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const

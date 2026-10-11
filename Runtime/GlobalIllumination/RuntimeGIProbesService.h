@@ -46,6 +46,7 @@ namespace Sailor
 		uint32_t m_activeProbeCount = 0u;
 		uint32_t m_readyProbeCount = 0u;
 		uint32_t m_workerCount = 0u;
+		// Full packed GPU payload, not the bytes uploaded by a particular frame.
 		uint64_t m_publishedBytes = 0u;
 		float m_coverage = 0.0f;
 		float m_refinement = 0.0f;
@@ -77,6 +78,7 @@ namespace Sailor
 		RuntimeGIProbesStatus GetStatus() const;
 
 	private:
+		friend class RuntimeGIProbesServiceTestAccess;
 		struct Impl;
 		// GetStatus refreshes cached progress under the implementation lock.
 		mutable TUniquePtr<Impl> m_impl;

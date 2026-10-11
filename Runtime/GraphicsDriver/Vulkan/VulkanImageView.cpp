@@ -28,6 +28,10 @@ VulkanImageView::VulkanImageView(VulkanDevicePtr device, VulkanImagePtr image) :
 
 	switch (image->m_imageType)
 	{
+	case VK_IMAGE_TYPE_1D:
+		m_viewType = bIsArray ? VK_IMAGE_VIEW_TYPE_1D_ARRAY : VK_IMAGE_VIEW_TYPE_1D;
+		break;
+
 	case VK_IMAGE_TYPE_3D:
 		m_viewType = VK_IMAGE_VIEW_TYPE_3D;
 		break;

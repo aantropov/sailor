@@ -85,8 +85,21 @@ bool AnimationClipSampler::ResolveKeyframeSpan(
 	float time,
 	AnimationKeyframeSpan& outSpan)
 {
+	if (!ValidateTimestamps(timestamps))
+	{
+		outSpan = {};
+		return false;
+	}
+	return ResolveKeyframeSpanValidated(timestamps, time, outSpan);
+}
+
+bool AnimationClipSampler::ResolveKeyframeSpanValidated(
+	const TVector<float>& timestamps,
+	float time,
+	AnimationKeyframeSpan& outSpan)
+{
 	outSpan = {};
-	if (!ValidateTimestamps(timestamps) || !std::isfinite(time))
+	if (!std::isfinite(time))
 	{
 		return false;
 	}
@@ -136,9 +149,23 @@ bool AnimationClipSampler::SampleVector(
 	float time,
 	glm::vec4& outValue)
 {
-	AnimationKeyframeSpan span;
 	if (!HasExpectedValueCount(timestamps, values, interpolation) ||
-		!ResolveKeyframeSpan(timestamps, time, span))
+		!ValidateTimestamps(timestamps))
+	{
+		return false;
+	}
+	return SampleVectorValidated(timestamps, values, interpolation, time, outValue);
+}
+
+bool AnimationClipSampler::SampleVectorValidated(
+	const TVector<float>& timestamps,
+	const TVector<glm::vec4>& values,
+	EAnimationInterpolation interpolation,
+	float time,
+	glm::vec4& outValue)
+{
+	AnimationKeyframeSpan span;
+	if (!ResolveKeyframeSpanValidated(timestamps, time, span))
 	{
 		return false;
 	}
@@ -175,9 +202,23 @@ bool AnimationClipSampler::SampleRotation(
 	float time,
 	glm::quat& outValue)
 {
-	AnimationKeyframeSpan span;
 	if (!HasExpectedValueCount(timestamps, values, interpolation) ||
-		!ResolveKeyframeSpan(timestamps, time, span))
+		!ValidateTimestamps(timestamps))
+	{
+		return false;
+	}
+	return SampleRotationValidated(timestamps, values, interpolation, time, outValue);
+}
+
+bool AnimationClipSampler::SampleRotationValidated(
+	const TVector<float>& timestamps,
+	const TVector<glm::vec4>& values,
+	EAnimationInterpolation interpolation,
+	float time,
+	glm::quat& outValue)
+{
+	AnimationKeyframeSpan span;
+	if (!ResolveKeyframeSpanValidated(timestamps, time, span))
 	{
 		return false;
 	}

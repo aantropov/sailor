@@ -1,6 +1,7 @@
 #pragma once
 #include "Core/Defines.h"
 #include <string>
+#include <functional>
 #include "Containers/Vector.h"
 #include "Containers/ConcurrentMap.h"
 #include "Core/Submodule.h"
@@ -23,6 +24,8 @@ using namespace Sailor::Memory;
 
 namespace Sailor
 {
+	namespace PrefabInstance { struct Snapshot; }
+
 	using PrefabPtr = TObjectPtr<class Prefab>;
 
 	class Prefab : public Object, public IYamlSerializable
@@ -66,13 +69,14 @@ namespace Sailor
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 		SAILOR_API bool ValidateForInstantiation(std::string& outDiagnostic) const;
 
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+		using ValidationObserver = std::function<void(const Prefab&)>;
+		SAILOR_API static ValidationObserver ExchangeValidationObserverForTests(ValidationObserver observer);
+#endif
+
 		SAILOR_API bool SaveToFile(const std::string& path) const;
 
-		SAILOR_API bool GetOverridePrefab(
-			const PrefabPtr base,
-			PrefabPtr outOverride) const;
-
-		static PrefabPtr FromGameObject(
+		SAILOR_API static PrefabPtr FromGameObject(
 			GameObjectPtr go,
 			const FileId& sourcePrefabId = FileId::Invalid,
 			const TSet<InstanceId>* excludedRoots = nullptr);
@@ -89,17 +93,39 @@ namespace Sailor
 			const PrefabPtr& expandedPrefab,
 			std::string& outDiagnostic);
 
-		SAILOR_API bool IsLinkedInstanceRecord() const { return m_bLinkedInstanceRecord; }
+		SAILOR_API bool IsLinkedInstanceRecord() const
+		{
+			return m_recordType == ERecordType::LinkedInstance || m_recordType == ERecordType::ExpandedLinkedInstance;
+		}
 		SAILOR_API const InstanceId& GetLinkedParentInstanceId() const { return m_linkedParentInstanceId; }
 		SAILOR_API const TMap<InstanceId, InstanceId>& GetLinkedInstanceIds() const { return m_linkedInstanceIds; }
 		SAILOR_API const TMap<InstanceId, YAML::Node>& GetLinkedGameObjectOverrides() const { return m_gameObjectOverrides; }
 		SAILOR_API const TMap<InstanceId, ReflectedData>& GetLinkedComponentOverrides() const { return m_componentOverrides; }
-		SAILOR_API bool IsDetachedFromPrefabRecord() const { return m_bDetachedFromPrefabRecord; }
+		SAILOR_API bool IsDetachedFromPrefabRecord() const { return m_recordType == ERecordType::DetachedSnapshot; }
 		SAILOR_API const InstanceId& GetDetachedParentInstanceId() const { return m_detachedParentInstanceId; }
-		SAILOR_API bool IsLinkedPrefabSnapshotRecord() const { return m_bLinkedPrefabSnapshotRecord; }
+		SAILOR_API bool IsLinkedPrefabSnapshotRecord() const { return m_recordType == ERecordType::LinkedSnapshot; }
 		SAILOR_API const FileId& GetLinkedSnapshotSourceFileId() const { return m_linkedSnapshotSourceFileId; }
 
 	protected:
+
+		enum class ERecordType : uint8_t
+		{
+			Source,
+			LinkedInstance,
+			ExpandedLinkedInstance,
+			DetachedSnapshot,
+			LinkedSnapshot,
+			Invalid
+		};
+
+		void ResetData();
+		bool ConfigureLinkedInstance(
+			const PrefabInstance::Snapshot& source,
+			const TMap<InstanceId, InstanceId>& sourceToInstanceIds,
+			const InstanceId& parentInstanceId,
+			const TMap<InstanceId, YAML::Node>& gameObjectOverrides,
+			const TMap<InstanceId, ReflectedData>& componentOverrides,
+			std::string& outDiagnostic);
 
 		void SerializeLinkedProperties(
 			YAML::Node& outData,
@@ -123,13 +149,11 @@ namespace Sailor
 		FileId m_linkedSnapshotSourceFileId{};
 		InstanceId m_linkedParentInstanceId{};
 		InstanceId m_detachedParentInstanceId{};
-		bool m_bLinkedInstanceRecord = false;
-		bool m_bExpandedLinkedInstanceRecord = false;
-		bool m_bDetachedFromPrefabRecord = false;
-		bool m_bLinkedPrefabSnapshotRecord = false;
+		ERecordType m_recordType = ERecordType::Source;
 
 		friend class PrefabImporter;
 		friend class WorldPrefab;
+		friend struct PrefabInstance::Snapshot;
 
 		// We need that for object instantiation
 		friend class World;

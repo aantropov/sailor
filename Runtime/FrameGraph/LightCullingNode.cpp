@@ -2,49 +2,80 @@
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
-#include "RHI/Surface.h"
 #include "RHI/Texture.h"
 #include "RHI/RenderTarget.h"
-#include "Engine/World.h"
-#include "Engine/GameObject.h"
+#include "RHI/Surface.h"
+#include "FrameGraph/RHIFrameGraph.h"
 #include "AssetRegistry/AssetRegistry.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 
-#ifndef _SAILOR_IMPORT_
-const char* LightCullingNode::m_name = "LightCulling";
-#endif
-
 void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (!sceneView.m_rhiLightsData || !sceneView.m_rhiLightCullingData)
+	if (!sceneView.m_rhiLightsData)
 	{
-		// No point to cull lights if we have no lights in the scene
 		return;
 	}
 
 	if (!m_pComputeShader)
 	{
 		auto computeShaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeLightCulling.shader");
-		App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(computeShaderInfo->GetFileId(), m_pComputeShader);
+		App::GetSubmodule<ShaderCompiler>()->LoadShader(computeShaderInfo->GetFileId(), m_pComputeShader);
 	}
-	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdCompute);
-
-	auto linearDepthAttachment = GetRHIResource("linearDepth").DynamicCast<RHI::RHITexture>();
-	if (!linearDepthAttachment)
+	if (!m_pComputeShader || !m_pComputeShader->IsReady())
 	{
-		linearDepthAttachment = frameGraph->GetRenderTarget("LinearDepth").DynamicCast<RHI::RHITexture>();
-	}
-	if (!linearDepthAttachment)
-	{
-		commands->EndDebugRegion(commandList);
 		return;
 	}
+
+	auto linearDepthAttachment = GetResolvedAttachment("linearDepth"_h, frameGraph.GetRawPtr());
+	if (!linearDepthAttachment)
+	{
+		const auto surface = frameGraph->GetSurface("LinearDepth"_h);
+		linearDepthAttachment = surface ? surface->GetResolved() : frameGraph->GetRenderTarget("LinearDepth"_h);
+	}
+	if (!linearDepthAttachment)
+	{
+		return;
+	}
+
+	auto resources = sceneView.m_submissionContext->GetOrAddFrameGraphResources<SubmissionResources>(
+		this, sceneView.m_cameraIndex, 0u);
+	auto& driver = Renderer::GetDriver();
+	const auto extent = linearDepthAttachment->GetExtent();
+	const size_t numTiles = static_cast<size_t>((extent.x - 1) / TileSize + 1) *
+		((extent.y - 1) / TileSize + 1);
+	if (resources->m_tileCapacity < numTiles)
+	{
+		resources->m_bindings = driver->CreateShaderBindings();
+		driver->AddSsboToShaderBindings(resources->m_bindings, "culledLights"_h,
+			sizeof(uint32_t) * numTiles * LightsPerTile, 1u, 0u, true);
+		driver->AddSsboToShaderBindings(resources->m_bindings, "lightsGrid"_h,
+			sizeof(uint32_t) * numTiles * 2u, 1u, 1u, true);
+		resources->m_tileCapacity = numTiles;
+		resources->m_publishedIndices.Clear();
+	}
+	auto& bindings = resources->m_bindings;
+	auto lightsBindings = sceneView.m_rhiLightsData;
+	if (!resources->m_publishedIndices ||
+		lightsBindings->GetOrAddShaderBinding("culledLights"_h) != resources->m_publishedIndices)
+	{
+		// Rebind after tile growth, a new lighting set, or another culling node.
+		resources->m_publishedIndices = driver->AddShaderBinding(lightsBindings,
+			bindings->GetOrAddShaderBinding("culledLights"_h), "culledLights"_h, 1u);
+		driver->AddShaderBinding(lightsBindings,
+			bindings->GetOrAddShaderBinding("lightsGrid"_h), "lightsGrid"_h, 2u);
+	}
+	if (bindings->GetOrAddShaderBinding("linearDepth"_h)->GetTextureBinding() != linearDepthAttachment)
+	{
+		driver->AddSamplerToShaderBindings(bindings, "linearDepth"_h, linearDepthAttachment, 2u);
+	}
+
+	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdCompute);
 
 #ifdef _DEBUG
 	if (RHIShaderPtr computeShader = m_pComputeShader->GetDebugComputeShaderRHI())
@@ -62,7 +93,7 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 		commands->ImageMemoryBarrierForComputeSampling(commandList, linearDepthAttachment);
 		commands->Dispatch(commandList, computeShader,
 			pushConstants.m_numTiles.x, pushConstants.m_numTiles.y, 1,
-			{ sceneView.m_rhiLightsData, sceneView.m_rhiLightCullingData, sceneView.m_frameBindings },
+			{ lightsBindings, bindings, sceneView.m_frameBindings },
 			&pushConstants, sizeof(PushConstants));
 
 		commands->MemoryBarrier(commandList,

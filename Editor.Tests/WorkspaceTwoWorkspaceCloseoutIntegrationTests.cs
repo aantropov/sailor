@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -696,11 +696,6 @@ public sealed class WorkspaceTwoWorkspaceCloseoutIntegrationTests
 
     sealed class HeadlessWorkspaceActivationOperations : IWorkspaceActivationOperations, IDisposable
     {
-        const uint NativeSuccess = 0;
-        const uint NativeBufferTooSmall = 2;
-        const string MetadataEntryPoint = "SailorGetWorkspaceTypeMetadataV1";
-
-        static readonly object DllSearchPathLock = new();
         static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
         readonly WorkspaceLifecycleService _lifecycle;
@@ -708,7 +703,9 @@ public sealed class WorkspaceTwoWorkspaceCloseoutIntegrationTests
         readonly string _vcpkgRoot;
         readonly string _assetRelativePath;
         readonly EditorTypeCacheStore _cacheStore = new();
-        nint _moduleHandle;
+        Process? _moduleHost;
+        Task<string>? _hostErrors;
+        Task<string>? _hostOutput;
         long _clearedGeneration = -1;
         bool _disposed;
 
@@ -732,12 +729,7 @@ public sealed class WorkspaceTwoWorkspaceCloseoutIntegrationTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             Events.Add("stop");
-            if (_moduleHandle != nint.Zero)
-            {
-                NativeLibrary.Free(_moduleHandle);
-                _moduleHandle = nint.Zero;
-                UnloadCount++;
-            }
+            StopHost();
 
             return Task.CompletedTask;
         }
@@ -745,7 +737,7 @@ public sealed class WorkspaceTwoWorkspaceCloseoutIntegrationTests
         public Task ClearAsync(long generation, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (_moduleHandle != nint.Zero)
+            if (_moduleHost is not null)
                 throw new InvalidOperationException("The prior workspace DLL was not unloaded before clear.");
 
             Events.Add($"clear:{generation}");
@@ -758,14 +750,14 @@ public sealed class WorkspaceTwoWorkspaceCloseoutIntegrationTests
             WorkspaceActivationCandidate candidate,
             CancellationToken cancellationToken)
         {
-            if (Active is not null || _moduleHandle != nint.Zero)
+            if (Active is not null || _moduleHost is not null)
                 throw new InvalidOperationException("Prior workspace state survived the clear boundary.");
 
             Events.Add($"commit:{candidate.Session.Manifest.LogicModuleName}");
             await _lifecycle.CommitActivationAsync(candidate.Preparation, cancellationToken);
         }
 
-        public Task StartAsync(
+        public async Task StartAsync(
             EngineLaunchContext launchContext,
             long generation,
             CancellationToken cancellationToken)
@@ -773,7 +765,7 @@ public sealed class WorkspaceTwoWorkspaceCloseoutIntegrationTests
             cancellationToken.ThrowIfCancellationRequested();
             if (_clearedGeneration != generation)
                 throw new InvalidOperationException("The workspace start did not follow its clear generation.");
-            if (_moduleHandle != nint.Zero || Active is not null)
+            if (_moduleHost is not null || Active is not null)
                 throw new InvalidOperationException("Workspace state was already active at start.");
 
             var session = _lifecycle.Current
@@ -795,9 +787,8 @@ public sealed class WorkspaceTwoWorkspaceCloseoutIntegrationTests
             var modulePath = WorkspaceCMakeIntegrationHarness.GetReleaseModulePath(session);
             try
             {
-                var loaded = LoadMetadata(modulePath);
-                _moduleHandle = loaded.Handle;
-                var liveCatalog = EditorTypeCatalogSnapshot.Parse(loaded.Metadata);
+                var metadata = await LoadMetadataAsync(session, cancellationToken);
+                var liveCatalog = EditorTypeCatalogSnapshot.Parse(metadata);
                 if (!string.Equals(
                         liveCatalog.Document.ModuleName,
                         session.Manifest.LogicModuleName,
@@ -829,7 +820,7 @@ public sealed class WorkspaceTwoWorkspaceCloseoutIntegrationTests
                     var write = _cacheStore.Save(
                         launchContext.EditorTypesCacheFilePath,
                         cacheIdentity,
-                        loaded.Metadata);
+                        metadata);
                     if (!write.Succeeded)
                         throw new InvalidDataException(write.Diagnostic);
                 }
@@ -847,7 +838,7 @@ public sealed class WorkspaceTwoWorkspaceCloseoutIntegrationTests
                     var write = _cacheStore.Save(
                         launchContext.EditorTypesCacheFilePath,
                         cacheIdentity,
-                        loaded.Metadata);
+                        metadata);
                     if (!write.Succeeded)
                         throw new InvalidDataException(write.Diagnostic);
                 }
@@ -872,90 +863,67 @@ public sealed class WorkspaceTwoWorkspaceCloseoutIntegrationTests
                     liveCatalog,
                     assetBytes,
                     cacheBefore.Status);
-                return Task.CompletedTask;
+                return;
             }
             catch
             {
-                if (_moduleHandle != nint.Zero)
-                {
-                    NativeLibrary.Free(_moduleHandle);
-                    _moduleHandle = nint.Zero;
-                    UnloadCount++;
-                }
+                StopHost();
 
                 throw;
             }
         }
 
-        (nint Handle, string Metadata) LoadMetadata(string modulePath)
+        async Task<string> LoadMetadataAsync(WorkspaceSession session, CancellationToken cancellationToken)
         {
-            var searchDirectories = new[]
+            var host = WorkspaceCMakeIntegrationHarness.GetRequiredEnvironmentVariable("SAILOR_WORKSPACE_CATALOG_HOST");
+            var metadataPath = Path.Combine(session.CacheDirectory, "NativeModuleCatalog.yaml");
+            Directory.CreateDirectory(session.CacheDirectory);
+            var start = new ProcessStartInfo(host)
             {
-                Path.GetDirectoryName(modulePath)!,
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            start.ArgumentList.Add(session.WorkspaceRoot);
+            start.ArgumentList.Add(metadataPath);
+            start.Environment["PATH"] = string.Join(Path.PathSeparator,
                 Path.Combine(_installPrefix, "bin"),
-                Path.Combine(_vcpkgRoot, "installed", "x64-windows", "bin")
-            }
-                .Where(Directory.Exists)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-
-            lock (DllSearchPathLock)
-            {
-                var previousPath = Environment.GetEnvironmentVariable("PATH");
-                Environment.SetEnvironmentVariable(
-                    "PATH",
-                    string.Join(
-                        Path.PathSeparator,
-                        searchDirectories.Append(previousPath ?? string.Empty)));
-                nint handle = nint.Zero;
-                try
-                {
-                    handle = NativeLibrary.Load(modulePath);
-                    var metadata = ReadMetadata(handle, modulePath);
-                    return (handle, metadata);
-                }
-                catch
-                {
-                    if (handle != nint.Zero)
-                        NativeLibrary.Free(handle);
-                    throw;
-                }
-                finally
-                {
-                    Environment.SetEnvironmentVariable("PATH", previousPath);
-                }
-            }
+                Path.Combine(_vcpkgRoot, "installed", "x64-windows", "bin"),
+                Environment.GetEnvironmentVariable("PATH") ?? string.Empty);
+            _moduleHost = Process.Start(start) ?? throw new InvalidOperationException("The workspace catalog host did not start.");
+            _hostErrors = _moduleHost.StandardError.ReadToEndAsync(cancellationToken);
+            var ready = await _moduleHost.StandardOutput.ReadLineAsync(cancellationToken).AsTask()
+                .WaitAsync(TimeSpan.FromSeconds(30), cancellationToken);
+            _hostOutput = _moduleHost.StandardOutput.ReadToEndAsync(cancellationToken);
+            if (ready != "ready")
+                throw new InvalidDataException($"The workspace catalog host failed: {await _hostErrors}");
+            return await File.ReadAllTextAsync(metadataPath, StrictUtf8, cancellationToken);
         }
 
-        static string ReadMetadata(nint handle, string modulePath)
+        void StopHost()
         {
-            var export = NativeLibrary.GetExport(handle, MetadataEntryPoint);
-            var getMetadata = Marshal.GetDelegateForFunctionPointer<GetWorkspaceTypeMetadataV1>(export);
-            var queryResult = getMetadata(nint.Zero, 0, out var payloadSize);
-            if (queryResult != NativeBufferTooSmall || payloadSize == 0 || payloadSize > int.MaxValue)
-            {
-                throw new InvalidDataException(
-                    $"Metadata size query failed for '{modulePath}' with result {queryResult} and size {payloadSize}.");
-            }
-
-            var buffer = Marshal.AllocHGlobal(checked((int)payloadSize));
+            if (_moduleHost is not { } host)
+                return;
+            _moduleHost = null;
             try
             {
-                var metadataResult = getMetadata(buffer, payloadSize, out var writtenSize);
-                if (metadataResult != NativeSuccess || writtenSize != payloadSize)
+                if (!host.HasExited)
+                    host.StandardInput.Close();
+                if (!host.WaitForExit(15000))
                 {
-                    throw new InvalidDataException(
-                        $"Metadata read failed for '{modulePath}' with result {metadataResult}; " +
-                        $"expected {payloadSize} bytes and received {writtenSize}.");
+                    host.Kill(entireProcessTree: true);
+                    host.WaitForExit();
+                    throw new TimeoutException("The workspace catalog host did not unload.");
                 }
-
-                var bytes = new byte[checked((int)writtenSize)];
-                Marshal.Copy(buffer, bytes, 0, bytes.Length);
-                return StrictUtf8.GetString(bytes);
+                if (host.ExitCode != 0)
+                    throw new InvalidOperationException($"Workspace catalog host failed: {_hostErrors?.GetAwaiter().GetResult()}");
+                _hostOutput?.GetAwaiter().GetResult();
             }
             finally
             {
-                Marshal.FreeHGlobal(buffer);
+                host.Dispose();
+                UnloadCount++;
             }
         }
 
@@ -998,18 +966,8 @@ public sealed class WorkspaceTwoWorkspaceCloseoutIntegrationTests
 
             _disposed = true;
             Active = null;
-            if (_moduleHandle != nint.Zero)
-            {
-                NativeLibrary.Free(_moduleHandle);
-                _moduleHandle = nint.Zero;
-                UnloadCount++;
-            }
+            StopHost();
         }
 
-        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        delegate uint GetWorkspaceTypeMetadataV1(
-            nint destination,
-            ulong destinationCapacity,
-            out ulong payloadSize);
     }
 }

@@ -3,15 +3,14 @@
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/GraphicsDriver.h"
-#include "RHI/GlobalIllumination.h"
+#include "RHI/ViewSubmissionResources.h"
 #include "RHI/Shader.h"
 #include "RHI/VertexDescription.h"
 #include "RHI/RenderTarget.h"
 #include "RHI/Surface.h"
 #include "RHI/Cubemap.h"
 #include "RHI/CommandList.h"
-#include "FrameGraph/LightCullingNode.h"
-#include "FrameGraph/EnvironmentNode.h"
+#include "FrameGraph/LocalReflection.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "Settings/GraphicsSettings.h"
 #include "Tasks/Tasks.h"
@@ -25,8 +24,6 @@ using namespace Sailor::RHI;
 
 namespace
 {
-	constexpr uint64_t InvalidContentHash = (std::numeric_limits<uint64_t>::max)();
-
 	class RHISubmissionProgress final
 	{
 	public:
@@ -50,111 +47,6 @@ namespace
 		RHISemaphorePtr m_lastSuccessfulSemaphore{};
 	};
 
-	struct GlobalIlluminationRenderStatsStorage final
-	{
-		SpinLock m_lock;
-		const RHIFrameGraph* m_owner = nullptr;
-		RHIGlobalIlluminationRenderStats m_stats{};
-	};
-
-	GlobalIlluminationRenderStatsStorage& GetGlobalIlluminationRenderStatsStorage()
-	{
-		static GlobalIlluminationRenderStatsStorage storage;
-		return storage;
-	}
-
-	void PublishGlobalIlluminationRenderStats(
-		const RHIFrameGraph* owner,
-		const RHIGlobalIlluminationRenderStats& stats)
-	{
-		auto& storage = GetGlobalIlluminationRenderStatsStorage();
-		storage.m_lock.Lock();
-		storage.m_owner = owner;
-		storage.m_stats = stats;
-		storage.m_lock.Unlock();
-	}
-
-	class RHIViewSubmissionResources final : public RHIFrameGraphSubmissionResource
-	{
-	public:
-		void ResetForSubmission() override {}
-		void InvalidateSubmission() override
-		{
-			m_shadowMatricesHash = InvalidContentHash;
-			m_shadowIndicesHash = InvalidContentHash;
-			m_shadowAtlasTilesHash = InvalidContentHash;
-		}
-
-		RHIShaderBindingSetPtr m_lightsBindings{};
-		RHIShaderBindingSetPtr m_lightsTemplate{};
-		RHIShaderBindingSetPtr m_sharedLightsStorage{};
-		RHIShaderBindingSetPtr m_sharedGlobalIlluminationStorage{};
-		RHIShaderBindingSetPtr m_frameBindings{};
-		size_t m_previousBoneCapacity = 0u;
-		RHIShaderBindingSetPtr m_lightCullingBindings{};
-		RHITexturePtr m_lightCullingDepth{};
-		glm::ivec2 m_lightCullingViewportSize{};
-		size_t m_shadowMatrixCapacity = 0u;
-		size_t m_shadowIndexCapacity = 0u;
-		size_t m_shadowAtlasTileCapacity = 0u;
-		uint64_t m_lightsTemplateRevision = 0ull;
-		size_t m_frameGraphSamplerHash = 0u;
-		uint64_t m_shadowMatricesHash = InvalidContentHash;
-		uint64_t m_shadowIndicesHash = InvalidContentHash;
-		uint64_t m_shadowAtlasTilesHash = InvalidContentHash;
-	};
-
-	class RHISharedViewSubmissionResources final : public RHIFrameGraphSubmissionResource
-	{
-	public:
-		void ResetForSubmission() override {}
-		void InvalidateSubmission() override
-		{
-			m_uploadedLightingRevision = InvalidContentHash;
-			m_uploadedAnimationRevision = InvalidContentHash;
-			m_uploadedGlobalIlluminationLayout = InvalidContentHash;
-			m_uploadedGlobalIlluminationCoefficients = InvalidContentHash;
-			m_uploadedGlobalIlluminationStates = InvalidContentHash;
-			m_uploadedGlobalIlluminationHeader = InvalidContentHash;
-			m_lightsSource.Clear();
-			m_bonesSource.Clear();
-		}
-
-		RHIShaderBindingSetPtr m_lightsStorage{};
-		RHIShaderBindingSetPtr m_boneBindings{};
-		RHIShaderBindingSetPtr m_globalIlluminationStorage{};
-		TSharedPtr<TVector<RHILightShaderData>> m_lightsSource{};
-		TSharedPtr<TVector<glm::mat4>> m_bonesSource{};
-		size_t m_lightCapacity = 0u;
-		size_t m_boneCapacity = 0u;
-		size_t m_globalIlluminationNodeCapacity = 0u;
-		size_t m_globalIlluminationBrickCapacity = 0u;
-		size_t m_globalIlluminationProbeCapacity = 0u;
-		size_t m_globalIlluminationCoefficientCapacity = 0u;
-		size_t m_globalIlluminationStateCapacity = 0u;
-		uint64_t m_uploadedLightingRevision = InvalidContentHash;
-		uint64_t m_uploadedAnimationRevision = InvalidContentHash;
-		uint64_t m_uploadedGlobalIlluminationLayout = InvalidContentHash;
-		uint64_t m_uploadedGlobalIlluminationCoefficients = InvalidContentHash;
-		uint64_t m_uploadedGlobalIlluminationStates = InvalidContentHash;
-		uint64_t m_uploadedGlobalIlluminationHeader = InvalidContentHash;
-	};
-
-	size_t GrowSubmissionCapacity(size_t currentCapacity, size_t requiredCapacity)
-	{
-		size_t result = (std::max)(size_t{ 1u }, currentCapacity);
-		while (result < requiredCapacity)
-		{
-			const size_t next = result * 2u;
-			if (next <= result)
-			{
-				return requiredCapacity;
-			}
-			result = next;
-		}
-		return result;
-	}
-
 	template<typename T>
 	uint64_t HashSubmissionValues(const TVector<T>& values)
 	{
@@ -162,40 +54,6 @@ namespace
 		uint64_t result = HashBytes(values.GetData(), numBytes);
 		HashValue(result, values.Num());
 		return result;
-	}
-
-	template<typename T>
-	uint64_t HashSubmissionValue(const T& value)
-	{
-		return HashBytes(&value, sizeof(T));
-	}
-
-	EGlobalIlluminationDebugVisualization ResolveGlobalIlluminationDebug(
-		ESceneViewRenderMode renderMode) noexcept
-	{
-		switch (renderMode)
-		{
-		case ESceneViewRenderMode::GlobalIlluminationOnly:
-			return EGlobalIlluminationDebugVisualization::IndirectOnly;
-		case ESceneViewRenderMode::GlobalIlluminationProbes:
-			return EGlobalIlluminationDebugVisualization::Probes;
-		case ESceneViewRenderMode::GlobalIlluminationBricks:
-			return EGlobalIlluminationDebugVisualization::Bricks;
-		case ESceneViewRenderMode::GlobalIlluminationValidity:
-			return EGlobalIlluminationDebugVisualization::Validity;
-		case ESceneViewRenderMode::GlobalIlluminationVisibility:
-			return EGlobalIlluminationDebugVisualization::Visibility;
-		case ESceneViewRenderMode::GlobalIlluminationResidency:
-			return EGlobalIlluminationDebugVisualization::Residency;
-		case ESceneViewRenderMode::GlobalIlluminationAssetIdentity:
-			return EGlobalIlluminationDebugVisualization::AssetIdentity;
-		case ESceneViewRenderMode::GlobalIlluminationFallback:
-			return EGlobalIlluminationDebugVisualization::Fallback;
-		case ESceneViewRenderMode::GlobalIlluminationSubdivisions:
-			return EGlobalIlluminationDebugVisualization::Subdivisions;
-		default:
-			return EGlobalIlluminationDebugVisualization::Lit;
-		}
 	}
 
 	void CloneTextureBindings(
@@ -235,9 +93,7 @@ namespace
 	void PrepareViewSubmissionResources(
 		RHIFrameGraph* owner,
 		RHICommandListPtr transferCommandList,
-		RHISceneViewSnapshot& snapshot,
-		bool bUploadSharedPayload,
-		RHIGlobalIlluminationRenderStats* globalIlluminationStats)
+		RHISceneViewSnapshot& snapshot)
 	{
 		if (!snapshot.m_submissionContext)
 		{
@@ -259,58 +115,12 @@ namespace
 			resources->m_frameBindings = driver->CreateShaderBindings();
 			driver->AddBufferToShaderBindings(
 				resources->m_frameBindings,
-				"frameData",
+				"frameData"_h,
 				sizeof(UboFrameData),
 				0u,
-				EShaderBindingType::UniformBuffer);
-			driver->AddBufferToShaderBindings(
-				resources->m_frameBindings,
-				"previousFrameData",
-				sizeof(UboFrameData),
-				1u,
 				EShaderBindingType::UniformBuffer);
 		}
 		snapshot.m_frameBindings = resources->m_frameBindings;
-
-		auto linearDepthAttachment = owner->GetRenderTarget("LinearDepth");
-		const glm::ivec2 lightCullingViewportSize = linearDepthAttachment ?
-			linearDepthAttachment->GetExtent() : glm::ivec2{};
-		const bool bRecreateLightCulling = linearDepthAttachment &&
-			(!resources->m_lightCullingBindings ||
-				resources->m_lightCullingDepth != linearDepthAttachment ||
-				resources->m_lightCullingViewportSize != lightCullingViewportSize);
-		if (bRecreateLightCulling)
-		{
-			const uint32_t numTilesX =
-				(lightCullingViewportSize.x - 1) / LightCullingNode::TileSize + 1;
-			const uint32_t numTilesY =
-				(lightCullingViewportSize.y - 1) / LightCullingNode::TileSize + 1;
-			const size_t numTiles = static_cast<size_t>(numTilesX) * numTilesY;
-			resources->m_lightCullingBindings = driver->CreateShaderBindings();
-			driver->AddSsboToShaderBindings(
-				resources->m_lightCullingBindings,
-				"culledLights",
-				sizeof(uint32_t) * numTiles * LightCullingNode::LightsPerTile,
-				1u,
-				0u,
-				true);
-			driver->AddSsboToShaderBindings(
-				resources->m_lightCullingBindings,
-				"lightsGrid",
-				sizeof(uint32_t) * numTiles * 2u,
-				1u,
-				1u,
-				true);
-			driver->AddSamplerToShaderBindings(
-				resources->m_lightCullingBindings,
-				"linearDepth",
-				linearDepthAttachment,
-				2u);
-			resources->m_lightCullingBindings->RecalculateCompatibility();
-			resources->m_lightCullingDepth = linearDepthAttachment;
-			resources->m_lightCullingViewportSize = lightCullingViewportSize;
-		}
-		snapshot.m_rhiLightCullingData = resources->m_lightCullingBindings;
 
 		auto lightsTemplate = snapshot.m_rhiLightsData;
 		if (lightsTemplate == resources->m_lightsBindings && resources->m_lightsTemplate)
@@ -319,394 +129,19 @@ namespace
 		}
 		const uint64_t lightsTemplateRevision = lightsTemplate ?
 			lightsTemplate->GetDescriptorRevision() : 0ull;
-		const size_t numLights = snapshot.m_cpuLightsData ? snapshot.m_cpuLightsData->Num() : 0u;
 		const size_t numShadowMatrices = snapshot.m_shadowMatrices.Num();
 		const size_t numShadowIndices = snapshot.m_shadowIndices.Num();
 		const size_t numShadowAtlasTiles = snapshot.m_shadowAtlasTiles.Num();
-		const bool bRecreateLightStorage = !sharedResources->m_lightsStorage ||
-			sharedResources->m_lightCapacity < numLights;
-		if (bRecreateLightStorage)
-		{
-			sharedResources->m_lightCapacity = GrowSubmissionCapacity(
-				sharedResources->m_lightCapacity,
-				numLights);
-			sharedResources->m_lightsStorage = driver->CreateShaderBindings();
-			driver->AddSsboToShaderBindings(
-				sharedResources->m_lightsStorage,
-				"light",
-				sizeof(RHILightShaderData),
-				sharedResources->m_lightCapacity,
-				0u,
-				true);
-			sharedResources->m_lightsStorage->RecalculateCompatibility();
-			sharedResources->m_uploadedLightingRevision = InvalidContentHash;
-			sharedResources->m_lightsSource.Clear();
-		}
-		if (bUploadSharedPayload && snapshot.m_cpuLightsData &&
-			(sharedResources->m_lightsSource != snapshot.m_cpuLightsData ||
-				sharedResources->m_uploadedLightingRevision != snapshot.m_lightingRevision))
-		{
-			if (!snapshot.m_cpuLightsData->IsEmpty())
-			{
-				commands->UpdateShaderBinding(
-					transferCommandList,
-					sharedResources->m_lightsStorage->GetOrAddShaderBinding("light"),
-					snapshot.m_cpuLightsData->GetData(),
-					snapshot.m_cpuLightsData->Num() * sizeof(RHILightShaderData),
-					0u);
-			}
-			sharedResources->m_lightsSource = snapshot.m_cpuLightsData;
-			sharedResources->m_uploadedLightingRevision = snapshot.m_lightingRevision;
-		}
-
-		const RHIGlobalIlluminationSnapshotPtr globalIllumination =
-			snapshot.m_globalIllumination;
-		if (globalIlluminationStats)
-		{
-			*globalIlluminationStats = BuildGlobalIlluminationRenderStats(
-				globalIllumination.GetRawPtr());
-			globalIlluminationStats->m_mode =
-				snapshot.m_globalIlluminationMode;
-			globalIlluminationStats->m_bEnabled =
-				snapshot.m_bGlobalIlluminationEnabled;
-			globalIlluminationStats->m_flightSlot =
-				snapshot.m_submissionContext->GetFlightSlot();
-			if (!globalIllumination)
-			{
-				globalIlluminationStats->m_qualityBudget =
-					App::GetActiveGraphicsSettings()
-						.m_maxGiProbeStatesPerSnapshot;
-			}
-		}
-		bool bHasGlobalIllumination = globalIllumination &&
-			globalIllumination->m_layout &&
-			!globalIllumination->m_states.IsEmpty();
-		size_t numGlobalIlluminationNodes = 0u;
-		size_t numGlobalIlluminationBricks = 0u;
-		size_t numGlobalIlluminationProbes = 0u;
-		size_t numGlobalIlluminationCoefficients = 0u;
-		size_t numGlobalIlluminationStates = 0u;
-		if (bHasGlobalIllumination)
-		{
-			numGlobalIlluminationBricks =
-				globalIllumination->m_layout->m_bricks.Num();
-			numGlobalIlluminationProbes =
-				globalIllumination->m_layout->m_probes.Num();
-			numGlobalIlluminationStates =
-				globalIllumination->m_states.Num();
-			bHasGlobalIllumination = numGlobalIlluminationBricks > 0u &&
-				numGlobalIlluminationProbes > 0u &&
-				numGlobalIlluminationStates > 0u &&
-				numGlobalIlluminationStates <=
-					globalIllumination->m_qualityBudget &&
-				numGlobalIlluminationProbes <=
-					(std::numeric_limits<size_t>::max)() /
-						numGlobalIlluminationStates;
-			if (bHasGlobalIllumination)
-			{
-				numGlobalIlluminationNodes =
-					numGlobalIlluminationBricks * 2u - 1u;
-				numGlobalIlluminationCoefficients =
-					numGlobalIlluminationProbes *
-					numGlobalIlluminationStates;
-			}
-		}
-
-		const bool bRecreateGlobalIlluminationStorage =
-			!sharedResources->m_globalIlluminationStorage ||
-			sharedResources->m_globalIlluminationNodeCapacity <
-				numGlobalIlluminationNodes ||
-			sharedResources->m_globalIlluminationBrickCapacity <
-				numGlobalIlluminationBricks ||
-			sharedResources->m_globalIlluminationProbeCapacity <
-				numGlobalIlluminationProbes ||
-			sharedResources->m_globalIlluminationCoefficientCapacity <
-				numGlobalIlluminationCoefficients ||
-			sharedResources->m_globalIlluminationStateCapacity <
-				numGlobalIlluminationStates;
-		if (bRecreateGlobalIlluminationStorage)
-		{
-			sharedResources->m_globalIlluminationNodeCapacity =
-				GrowSubmissionCapacity(
-					sharedResources->m_globalIlluminationNodeCapacity,
-					numGlobalIlluminationNodes);
-			sharedResources->m_globalIlluminationBrickCapacity =
-				GrowSubmissionCapacity(
-					sharedResources->m_globalIlluminationBrickCapacity,
-					numGlobalIlluminationBricks);
-			sharedResources->m_globalIlluminationProbeCapacity =
-				GrowSubmissionCapacity(
-					sharedResources->m_globalIlluminationProbeCapacity,
-					numGlobalIlluminationProbes);
-			sharedResources->m_globalIlluminationCoefficientCapacity =
-				GrowSubmissionCapacity(
-					sharedResources->m_globalIlluminationCoefficientCapacity,
-					numGlobalIlluminationCoefficients);
-			sharedResources->m_globalIlluminationStateCapacity =
-				GrowSubmissionCapacity(
-					sharedResources->m_globalIlluminationStateCapacity,
-					numGlobalIlluminationStates);
-			sharedResources->m_globalIlluminationStorage =
-				driver->CreateShaderBindings();
-			driver->AddSsboToShaderBindings(
-				sharedResources->m_globalIlluminationStorage,
-				"globalIlluminationHeader",
-				sizeof(RHIGlobalIlluminationGpuHeader),
-				1u,
-				0u,
-				true);
-			driver->AddSsboToShaderBindings(
-				sharedResources->m_globalIlluminationStorage,
-				"globalIlluminationBvh",
-				sizeof(RHIGlobalIlluminationGpuBvhNode),
-				sharedResources->m_globalIlluminationNodeCapacity,
-				1u,
-				true);
-			driver->AddSsboToShaderBindings(
-				sharedResources->m_globalIlluminationStorage,
-				"globalIlluminationBricks",
-				sizeof(RHIGlobalIlluminationGpuBrick),
-				sharedResources->m_globalIlluminationBrickCapacity,
-				2u,
-				true);
-			driver->AddSsboToShaderBindings(
-				sharedResources->m_globalIlluminationStorage,
-				"globalIlluminationProbes",
-				sizeof(RHIGlobalIlluminationGpuProbe),
-				sharedResources->m_globalIlluminationProbeCapacity,
-				3u,
-				true);
-			driver->AddSsboToShaderBindings(
-				sharedResources->m_globalIlluminationStorage,
-				"globalIlluminationCoefficients",
-				sizeof(RHIGlobalIlluminationGpuCoefficients),
-				sharedResources->m_globalIlluminationCoefficientCapacity,
-				4u,
-				true);
-			driver->AddSsboToShaderBindings(
-				sharedResources->m_globalIlluminationStorage,
-				"globalIlluminationStates",
-				sizeof(RHIGlobalIlluminationGpuState),
-				sharedResources->m_globalIlluminationStateCapacity,
-				5u,
-				true);
-			sharedResources->m_globalIlluminationStorage
-				->RecalculateCompatibility();
-			sharedResources->m_uploadedGlobalIlluminationLayout =
-				InvalidContentHash;
-			sharedResources->m_uploadedGlobalIlluminationCoefficients =
-				InvalidContentHash;
-			sharedResources->m_uploadedGlobalIlluminationStates =
-				InvalidContentHash;
-			sharedResources->m_uploadedGlobalIlluminationHeader =
-				InvalidContentHash;
-		}
-		if (globalIlluminationStats &&
-			sharedResources->m_globalIlluminationStorage)
-		{
-			globalIlluminationStats->m_gpuAllocatedBytes =
-				sizeof(RHIGlobalIlluminationGpuHeader) +
-				sharedResources->m_globalIlluminationNodeCapacity *
-					sizeof(RHIGlobalIlluminationGpuBvhNode) +
-				sharedResources->m_globalIlluminationBrickCapacity *
-					sizeof(RHIGlobalIlluminationGpuBrick) +
-				sharedResources->m_globalIlluminationProbeCapacity *
-					sizeof(RHIGlobalIlluminationGpuProbe) +
-				sharedResources->m_globalIlluminationCoefficientCapacity *
-					sizeof(RHIGlobalIlluminationGpuCoefficients) +
-				sharedResources->m_globalIlluminationStateCapacity *
-					sizeof(RHIGlobalIlluminationGpuState);
-		}
-
-		if (bUploadSharedPayload)
-		{
-			bool bGlobalIlluminationPayloadReady = bHasGlobalIllumination;
-			std::string globalIlluminationDiagnostic;
-			if (bHasGlobalIllumination)
-			{
-				const uint64_t layoutSignature =
-					ComputeGlobalIlluminationLayoutSignature(*globalIllumination);
-				if (sharedResources->m_uploadedGlobalIlluminationLayout !=
-					layoutSignature)
-				{
-					RHIGlobalIlluminationGpuLayout gpuLayout;
-					bGlobalIlluminationPayloadReady =
-						BuildGlobalIlluminationGpuLayout(
-							*globalIllumination->m_layout,
-							gpuLayout,
-							globalIlluminationDiagnostic);
-					if (bGlobalIlluminationPayloadReady)
-					{
-						const uint64_t layoutBytes =
-							static_cast<uint64_t>(gpuLayout.m_nodes.Num()) *
-								sizeof(RHIGlobalIlluminationGpuBvhNode) +
-							static_cast<uint64_t>(gpuLayout.m_bricks.Num()) *
-								sizeof(RHIGlobalIlluminationGpuBrick) +
-							static_cast<uint64_t>(gpuLayout.m_probes.Num()) *
-								sizeof(RHIGlobalIlluminationGpuProbe);
-						commands->UpdateShaderBinding(
-							transferCommandList,
-							sharedResources->m_globalIlluminationStorage
-								->GetOrAddShaderBinding("globalIlluminationBvh"),
-							gpuLayout.m_nodes.GetData(),
-							gpuLayout.m_nodes.Num() *
-								sizeof(RHIGlobalIlluminationGpuBvhNode),
-							0u);
-						commands->UpdateShaderBinding(
-							transferCommandList,
-							sharedResources->m_globalIlluminationStorage
-								->GetOrAddShaderBinding("globalIlluminationBricks"),
-							gpuLayout.m_bricks.GetData(),
-							gpuLayout.m_bricks.Num() *
-								sizeof(RHIGlobalIlluminationGpuBrick),
-							0u);
-						commands->UpdateShaderBinding(
-							transferCommandList,
-							sharedResources->m_globalIlluminationStorage
-								->GetOrAddShaderBinding("globalIlluminationProbes"),
-							gpuLayout.m_probes.GetData(),
-							gpuLayout.m_probes.Num() *
-								sizeof(RHIGlobalIlluminationGpuProbe),
-							0u);
-						sharedResources->m_uploadedGlobalIlluminationLayout =
-							layoutSignature;
-						if (globalIlluminationStats)
-						{
-							globalIlluminationStats->m_copiedCpuBytes += layoutBytes;
-							globalIlluminationStats->m_uploadedGpuBytes += layoutBytes;
-						}
-					}
-				}
-
-				const uint64_t coefficientSignature =
-					ComputeGlobalIlluminationCoefficientSignature(
-						*globalIllumination);
-				if (bGlobalIlluminationPayloadReady &&
-					sharedResources->m_uploadedGlobalIlluminationCoefficients !=
-						coefficientSignature)
-				{
-					TVector<RHIGlobalIlluminationGpuCoefficients> coefficients;
-					bGlobalIlluminationPayloadReady =
-						BuildGlobalIlluminationGpuCoefficients(
-							*globalIllumination,
-							coefficients,
-							globalIlluminationDiagnostic);
-					if (bGlobalIlluminationPayloadReady)
-					{
-						const uint64_t coefficientBytes =
-							static_cast<uint64_t>(coefficients.Num()) *
-								sizeof(RHIGlobalIlluminationGpuCoefficients);
-						commands->UpdateShaderBinding(
-							transferCommandList,
-							sharedResources->m_globalIlluminationStorage
-								->GetOrAddShaderBinding(
-									"globalIlluminationCoefficients"),
-							coefficients.GetData(),
-							coefficients.Num() *
-								sizeof(RHIGlobalIlluminationGpuCoefficients),
-							0u);
-						sharedResources
-							->m_uploadedGlobalIlluminationCoefficients =
-							coefficientSignature;
-						if (globalIlluminationStats)
-						{
-							globalIlluminationStats->m_copiedCpuBytes += coefficientBytes;
-							globalIlluminationStats->m_uploadedGpuBytes += coefficientBytes;
-						}
-					}
-				}
-
-				const uint64_t stateSignature =
-					ComputeGlobalIlluminationStateSignature(*globalIllumination);
-				if (bGlobalIlluminationPayloadReady &&
-					sharedResources->m_uploadedGlobalIlluminationStates !=
-						stateSignature)
-				{
-					TVector<RHIGlobalIlluminationGpuState> states;
-					bGlobalIlluminationPayloadReady =
-						BuildGlobalIlluminationGpuStates(
-							*globalIllumination,
-							states,
-							globalIlluminationDiagnostic);
-					if (bGlobalIlluminationPayloadReady)
-					{
-						const uint64_t stateBytes =
-							static_cast<uint64_t>(states.Num()) *
-								sizeof(RHIGlobalIlluminationGpuState);
-						commands->UpdateShaderBinding(
-							transferCommandList,
-							sharedResources->m_globalIlluminationStorage
-								->GetOrAddShaderBinding("globalIlluminationStates"),
-							states.GetData(),
-							states.Num() *
-								sizeof(RHIGlobalIlluminationGpuState),
-							0u);
-						sharedResources->m_uploadedGlobalIlluminationStates =
-							stateSignature;
-						if (globalIlluminationStats)
-						{
-							globalIlluminationStats->m_copiedCpuBytes += stateBytes;
-							globalIlluminationStats->m_uploadedGpuBytes += stateBytes;
-						}
-					}
-				}
-			}
-
-			if (bHasGlobalIllumination && !bGlobalIlluminationPayloadReady)
-			{
-				SAILOR_LOG_ERROR(
-					"Cannot publish Global Illumination ECS GPU snapshot: %s.",
-					globalIlluminationDiagnostic.c_str());
-			}
-			const RHIGlobalIlluminationGpuHeader header =
-				BuildGlobalIlluminationGpuHeader(
-					bGlobalIlluminationPayloadReady
-						? globalIllumination.GetRawPtr()
-						: nullptr,
-					ResolveGlobalIlluminationDebug(snapshot.m_renderMode),
-					snapshot.m_globalIlluminationMode,
-					snapshot.m_bGlobalIlluminationEnabled);
-			const uint64_t headerHash = HashSubmissionValue(header);
-			if (sharedResources->m_uploadedGlobalIlluminationHeader !=
-				headerHash)
-			{
-				commands->UpdateShaderBinding(
-					transferCommandList,
-					sharedResources->m_globalIlluminationStorage
-						->GetOrAddShaderBinding("globalIlluminationHeader"),
-					&header,
-					sizeof(header),
-					0u);
-				sharedResources->m_uploadedGlobalIlluminationHeader =
-					headerHash;
-				if (globalIlluminationStats)
-				{
-					globalIlluminationStats->m_copiedCpuBytes += sizeof(header);
-					globalIlluminationStats->m_uploadedGpuBytes += sizeof(header);
-				}
-			}
-			if (globalIlluminationStats)
-			{
-				globalIlluminationStats->m_bActive =
-					bGlobalIlluminationPayloadReady &&
-					globalIlluminationStats->m_bEnabled;
-				globalIlluminationStats->m_loadedBricks =
-					bGlobalIlluminationPayloadReady
-						? globalIlluminationStats->m_totalBricks
-						: 0u;
-			}
-		}
 
 		size_t frameGraphSamplerHash = 0u;
-		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_irradianceCubemap")));
-		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_brdfSampler")));
-		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_envCubemap")));
-		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_sheenEnvCubemap")));
-		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_localEnvCubemap")));
-		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_localSheenEnvCubemap")));
-		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetRenderTarget("g_AO")));
+		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_irradianceCubemap"_h)));
+		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_brdfSampler"_h)));
+		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_envCubemap"_h)));
+		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_sheenEnvCubemap"_h)));
+		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_localEnvCubemap"_h)));
+		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_localSheenEnvCubemap"_h)));
+		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetRenderTarget("g_AO"_h)));
 		const bool bRecreateLights = !resources->m_lightsBindings ||
-			bRecreateLightCulling ||
 			resources->m_lightsTemplate != lightsTemplate ||
 			resources->m_sharedLightsStorage != sharedResources->m_lightsStorage ||
 			resources->m_sharedGlobalIlluminationStorage !=
@@ -723,43 +158,30 @@ namespace
 			resources->m_shadowIndexCapacity = GrowSubmissionCapacity(resources->m_shadowIndexCapacity, numShadowIndices);
 			resources->m_shadowAtlasTileCapacity = GrowSubmissionCapacity(resources->m_shadowAtlasTileCapacity, numShadowAtlasTiles);
 			resources->m_lightsBindings = driver->CreateShaderBindings();
-			driver->AddBufferToShaderBindings(resources->m_lightsBindings, "localReflection",
+			driver->AddBufferToShaderBindings(resources->m_lightsBindings, "localReflection"_h,
 				sizeof(LocalReflectionParameters), 20u, EShaderBindingType::UniformBuffer);
 			driver->AddShaderBinding(
 				resources->m_lightsBindings,
-				sharedResources->m_lightsStorage->GetOrAddShaderBinding("light"),
-				"light",
+				sharedResources->m_lightsStorage->GetOrAddShaderBinding("light"_h),
+				"light"_h,
 				0u);
-			if (resources->m_lightCullingBindings)
-			{
-				driver->AddShaderBinding(
-					resources->m_lightsBindings,
-					resources->m_lightCullingBindings->GetOrAddShaderBinding("culledLights"),
-					"culledLights",
-					1u);
-				driver->AddShaderBinding(
-					resources->m_lightsBindings,
-					resources->m_lightCullingBindings->GetOrAddShaderBinding("lightsGrid"),
-					"lightsGrid",
-					2u);
-			}
 			driver->AddSsboToShaderBindings(
 				resources->m_lightsBindings,
-				"lightsMatrices",
+				"lightsMatrices"_h,
 				sizeof(glm::mat4),
 				resources->m_shadowMatrixCapacity,
 				6u,
 				true);
 			driver->AddSsboToShaderBindings(
 				resources->m_lightsBindings,
-				"shadowIndices",
+				"shadowIndices"_h,
 				sizeof(uint32_t),
 				resources->m_shadowIndexCapacity,
 				7u,
 				true);
 			driver->AddSsboToShaderBindings(
 				resources->m_lightsBindings,
-				"shadowAtlasTiles",
+				"shadowAtlasTiles"_h,
 				sizeof(uint32_t),
 				resources->m_shadowAtlasTileCapacity,
 				11u,
@@ -767,105 +189,92 @@ namespace
 			driver->AddShaderBinding(
 				resources->m_lightsBindings,
 				sharedResources->m_globalIlluminationStorage
-					->GetOrAddShaderBinding("globalIlluminationHeader"),
-				"globalIlluminationHeader",
+					->GetOrAddShaderBinding("globalIlluminationHeader"_h),
+				"globalIlluminationHeader"_h,
 				12u);
 			driver->AddShaderBinding(
 				resources->m_lightsBindings,
 				sharedResources->m_globalIlluminationStorage
-					->GetOrAddShaderBinding("globalIlluminationBvh"),
-				"globalIlluminationBvh",
+					->GetOrAddShaderBinding("globalIlluminationBvh"_h),
+				"globalIlluminationBvh"_h,
 				13u);
 			driver->AddShaderBinding(
 				resources->m_lightsBindings,
 				sharedResources->m_globalIlluminationStorage
-					->GetOrAddShaderBinding("globalIlluminationBricks"),
-				"globalIlluminationBricks",
+					->GetOrAddShaderBinding("globalIlluminationBricks"_h),
+				"globalIlluminationBricks"_h,
 				14u);
 			driver->AddShaderBinding(
 				resources->m_lightsBindings,
 				sharedResources->m_globalIlluminationStorage
-					->GetOrAddShaderBinding("globalIlluminationProbes"),
-				"globalIlluminationProbes",
+					->GetOrAddShaderBinding("globalIlluminationProbes"_h),
+				"globalIlluminationProbes"_h,
 				15u);
 			driver->AddShaderBinding(
 				resources->m_lightsBindings,
 				sharedResources->m_globalIlluminationStorage
-					->GetOrAddShaderBinding("globalIlluminationCoefficients"),
-				"globalIlluminationCoefficients",
+					->GetOrAddShaderBinding("globalIlluminationCoefficients"_h),
+				"globalIlluminationCoefficients"_h,
 				16u);
 			driver->AddShaderBinding(
 				resources->m_lightsBindings,
 				sharedResources->m_globalIlluminationStorage
-					->GetOrAddShaderBinding("globalIlluminationStates"),
-				"globalIlluminationStates",
+					->GetOrAddShaderBinding("globalIlluminationStates"_h),
+				"globalIlluminationStates"_h,
 				17u);
 			CloneTextureBindings(lightsTemplate, resources->m_lightsBindings);
-			if (auto texture = owner->GetSampler("g_irradianceCubemap"))
+			if (auto texture = owner->GetSampler("g_irradianceCubemap"_h))
 			{
 				driver->AddSamplerToShaderBindings(
 					resources->m_lightsBindings,
-					"g_irradianceCubemap",
+					"g_irradianceCubemap"_h,
 					texture,
 					3u);
 			}
-			if (auto texture = owner->GetSampler("g_brdfSampler"))
+			if (auto texture = owner->GetSampler("g_brdfSampler"_h))
 			{
 				driver->AddSamplerToShaderBindings(
 					resources->m_lightsBindings,
-					"g_brdfSampler",
+					"g_brdfSampler"_h,
 					texture,
 					4u);
 			}
-			if (auto texture = owner->GetSampler("g_envCubemap"))
+			if (auto texture = owner->GetSampler("g_envCubemap"_h))
 			{
 				driver->AddSamplerToShaderBindings(
 					resources->m_lightsBindings,
-					"g_envCubemap",
+					"g_envCubemap"_h,
 					texture,
 					5u);
 			}
-			auto sheenEnvironment = owner->GetSampler("g_sheenEnvCubemap");
+			auto sheenEnvironment = owner->GetSampler("g_sheenEnvCubemap"_h);
 			if (!sheenEnvironment)
 			{
-				sheenEnvironment = owner->GetSampler("g_envCubemap");
+				sheenEnvironment = owner->GetSampler("g_envCubemap"_h);
 			}
 			if (sheenEnvironment)
 			{
 				driver->AddSamplerToShaderBindings(
 					resources->m_lightsBindings,
-					"g_sheenEnvCubemap",
+					"g_sheenEnvCubemap"_h,
 					sheenEnvironment,
 					19u);
 			}
-			if (auto texture = owner->GetRenderTarget("g_AO"))
+			if (auto texture = owner->GetRenderTarget("g_AO"_h))
 			{
-				driver->AddSamplerToShaderBindings(resources->m_lightsBindings, "g_aoSampler", texture, 8u);
+				driver->AddSamplerToShaderBindings(resources->m_lightsBindings, "g_aoSampler"_h, texture, 8u);
 			}
-			auto localEnvironment = owner->GetSampler("g_localEnvCubemap");
-			if (!localEnvironment) localEnvironment = owner->GetSampler("g_envCubemap");
+			auto localEnvironment = owner->GetSampler("g_localEnvCubemap"_h);
+			if (!localEnvironment) localEnvironment = owner->GetSampler("g_envCubemap"_h);
 			if (localEnvironment)
-				driver->AddSamplerToShaderBindings(resources->m_lightsBindings, "g_localEnvCubemap", localEnvironment, 21u);
-			auto localSheen = owner->GetSampler("g_localSheenEnvCubemap");
+				driver->AddSamplerToShaderBindings(resources->m_lightsBindings, "g_localEnvCubemap"_h, localEnvironment, 21u);
+			auto localSheen = owner->GetSampler("g_localSheenEnvCubemap"_h);
 			if (!localSheen) localSheen = sheenEnvironment;
 			if (localSheen)
 			{
 				driver->AddSamplerToShaderBindings(
 					resources->m_lightsBindings,
-					"g_localSheenEnvCubemap", localSheen, 22u);
-			}
-			if (auto texture = driver->GetDefaultTexture())
-			{
-				driver->AddSamplerToShaderBindings(
-					resources->m_lightsBindings,
-					"g_transmissionFramebufferSampler",
-					texture,
-					10u);
-				driver->AddSamplerToShaderBindings(
-					resources->m_lightsBindings,
-					"g_globalIlluminationProbeCellIndicesSampler",
-					texture,
-					18u);
+					"g_localSheenEnvCubemap"_h, localSheen, 22u);
 			}
 			resources->m_lightsBindings->RecalculateCompatibility();
 			resources->m_lightsTemplate = lightsTemplate;
@@ -879,11 +288,10 @@ namespace
 			resources->m_shadowAtlasTilesHash = InvalidContentHash;
 		}
 
-		LocalReflectionParameters localParameters{};
-		if (auto environment = owner->GetGraphNode("Environment").DynamicCast<EnvironmentNode>())
-			localParameters = environment->GetLocalReflectionParameters();
+		// Shader defaults apply even when the graph omits the producing node.
+		const LocalReflectionParameters localParameters{};
 		commands->UpdateShaderBinding(transferCommandList,
-			resources->m_lightsBindings->GetOrAddShaderBinding("localReflection"),
+			resources->m_lightsBindings->GetOrAddShaderBinding("localReflection"_h),
 			&localParameters, sizeof(localParameters), 0u);
 
 		const uint64_t shadowMatricesHash = HashSubmissionValues(snapshot.m_shadowMatrices);
@@ -893,7 +301,7 @@ namespace
 			{
 				commands->UpdateShaderBinding(
 					transferCommandList,
-					resources->m_lightsBindings->GetOrAddShaderBinding("lightsMatrices"),
+					resources->m_lightsBindings->GetOrAddShaderBinding("lightsMatrices"_h),
 					snapshot.m_shadowMatrices.GetData(),
 					snapshot.m_shadowMatrices.Num() * sizeof(glm::mat4),
 					0u);
@@ -908,7 +316,7 @@ namespace
 			{
 				commands->UpdateShaderBinding(
 					transferCommandList,
-					resources->m_lightsBindings->GetOrAddShaderBinding("shadowIndices"),
+					resources->m_lightsBindings->GetOrAddShaderBinding("shadowIndices"_h),
 					snapshot.m_shadowIndices.GetData(),
 					snapshot.m_shadowIndices.Num() * sizeof(uint32_t),
 					0u);
@@ -923,7 +331,7 @@ namespace
 			{
 				commands->UpdateShaderBinding(
 					transferCommandList,
-					resources->m_lightsBindings->GetOrAddShaderBinding("shadowAtlasTiles"),
+					resources->m_lightsBindings->GetOrAddShaderBinding("shadowAtlasTiles"_h),
 					snapshot.m_shadowAtlasTiles.GetData(),
 					snapshot.m_shadowAtlasTiles.Num() * sizeof(uint32_t),
 					0u);
@@ -933,74 +341,44 @@ namespace
 
 		snapshot.m_rhiLightsData = resources->m_lightsBindings;
 
-		const size_t numBoneMatrices = snapshot.m_cpuBoneMatrices ? snapshot.m_cpuBoneMatrices->Num() : 0u;
-		// Skinned mesh shaders still declare the bones set when no animation is
-		// assigned. Keep a valid identity buffer for their invalid-offset path.
-		const size_t requiredBoneCapacity = (std::max)(size_t{ 1u }, numBoneMatrices);
-
-		const bool bRecreateBones = !sharedResources->m_boneBindings ||
-			sharedResources->m_boneCapacity < requiredBoneCapacity;
-		if (bRecreateBones)
-		{
-			sharedResources->m_boneCapacity = GrowSubmissionCapacity(
-				sharedResources->m_boneCapacity,
-				requiredBoneCapacity);
-			sharedResources->m_boneBindings = driver->CreateShaderBindings();
-			driver->AddSsboToShaderBindings(
-				sharedResources->m_boneBindings,
-				"bones",
-				sizeof(glm::mat4),
-				sharedResources->m_boneCapacity,
-				0u,
-				true);
-			sharedResources->m_boneBindings->RecalculateCompatibility();
-			sharedResources->m_uploadedAnimationRevision = InvalidContentHash;
-			sharedResources->m_bonesSource.Clear();
-		}
-
-		if (bUploadSharedPayload &&
-			(sharedResources->m_bonesSource != snapshot.m_cpuBoneMatrices ||
-				sharedResources->m_uploadedAnimationRevision != snapshot.m_animationRevision))
-		{
-			const glm::mat4 identity(1.0f);
-			commands->UpdateShaderBinding(
-				transferCommandList,
-				sharedResources->m_boneBindings->GetOrAddShaderBinding("bones"),
-				numBoneMatrices ? snapshot.m_cpuBoneMatrices->GetData() : &identity,
-				requiredBoneCapacity * sizeof(glm::mat4),
-				0u);
-			sharedResources->m_bonesSource = snapshot.m_cpuBoneMatrices;
-			sharedResources->m_uploadedAnimationRevision = snapshot.m_animationRevision;
-		}
 		snapshot.m_boneMatrices = sharedResources->m_boneBindings;
 	}
 }
 
-RHIGlobalIlluminationRenderStats
-RHIFrameGraph::GetGlobalIlluminationRenderStats() const
+RHIGlobalIlluminationRenderStats RHIFrameGraph::GetGlobalIlluminationRenderStats() const
 {
-	auto& storage = GetGlobalIlluminationRenderStatsStorage();
-	storage.m_lock.Lock();
-	const RHIGlobalIlluminationRenderStats result =
-		storage.m_owner == this
-			? storage.m_stats
-			: RHIGlobalIlluminationRenderStats{};
-	storage.m_lock.Unlock();
+	m_globalIlluminationStatsLock.Lock();
+	const auto result = m_globalIlluminationStats;
+	m_globalIlluminationStatsLock.Unlock();
 	return result;
+}
+
+void RHIFrameGraph::PublishGlobalIlluminationRenderStats(const RHIGlobalIlluminationRenderStats& stats)
+{
+	m_globalIlluminationStatsLock.Lock();
+	m_globalIlluminationStats = stats;
+	m_globalIlluminationStatsLock.Unlock();
 }
 
 void RHIFrameGraph::Clear()
 {
+	PublishGlobalIlluminationRenderStats({});
 	ResetCurrentDepthPyramids();
-	m_motionHistory.Clear();
 	m_samplers.Clear();
 	m_graph.Clear();
 	m_values.Clear();
 	m_renderTargets.Clear();
 	m_surfaces.Clear();
+	m_msaaSources.Clear();
+	m_msaaSurfaces.Clear();
+	m_numStaticMsaaSources = 0;
+	m_boundSurfaces.Clear();
+	m_boundNodes.Clear();
+	m_externalRenderPasses.Clear();
+	++m_surfaceRevision;
 }
 
-FrameGraphNodePtr RHIFrameGraph::GetGraphNode(const std::string& tag)
+FrameGraphNodePtr RHIFrameGraph::GetGraphNode(StringHash tag)
 {
 	const size_t index = m_graph.FindIf([&](const auto& lhs) { return lhs->GetTag() == tag; });
 	if (index != -1)
@@ -1011,26 +389,31 @@ FrameGraphNodePtr RHIFrameGraph::GetGraphNode(const std::string& tag)
 	return nullptr;
 }
 
-void RHIFrameGraph::SetSampler(const std::string& name, RHI::RHITexturePtr sampler)
+void RHIFrameGraph::SetSampler(StringHash name, RHI::RHITexturePtr sampler)
 {
 	m_samplers[name] = sampler;
 }
 
-void RHIFrameGraph::SetRenderTarget(const std::string& name, RHI::RHIRenderTargetPtr sampler)
+void RHIFrameGraph::SetRenderTarget(StringHash name, RHI::RHIRenderTargetPtr sampler)
 {
 	m_renderTargets[name] = sampler;
 }
 
-void RHIFrameGraph::SetSurface(const std::string& name, RHI::RHISurfacePtr surface)
+void RHIFrameGraph::SetSurface(StringHash name, RHI::RHISurfacePtr surface)
 {
-	m_surfaces[name] = surface;
+	auto& current = m_surfaces[name];
+	if (current != surface)
+	{
+		current = std::move(surface);
+		++m_surfaceRevision;
+	}
 }
 
 glm::ivec2 RHIFrameGraph::GetSceneRenderExtent()
 {
-	if (const auto debugDraw = GetGraphNode("DebugDraw"))
+	if (const auto debugDraw = GetGraphNode("DebugDraw"_h))
 	{
-		if (const auto colorAttachment = debugDraw->GetResolvedAttachment("color"))
+		if (const auto colorAttachment = debugDraw->GetResolvedAttachment("color"_h, this))
 		{
 			const glm::ivec2 extent = colorAttachment->GetExtent();
 			return glm::ivec2(
@@ -1039,7 +422,7 @@ glm::ivec2 RHIFrameGraph::GetSceneRenderExtent()
 		}
 	}
 
-	if (const auto mainSurface = GetSurface("Main"))
+	if (const auto mainSurface = GetSurface("Main"_h))
 	{
 		const auto colorAttachment = mainSurface->GetResolved() ?
 			mainSurface->GetResolved() : mainSurface->GetTarget();
@@ -1052,7 +435,7 @@ glm::ivec2 RHIFrameGraph::GetSceneRenderExtent()
 		}
 	}
 
-	if (const auto mainTarget = GetRenderTarget("Main"))
+	if (const auto mainTarget = GetRenderTarget("Main"_h))
 	{
 		const glm::ivec2 extent = mainTarget->GetExtent();
 		return glm::ivec2(
@@ -1071,76 +454,37 @@ glm::ivec2 RHIFrameGraph::GetSceneRenderExtent()
 		static_cast<int32_t>(fallbackExtent.m_height));
 }
 
-void RHIFrameGraph::FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, WorldPtr world, float worldTime)
+void RHIFrameGraph::FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	auto frameData = CaptureMotionHistory(snapshot, world, worldTime, GetSceneRenderExtent()).m_frameData;
-	const auto& previousFrame = snapshot.m_previousMotionFrame ?
-		snapshot.m_previousMotionFrame->m_frameData : frameData;
-	frameData.m_deltaTime = snapshot.m_previousMotionFrame ?
-		worldTime - previousFrame.m_currentTime : 0.0f;
+	const auto frameData = snapshot.GetFrameData(GetSceneRenderExtent());
 
 	if (!snapshot.m_frameBindings)
 	{
 		snapshot.m_frameBindings = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
-		Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(snapshot.m_frameBindings, "frameData", sizeof(RHI::UboFrameData), 0, RHI::EShaderBindingType::UniformBuffer);
-		Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(snapshot.m_frameBindings, "previousFrameData", sizeof(RHI::UboFrameData), 1, RHI::EShaderBindingType::UniformBuffer);
+		Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(snapshot.m_frameBindings, "frameData"_h, sizeof(RHI::UboFrameData), 0, RHI::EShaderBindingType::UniformBuffer);
 	}
 
-	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCmdList, snapshot.m_frameBindings->GetOrAddShaderBinding("frameData"), &frameData, sizeof(frameData));
-	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCmdList, snapshot.m_frameBindings->GetOrAddShaderBinding("previousFrameData"), &previousFrame, sizeof(previousFrame));
-
-	auto resources = snapshot.m_submissionContext->GetOrAddFrameGraphResources<RHIViewSubmissionResources>(this, snapshot.m_cameraIndex, 0u);
-	const auto bones = snapshot.m_previousMotionFrame ? snapshot.m_previousMotionFrame->m_bones : snapshot.m_cpuBoneMatrices;
-	const size_t count = bones ? bones->Num() : 0u;
-	if (resources->m_previousBoneCapacity < (std::max)(size_t{ 1u }, count))
-	{
-		resources->m_previousBoneCapacity = GrowSubmissionCapacity(resources->m_previousBoneCapacity, (std::max)(size_t{ 1u }, count));
-		Renderer::GetDriver()->AddSsboToShaderBindings(snapshot.m_frameBindings, "previousBones",
-			sizeof(glm::mat4), resources->m_previousBoneCapacity, 2u, true);
-	}
-	const glm::mat4 identity(1.0f);
-	Renderer::GetDriverCommands()->UpdateShaderBinding(transferCmdList,
-		snapshot.m_frameBindings->GetOrAddShaderBinding("previousBones"),
-		count ? bones->GetData() : &identity, (std::max)(size_t{ 1u }, count) * sizeof(glm::mat4));
-
+	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCmdList, snapshot.m_frameBindings->GetOrAddShaderBinding("frameData"_h), &frameData, sizeof(frameData));
+	// Frame uploads and compute consumers share this command list.
+	Renderer::GetDriverCommands()->MemoryBarrier(transferCmdList, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+		static_cast<EAccessFlags>(EAccessBit::UniformRead_Bit) | static_cast<EAccessFlags>(EAccessBit::ShaderRead_Bit));
 }
 
-void RHIFrameGraph::CompleteMotionHistory(RHI::RHISceneViewPtr sceneView, bool succeeded)
+TVector<Sailor::Tasks::ITaskPtr> RHIFrameGraph::Prepare(RHI::RHISceneViewPtr rhiSceneView)
 {
-	if (!succeeded)
+	TVector<Sailor::Tasks::ITaskPtr> res;
+	// Recording belongs to this submission even when its DebugDraw pass is omitted.
+	for (const auto& task : rhiSceneView->m_debugDraw)
 	{
-		m_motionHistory.Clear();
-		return;
+		res.Add(task);
 	}
-	m_motionHistory.Resize(sceneView->m_snapshots.Num());
-	for (const auto& snapshot : sceneView->m_snapshots)
-	{
-		m_motionHistory[snapshot.m_cameraIndex] = TSharedPtr<RHIMotionHistoryFrame>::Make(
-			CaptureMotionHistory(snapshot, sceneView->m_world,
-				sceneView->m_currentTime, GetSceneRenderExtent()));
-	}
-}
-
-TVector<Sailor::Tasks::TaskPtr<void, void>> RHIFrameGraph::Prepare(RHI::RHISceneViewPtr rhiSceneView)
-{
-	TVector<Sailor::Tasks::TaskPtr<void, void>> res;
 
 	auto frameRefPtr = this->ToRefPtr<RHIFrameGraph>();
 	for (auto& snapshot : rhiSceneView->m_snapshots)
 	{
 		snapshot.PrepareLods(snapshot.m_camera->GetViewMatrix(), snapshot.m_camera->GetProjectionMatrix());
-		snapshot.m_previousMotionFrame.Clear();
-		if (snapshot.m_cameraIndex < m_motionHistory.Num() && m_motionHistory[snapshot.m_cameraIndex])
-		{
-			const auto current = CaptureMotionHistory(snapshot, rhiSceneView->m_world,
-				rhiSceneView->m_currentTime, GetSceneRenderExtent());
-			if (IsMotionHistoryContinuous(*m_motionHistory[snapshot.m_cameraIndex], current))
-			{
-				snapshot.m_previousMotionFrame = m_motionHistory[snapshot.m_cameraIndex];
-			}
-		}
 		for (auto& node : m_graph)
 		{
 			auto task = node->Prepare(frameRefPtr, snapshot);
@@ -1154,6 +498,131 @@ TVector<Sailor::Tasks::TaskPtr<void, void>> RHIFrameGraph::Prepare(RHI::RHIScene
 	return res;
 }
 
+bool RHIFrameGraph::PrepareRenderTargets()
+{
+	SAILOR_PROFILE_FUNCTION();
+	const auto samples = App::GetSubmodule<Renderer>()->GetMsaaSamples();
+	bool bindingsChanged = m_boundMsaaSamples != samples || m_boundNodes.Num() != m_graph.Num();
+	for (size_t i = 0; i < m_graph.Num() && !bindingsChanged; ++i)
+	{
+		bindingsChanged = m_boundNodes[i].m_first != m_graph[i] ||
+			m_boundNodes[i].m_second != m_graph[i]->m_resourceRevision;
+	}
+	if (!bindingsChanged && m_externalRenderPasses.IsEmpty() && m_boundSurfaceRevision == m_surfaceRevision &&
+		m_msaaSources.Num() == m_msaaSurfaces.Num()) return true;
+
+	const auto collectTargets = [&](FrameGraphNodePtr node, TVector<RHIRenderTargetPtr>& sources)
+	{
+		const auto& outputs = node->GetMsaaOutputs();
+		auto primary = node->GetRHIResource(outputs[0], this);
+		const auto primarySurface = primary.DynamicCast<RHISurface>();
+		if (!primary || (primarySurface && !primarySurface->NeedsResolve()))
+		{
+			return;
+		}
+		for (const auto name : outputs)
+		{
+			auto resource = node->GetRHIResource(name, this);
+			auto surface = resource.DynamicCast<RHISurface>();
+			auto target = surface ? surface->GetResolved() : resource.DynamicCast<RHIRenderTarget>();
+			if (!target || target->GetMsaaSamples() != EMsaaSamples::Samples_1) continue;
+			if (surface && surface->NeedsResolve()) m_msaaSurfaces[target.GetRawPtr()] = surface;
+			else
+			{
+				const RHISurfacePtr* prepared = nullptr;
+				if (m_msaaSurfaces.Find(target.GetRawPtr(), prepared) && !(*prepared)->NeedsResolve())
+					m_msaaSurfaces.Remove(target.GetRawPtr());
+			}
+			if (!sources.Contains(target)) sources.Add(target);
+		}
+	};
+
+	if (bindingsChanged)
+	{
+		m_msaaSources.Clear(false);
+		m_boundSurfaces.Clear(false);
+		m_boundNodes.Clear(false);
+		m_externalRenderPasses.Clear(false);
+		m_boundMsaaSamples = samples;
+		for (auto& node : m_graph)
+		{
+			m_boundNodes.Emplace(node, node->m_resourceRevision);
+			for (const auto& parameter : node->m_resourceParams)
+			{
+				auto resource = *parameter.m_second;
+				if (auto surface = resource.DynamicCast<RHISurface>(); surface && !m_boundSurfaces.Contains(surface))
+				{
+					m_boundSurfaces.Add(surface);
+				}
+			}
+			const auto& outputs = node->GetMsaaOutputs();
+			if (outputs.IsEmpty() || samples == EMsaaSamples::Samples_1)
+			{
+				continue;
+			}
+			const bool bHasExternalOutput = std::any_of(outputs.begin(), outputs.end(),
+				[&](StringHash name) { return node->m_unresolvedResourceParams.ContainsKey(name); });
+			if (bHasExternalOutput)
+			{
+				m_externalRenderPasses.Add(node);
+			}
+			else
+			{
+				collectTargets(node, m_msaaSources);
+			}
+		}
+		m_numStaticMsaaSources = m_msaaSources.Num();
+	}
+
+	// Keep the static prefix; revisit only passes with external outputs.
+	m_msaaSources.Resize(m_numStaticMsaaSources);
+	for (auto& node : m_externalRenderPasses) collectTargets(node, m_msaaSources);
+	m_boundSurfaceRevision = m_surfaceRevision;
+
+	// A pass may bind a Surface while another binds its resolved texture.
+	// Keep the prepared MSAA pair when a 1x Surface is used as a secondary MRT.
+	const auto useSurface = [&](RHISurfacePtr surface)
+	{
+		if (surface)
+		{
+			if (!m_msaaSources.Contains(surface->GetResolved()))
+			{
+				m_msaaSources.Add(surface->GetResolved());
+				m_msaaSurfaces[surface->GetResolved().GetRawPtr()] = surface;
+			}
+			else if (surface->NeedsResolve())
+			{
+				m_msaaSurfaces[surface->GetResolved().GetRawPtr()] = surface;
+			}
+		}
+	};
+	for (const auto& surface : m_surfaces) useSurface(*surface.m_second);
+	for (auto& surface : m_boundSurfaces) useSurface(surface);
+
+	if (m_msaaSources.IsEmpty())
+	{
+		if (!m_msaaSurfaces.IsEmpty()) m_msaaSurfaces.Clear();
+		return true;
+	}
+
+	if (m_msaaSources.Num() == m_msaaSurfaces.Num() &&
+		std::all_of(m_msaaSources.begin(), m_msaaSources.end(),
+			[&](const auto& source) { return m_msaaSurfaces.ContainsKey(source.GetRawPtr()); }))
+	{
+		return true;
+	}
+
+	auto previous = std::move(m_msaaSurfaces);
+	for (auto& source : m_msaaSources)
+	{
+		const RHISurfacePtr* surface = nullptr;
+		auto prepared = previous.Find(source.GetRawPtr(), surface) ?
+			*surface : Renderer::GetDriver()->CreateSurface(source);
+		if (prepared) m_msaaSurfaces[source.GetRawPtr()] = std::move(prepared);
+	}
+	return m_msaaSources.Num() == m_msaaSurfaces.Num();
+}
+
 bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 	TVector<RHI::RHICommandListPtr>& outTransferCommandLists,
 	TVector<RHI::RHICommandListPtr>& outCommandLists,
@@ -1163,6 +632,8 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 	SAILOR_PROFILE_FUNCTION();
 	m_drawCallStats = {};
 	RHIGlobalIlluminationRenderStats globalIlluminationRenderStats;
+	outWaitSemaphore = inSignalSemaphore;
+	if (!PrepareRenderTargets()) return false;
 
 	auto renderer = App::GetSubmodule<RHI::Renderer>();
 	auto& driver = RHI::Renderer::GetDriver();
@@ -1170,7 +641,6 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 	RHISemaphorePtr frameGraphChainSemaphore = inSignalSemaphore;
 	auto submissionProgress = TSharedPtr<RHISubmissionProgress>::Make();
 	submissionProgress->SetLastSuccessfulSemaphore(inSignalSemaphore);
-	outWaitSemaphore = inSignalSemaphore;
 
 	if (!rhiSceneView->m_snapshots.IsEmpty() &&
 		rhiSceneView->m_snapshots[0].m_submissionContext)
@@ -1178,14 +648,14 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 		auto resourceUploadCommandList = renderer->GetDriver()->CreateCommandList(
 			false,
 			RHI::ECommandListQueue::Compute);
-		driver->SetDebugName(resourceUploadCommandList, "FrameGraph:SharedResourceUpload");
+		driver->SetDebugName(resourceUploadCommandList, "FrameGraph:SharedResourceUpload"_h);
 		driverCommands->BeginCommandList(resourceUploadCommandList, true);
-		PrepareViewSubmissionResources(
-			this,
-			resourceUploadCommandList,
-			rhiSceneView->m_snapshots[0],
-			true,
-			&globalIlluminationRenderStats);
+		const auto& snapshot = rhiSceneView->m_snapshots[0];
+		auto sharedResources = snapshot.m_submissionContext->GetOrAddFrameGraphResources<RHISharedViewSubmissionResources>(
+			this, (std::numeric_limits<uint32_t>::max)(), 1u);
+		UploadSharedLighting(resourceUploadCommandList, snapshot, *sharedResources);
+		globalIlluminationRenderStats = UploadGlobalIllumination(resourceUploadCommandList, snapshot, *sharedResources);
+		UploadSharedBones(resourceUploadCommandList, snapshot, *sharedResources);
 		const bool bHasSharedResourceUploads =
 			resourceUploadCommandList->GetNumRecordedCommands() > 0u;
 		driverCommands->EndCommandList(resourceUploadCommandList);
@@ -1194,8 +664,8 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 		{
 			auto resourceReadySemaphore = driver->CreateWaitSemaphore();
 			auto resourceUploadFence = RHIFencePtr::Make();
-			driver->SetDebugName(resourceReadySemaphore, "FrameGraph:SharedResourceReady");
-			driver->SetDebugName(resourceUploadFence, "FrameGraph:SharedResourceUpload");
+			driver->SetDebugName(resourceReadySemaphore, "FrameGraph:SharedResourceReady"_h);
+			driver->SetDebugName(resourceUploadFence, "FrameGraph:SharedResourceUpload"_h);
 			if (!driver->SubmitCommandList(
 					resourceUploadCommandList,
 					resourceUploadFence,
@@ -1213,9 +683,9 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 
 	if (!m_postEffectPlane)
 	{
-		m_postEffectPlane = renderer->GetDriver()->CreateMesh();
-		m_postEffectPlane->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
-		m_postEffectPlane->m_bounds = Math::AABB(vec3(0), vec3(1, 1, 1));
+		auto plane = driver->CreateMesh();
+		plane->m_vertexDescription = driver->GetOrAddVertexDescription<VertexP3N3UV2C4>();
+		plane->m_bounds = Math::AABB(vec3(0), vec3(1, 1, 1));
 
 		TVector<VertexP3N3UV2C4> ndcQuad(4);
 		ndcQuad[0].m_texcoord = vec2(0.0f, 0.0f);
@@ -1230,7 +700,26 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 
 		const TVector<uint32_t> indices = { 0, 1, 2, 2, 1, 3 };
 
-		RHI::Renderer::GetDriver()->UpdateMesh(m_postEffectPlane, &ndcQuad[0], ndcQuad.Num() * sizeof(VertexP3N3UV2C4), &indices[0], sizeof(uint32_t) * indices.Num());
+		// Chain the quad upload before this frame's draws.
+		auto upload = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+		driver->SetDebugName(upload, "FrameGraph:FullscreenQuadUpload"_h);
+		driverCommands->BeginCommandList(upload, true);
+		plane->m_vertexBuffer = driver->CreateBuffer(upload, ndcQuad.GetData(), ndcQuad.Num() * sizeof(VertexP3N3UV2C4),
+			EBufferUsageBit::VertexBuffer_Bit, EMemoryPropertyBit::DeviceLocal);
+		plane->m_indexBuffer = driver->CreateBuffer(upload, indices.GetData(), indices.Num() * sizeof(uint32_t),
+			EBufferUsageBit::IndexBuffer_Bit, EMemoryPropertyBit::DeviceLocal);
+		driverCommands->EndCommandList(upload);
+		auto ready = driver->CreateWaitSemaphore();
+		auto initialized = RHIFencePtr::Make();
+		driver->TrackDelayedInitialization(plane.GetRawPtr(), initialized);
+		if (!driver->SubmitCommandList(upload, initialized, ready, frameGraphChainSemaphore))
+		{
+			outWaitSemaphore = frameGraphChainSemaphore;
+			return false;
+		}
+		m_postEffectPlane = std::move(plane);
+		frameGraphChainSemaphore = ready;
+		submissionProgress->SetLastSuccessfulSemaphore(ready);
 	}
 
 	for (auto& snapshot : rhiSceneView->m_snapshots)
@@ -1241,28 +730,23 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 		auto cmdList = renderer->GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
 		auto transferCmdList = renderer->GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Compute);
 
-		driver->SetDebugName(cmdList, "FrameGraph:Graphics");
-		driver->SetDebugName(transferCmdList, "FrameGraph:Transfer");
+		driver->SetDebugName(cmdList, "FrameGraph:Graphics"_h);
+		driver->SetDebugName(transferCmdList, "FrameGraph:Transfer"_h);
 
 		driverCommands->BeginCommandList(cmdList, true);
 		uint32_t graphicsGpuFrameTimeRange =
 			driver->BeginGpuFrameTimeRange(cmdList);
-		driverCommands->BeginDebugRegion(cmdList, "FrameGraph:Graphics", glm::vec4(0.75f, 1.0f, 0.75f, 0.1f));
+		driverCommands->BeginDebugRegion(cmdList, "FrameGraph:Graphics"_h, glm::vec4(0.75f, 1.0f, 0.75f, 0.1f));
 		driverCommands->BeginCommandList(transferCmdList, true);
 		uint32_t transferGpuFrameTimeRange =
 			driver->BeginGpuFrameTimeRange(transferCmdList);
-		driverCommands->BeginDebugRegion(transferCmdList, "FrameGraph:Transfer", glm::vec4(0.75f, 0.75f, 1.0f, 0.1f));
+		driverCommands->BeginDebugRegion(transferCmdList, "FrameGraph:Transfer"_h, glm::vec4(0.75f, 0.75f, 1.0f, 0.1f));
 
-		PrepareViewSubmissionResources(
-			this,
-			transferCmdList,
-			snapshot,
-			false,
-			nullptr);
+		PrepareViewSubmissionResources(this, transferCmdList, snapshot);
 
-		driverCommands->BeginDebugRegion(transferCmdList, "Fill Frame Data", DebugContext::Color_CmdTransfer);
+		driverCommands->BeginDebugRegion(transferCmdList, "Fill Frame Data"_h, DebugContext::Color_CmdTransfer);
 		{
-			FillFrameData(transferCmdList, snapshot, rhiSceneView->m_world, rhiSceneView->m_currentTime);
+			FillFrameData(transferCmdList, snapshot);
 		}
 		driverCommands->EndDebugRegion(transferCmdList);
 
@@ -1278,7 +762,7 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 		{
 			SAILOR_PROFILE_SCOPE("Change default image layout to decrease barriers count");
 
-			driverCommands->BeginDebugRegion(cmdList, "FrameGraph:Decrease barriers count", glm::vec4(1.0f, 0.75f, 0.75f, 0.1f));
+			driverCommands->BeginDebugRegion(cmdList, "FrameGraph:Decrease barriers count"_h, glm::vec4(1.0f, 0.75f, 0.75f, 0.1f));
 
 			for (const auto& stat : m_lastFrameGpuStats.m_barriers)
 			{
@@ -1331,19 +815,7 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 			uint32_t computeTimestamp = RHI::InvalidGpuTimestampQuery;
 			if (bExecuteQueries)
 			{
-				std::string timingName =
-					std::format("{:02d} {}", nodeIndex, node->GetTag());
-				std::string renderQueueTag;
-				if (node->TryGetString("Tag", renderQueueTag) &&
-					!renderQueueTag.empty())
-				{
-					timingName += "/" + renderQueueTag;
-				}
-				std::string shader;
-				if (node->TryGetString("shader", shader) && !shader.empty())
-				{
-					timingName += "/" + shader;
-				}
+				const auto timingName = node->GetGpuTimingName(nodeIndex);
 
 				graphicsTimestamp = driverCommands->BeginGpuTimestamp(
 					cmdList,
@@ -1388,11 +860,11 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 				{
 					SAILOR_PROFILE_SCOPE("Create RHI submit cmd lists tasks");
 					RHI::RHISemaphorePtr newChainSemaphore = driver->CreateWaitSemaphore();
-					driver->SetDebugName(newChainSemaphore, "FrameGraph: newChainSemaphore");
+					driver->SetDebugName(newChainSemaphore, "FrameGraph: newChainSemaphore"_h);
 
 					tasks.RemoveAll([](const auto& task) { return task == nullptr || task->IsFinished(); });
 
-					auto submitCmdList1 = Tasks::CreateTask("Submit chaining cmd lists",
+					auto submitCmdList1 = Tasks::CreateTask("Submit chaining cmd lists"_h,
 						[=]()
 						{
 							if (!submitsSucceeded->load(std::memory_order_acquire))
@@ -1401,7 +873,7 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 							}
 
 							auto fence = RHIFencePtr::Make();
-							RHI::Renderer::GetDriver()->SetDebugName(fence, std::format("Submit chaining cmd lists"));
+							RHI::Renderer::GetDriver()->SetDebugName(fence, "Submit chaining cmd lists"_h);
 							if (!RHI::Renderer::GetDriver()->SubmitCommandList(transferCmdList, fence, newChainSemaphore, chainSemaphore))
 							{
 								SAILOR_LOG_ERROR("RHIFrameGraph::Process: failed to submit a chained transfer command buffer.");
@@ -1421,9 +893,9 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 					submitCmdList1->Run();
 
 					chainSemaphore = driver->CreateWaitSemaphore();
-					driver->SetDebugName(chainSemaphore, "FrameGraph: chainSemaphore");
+					driver->SetDebugName(chainSemaphore, "FrameGraph: chainSemaphore"_h);
 
-					auto submitCmdList2 = Tasks::CreateTask("Submit chaining cmd lists",
+					auto submitCmdList2 = Tasks::CreateTask("Submit chaining cmd lists"_h,
 						[=]()
 						{
 							if (!submitsSucceeded->load(std::memory_order_acquire))
@@ -1432,7 +904,7 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 							}
 
 							auto fence = RHIFencePtr::Make();
-							RHI::Renderer::GetDriver()->SetDebugName(fence, std::format("Submit chaining cmd lists"));
+							RHI::Renderer::GetDriver()->SetDebugName(fence, "Submit chaining cmd lists"_h);
 							if (!RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, fence, chainSemaphore, newChainSemaphore))
 							{
 								SAILOR_LOG_ERROR("RHIFrameGraph::Process: failed to submit a chained graphics command buffer.");
@@ -1457,18 +929,18 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 					cmdList = renderer->GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
 					transferCmdList = renderer->GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Compute);
 
-					driver->SetDebugName(cmdList, "FrameGraph:Graphics");
-					driver->SetDebugName(transferCmdList, "FrameGraph:Transfer");
+					driver->SetDebugName(cmdList, "FrameGraph:Graphics"_h);
+					driver->SetDebugName(transferCmdList, "FrameGraph:Transfer"_h);
 
 					driverCommands->BeginCommandList(cmdList, true);
 					graphicsGpuFrameTimeRange =
 						driver->BeginGpuFrameTimeRange(cmdList);
-					driverCommands->BeginDebugRegion(cmdList, "FrameGraph:Graphics", glm::vec4(0.75f, 1.0f, 0.75f, 0.1f));
+					driverCommands->BeginDebugRegion(cmdList, "FrameGraph:Graphics"_h, glm::vec4(0.75f, 1.0f, 0.75f, 0.1f));
 
 					driverCommands->BeginCommandList(transferCmdList, true);
 					transferGpuFrameTimeRange =
 						driver->BeginGpuFrameTimeRange(transferCmdList);
-					driverCommands->BeginDebugRegion(transferCmdList, "FrameGraph:Transfer", glm::vec4(0.75f, 0.75f, 1.0f, 0.1f));
+					driverCommands->BeginDebugRegion(transferCmdList, "FrameGraph:Transfer"_h, glm::vec4(0.75f, 0.75f, 1.0f, 0.1f));
 				}
 			}
 			//TODO: Submit Transfer command lists
@@ -1509,13 +981,29 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 	}
 
 	outWaitSemaphore = frameGraphChainSemaphore;
-	PublishGlobalIlluminationRenderStats(
-		this,
-		globalIlluminationRenderStats);
+	PublishGlobalIlluminationRenderStats(globalIlluminationRenderStats);
 	return true;
 }
 
-RHI::RHITexturePtr RHIFrameGraph::GetSampler(const std::string& name)
+RHI::RHIResourcePtr RHIFrameGraph::GetResource(StringHash name) const
+{
+	const RHISurfacePtr* surface = nullptr;
+	if (m_surfaces.Find(name, surface) && *surface) return *surface;
+	if (const auto target = GetRenderTarget(name)) return ResolveResource(target);
+	return ResolveResource(GetSampler(name));
+}
+
+RHI::RHIResourcePtr RHIFrameGraph::ResolveResource(RHI::RHIResourcePtr resource) const
+{
+	if (const auto target = resource.DynamicCast<RHIRenderTarget>())
+	{
+		const RHISurfacePtr* surface = nullptr;
+		if (m_msaaSurfaces.Find(target.GetRawPtr(), surface)) return *surface;
+	}
+	return resource;
+}
+
+RHI::RHITexturePtr RHIFrameGraph::GetSampler(StringHash name) const
 {
 	if (!m_samplers.ContainsKey(name))
 	{
@@ -1525,7 +1013,7 @@ RHI::RHITexturePtr RHIFrameGraph::GetSampler(const std::string& name)
 	return m_samplers[name];
 }
 
-RHI::RHIRenderTargetPtr RHIFrameGraph::GetRenderTarget(const std::string& name)
+RHI::RHIRenderTargetPtr RHIFrameGraph::GetRenderTarget(StringHash name) const
 {
 	if (!m_renderTargets.ContainsKey(name))
 	{
@@ -1535,12 +1023,10 @@ RHI::RHIRenderTargetPtr RHIFrameGraph::GetRenderTarget(const std::string& name)
 	return m_renderTargets[name];
 }
 
-RHI::RHISurfacePtr RHIFrameGraph::GetSurface(const std::string& name)
+RHI::RHISurfacePtr RHIFrameGraph::GetSurface(StringHash name) const
 {
-	if (!m_surfaces.ContainsKey(name))
-	{
-		return nullptr;
-	}
-
-	return m_surfaces[name];
+	const RHISurfacePtr* surface = nullptr;
+	if (m_surfaces.Find(name, surface) && *surface) return *surface;
+	const auto target = GetRenderTarget(name);
+	return target ? ResolveResource(target).DynamicCast<RHISurface>() : RHISurfacePtr{};
 }

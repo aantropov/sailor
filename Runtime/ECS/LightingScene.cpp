@@ -12,21 +12,18 @@
 using namespace Sailor;
 using namespace Sailor::Tasks;
 
-void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
+void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView, uint32_t shadowSlot)
 {
 	SAILOR_PROFILE_FUNCTION();
-	if (!sceneView || !sceneView->m_submissionContext)
+	// This only prepares CPU commands and immutable bindings. Shadow image writes
+	// execute in render-queue order; their cache ring need not acquire a GPU flight.
+	const uint32_t flightSlot = shadowSlot;
+	if (m_shadows.m_flights.Num() <= flightSlot)
 	{
-		SAILOR_LOG_ERROR("LightingECS::FillLightingData requires an acquired render submission flight.");
-		return;
+		m_shadows.m_flights.Resize(static_cast<size_t>(flightSlot) + 1u);
 	}
-	const uint32_t flightSlot = sceneView->m_submissionContext->GetFlightSlot();
-	if (m_shadowFlightResources.Num() <= flightSlot)
-	{
-		m_shadowFlightResources.Resize(static_cast<size_t>(flightSlot) + 1u);
-	}
-	auto& flightResources = m_shadowFlightResources[flightSlot];
-	m_writableLocalShadowAtlases.reset();
+	auto& flightResources = m_shadows.m_flights[flightSlot];
+	m_shadows.m_writableLocalAtlases.reset();
 	uint32_t snapshotIndex = 0;
 	const glm::ivec2 viewportExtent = App::GetMainWindow()->GetRenderArea();
 	const Settings::GraphicsExtent renderExtent =
@@ -85,28 +82,31 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 			camera.GetZFar());
 
 		// Sort all the lights per camera
-		m_directionalLightsScratch.Clear(false);
-		m_pointLightsScratch.Clear(false);
-		m_spotLightsScratch.Clear(false);
+		m_shadows.m_directionalLightsScratch.Clear(false);
+		m_shadows.m_pointLightsScratch.Clear(false);
+		m_shadows.m_spotLightsScratch.Clear(false);
 
 		GetLightsInFrustum(frustum,
 			sceneView->m_cameraTransforms[i],
-			m_directionalLightsScratch,
-			m_pointLightsScratch,
-			m_spotLightsScratch);
+			m_shadows.m_directionalLightsScratch,
+			m_shadows.m_pointLightsScratch,
+			m_shadows.m_spotLightsScratch);
 
 		const uint32_t cameraCsmSnapshotStart = snapshotIndex;
-		PrepareCSMPasses(sceneView,
-			sceneView->m_cameraTransforms[i],
-			camera,
-			m_directionalLightsScratch,
-			flightSlot,
-			flightResources,
-			snapshotIndex,
-			updateShadowMaps);
+		if (!m_shadows.m_directionalLightsScratch.IsEmpty())
+		{
+			PrepareCSMPasses(sceneView,
+				sceneView->m_cameraTransforms[i],
+				camera,
+				m_shadows.m_directionalLightsScratch[0],
+				flightSlot,
+				flightResources,
+				snapshotIndex,
+				updateShadowMaps);
+		}
 		PrepareLocalShadowPasses(sceneView,
-			m_spotLightsScratch,
-			m_pointLightsScratch,
+			m_shadows.m_spotLightsScratch,
+			m_shadows.m_pointLightsScratch,
 			sceneView->m_cameraTransforms[i],
 			camera,
 			viewportHeight,
@@ -116,13 +116,14 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 			shadowAtlasTiles,
 			updateShadowMaps);
 		for (uint32_t cascadeIndex = 0u;
-			cascadeIndex < NumCascades && cameraCsmSnapshotStart + cascadeIndex < flightResources.m_csmSnapshots.Num();
+			cascadeIndex < snapshotIndex - cameraCsmSnapshotStart &&
+				cameraCsmSnapshotStart + cascadeIndex < flightResources.m_csmSnapshots.Num();
 			++cascadeIndex)
 		{
 			shadowMatrices[cascadeIndex] =
 				flightResources.m_csmSnapshots[cameraCsmSnapshotStart + cascadeIndex].m_lightMatrix;
 		}
-		for (const auto& allocation : m_localShadowAllocations)
+		for (const auto& allocation : m_shadows.m_localAllocations)
 		{
 			if (allocation.m_componentIndex == InvalidShadowMapIndex ||
 				allocation.m_componentIndex >= shadowIndices.Num() ||
@@ -152,11 +153,11 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 				shadowMatrices[slot] = flightSnapshots[face].m_lightMatrix;
 			}
 		}
-		if (m_bShadowMapBindingsDirty)
+		if (m_shadows.m_bBindingsDirty)
 		{
 			PublishShadowMapBindings();
 		}
-		sceneView->m_rhiLightsDataPerCamera.Add(m_lightsData);
+		sceneView->m_rhiLightsDataPerCamera.Add(m_shadows.m_bindings);
 	}
 
 	if (flightResources.m_csmSnapshots.Num() > snapshotIndex)
@@ -166,13 +167,13 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 
 	ReleaseUnusedLocalShadowAllocations(GetWorld()->GetCurrentFrame());
 	ReleaseUnusedLocalShadowAtlases();
-	if (m_bShadowMapBindingsDirty)
+	if (m_shadows.m_bBindingsDirty)
 	{
 		PublishShadowMapBindings();
 	}
 
 	sceneView->m_totalNumLights = m_numLights;
-	sceneView->m_rhiLightsData = m_lightsData;
+	sceneView->m_rhiLightsData = m_shadows.m_bindings;
 	sceneView->m_cpuLightsData = m_publishedLightsData;
 	sceneView->m_lightingRevision = m_lightingRevision;
 }
@@ -182,13 +183,14 @@ void LightingECS::GetLightProxies(TVector<Raytracing::LightProxy>& outLights) co
 	CollectLightProxies(outLights, false);
 }
 
-void LightingECS::GetGlobalIlluminationBakeLightProxies(TVector<Raytracing::LightProxy>& outLights) const
+void LightingECS::GetGlobalIlluminationBakeLightProxies(TVector<Raytracing::LightProxy>& outLights,
+	const LightData* excludedLight) const
 {
-	CollectLightProxies(outLights, true);
+	CollectLightProxies(outLights, true, excludedLight);
 }
 
 void LightingECS::CollectLightProxies(TVector<Raytracing::LightProxy>& outLights,
-	bool bGlobalIlluminationBakeContributorsOnly) const
+	bool bGlobalIlluminationBakeContributorsOnly, const LightData* excludedLight) const
 {
 	outLights.Clear();
 	const size_t numGpuLightSlots = GetGpuLightSlotsCount(m_components.Num());
@@ -197,7 +199,7 @@ void LightingECS::CollectLightProxies(TVector<Raytracing::LightProxy>& outLights
 	for (size_t index = 0; index < numGpuLightSlots; ++index)
 	{
 		const auto& light = m_components[index];
-		if (!light.m_bIsActive)
+		if (!light.m_bIsActive || &light == excludedLight)
 		{
 			continue;
 		}

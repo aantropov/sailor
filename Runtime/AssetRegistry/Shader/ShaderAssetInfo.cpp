@@ -12,9 +12,7 @@ using namespace Sailor;
 
 ShaderAssetInfoHandler::ShaderAssetInfoHandler(AssetRegistry* assetRegistry)
 {
-	m_supportedExtensions.Emplace("shader");
-	m_supportedExtensions.Emplace("glsl");
-	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
+	assetRegistry->RegisterAssetInfoHandler(GetAssetInfoExtensions<ShaderAssetInfo>(), this);
 }
 
 void ShaderAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const

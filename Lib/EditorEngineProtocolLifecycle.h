@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <condition_variable>
 #include <cstdint>
 #include <mutex>
@@ -12,6 +13,13 @@ namespace Sailor::Protocol
 	{
 	public:
 		using FStartRoutine = void (*)(void* context);
+		enum class EEditorDispatchState : uint8_t
+		{
+			Queued,
+			Executing,
+			Completed,
+			Cancelled
+		};
 
 		~TEditorEngineProtocolLifecycleGate()
 		{
@@ -55,14 +63,24 @@ namespace Sailor::Protocol
 			return true;
 		}
 
-		void CompleteInitialization(const bool bSucceeded)
+		bool CompleteInitialization(const bool bSucceeded, bool bOwnRollback = false)
 		{
+			bool bOwnsCompletion = false;
 			{
 				const std::lock_guard<std::mutex> lock(m_mutex);
 				m_bInitializationActive = false;
-				if (m_state == EState::Initializing)
+				bOwnsCompletion = m_state == EState::Initializing;
+				if (bOwnsCompletion)
 				{
-					m_state = bSucceeded ? EState::Ready : EState::Idle;
+					if (!bSucceeded && bOwnRollback)
+					{
+						m_state = EState::ShuttingDown;
+						m_bStopRequested = true;
+					}
+					else
+					{
+						m_state = bSucceeded ? EState::Ready : EState::InitializationFailed;
+					}
 				}
 				m_bStartIssued = false;
 				m_bStartActive = false;
@@ -72,6 +90,7 @@ namespace Sailor::Protocol
 				}
 			}
 			m_condition.notify_all();
+			return bOwnsCompletion;
 		}
 
 		bool TryBeginStart(std::string& outError)
@@ -147,7 +166,7 @@ namespace Sailor::Protocol
 			return m_bStartActive;
 		}
 
-		bool NoteStopRequested()
+		bool TryAcquireStop()
 		{
 			const std::lock_guard<std::mutex> lock(m_mutex);
 			if (m_bInitializationActive)
@@ -156,22 +175,24 @@ namespace Sailor::Protocol
 				// enter App::Stop concurrently. Preserve the request so a late
 				// Start for the new session is still rejected.
 				m_bStopRequested = true;
+				m_condition.notify_all();
 				return false;
 			}
-			if (m_state == EState::Ready ||
-				m_state == EState::ShuttingDown)
+			if (m_state == EState::Ready)
 			{
 				m_bStopRequested = true;
+				m_condition.notify_all();
+				++m_numActiveOperations;
 				return true;
 			}
 			return false;
 		}
 
-		bool TryBeginShutdown(std::string& outError)
+		bool TryBeginShutdown(std::string& outError, bool bAllowCompleted = false)
 		{
 			const std::lock_guard<std::mutex> lock(m_mutex);
 			if (m_state == EState::ShuttingDown ||
-				m_state == EState::ShutdownComplete)
+				(m_state == EState::ShutdownComplete && !bAllowCompleted))
 			{
 				outError = "Engine shutdown has already been requested.";
 				return false;
@@ -179,7 +200,30 @@ namespace Sailor::Protocol
 
 			m_state = EState::ShuttingDown;
 			m_bStopRequested = true;
+			m_condition.notify_all();
 			return true;
+		}
+
+		bool WaitForEditorDispatch(std::atomic<EEditorDispatchState>& state)
+		{
+			std::unique_lock<std::mutex> lock(m_mutex);
+			m_condition.wait(lock, [&]()
+				{
+					if (m_bStopRequested)
+					{
+						auto expected = EEditorDispatchState::Queued;
+						state.compare_exchange_strong(expected, EEditorDispatchState::Cancelled);
+					}
+					return state == EEditorDispatchState::Completed || state == EEditorDispatchState::Cancelled;
+				});
+			return state == EEditorDispatchState::Completed;
+		}
+
+		void CompleteEditorDispatch(std::atomic<EEditorDispatchState>& state)
+		{
+			const std::lock_guard<std::mutex> lock(m_mutex);
+			state = EEditorDispatchState::Completed;
+			m_condition.notify_all();
 		}
 
 		void WaitForInitializationDrain()
@@ -215,11 +259,11 @@ namespace Sailor::Protocol
 			}
 		}
 
-		void CompleteShutdown()
+		void CompleteShutdown(bool bSucceeded = true)
 		{
 			{
 				const std::lock_guard<std::mutex> lock(m_mutex);
-				m_state = EState::ShutdownComplete;
+				m_state = bSucceeded ? EState::ShutdownComplete : EState::ShutdownFailed;
 				m_bInitializationActive = false;
 				m_bStartIssued = false;
 				m_bStopRequested = true;
@@ -264,23 +308,16 @@ namespace Sailor::Protocol
 
 		void Reset()
 		{
-			std::unique_lock<std::mutex> lock(m_mutex);
-			m_condition.wait(lock, [this]()
-				{
-					return m_numActiveOperations == 0 &&
-						!m_bInitializationActive &&
-						!m_bStartActive &&
-						m_state != EState::Initializing &&
-						m_state != EState::ShuttingDown;
-				});
-			if (m_startThread.joinable())
+			// The native shutdown owner has already drained work and closed the host.
+			// Publish Idle once; an intermediate state could admit another Initialize.
 			{
-				m_startThread.join();
+				const std::lock_guard<std::mutex> lock(m_mutex);
+				m_state = EState::Idle;
+				m_bStartIssued = false;
+				m_bStartActive = false;
+				m_bStopRequested = false;
 			}
-			m_state = EState::Idle;
-			m_bStartIssued = false;
-			m_bStartActive = false;
-			m_bStopRequested = false;
+			m_condition.notify_all();
 		}
 
 	private:
@@ -306,8 +343,10 @@ namespace Sailor::Protocol
 		{
 			Idle,
 			Initializing,
+			InitializationFailed,
 			Ready,
 			ShuttingDown,
+			ShutdownFailed,
 			ShutdownComplete
 		};
 

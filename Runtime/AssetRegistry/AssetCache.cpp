@@ -1,4 +1,6 @@
 #include "AssetCache.h"
+#include "Core/FileRevision.h"
+#include "Platform/AtomicFile.h"
 #include "Containers/Containers.h"
 
 #include "AssetRegistry/AssetRegistry.h"
@@ -13,23 +15,27 @@
 #include <cctype>
 #include <filesystem>
 #include <sstream>
+#include <string_view>
+#include <utility>
 
 using namespace Sailor;
+using namespace Sailor::Workspace;
 
 namespace
 {
-	std::string NormalizeSourcePath(const std::string& sourcePath)
+	std::string NormalizeSourcePath(std::string_view sourcePath)
 	{
 		if (sourcePath.empty())
 		{
 			return {};
 		}
 
+		const auto path = PathFromUtf8(sourcePath);
 		std::error_code error;
-		std::string result = std::filesystem::weakly_canonical(sourcePath, error).generic_string();
+		std::string result = PathToUtf8(std::filesystem::weakly_canonical(path, error));
 		if (error)
 		{
-			result = std::filesystem::path(sourcePath).lexically_normal().generic_string();
+			result = PathToUtf8(path.lexically_normal());
 		}
 #if defined(_WIN32)
 		std::transform(result.begin(), result.end(), result.begin(), [](unsigned char character)
@@ -40,7 +46,7 @@ namespace
 		return result;
 	}
 
-	void AppendDiagnostic(std::string& diagnostic, const std::string& suffix)
+	void AppendDiagnostic(std::string& diagnostic, std::string_view suffix)
 	{
 		if (suffix.empty())
 		{
@@ -104,7 +110,7 @@ bool AssetCache::TryDeserializeAssetCachePayload(
 
 std::string AssetCache::GetAssetCacheFilepath()
 {
-	return (std::filesystem::path(AssetRegistry::GetCacheFolder()) / "AssetCache.yaml").string();
+	return AssetRegistry::GetCacheFolder() + "AssetCache.yaml";
 }
 
 YAML::Node AssetCache::AssetCacheData::Entry::Serialize() const
@@ -158,8 +164,7 @@ bool AssetCache::AssetCacheData::Entry::Validate(
 		return false;
 	}
 	if (m_metadataFilename.empty() ||
-		std::filesystem::path(m_metadataFilename).filename() !=
-			m_metadataFilename ||
+		PathFromUtf8(m_metadataFilename).filename() != PathFromUtf8(m_metadataFilename) ||
 		!m_metadataRevision.m_bIsValid || m_assetInfoType.empty())
 	{
 		outDiagnostic = "Asset cache entry has an invalid metadata index.";
@@ -176,7 +181,7 @@ YAML::Node AssetCache::AssetCacheData::Serialize() const
 	{
 		assets.force_insert(
 			asset.m_first.ToString(),
-			asset.m_second.Serialize());
+			asset.m_second->Serialize());
 	}
 	result["assets"] = assets;
 	return result;
@@ -208,7 +213,7 @@ bool AssetCache::AssetCacheData::Validate(
 	for (const auto& asset : m_assets)
 	{
 		if (!asset.m_first ||
-			!asset.m_second.Validate(asset.m_first, outDiagnostic))
+			!asset.m_second->Validate(asset.m_first, outDiagnostic))
 		{
 			return false;
 		}
@@ -304,11 +309,11 @@ bool AssetCache::SaveCache(bool bForcely)
 	std::filesystem::create_directories(
 		m_bHasStorageContext
 			? m_cacheFolder
-			: std::filesystem::path(AssetRegistry::GetCacheFolder()),
+			: PathFromUtf8(AssetRegistry::GetCacheFolder()),
 		createCacheFolderError);
 	std::error_code cacheFileError;
 	const bool bCacheFileExists = std::filesystem::is_regular_file(
-		GetConfiguredAssetCacheFilepath(),
+		PathFromUtf8(GetConfiguredAssetCacheFilepath()),
 		cacheFileError);
 	if (!bCacheFileExists)
 	{
@@ -345,7 +350,7 @@ void AssetCache::LoadCache()
 	Workspace::WorkspaceCacheLoadResult loadResult;
 	const auto identity = GetConfiguredIdentity();
 	loadResult = Workspace::LoadWorkspaceCacheEnvelope(
-		GetConfiguredAssetCacheFilepath(),
+		PathFromUtf8(GetConfiguredAssetCacheFilepath()),
 		identity);
 	if (loadResult.IsLoaded())
 	{
@@ -372,9 +377,10 @@ void AssetCache::LoadCache()
 		m_bPreserveStorageAfterLoadFailure = true;
 		m_lastSaveDiagnostic.clear();
 		m_lastLoadResult = std::move(loadResult);
+		const auto statusName = magic_enum::enum_name(m_lastLoadResult.m_status);
 		SAILOR_LOG_ERROR(
-			"Asset cache load status=%s: %s The existing cache file was preserved.",
-			std::string(magic_enum::enum_name(m_lastLoadResult.m_status)).c_str(),
+			"Asset cache load status=%.*s: %s The existing cache file was preserved.",
+			static_cast<int>(statusName.size()), statusName.empty() ? "" : statusName.data(),
 			m_lastLoadResult.m_diagnostic.c_str());
 		return;
 	}
@@ -408,16 +414,28 @@ bool AssetCache::WriteCacheLocked(std::string& outDiagnostic) noexcept
 		return false;
 	}
 
-	return Workspace::AtomicReplaceWorkspaceCacheText(
-		GetConfiguredAssetCacheFilepath(),
+	const bool bSaved = Platform::IsAtomicWriteComplete(Platform::AtomicWriteFile(
+		PathFromUtf8(GetConfiguredAssetCacheFilepath()),
 		envelope,
-		outDiagnostic);
+		outDiagnostic));
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+	m_manifestWriteCount += bSaved;
+#endif
+	return bSaved;
 }
+
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+uint64_t AssetCache::TakeManifestWriteCountForTests()
+{
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	return std::exchange(m_manifestWriteCount, 0);
+}
+#endif
 
 std::string AssetCache::GetConfiguredAssetCacheFilepath() const
 {
 	return m_bHasStorageContext
-		? (m_cacheFolder / "AssetCache.yaml").string()
+		? PathToUtf8(m_cacheFolder / "AssetCache.yaml")
 		: GetAssetCacheFilepath();
 }
 
@@ -441,9 +459,10 @@ void AssetCache::ResetInvalidCacheLocked(Workspace::WorkspaceCacheLoadResult loa
 		m_bIsDirty = false;
 		m_lastSaveDiagnostic.clear();
 		AppendDiagnostic(m_lastLoadResult.m_diagnostic, "The cache was reset to an empty current envelope.");
+		const auto statusName = magic_enum::enum_name(m_lastLoadResult.m_status);
 		SAILOR_LOG(
-			"Asset cache load status=%s: %s",
-			std::string(magic_enum::enum_name(m_lastLoadResult.m_status)).c_str(),
+			"Asset cache load status=%.*s: %s",
+			static_cast<int>(statusName.size()), statusName.empty() ? "" : statusName.data(),
 			m_lastLoadResult.m_diagnostic.c_str());
 	}
 	else
@@ -452,9 +471,10 @@ void AssetCache::ResetInvalidCacheLocked(Workspace::WorkspaceCacheLoadResult loa
 		AppendDiagnostic(
 			m_lastLoadResult.m_diagnostic,
 			"The cache could not be reset: " + diagnostic);
+		const auto statusName = magic_enum::enum_name(m_lastLoadResult.m_status);
 		SAILOR_LOG_ERROR(
-			"Asset cache load status=%s: %s",
-			std::string(magic_enum::enum_name(m_lastLoadResult.m_status)).c_str(),
+			"Asset cache load status=%.*s: %s",
+			static_cast<int>(statusName.size()), statusName.empty() ? "" : statusName.data(),
 			m_lastLoadResult.m_diagnostic.c_str());
 	}
 }
@@ -467,7 +487,7 @@ void AssetCache::ClearAll()
 	m_bPreserveStorageAfterLoadFailure = false;
 
 	std::error_code removeError;
-	std::filesystem::remove(GetConfiguredAssetCacheFilepath(), removeError);
+	std::filesystem::remove(PathFromUtf8(GetConfiguredAssetCacheFilepath()), removeError);
 	if (removeError)
 	{
 		m_bIsDirty = true;
@@ -513,7 +533,7 @@ bool AssetCache::Update(const AssetInfo* info)
 
 	const std::string sourcePath = info->GetAssetFilepath();
 	std::error_code sourceError;
-	if (!std::filesystem::is_regular_file(sourcePath, sourceError) || sourceError)
+	if (!std::filesystem::is_regular_file(PathFromUtf8(sourcePath), sourceError) || sourceError)
 	{
 		Remove(info->GetFileId());
 		return false;
@@ -535,7 +555,7 @@ bool AssetCache::Update(const AssetInfo* info)
 		info->GetAssetImportTime(),
 		sourcePath,
 		info->m_importedSourceRevision,
-		std::filesystem::path(info->GetMetaFilepath()).filename().string(),
+		PathToUtf8(PathFromUtf8(info->GetMetaFilepath()).filename()),
 		info->m_metadataRevision,
 		info->GetAssetInfoType());
 }
@@ -543,15 +563,15 @@ bool AssetCache::Update(const AssetInfo* info)
 bool AssetCache::Update(
 	const FileId& id,
 	std::time_t assetImportTime,
-	const std::string& sourcePath,
+	std::string_view sourcePath,
 	const FileRevision& sourceRevision,
-	const std::string& metadataFilename,
+	std::string_view metadataFilename,
 	const FileRevision& metadataRevision,
-	const std::string& assetInfoType)
+	std::string_view assetInfoType)
 {
 	std::string normalizedSourcePath = NormalizeSourcePath(sourcePath);
 	const bool bValidMetadataFilename = !metadataFilename.empty() &&
-		std::filesystem::path(metadataFilename).filename() == metadataFilename;
+		PathFromUtf8(metadataFilename).filename() == PathFromUtf8(metadataFilename);
 	if (!id || assetImportTime <= 0 || normalizedSourcePath.empty() ||
 		!sourceRevision.m_bIsValid || !bValidMetadataFilename ||
 		!metadataRevision.m_bIsValid || assetInfoType.empty())
@@ -561,17 +581,7 @@ bool AssetCache::Update(
 	}
 
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
-	auto& entry = m_cache.m_assets.At_Lock(id);
-	struct EntryUnlockGuard final
-	{
-		TConcurrentMap<FileId, AssetCacheData::Entry>& m_assets;
-		const FileId& m_id;
-
-		~EntryUnlockGuard() noexcept
-		{
-			m_assets.Unlock(m_id);
-		}
-	} unlockGuard{ m_cache.m_assets, id };
+	auto& entry = m_cache.m_assets[id];
 
 	const bool bChanged = entry.m_fileId != id ||
 		entry.m_assetImportTime != assetImportTime ||

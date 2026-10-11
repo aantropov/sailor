@@ -3,14 +3,31 @@
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
 #include "Math/Transform.h"
+#include "Memory/UniquePtr.hpp"
 #include "Raytracing/PathTracer.h"
+#include "RHI/RenderSubmission.h"
 
 namespace Sailor::Framegraph
 {
 	class CPUPathTracerNode : public TFrameGraphNode<CPUPathTracerNode>
 	{
 	public:
-		SAILOR_API static const char* GetName() { return m_name; }
+		struct Image
+		{
+			TVector<glm::vec4> m_pixels;
+			glm::uvec2 m_extent{};
+			uint32_t m_cameraIndex = 0;
+			uint64_t m_frame = 0;
+			uint64_t m_imageRevision = 0;
+			uint64_t m_accumulatedSamples = 0;
+		};
+		using ImagePtr = TSharedPtr<const Image>;
+		using CaptureTask = Tasks::TaskPtr<ImagePtr, ImagePtr>;
+
+		SAILOR_API ~CPUPathTracerNode() override;
+		SAILOR_API static StringHash GetName() { return "CPUPathTracerNode"_h; }
+		SAILOR_API void SetFloat(StringHash name, float value) override;
+		SAILOR_API bool IsEnabled(RHI::ESceneViewRenderMode mode) const;
 
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph,
 			RHI::RHICommandListPtr transferCommandList,
@@ -18,43 +35,99 @@ namespace Sailor::Framegraph
 			const RHI::RHISceneViewSnapshot& sceneView) override;
 
 		SAILOR_API virtual void Clear() override;
+		// Completes on Main after this camera is processed on Render, or with null on cancellation.
+		SAILOR_API CaptureTask DoOneCapture(uint32_t cameraIndex = 0);
+		// Render queue only. Cross-thread consumers use DoOneCapture.
 		SAILOR_API bool GetLastRenderedImage(TVector<glm::u8vec4>& outImage, glm::uvec2& outExtent) const;
 
 	protected:
+		struct AccumulationKey
+		{
+			glm::vec3 m_cameraPosition{ 0.0f };
+			glm::vec3 m_cameraForward{ 0.0f, 0.0f, -1.0f };
+			glm::vec3 m_cameraUp{ 0.0f, 1.0f, 0.0f };
+			float m_cameraAspect = 0.0f;
+			float m_cameraHFov = 0.0f;
+			glm::uvec2 m_outputExtent{ 0u };
+			uint64_t m_sceneRevision = 0;
+			uint64_t m_lightingRevision = 0;
+			uint64_t m_environmentHash = 0;
+			uint32_t m_samplesPerFrame = 0;
+			uint32_t m_maxBounces = 0;
+			float m_rayBiasBase = 0.0f;
+			float m_rayBiasScale = 0.0f;
+
+			SAILOR_API bool operator==(const AccumulationKey& rhs) const;
+		};
+
 		struct CubemapReadbackState
 		{
 			RHI::RHICubemapPtr m_source{};
 			TVector<RHI::RHIBufferPtr> m_faceBuffers{};
 			glm::uvec2 m_extent{ 0u, 0u };
 			uint32_t m_mipLevel = 0u;
-			uint64_t m_lastQueuedFrame = 0ull;
-			bool m_bPendingGpuReadback = false;
 		};
+
+		class SubmissionResources final : public RHI::RHIFrameGraphSubmissionResource
+		{
+		public:
+			void ResetForSubmission() override {}
+			void InvalidateSubmission() override { m_imageRevision = 0; }
+
+			RHI::RHITexturePtr m_runtimeTexture{};
+			RHI::RHIBufferPtr m_uploadBuffer{};
+			RHI::RHIShaderBindingSetPtr m_shaderBindings{};
+			uint64_t m_imageRevision = 0;
+			CubemapReadbackState m_environment{};
+			CubemapReadbackState m_diffuseEnvironment{};
+			RHI::RHIFencePtr m_readbackCompletion{};
+		};
+
+		struct CameraState
+		{
+			Raytracing::PathTracer m_pathTracer{};
+			RHI::RHIPathTracerScenePtr m_scene;
+			TRefPtr<SubmissionResources> m_pendingReadback{};
+			RHI::RHICubemapPtr m_environmentSource{};
+			RHI::RHICubemapPtr m_diffuseEnvironmentSource{};
+			uint64_t m_lastQueuedFrame = 0;
+			uint64_t m_environmentHash = 0;
+			TVector<glm::vec4> m_accumulatedImage{};
+			uint64_t m_accumulatedSamples = 0;
+			uint64_t m_imageRevision = 0;
+			glm::uvec2 m_extent{ 0u, 0u };
+			AccumulationKey m_accumulationKey{};
+			bool m_bHasAccumulationState = false;
+		};
+
+		SAILOR_API CameraState& GetCameraState(uint32_t cameraIndex);
+		SAILOR_API void AccumulateImage(CameraState& camera, const TVector<glm::vec4>& image, glm::uvec2 extent, uint32_t samples);
+		SAILOR_API void CompleteImageRequests(uint32_t cameraIndex, uint64_t frame, const CameraState* camera = nullptr);
+		SAILOR_API bool ApplyCompletedReadback(CameraState& camera,
+			const RHI::RHICubemapPtr& environment, const RHI::RHICubemapPtr& diffuseEnvironment);
+		void QueueEnvironmentReadback(CameraState& camera, TRefPtr<SubmissionResources> resources,
+			RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView,
+			RHI::RHICubemapPtr environment, RHI::RHICubemapPtr diffuseEnvironment);
 
 		ShaderSetPtr m_pShader{};
 		RHI::RHIMaterialPtr m_overlayMaterial{};
-		RHI::RHIMaterialPtr m_overlayMaterialMsaa{};
-		RHI::RHITexturePtr m_runtimeTexture{};
-		RHI::RHITexturePtr m_currentFrameTexture{};
-		RHI::RHIBufferPtr m_uploadBuffer{};
-		RHI::RHIShaderBindingSetPtr m_shaderBindings{};
-		Raytracing::PathTracer m_pathTracer{};
-		CubemapReadbackState m_environmentReadback{};
-		CubemapReadbackState m_diffuseEnvironmentReadback{};
-		TVector<glm::vec4> m_accumulatedImage{};
-		TVector<glm::u8vec4> m_accumulatedDisplayImage{};
-		uint64_t m_accumulatedSamples = 0ull;
-		glm::vec3 m_lastCameraPosition{ 0.0f };
-		glm::vec3 m_lastCameraForward{ 0.0f, 0.0f, -1.0f };
-		glm::vec3 m_lastCameraUp{ 0.0f, 1.0f, 0.0f };
-		float m_lastCameraAspect = 0.0f;
-		float m_lastCameraHFov = 0.0f;
-		bool m_bHasAccumulationState = false;
+		TMap<uint32_t, TUniquePtr<CameraState>> m_cameras;
+		uint32_t m_lastCameraIndex = 0;
+		uint64_t m_nextImageRevision = 0;
+		struct ImageRequest
+		{
+			uint32_t m_cameraIndex;
+			CaptureTask m_task;
+		};
+		TVector<ImageRequest> m_imageRequests;
+		// Main checks scene demand without reading Render's parameter table.
+		std::atomic<bool> m_bIsEnabled{ false };
 
-		glm::uvec2 m_extent{ 0u, 0u };
-
-		static const char* m_name;
 	};
 
+#ifdef _SAILOR_IMPORT_
+	extern template class TFrameGraphNode<CPUPathTracerNode>;
+#else
 	template class TFrameGraphNode<CPUPathTracerNode>;
+#endif
 }

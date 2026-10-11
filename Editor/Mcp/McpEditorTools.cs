@@ -82,6 +82,17 @@ internal sealed class McpEditorTools
                 UseStructuredContent = true,
             }),
         McpServerTool.Create(
+            (ulong viewportId, CancellationToken cancellationToken) =>
+                _engine.CaptureRemoteViewportFrameEvidenceAsync(viewportId, cancellationToken),
+            new()
+            {
+                Name = "sailor_editor_capture_viewport_evidence",
+                Description =
+                    "Explicitly sample the last presented macOS viewport frame (primary viewport ID: 1). " +
+                    "Returns captured frame/generation, pixel samples and checksum; does not save an image. " +
+                    "Fails if no frame is ready or the viewport is busy. Ordinary status queries never capture pixels.",
+            }),
+        McpServerTool.Create(
             (CancellationToken cancellationToken) =>
                 GetRenderModeAsync(cancellationToken),
             new()

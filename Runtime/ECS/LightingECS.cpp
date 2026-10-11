@@ -2,6 +2,7 @@
 #include "ECS/LightingECSInternal.h"
 #include "ECS/TransformECS.h"
 #include "Engine/GameObject.h"
+#include "Components/SkyComponent.h"
 #include "GlobalIllumination/GISettings.h"
 #include "RHI/DebugContext.h"
 #include "RHI/RenderTarget.h"
@@ -20,7 +21,7 @@ using namespace Sailor::Tasks;
 
 namespace Sailor::LightingECSInternal
 {
-	TSharedPtr<TVector<LightingECS::LightShaderData>> AcquireLightsSnapshot(
+	TSharedPtr<const TVector<LightingECS::LightShaderData>> AcquireLightsSnapshot(
 		TVector<TSharedPtr<TVector<LightingECS::LightShaderData>>>& pool,
 		const TVector<LightingECS::LightShaderData>& source)
 	{
@@ -95,32 +96,58 @@ namespace Sailor::LightingECSInternal
 	}
 }
 
+void LightingECS::RegisterSky(TObjectPtr<SkyComponent> sky)
+{
+	m_skies.Add(std::move(sky));
+}
+
+void LightingECS::UnregisterSky(const SkyComponent* sky)
+{
+	for (size_t i = 0; i < m_skies.Num(); ++i)
+	{
+		if (m_skies[i].GetRawPtr() == sky)
+		{
+			m_skies.RemoveAt(i);
+			break;
+		}
+	}
+}
+
+TObjectPtr<SkyComponent> LightingECS::GetSky() const
+{
+	TObjectPtr<SkyComponent> selected;
+	for (const auto& sky : m_skies)
+	{
+		if (!static_cast<bool>(*sky->GetOwner())) continue;
+		if (!selected || sky->GetOwner()->GetInstanceId().ToString() < selected->GetOwner()->GetInstanceId().ToString())
+		{
+			selected = sky;
+		}
+	}
+	return selected;
+}
+
 void LightingECS::BeginPlay()
 {
-	m_shadowMapsMb = 0.0f;
-	m_csmShadowMapsMb = 0.0f;
-	m_localShadowAllocationRevision = 0ull;
+	m_shadows.m_mapsMb = 0.0f;
+	m_shadows.m_csmMapsMb = 0.0f;
+	m_shadows.m_localAllocationRevision = 0ull;
 	auto& driver = Sailor::RHI::Renderer::GetDriver();
-	m_lightsData = driver->CreateShaderBindings();
+	m_shadows.m_bindings = driver->CreateShaderBindings();
 
-	const auto usage = RHI::ETextureUsageBit::ColorAttachment_Bit | RHI::ETextureUsageBit::TextureTransferSrc_Bit |
-					   RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit;
+	m_shadows.m_csmMaps.Resize(NumCascades);
+	m_shadows.m_flights.Resize((std::max)(1u, RHI::Renderer::GetDriver()->GetMaxFramesInFlight()));
 
-	m_defaultShadowMap = driver->CreateRenderTarget(
-		glm::ivec2(1, 1), 1, ShadowMapFormat, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage);
-	m_csmShadowMaps.Resize(NumCascades);
-	m_shadowFlightResources.Resize((std::max)(1u, RHI::Renderer::GetDriver()->GetMaxFramesInFlight()));
-
-	m_shadowMapOwners.Resize(MaxShadowsInView);
-	m_shadowMapTextures.Resize(MaxShadowMapSamplers);
+	m_shadows.m_mapOwners.Resize(MaxShadowsInView);
+	m_shadows.m_textures.Resize(MaxShadowMapSamplers);
 	for (uint32_t i = 0; i < MaxShadowsInView; i++)
 	{
-		m_shadowMapOwners[i] = InvalidShadowMapIndex;
+		m_shadows.m_mapOwners[i] = InvalidShadowMapIndex;
 	}
 	for (uint32_t i = 0; i < MaxShadowMapSamplers; i++)
 	{
-		m_shadowMapTextures[i] =
-			i < m_csmShadowMaps.Num() && m_csmShadowMaps[i] ? m_csmShadowMaps[i] : m_defaultShadowMap;
+		m_shadows.m_textures[i] =
+			i < m_shadows.m_csmMaps.Num() && m_shadows.m_csmMaps[i] ? m_shadows.m_csmMaps[i] : m_shadows.m_defaultMap;
 	}
 
 	PublishShadowMapBindings();
@@ -128,25 +155,47 @@ void LightingECS::BeginPlay()
 
 void LightingECS::PublishShadowMapBindings()
 {
-	if (m_shadowMapTextures.IsEmpty())
+	if (m_shadows.m_textures.IsEmpty())
 	{
 		return;
 	}
 
 	auto& driver = Sailor::RHI::Renderer::GetDriver();
+	if (!m_shadows.m_defaultMap)
+	{
+		const auto usage = RHI::ETextureUsageBit::ColorAttachment_Bit | RHI::ETextureUsageBit::TextureTransferSrc_Bit |
+			RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit;
+		m_shadows.m_defaultMap = driver->CreateRenderTarget(glm::ivec2(1, 1), 1, ShadowMapFormat,
+			RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage);
+		if (!m_shadows.m_defaultMap)
+		{
+			m_shadows.m_bBindingsDirty = true;
+			return;
+		}
+		for (auto& texture : m_shadows.m_textures)
+		{
+			if (!texture) texture = m_shadows.m_defaultMap;
+		}
+	}
 	auto immutableTemplate = driver->CreateShaderBindings();
-	m_shadowMaps = driver->AddSamplerToShaderBindings(immutableTemplate, "shadowMaps", m_shadowMapTextures, 9u);
+	auto shadowMaps = driver->AddSamplerToShaderBindings(immutableTemplate, "shadowMaps"_h, m_shadows.m_textures, 9u);
+	if (!shadowMaps)
+	{
+		m_shadows.m_bBindingsDirty = true;
+		return;
+	}
 	immutableTemplate->RecalculateCompatibility();
-	m_lightsData = std::move(immutableTemplate);
-	m_bShadowMapBindingsDirty = false;
+	m_shadows.m_bindings = std::move(immutableTemplate);
+	m_shadows.m_bBindingsDirty = false;
 }
 
-Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
+void LightingECS::Tick(float deltaTime)
 {
 	SAILOR_PROFILE_FUNCTION();
 	(void)deltaTime;
 	bool bPublishedChanges = false;
 	uint32_t numLights = 0;
+	uint32_t directionalShadowLight = InvalidShadowMapIndex;
 	const size_t numGpuLightSlots = GetGpuLightSlotsCount(m_components.Num());
 	const auto& graphicsProfile = App::GetActiveGraphicsSettings();
 	for (size_t index = 0; index < numGpuLightSlots; ++index)
@@ -155,8 +204,15 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 		if (data.m_bIsActive && data.m_owner && ContributesToRealtimeLighting(data.m_globalIlluminationMode))
 		{
 			numLights = static_cast<uint32_t>(index) + 1u;
+			if (directionalShadowLight == InvalidShadowMapIndex && data.m_type == ELightType::Directional &&
+				data.m_shadowType != RHI::EShadowType::None)
+			{
+				directionalShadowLight = static_cast<uint32_t>(index);
+			}
 		}
 	}
+	// The GPU layout has one CSM set per camera. The first eligible light owns it.
+	m_shadows.m_directionalLightIndex = directionalShadowLight;
 	if (m_cpuLightsData.Num() != numLights)
 	{
 		m_cpuLightsData.Resize(numLights);
@@ -175,14 +231,18 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 		if (bIsUsable)
 		{
 			const auto& ownerTransform = owner->GetTransformComponent();
+			RHI::EShadowType effectiveShadowType =
+				!graphicsProfile.m_bSupportSoftShadows && data.m_shadowType == RHI::EShadowType::EVSM
+					? RHI::EShadowType::PCF : data.m_shadowType;
+			if (data.m_type == ELightType::Directional && index != directionalShadowLight)
+			{
+				effectiveShadowType = RHI::EShadowType::None;
+			}
 
-			if (data.m_bIsDirty || data.m_frameLastChange < ownerTransform.GetFrameLastChange())
+			if (data.m_bIsDirty || data.m_frameLastChange < ownerTransform.GetFrameLastChange() ||
+				m_cpuLightsData[index].m_shadowType != static_cast<uint32_t>(effectiveShadowType))
 			{
 				shaderData.m_type = (uint32_t)data.m_type;
-				const RHI::EShadowType effectiveShadowType =
-					!graphicsProfile.m_bSupportSoftShadows && data.m_shadowType == RHI::EShadowType::EVSM
-						? RHI::EShadowType::PCF
-						: data.m_shadowType;
 				shaderData.m_shadowType = (uint32_t)effectiveShadowType;
 				shaderData.m_activeCascadeCount = (std::clamp)(graphicsProfile.m_shadowCascadeCount, 1u, NumCascades);
 				shaderData.m_shadowBias = graphicsProfile.m_shadowBias;
@@ -221,36 +281,17 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 		m_publishedLightsData = AcquireLightsSnapshot(m_lightsSnapshotPool, m_cpuLightsData);
 		++m_lightingRevision;
 	}
-
-	return nullptr;
 }
 
 void LightingECS::EndPlay()
 {
-	m_lightsData.Clear();
+	m_skies.Clear();
 	m_cpuLightsData.Clear();
 	m_publishedLightsData.Clear();
 	m_lightsSnapshotPool.Clear();
 	m_lightingRevision = 0ull;
-	m_csmShadowMaps.Clear();
-	m_shadowFlightResources.Clear();
-	m_shadowMapOwners.Clear();
-	m_localShadowAllocations.Clear();
-	m_localShadowAtlases.Clear();
-	m_directionalLightsScratch.Clear();
-	m_pointLightsScratch.Clear();
-	m_spotLightsScratch.Clear();
-	m_cascadeProjectionScratch.Clear();
-	m_csmBroadCastersScratch.Clear();
-	m_defaultShadowMap.Clear();
-	m_shadowMaps.Clear();
-	m_shadowMapTextures.Clear();
-	m_writableLocalShadowAtlases.reset();
-	m_bShadowMapBindingsDirty = false;
+	m_shadows = {};
 	m_numLights = 0;
-	m_shadowMapsMb = 0.0f;
-	m_csmShadowMapsMb = 0.0f;
-	m_localShadowAllocationRevision = 0ull;
 }
 
 void LightingECS::GetLightsInFrustum(const Math::Frustum& frustum,
@@ -270,6 +311,10 @@ void LightingECS::GetLightsInFrustum(const Math::Frustum& frustum,
 		if (light.m_shadowType != RHI::EShadowType::None && light.m_bIsActive &&
 			ContributesToRealtimeLighting(light.m_globalIlluminationMode))
 		{
+			if (light.m_type == ELightType::Directional && index != m_shadows.m_directionalLightIndex)
+			{
+				continue;
+			}
 			GameObject* owner = light.m_owner ? static_cast<GameObject*>(light.m_owner.GetRawPtr()) : nullptr;
 			if (!owner)
 			{

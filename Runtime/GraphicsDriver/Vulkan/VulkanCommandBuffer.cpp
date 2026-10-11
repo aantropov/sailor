@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <array>
 
 #include "VulkanApi.h"
@@ -39,36 +40,45 @@ VulkanCommandBuffer::VulkanCommandBuffer(VulkanDevicePtr device, VulkanCommandPo
 	VK_CHECK(vkAllocateCommandBuffers(*m_device, &allocateInfo, &m_commandBuffer));
 
 	m_currentThreadId = GetCurrentThreadId();
+	if (auto* scheduler = App::GetSubmodule<Tasks::Scheduler>())
+	{
+		m_bIsMainThreadOwned = scheduler->IsMainThread();
+	}
 }
 
 VulkanCommandBuffer::~VulkanCommandBuffer()
 {
-	DWORD currentThreadId = GetCurrentThreadId();
-
-	auto pReleaseResource = Tasks::CreateTask("Release command buffer",
+	auto pReleaseResource = Tasks::CreateTask("Release command buffer"_h,
 		[
 			duplicatedCommandBuffer = m_commandBuffer,
-				duplicatedCommandPool = m_commandPool,
-				duplicatedDevice = m_device
+			duplicatedCommandPool = m_commandPool,
+			duplicatedDevice = m_device
 		]()
 		{
 			if (duplicatedCommandBuffer)
 			{
 				vkFreeCommandBuffers(*duplicatedDevice, *duplicatedCommandPool, 1, &duplicatedCommandBuffer);
 			}
-		});
+		}, m_bIsMainThreadOwned ? EThreadType::Main : EThreadType::Worker);
 
-			auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
-			if (m_currentThreadId == currentThreadId || !scheduler || !scheduler->HasThread(m_currentThreadId))
-			{
-				pReleaseResource->Execute();
-				m_device.Clear();
-			}
-			else
-			{
-				scheduler->Run(pReleaseResource, m_currentThreadId);
-			}
-			ClearDependencies();
+	auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+	const bool bIsOwnerThread = m_bIsMainThreadOwned ? scheduler && scheduler->IsMainThread() :
+		m_currentThreadId == GetCurrentThreadId();
+	if (!scheduler || bIsOwnerThread || (!m_bIsMainThreadOwned && !scheduler->HasThread(m_currentThreadId)))
+	{
+		pReleaseResource->Execute();
+		m_device.Clear();
+	}
+	else if (m_bIsMainThreadOwned)
+	{
+		// Main can move from the bootstrap caller to the engine loop or shutdown caller.
+		scheduler->Run(pReleaseResource);
+	}
+	else
+	{
+		scheduler->Run(pReleaseResource, m_currentThreadId);
+	}
+	ClearDependencies();
 }
 
 VulkanCommandPoolPtr VulkanCommandBuffer::GetCommandPool() const
@@ -123,6 +133,7 @@ void VulkanCommandBuffer::BeginSecondaryCommandList(const TVector<VkFormat>& col
 
 	m_currentAttachments = colorAttachments;
 	m_currentDepthAttachment = depthStencilAttachment;
+	m_currentMsaaSamples = attachments.rasterizationSamples;
 
 	VK_CHECK(vkBeginCommandBuffer(m_commandBuffer, &beginInfo));
 }
@@ -137,6 +148,7 @@ void VulkanCommandBuffer::BeginSecondaryCommandList(VulkanRenderPassPtr renderPa
 	inheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
 	inheritanceInfo.renderPass = *renderPass;
 	inheritanceInfo.subpass = subpassIndex;
+	m_currentMsaaSamples = renderPass->GetMaxMSSamples();
 
 	VkCommandBufferBeginInfo beginInfo{};
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -165,7 +177,7 @@ void VulkanCommandBuffer::CopyBuffer(VulkanBufferMemoryPtr src, VulkanBufferMemo
 }
 
 void VulkanCommandBuffer::CopyBufferToImage(VulkanBufferMemoryPtr src, VulkanImagePtr image, uint32_t width, uint32_t height, uint32_t depth,
-	VkDeviceSize srcOffset)
+	VkDeviceSize srcOffset, uint32_t layerCount)
 {
 	VkBufferImageCopy region{};
 	region.bufferOffset = srcOffset + src.m_offset;
@@ -175,7 +187,7 @@ void VulkanCommandBuffer::CopyBufferToImage(VulkanBufferMemoryPtr src, VulkanIma
 	region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 	region.imageSubresource.mipLevel = 0;
 	region.imageSubresource.baseArrayLayer = 0;
-	region.imageSubresource.layerCount = 1;
+	region.imageSubresource.layerCount = layerCount;
 
 	region.imageOffset = { 0, 0, 0 };
 	region.imageExtent = {
@@ -242,39 +254,37 @@ void VulkanCommandBuffer::EndCommandList()
 	VK_CHECK(vkEndCommandBuffer(m_commandBuffer));
 }
 
-void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& colorAttachments,
+VulkanRenderingAttachments::VulkanRenderingAttachments(const TVector<VulkanImageViewPtr>& colorAttachments,
 	const TVector<VulkanImageViewPtr>& colorAttachmentResolves,
-	VulkanImageViewPtr depthStencilAttachment,
-	VulkanImageViewPtr depthStencilAttachmentResolve,
-	VkRect2D renderArea,
-	VkRenderingFlags renderingFlags,
-	VkOffset2D offset,
+	const VulkanImageViewPtr& depthStencilAttachment,
+	const VulkanImageViewPtr& depthStencilAttachmentResolve,
 	bool bClearRenderTargets,
-	VkClearValue clearColor,
-	bool bStoreDepth)
+	const VulkanRenderPassClearValues& clearValues,
+	bool bStoreDepth,
+	const VkPhysicalDeviceDepthStencilResolveProperties& resolveProperties)
 {
 	check(colorAttachmentResolves.IsEmpty() || colorAttachmentResolves.Num() == colorAttachments.Num());
 	const bool bHasStencil = depthStencilAttachment && (VulkanApi::ComputeAspectFlagsForFormat(depthStencilAttachment->m_format) & VK_IMAGE_ASPECT_STENCIL_BIT);
 
-	VkRenderingAttachmentInfoKHR depthAttachmentInfo
+	m_depth =
 	{
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 		.imageView = depthStencilAttachment ? *depthStencilAttachment : VK_NULL_HANDLE,
 		.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
 		.loadOp = bClearRenderTargets ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
 		.storeOp = bStoreDepth ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE,
-		.clearValue = clearColor,
 	};
+	m_depth.clearValue.depthStencil = clearValues.m_depthStencil;
 
-	VkRenderingAttachmentInfoKHR stencilAttachmentInfo
+	m_stencil =
 	{
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 		.imageView = bHasStencil ? *depthStencilAttachment : VK_NULL_HANDLE,
 		.imageLayout = bHasStencil ? VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
 		.loadOp = bClearRenderTargets ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-		.clearValue = clearColor,
 	};
+	m_stencil.clearValue.depthStencil = clearValues.m_depthStencil;
 
 	VkRenderingAttachmentInfoKHR colorAttachmentInfo
 	{
@@ -282,13 +292,13 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
 		.loadOp = bClearRenderTargets ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-		.clearValue = clearColor
 	};
+	colorAttachmentInfo.clearValue.color = clearValues.m_color;
 
-	TVector<VkRenderingAttachmentInfoKHR> colorAttachmentInfos(colorAttachments.Num());
+	m_colors.Resize(colorAttachments.Num());
 	for (size_t i = 0u; i < colorAttachments.Num(); ++i)
 	{
-		auto& attachment = colorAttachmentInfos[i];
+		auto& attachment = m_colors[i];
 		attachment = colorAttachmentInfo;
 		attachment.imageView = *colorAttachments[i];
 		if (i < colorAttachmentResolves.Num() && colorAttachmentResolves[i])
@@ -301,59 +311,95 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 
 	if (depthStencilAttachmentResolve)
 	{
-		depthAttachmentInfo.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
-		depthAttachmentInfo.resolveImageView = *depthStencilAttachmentResolve;
-		depthAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+		// Reverse-Z needs the farthest sample. Coupled stencil resolves must use
+		// the same supported mode; SAMPLE_ZERO is the guaranteed native fallback.
+		const bool bCoupledStencil = bHasStencil && !resolveProperties.independentResolveNone;
+		const bool bSupportsMin = (resolveProperties.supportedDepthResolveModes & VK_RESOLVE_MODE_MIN_BIT) &&
+			(!bCoupledStencil || (resolveProperties.supportedStencilResolveModes & VK_RESOLVE_MODE_MIN_BIT));
+		m_depth.resolveMode = bSupportsMin ? VK_RESOLVE_MODE_MIN_BIT : VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
+		m_depth.resolveImageView = *depthStencilAttachmentResolve;
+		m_depth.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 
-		stencilAttachmentInfo.resolveMode = VK_RESOLVE_MODE_NONE_KHR;
-		stencilAttachmentInfo.resolveImageView = bHasStencil ? *depthStencilAttachmentResolve : VK_NULL_HANDLE;
-		stencilAttachmentInfo.resolveImageLayout = bHasStencil ? VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
-
-		m_rhiDependecies.Insert(depthStencilAttachmentResolve->GetImage());
+		if (bCoupledStencil)
+		{
+			m_stencil.resolveMode = m_depth.resolveMode;
+			m_stencil.resolveImageView = *depthStencilAttachmentResolve;
+			m_stencil.resolveImageLayout = VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL;
+		}
 	}
+}
 
-	const VkRenderingInfoKHR renderInfo
+VkRenderingInfo VulkanRenderingAttachments::GetRenderingInfo(VkRect2D renderArea, VkRenderingFlags flags) const
+{
+	return
 	{
 		.sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
 		.pNext = VK_NULL_HANDLE,
-		.flags = renderingFlags,
+		.flags = flags,
 		.renderArea = renderArea,
 		.layerCount = 1,
-		.colorAttachmentCount = (uint32_t)colorAttachments.Num(),
-		.pColorAttachments = colorAttachmentInfos.GetData(),
-		.pDepthAttachment = &depthAttachmentInfo,
-		.pStencilAttachment = &stencilAttachmentInfo,
+		.colorAttachmentCount = (uint32_t)m_colors.Num(),
+		.pColorAttachments = m_colors.GetData(),
+		.pDepthAttachment = &m_depth,
+		.pStencilAttachment = m_stencil.imageView != VK_NULL_HANDLE ? &m_stencil : nullptr,
 	};
+}
+
+void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& colorAttachments,
+	const TVector<VulkanImageViewPtr>& colorAttachmentResolves,
+	VulkanImageViewPtr depthStencilAttachment,
+	VulkanImageViewPtr depthStencilAttachmentResolve,
+	VkRect2D renderArea,
+	VkRenderingFlags renderingFlags,
+	VkOffset2D offset,
+	bool bClearRenderTargets,
+	const VulkanRenderPassClearValues& clearValues,
+	bool bStoreDepth)
+{
+	const VulkanRenderingAttachments attachments(colorAttachments, colorAttachmentResolves,
+		depthStencilAttachment, depthStencilAttachmentResolve, bClearRenderTargets, clearValues, bStoreDepth,
+		m_device->GetDepthStencilResolveProperties());
+	const VkRenderingInfo renderInfo = attachments.GetRenderingInfo(renderArea, renderingFlags);
+
+	if (depthStencilAttachmentResolve)
+	{
+		m_rhiDependecies.Insert(depthStencilAttachmentResolve);
+	}
 
 	for (auto& attachment : colorAttachments)
 	{
-		m_rhiDependecies.Insert(attachment->GetImage());
+		m_rhiDependecies.Insert(attachment);
 	}
 
 	for (auto& attachment : colorAttachmentResolves)
 	{
-		m_rhiDependecies.Insert(attachment->GetImage());
+		if (attachment)
+		{
+			m_rhiDependecies.Insert(attachment);
+		}
 	}
 
 	if (depthStencilAttachment)
 	{
-		m_rhiDependecies.Insert(depthStencilAttachment->GetImage());
+		m_rhiDependecies.Insert(depthStencilAttachment);
 	}
 
 	m_device->vkCmdBeginRenderingKHR(m_commandBuffer, &renderInfo);
 
 	m_currentAttachments = colorAttachments.Select<VkFormat>([](const auto& lhs) { return lhs->m_format; });
 	m_currentDepthAttachment = depthStencilAttachment ? depthStencilAttachment->m_format : VkFormat::VK_FORMAT_UNDEFINED;
+	m_currentMsaaSamples = !colorAttachments.IsEmpty() ? colorAttachments[0]->GetImage()->m_samples :
+		depthStencilAttachment ? depthStencilAttachment->GetImage()->m_samples : VK_SAMPLE_COUNT_1_BIT;
 }
 
-void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& colorAttachments,
+bool VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& colorAttachments,
 	VulkanImageViewPtr depthStencilAttachment,
 	VkRect2D renderArea,
 	VkRenderingFlags renderingFlags,
 	VkOffset2D offset,
 	bool bSupportMultisampling,
 	bool bClearRenderTargets,
-	VkClearValue clearColor,
+	const VulkanRenderPassClearValues& clearValues,
 	bool bStoreDepth)
 {
 	// MSAA enabled -> we use the temporary buffers to resolve
@@ -367,13 +413,26 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		if (depthStencilAttachment)
 		{
 			const auto depthExtents = glm::ivec2(depthStencilAttachment->GetImage()->m_extent.width, depthStencilAttachment->GetImage()->m_extent.height);
-			msaaDepthStencilTarget = vulkanRenderer->GetOrAddMsaaFramebufferRenderTarget((RHI::ETextureFormat)depthStencilAttachment->m_format, depthExtents)->m_vulkan.m_imageView;
+			auto target = vulkanRenderer->GetOrAddMsaaFramebufferRenderTarget((RHI::ETextureFormat)depthStencilAttachment->m_format, depthExtents);
+			if (!target)
+			{
+				return false;
+			}
+			// The caller transitions its resolve image, not this internal MSAA target.
+			ImageMemoryBarrier(target, target->GetDefaultLayout());
+			msaaDepthStencilTarget = target->m_vulkan.m_imageView;
 		}
 
 		for (uint32_t i = 0u; i < colorAttachments.Num(); ++i)
 		{
 			const auto extents = glm::ivec2(colorAttachments[i]->GetImage()->m_extent.width, colorAttachments[i]->GetImage()->m_extent.height);
-			msaaColorTargets.Add(vulkanRenderer->GetOrAddMsaaFramebufferRenderTarget((RHI::ETextureFormat)colorAttachments[i]->m_format, extents, i)->m_vulkan.m_imageView);
+			auto target = vulkanRenderer->GetOrAddMsaaFramebufferRenderTarget((RHI::ETextureFormat)colorAttachments[i]->m_format, extents, i);
+			if (!target)
+			{
+				return false;
+			}
+			ImageMemoryBarrier(target, target->GetDefaultLayout());
+			msaaColorTargets.Add(target->m_vulkan.m_imageView);
 		}
 
 		BeginRenderPassEx(msaaColorTargets,
@@ -384,7 +443,7 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 			renderingFlags,
 			offset,
 			bClearRenderTargets,
-			clearColor,
+			clearValues,
 			bStoreDepth);
 	}
 	else
@@ -397,9 +456,10 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 			renderingFlags,
 			offset,
 			bClearRenderTargets,
-			clearColor,
+			clearValues,
 			bStoreDepth);
 	}
+	return true;
 }
 
 void VulkanCommandBuffer::EndRenderPassEx()
@@ -410,6 +470,8 @@ void VulkanCommandBuffer::EndRenderPassEx()
 void VulkanCommandBuffer::BeginRenderPass(VulkanRenderPassPtr renderPass, VulkanFramebufferPtr frameBuffer, VkExtent2D extent, VkSubpassContents content, VkOffset2D offset, VkClearValue clearColor)
 {
 	m_rhiDependecies.Insert(renderPass);
+	m_rhiDependecies.Insert(frameBuffer);
+	m_currentMsaaSamples = renderPass->GetMaxMSSamples();
 
 	VkRenderPassBeginInfo renderPassInfo{};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -710,7 +772,12 @@ void VulkanCommandBuffer::ClearAttachments(VkRect2D renderArea, const glm::vec4&
 
 void VulkanCommandBuffer::PushConstants(VulkanPipelineLayoutPtr pipelineLayout, size_t offset, size_t size, const void* ptr)
 {
-	vkCmdPushConstants(m_commandBuffer, *pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT, (uint32_t)offset, (uint32_t)size, ptr);
+	VkPushConstantRange update;
+	if (!pipelineLayout->GetPushConstantUpdate(offset, size, ptr, update))
+	{
+		return;
+	}
+	vkCmdPushConstants(m_commandBuffer, *pipelineLayout, update.stageFlags, update.offset, update.size, ptr);
 
 	m_numRecordedCommands++;
 	m_gpuCost += 1;
@@ -790,9 +857,15 @@ void VulkanCommandBuffer::EndRenderPass()
 
 void VulkanCommandBuffer::Reset()
 {
-	vkResetCommandBuffer(m_commandBuffer, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
+	VK_CHECK(vkResetCommandBuffer(m_commandBuffer, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT));
 	ClearDependencies();
 
+	m_bIsRecorded = false;
+	m_bGraphicsPipelineBound = false;
+	m_bHasViewport = false;
+	m_currentAttachments.Clear(false);
+	m_currentDepthAttachment = VK_FORMAT_UNDEFINED;
+	m_currentMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
 	m_numRecordedCommands = 0;
 	m_gpuCost = 0;
 }
@@ -802,6 +875,11 @@ void VulkanCommandBuffer::AddDependency(RHI::RHIResourcePtr resource)
 	m_rhiDependecies.Insert(resource);
 }
 
+void VulkanCommandBuffer::AddDependency(TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator> allocation)
+{
+	m_managedMemoryPtrs.Insert(std::move(allocation));
+}
+
 void VulkanCommandBuffer::AddDependency(TMemoryPtr<VulkanBufferMemoryPtr> ptr, TWeakPtr<VulkanBufferAllocator> allocator)
 {
 	m_memoryPtrs.Insert(TPair(ptr, allocator));
@@ -809,6 +887,7 @@ void VulkanCommandBuffer::AddDependency(TMemoryPtr<VulkanBufferMemoryPtr> ptr, T
 
 void VulkanCommandBuffer::ClearDependencies()
 {
+	m_managedMemoryPtrs.Clear();
 	m_rhiDependecies.Clear();
 	m_imageBarriers.Clear();
 
@@ -865,6 +944,17 @@ void VulkanCommandBuffer::Blit(VulkanImagePtr srcImage, VkImageLayout srcImageLa
 
 	m_numRecordedCommands++;
 	m_gpuCost += 20;
+}
+
+void VulkanCommandBuffer::GenerateMipMaps(RHI::RHITexturePtr texture)
+{
+	const auto image = texture->m_vulkan.m_image;
+	const VkImageSubresourceRange range{ VK_IMAGE_ASPECT_COLOR_BIT, 0, image->m_mipLevels, 0, image->m_arrayLayers };
+	TransitionImage(texture, range, RHI::EImageLayout::TransferDstOptimal);
+	GenerateMipMaps(image);
+	auto& state = m_imageBarriers[*image];
+	state.m_layout = RHI::EImageLayout::ShaderReadOnlyOptimal;
+	state.m_subresourceLayouts.Clear(false);
 }
 
 void VulkanCommandBuffer::GenerateMipMaps(VulkanImagePtr image)
@@ -973,8 +1063,21 @@ void VulkanCommandBuffer::GenerateMipMaps(VulkanImagePtr image)
 	m_gpuCost += image->m_mipLevels * 20;
 }
 
-VkAccessFlags VulkanCommandBuffer::GetAccessFlags(VkImageLayout layout)
+VkQueueFlags VulkanCommandBuffer::GetQueueFlags() const
 {
+	return m_device->GetQueueFamilies().GetFlags(m_commandPool->GetQueueFamilyIndex());
+}
+
+VkAccessFlags VulkanCommandBuffer::GetAccessFlags(VkImageLayout layout, VkQueueFlags queueFlags)
+{
+	const bool bGraphics = (queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0;
+	// Fixed-function resolves use color attachment accesses even for depth/stencil images.
+	const VkAccessFlags depthRead = bGraphics ?
+		VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT : 0u;
+	const VkAccessFlags depthWrite = bGraphics ?
+		VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT : 0u;
+	const VkAccessFlags shaderRead = GetShaderPipelineStages(queueFlags) ? VK_ACCESS_SHADER_READ_BIT : 0u;
+
 	switch (layout)
 	{
 	case VK_IMAGE_LAYOUT_UNDEFINED:
@@ -986,16 +1089,35 @@ VkAccessFlags VulkanCommandBuffer::GetAccessFlags(VkImageLayout layout)
 	case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
 		return 0;
 	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-		return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		return bGraphics ? VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT : 0u;
+	case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+	case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL:
+	case VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL:
+		return depthRead | depthWrite;
+	case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
+	case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL:
+	case VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL:
+		return depthRead | shaderRead;
+	case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL:
+	case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL:
+		return depthRead | depthWrite | shaderRead;
 	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-		return VK_ACCESS_SHADER_READ_BIT;
+		return shaderRead;
 	default:
 		return 0;
 	}
 }
 
-VkPipelineStageFlags VulkanCommandBuffer::GetPipelineStage(VkImageLayout layout)
+VkPipelineStageFlags VulkanCommandBuffer::GetPipelineStage(VkImageLayout layout, VkQueueFlags queueFlags)
 {
+	const bool bGraphics = (queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0;
+	const VkPipelineStageFlags depthStages = bGraphics ?
+		VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT |
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : 0u;
+	const VkPipelineStageFlags shaderStages = GetShaderPipelineStages(queueFlags);
+
+	// An unavailable operation contributes no accesses on this queue. Its layout
+	// transition still needs a valid scope; cross-queue handoff remains explicit.
 	switch (layout)
 	{
 	case VK_IMAGE_LAYOUT_UNDEFINED:
@@ -1007,9 +1129,19 @@ VkPipelineStageFlags VulkanCommandBuffer::GetPipelineStage(VkImageLayout layout)
 	case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
 		return VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-		return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		return bGraphics ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+	case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+	case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL:
+	case VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL:
+		return depthStages ? depthStages : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+	case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
+	case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL:
+	case VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL:
+	case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL:
+	case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL:
+		return (depthStages | shaderStages) ? (depthStages | shaderStages) : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-		return VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+		return shaderStages ? shaderStages : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 	default:
 		return VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 	}
@@ -1017,10 +1149,7 @@ VkPipelineStageFlags VulkanCommandBuffer::GetPipelineStage(VkImageLayout layout)
 
 void VulkanCommandBuffer::MemoryBarrier(VkAccessFlags srcAccess, VkAccessFlags dstAccess)
 {
-	const uint32_t queueFamilyIndex = m_commandPool->GetQueueFamilyIndex();
-	const auto& queueFamilies = m_device->GetQueueFamilies();
-	const VkPipelineStageFlags shaderStages =
-		GetShaderPipelineStages(queueFamilies.GetFlags(queueFamilyIndex));
+	const VkPipelineStageFlags shaderStages = GetShaderPipelineStages(GetQueueFlags());
 
 	auto resolvePipelineStages = [shaderStages](VkAccessFlags access, bool bSource)
 		{
@@ -1088,6 +1217,117 @@ void VulkanCommandBuffer::MemoryBarrier(VkAccessFlags srcAccess, VkAccessFlags d
 	m_gpuCost += 1;
 }
 
+void VulkanCommandBuffer::ImageMemoryBarrier(RHI::RHITexturePtr image, RHI::EImageLayout newLayout, bool bComputeSampling)
+{
+	auto range = image->m_vulkan.m_imageView->m_subresourceRange;
+	// Depth and stencil layouts remain coupled; separateDepthStencilLayouts is not enabled.
+	range.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(static_cast<VkFormat>(image->GetFormat()));
+	TransitionImage(image, range, newLayout, bComputeSampling);
+}
+
+void VulkanCommandBuffer::TransitionImage(const RHI::RHITexturePtr& texture, const VkImageSubresourceRange& range,
+	RHI::EImageLayout newLayout, bool bComputeSampling)
+{
+	const auto image = texture->m_vulkan.m_image;
+	auto& state = m_imageBarriers[*image];
+	if (!state.m_texture)
+	{
+		// Published images start in their default layout; command lists restore it before completion.
+		state.m_texture = texture;
+		state.m_layout = texture->GetDefaultLayout();
+	}
+	const uint32_t mips = image->m_mipLevels;
+	const bool bWholeImage = range.baseMipLevel == 0 && range.levelCount == mips &&
+		range.baseArrayLayer == 0 && range.layerCount == image->m_arrayLayers;
+	auto& layouts = state.m_subresourceLayouts;
+	if (layouts.IsEmpty())
+	{
+		if (bWholeImage || state.m_layout == newLayout)
+		{
+			ImageMemoryBarrier(image, range, state.m_layout, newLayout, bComputeSampling);
+			state.m_layout = newLayout;
+			return;
+		}
+		layouts.Resize(mips * image->m_arrayLayers);
+		std::fill(layouts.begin(), layouts.end(), state.m_layout);
+	}
+
+	const uint32_t endMip = range.baseMipLevel + range.levelCount;
+	const uint32_t endLayer = range.baseArrayLayer + range.layerCount;
+	for (uint32_t layer = range.baseArrayLayer; layer < endLayer;)
+	{
+		// Identical rows share a barrier, including all six faces of a uniform cubemap.
+		uint32_t layerCount = 1;
+		const auto* row = layouts.GetData() + layer * mips + range.baseMipLevel;
+		while (layer + layerCount < endLayer && std::equal(row, row + range.levelCount,
+			layouts.GetData() + (layer + layerCount) * mips + range.baseMipLevel))
+		{
+			++layerCount;
+		}
+		for (uint32_t mip = range.baseMipLevel; mip < endMip;)
+		{
+			const auto oldLayout = layouts[layer * mips + mip];
+			uint32_t mipCount = 1;
+			while (mip + mipCount < endMip && layouts[layer * mips + mip + mipCount] == oldLayout)
+			{
+				++mipCount;
+			}
+			const VkImageSubresourceRange transition{ range.aspectMask, mip, mipCount, layer, layerCount };
+			ImageMemoryBarrier(image, transition, oldLayout, newLayout, bComputeSampling);
+			for (uint32_t rowIndex = layer; rowIndex < layer + layerCount; ++rowIndex)
+			{
+				std::fill_n(layouts.GetData() + rowIndex * mips + mip, mipCount, newLayout);
+			}
+			mip += mipCount;
+		}
+		layer += layerCount;
+	}
+	if (bWholeImage)
+	{
+		state.m_layout = newLayout;
+		layouts.Clear(false);
+	}
+}
+
+void VulkanCommandBuffer::RestoreImageBarriers()
+{
+	for (const auto& entry : m_imageBarriers)
+	{
+		const auto& texture = entry.Second()->m_texture;
+		const auto image = texture->m_vulkan.m_image;
+		const VkImageSubresourceRange range{ VulkanApi::ComputeAspectFlagsForFormat(image->m_format),
+			0, image->m_mipLevels, 0, image->m_arrayLayers };
+		TransitionImage(texture, range, texture->GetDefaultLayout());
+	}
+	m_imageBarriers.Clear();
+}
+
+void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, const VkImageSubresourceRange& range,
+	RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout, bool bComputeSampling)
+{
+	const bool bComputeOld = oldLayout == RHI::EImageLayout::ComputeRead || oldLayout == RHI::EImageLayout::ComputeWrite;
+	const bool bComputeNew = newLayout == RHI::EImageLayout::ComputeRead || newLayout == RHI::EImageLayout::ComputeWrite;
+	const auto oldVkLayout = bComputeOld ? VK_IMAGE_LAYOUT_GENERAL : static_cast<VkImageLayout>(oldLayout);
+	const auto newVkLayout = bComputeNew ? VK_IMAGE_LAYOUT_GENERAL : static_cast<VkImageLayout>(newLayout);
+	const auto queueFlags = GetQueueFlags();
+	const VkAccessFlags srcAccess = bComputeOld
+		? (oldLayout == RHI::EImageLayout::ComputeWrite ? VK_ACCESS_SHADER_WRITE_BIT : VK_ACCESS_SHADER_READ_BIT)
+		: GetAccessFlags(oldVkLayout, queueFlags);
+	// Clears, copies and attachment writes still need a dependency in the same layout.
+	constexpr VkAccessFlags writes = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+		VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	if (!bComputeOld && !bComputeNew && !bComputeSampling && oldLayout == newLayout && !(srcAccess & writes))
+	{
+		return;
+	}
+	const VkAccessFlags dstAccess = bComputeSampling ? VK_ACCESS_SHADER_READ_BIT : bComputeNew
+		? (newLayout == RHI::EImageLayout::ComputeWrite ? VK_ACCESS_SHADER_WRITE_BIT : VK_ACCESS_SHADER_READ_BIT)
+		: GetAccessFlags(newVkLayout, queueFlags);
+	const auto srcStage = bComputeOld ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : GetPipelineStage(oldVkLayout, queueFlags);
+	const auto dstStage = bComputeNew || bComputeSampling ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : GetPipelineStage(newVkLayout, queueFlags);
+	ImageMemoryBarrier(image, range, oldVkLayout, newVkLayout, srcAccess, dstAccess, srcStage, dstStage);
+}
+
 void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image,
 	VkFormat format,
 	VkImageLayout oldLayout,
@@ -1099,16 +1339,26 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image,
 	uint32_t srcQueueFamilyIndex,
 	uint32_t dstQueueFamilyIndex)
 {
+	auto range = image->m_subresourceRange;
+	range.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(format);
+	m_rhiDependecies.Insert(image);
+	ImageMemoryBarrier(image->GetImage(), range, oldLayout, newLayout, srcAccess, dstAccess,
+		srcStage, dstStage, srcQueueFamilyIndex, dstQueueFamilyIndex);
+}
+
+void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, const VkImageSubresourceRange& range,
+	VkImageLayout oldLayout, VkImageLayout newLayout, VkAccessFlags srcAccess, VkAccessFlags dstAccess,
+	VkPipelineStageFlags srcStage, VkPipelineStageFlags dstStage,
+	uint32_t srcQueueFamilyIndex, uint32_t dstQueueFamilyIndex)
+{
 	VkImageMemoryBarrier barrier{};
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 	barrier.oldLayout = oldLayout;
 	barrier.newLayout = newLayout;
 	barrier.srcQueueFamilyIndex = srcQueueFamilyIndex;
 	barrier.dstQueueFamilyIndex = dstQueueFamilyIndex;
-	barrier.image = *image->GetImage();
-
-	barrier.subresourceRange = image->m_subresourceRange;
-	barrier.subresourceRange.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(image->m_format);
+	barrier.image = *image;
+	barrier.subresourceRange = range;
 
 	barrier.srcAccessMask = srcAccess;
 	barrier.dstAccessMask = dstAccess;
@@ -1130,54 +1380,17 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image,
 
 void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
 {
-	if (oldLayout == newLayout)
-	{
-		return;
-	}
-
+	auto range = image->m_subresourceRange;
+	range.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(format);
 	m_rhiDependecies.Insert(image);
-
-	return ImageMemoryBarrier(image->GetImage(), format, oldLayout, newLayout);
+	ImageMemoryBarrier(image->GetImage(), range,
+		static_cast<RHI::EImageLayout>(oldLayout), static_cast<RHI::EImageLayout>(newLayout));
 }
 
 void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
 {
-	if (oldLayout == newLayout)
-	{
-		return;
-	}
-
-	VkImageMemoryBarrier barrier{};
-	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-	barrier.oldLayout = oldLayout;
-	barrier.newLayout = newLayout;
-	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrier.image = *image;
-
-	barrier.subresourceRange.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(format);
-	barrier.subresourceRange.baseMipLevel = 0;
-	barrier.subresourceRange.levelCount = image->m_mipLevels;
-	barrier.subresourceRange.baseArrayLayer = 0;
-	barrier.subresourceRange.layerCount = image->m_arrayLayers;
-
-	VkPipelineStageFlags sourceStage = GetPipelineStage(oldLayout);
-	VkPipelineStageFlags destinationStage = GetPipelineStage(newLayout);
-
-	barrier.srcAccessMask = GetAccessFlags(oldLayout);
-	barrier.dstAccessMask = GetAccessFlags(newLayout);
-
-	vkCmdPipelineBarrier(
-		m_commandBuffer,
-		sourceStage, destinationStage,
-		0,
-		0, nullptr,
-		0, nullptr,
-		1, &barrier
-	);
-
-	m_rhiDependecies.Insert(image);
-
-	m_numRecordedCommands++;
-	m_gpuCost += 1;
+	const VkImageSubresourceRange range{ VulkanApi::ComputeAspectFlagsForFormat(format),
+		0, image->m_mipLevels, 0, image->m_arrayLayers };
+	ImageMemoryBarrier(image, range,
+		static_cast<RHI::EImageLayout>(oldLayout), static_cast<RHI::EImageLayout>(newLayout));
 }

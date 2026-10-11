@@ -49,6 +49,13 @@ namespace SailorEditor.Utility
             var args = new ItemChangedEventArgs<T>((T)sender, e.PropertyName);
             this.ItemChanged?.Invoke(this, args);
         }
+
+        protected override void ClearItems()
+        {
+            foreach (var item in this)
+                item.PropertyChanged -= ItemPropertyChanged;
+            base.ClearItems();
+        }
     }
 
     internal interface ICollectionItemPropertyChanged<T>

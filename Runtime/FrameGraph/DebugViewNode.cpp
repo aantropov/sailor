@@ -7,13 +7,9 @@ using namespace Sailor;
 using namespace Sailor::Framegraph;
 using namespace Sailor::RHI;
 
-#ifndef _SAILOR_IMPORT_
-const char* DebugViewNode::m_name = "DebugView";
-#endif
-
 Tasks::TaskPtr<void, void> DebugViewNode::Prepare(
 	RHIFrameGraphPtr,
-	const RHISceneViewSnapshot&)
+	RHISceneViewSnapshot&)
 {
 	EnsurePasses();
 	for (auto& pass : m_debugPasses)
@@ -35,6 +31,10 @@ void DebugViewNode::Process(
 
 	const ESceneViewRenderMode mode = sceneView.m_renderMode;
 	PostProcessNode* debugPass = GetDebugPass(mode);
+	if (debugPass)
+	{
+		debugPass->PreloadShader();
+	}
 	if (debugPass && debugPass->IsShaderReady())
 	{
 		debugPass->Process(
@@ -73,14 +73,17 @@ void DebugViewNode::Clear()
 
 void DebugViewNode::EnsurePasses()
 {
-	if (m_litPass)
+	if (m_litPass && m_appliedParameterRevision == m_parameterRevision)
 	{
 		return;
 	}
 
-	m_litPass = TRefPtr<BlitNode>::Make();
-	CopyResource(*m_litPass, "src", "src");
-	CopyResource(*m_litPass, "dst", "dst");
+	if (!m_litPass)
+	{
+		m_litPass = TRefPtr<BlitNode>::Make();
+	}
+	CopyResource(*m_litPass, "src"_h, "src"_h);
+	CopyResource(*m_litPass, "dst"_h, "dst"_h);
 
 	constexpr std::array modes{
 		ESceneViewRenderMode::AmbientOcclusion,
@@ -90,21 +93,25 @@ void DebugViewNode::EnsurePasses()
 	for (size_t index = 0u; index < modes.size(); ++index)
 	{
 		auto& pass = m_debugPasses[index];
-		pass = TRefPtr<PostProcessNode>::Make();
-		pass->SetString("shader", GetString("shader"));
+		if (!pass)
+		{
+			pass = TRefPtr<PostProcessNode>::Make();
+		}
+		pass->SetString("shader"_h, GetString("shader"_h));
 		pass->SetString(
-			"defines",
+			"defines"_h,
 			GetSceneViewRenderModeShaderDefine(modes[index]));
-		CopyResource(*pass, "color", "dst");
-		CopyResource(*pass, "ldrSceneSampler", "src");
-		CopyResource(*pass, "linearDepthSampler", "linearDepth");
+		CopyResource(*pass, "color"_h, "dst"_h);
+		CopyResource(*pass, "ldrSceneSampler"_h, "src"_h);
+		CopyResource(*pass, "linearDepthSampler"_h, "linearDepth"_h);
 	}
+	m_appliedParameterRevision = m_parameterRevision;
 }
 
 void DebugViewNode::CopyResource(
 	BaseFrameGraphNode& destination,
-	const std::string& destinationName,
-	const std::string& sourceName)
+	StringHash destinationName,
+	StringHash sourceName)
 {
 	if (m_resourceParams.ContainsKey(sourceName))
 	{

@@ -15,6 +15,11 @@ void AnimationAssetInfo::Deserialize(const YAML::Node& inData)
 	DeserializeReflectedAssetInfo(*this, inData);
 }
 
+void AnimationAssetInfo::CopyMetadata(const AssetInfo& source)
+{
+	CopyReflectedAssetInfo(*this, static_cast<const AnimationAssetInfo&>(source));
+}
+
 IAssetInfoHandler* AnimationAssetInfo::GetHandler()
 {
 	return App::GetSubmodule<AnimationAssetInfoHandler>();
@@ -22,10 +27,7 @@ IAssetInfoHandler* AnimationAssetInfo::GetHandler()
 
 AnimationAssetInfoHandler::AnimationAssetInfoHandler(AssetRegistry* assetRegistry)
 {
-	m_supportedExtensions.Emplace("gltf");
-	m_supportedExtensions.Emplace("glb");
-	m_supportedExtensions.Emplace("anim");
-	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
+	assetRegistry->RegisterAssetInfoHandler(GetAssetInfoExtensions<AnimationAssetInfo>(), this);
 }
 
 void AnimationAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const

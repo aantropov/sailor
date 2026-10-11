@@ -1,6 +1,9 @@
 #pragma once
+#include "Containers/Hash.h"
 #include "Memory.h"
 #include "WeakPtr.hpp"
+#include <optional>
+#include <utility>
 
 namespace Sailor::Memory
 {
@@ -72,28 +75,51 @@ namespace Sailor::Memory
 	public:
 
 		TManagedMemory() = default;
-		TManagedMemory(const TMemoryPtr<T>& pRaw, TWeakPtr<TAllocator> allocator)
-		{
-			m_pRawPtr = pRaw;
-			m_pAllocator = allocator;
-		}
+		TManagedMemory(const TMemoryPtr<T>& pRaw, TWeakPtr<TAllocator> allocator) :
+			m_pAllocator(std::move(allocator)),
+			m_pRawPtr(pRaw)
+		{}
 
-		TManagedMemory(const TManagedMemory&) = default;
-		TManagedMemory& operator=(const TManagedMemory&) = default;
+		TManagedMemory(const TManagedMemory&) = delete;
+		TManagedMemory& operator=(const TManagedMemory&) = delete;
+
+		TManagedMemory(TManagedMemory&& rhs) noexcept :
+			m_pAllocator(std::move(rhs.m_pAllocator)),
+			m_pRawPtr(std::exchange(rhs.m_pRawPtr, std::nullopt))
+		{}
+
+		TManagedMemory& operator=(TManagedMemory&& rhs) noexcept
+		{
+			if (this != &rhs)
+			{
+				Free();
+				m_pAllocator = std::move(rhs.m_pAllocator);
+				m_pRawPtr = std::exchange(rhs.m_pRawPtr, std::nullopt);
+			}
+			return *this;
+		}
 
 		const TMemoryPtr<T>& Get() const noexcept { return *m_pRawPtr; }
 		TMemoryPtr<T>& Get() { return *m_pRawPtr; }
 
 		~TManagedMemory()
 		{
-			if (m_pRawPtr.has_value() && m_pAllocator)
-			{
-				auto allocator = m_pAllocator.Lock();
-				allocator->Free(*m_pRawPtr);
-			}
+			Free();
 		}
 
-	protected:
+	private:
+
+		void Free()
+		{
+			if (m_pRawPtr.has_value())
+			{
+				if (auto allocator = m_pAllocator.TryLock())
+				{
+					allocator->Free(*m_pRawPtr);
+				}
+				m_pRawPtr.reset();
+			}
+		}
 
 		TWeakPtr<TAllocator> m_pAllocator{};
 		std::optional<TMemoryPtr<T>> m_pRawPtr{};

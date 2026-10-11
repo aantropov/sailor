@@ -1,6 +1,7 @@
 #pragma once
 #include "Sailor.h"
 #include "Components/Tests/TestCaseComponent.h"
+#include "FrameGraph/CPUPathTracerNode.h"
 
 namespace Sailor
 {
@@ -43,8 +44,7 @@ namespace Sailor
 
 		SAILOR_API bool AttachProxies();
 		SAILOR_API bool ConfigurePathTracer();
-		SAILOR_API bool CaptureOutput(std::string& outError) const;
-		SAILOR_API virtual const char* GetTestType() const override { return "PathTracer"; }
+		SAILOR_API virtual const char* GetTestType() const override { return "PathTracerCaptureSmoke"; }
 
 		std::string m_outputName = "path-trace";
 		uint32_t m_captureAfterFrames = 240;
@@ -59,7 +59,7 @@ namespace Sailor
 		float m_rayBiasScale = 1.0f;
 		bool m_bPendingPathTracerConfig = false;
 		bool m_bProxiesAttached = false;
-		bool m_bCaptureRequested = false;
+		Framegraph::CPUPathTracerNode::CaptureTask m_capture;
 		uint32_t m_framesSinceStart = 0;
 		uint32_t m_framesAfterCaptureRequest = 0;
 	};

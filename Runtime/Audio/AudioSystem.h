@@ -16,6 +16,7 @@ namespace Sailor
 		bool IsInitialized() const;
 		bool IsUsingNullDevice() const;
 
+		// Accepts an asynchronous request. A failed backend creation invalidates its ID.
 		bool CreateVoice(const AudioClipPtr& clip, AudioVoiceId& outVoiceId);
 		void DestroyVoice(AudioVoiceId voiceId);
 		bool SetVoiceSettings(AudioVoiceId voiceId, const AudioVoiceSettings& settings);
@@ -24,6 +25,8 @@ namespace Sailor
 		bool StopVoice(AudioVoiceId voiceId);
 		bool IsVoicePlaying(AudioVoiceId voiceId) const;
 		uint64_t GetVoiceClipRevision(AudioVoiceId voiceId) const;
+		// Last applied backend settings; false while creation is pending or after failure.
+		bool GetVoiceSettings(AudioVoiceId voiceId, AudioVoiceSettings& outSettings) const;
 		bool GetVoiceTransform(AudioVoiceId voiceId, AudioTransformState& outTransform) const;
 		size_t GetNumVoices() const;
 

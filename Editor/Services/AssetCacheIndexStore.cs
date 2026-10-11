@@ -205,11 +205,9 @@ internal sealed class AssetCacheIndexStore
         var fields = ReadStrictFields(RequireMapping(node, fieldName), fieldName);
         RequireExactFields(
             fields,
-            ["modificationTimeNanoseconds", "fileSize", "contentHash"],
+            ["modificationTimeNanoseconds"],
             fieldName);
         _ = RequireScalar(fields, "modificationTimeNanoseconds");
-        _ = RequireScalar(fields, "fileSize");
-        _ = RequireScalar(fields, "contentHash");
     }
 
     static YamlDocument LoadSingleDocument(string yaml)

@@ -1,20 +1,15 @@
+#include "EditorInterop.h"
+#include "EditorScene.h"
 #include "Sailor.h"
 
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/FileId.h"
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
-#include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "Core/Reflection.h"
-#include "Engine/EngineLoop.h"
 #include "Engine/World.h"
 #include "Engine/GameObject.h"
 #include "Engine/InstanceId.h"
-#include "Components/AnimatorComponent.h"
-#include "Editor/EditorViewportController.h"
-#include "Editor/GlobalIlluminationBakeController.h"
-#include "Editor/GlobalIlluminationEditorState.h"
-#include "ECS/GlobalIlluminationECS.h"
 #include "Submodules/Editor.h"
 #include "Workspace/WorkspaceModuleManager.h"
 #include "Workspace/WorkspaceCacheContract.h"
@@ -29,30 +24,13 @@ using namespace Sailor;
 
 namespace
 {
-	constexpr uint32_t c_selectionMutationRevisionKind = 1;
-	constexpr uint32_t c_objectMutationRevisionKind = 2;
-
 	void LogEditorTypeSerializationFailure(const char* message) noexcept
 	{
 		SAILOR_LOG_ERROR("Failed to serialize editor type metadata: %s", message);
 	}
 
-	GlobalIlluminationECS* ResolveEditorGlobalIllumination(
-		std::string* outDiagnostic = nullptr)
-	{
-		auto* editor = App::GetSubmodule<Editor>();
-		auto* world = editor ? editor->GetWorld() : nullptr;
-		auto* globalIllumination = world
-			? world->GetECS<GlobalIlluminationECS>()
-			: nullptr;
-		if (!globalIllumination && outDiagnostic)
-		{
-			*outDiagnostic = "Global Illumination ECS is unavailable";
-		}
-		return globalIllumination;
-	}
 
-	bool TryParseOptionalParent(const std::string& value, InstanceId& outParent)
+	bool TryParseOptionalParent(std::string_view value, InstanceId& outParent)
 	{
 		outParent = InstanceId::Invalid;
 		if (value.empty())
@@ -64,7 +42,7 @@ namespace
 		return outParent.IsGameObjectId();
 	}
 
-	bool TryParseOptionalGameObjectId(const std::string& value, InstanceId& outInstanceId)
+	bool TryParseOptionalGameObjectId(std::string_view value, InstanceId& outInstanceId)
 	{
 		outInstanceId = InstanceId::Invalid;
 		if (value.empty())
@@ -76,7 +54,7 @@ namespace
 		return outInstanceId.IsGameObjectId();
 	}
 
-	bool TryParseOptionalComponentId(const std::string& value, InstanceId& outInstanceId)
+	bool TryParseOptionalComponentId(std::string_view value, InstanceId& outInstanceId)
 	{
 		outInstanceId = InstanceId::Invalid;
 		if (value.empty())
@@ -89,108 +67,18 @@ namespace
 			outInstanceId.GameObjectId() != InstanceId::Invalid;
 	}
 
-	void SetInteropString(const std::string& value, char** outValue)
+	void SetInteropString(std::string_view value, char** outValue)
 	{
 		auto result = TUniquePtr<char[]>::Make(value.size() + 1);
-		memcpy(result.GetRawPtr(), value.c_str(), value.size());
+		std::copy(value.begin(), value.end(), result.GetRawPtr());
 		result[value.size()] = '\0';
 		outValue[0] = result.Release();
 	}
-
-	bool TryParseViewportToolState(
-		uint32_t operationValue,
-		uint32_t spaceValue,
-		EditorViewport::ETransformOperation& outOperation,
-		EditorViewport::ETransformSpace& outSpace)
-	{
-		switch (operationValue)
-		{
-		case 1:
-			outOperation = EditorViewport::ETransformOperation::Select;
-			break;
-		case 2:
-			outOperation = EditorViewport::ETransformOperation::Translate;
-			break;
-		case 3:
-			outOperation = EditorViewport::ETransformOperation::Rotate;
-			break;
-		case 4:
-			outOperation = EditorViewport::ETransformOperation::Scale;
-			break;
-		default:
-			return false;
-		}
-
-		switch (spaceValue)
-		{
-		case 1:
-			outSpace = EditorViewport::ETransformSpace::World;
-			break;
-		case 2:
-			outSpace = EditorViewport::ETransformSpace::Local;
-			break;
-		default:
-			return false;
-		}
-
-		return true;
-	}
-
-	uint32_t ToInteropOperation(EditorViewport::ETransformOperation operation)
-	{
-		switch (operation)
-		{
-		case EditorViewport::ETransformOperation::Select: return 1;
-		case EditorViewport::ETransformOperation::Translate: return 2;
-		case EditorViewport::ETransformOperation::Rotate: return 3;
-		case EditorViewport::ETransformOperation::Scale: return 4;
-		default: return 0;
-		}
-	}
-
-	uint32_t ToInteropSpace(EditorViewport::ETransformSpace space)
-	{
-		switch (space)
-		{
-		case EditorViewport::ETransformSpace::World: return 1;
-		case EditorViewport::ETransformSpace::Local: return 2;
-		default: return 0;
-		}
-	}
-
-	AnimatorComponent* FindEditorAnimator(
-		Editor* editor,
-		const InstanceId& componentInstanceId)
-	{
-		if (!editor || !editor->GetWorld() ||
-			componentInstanceId.ComponentId() == InstanceId::Invalid)
-		{
-			return nullptr;
-		}
-
-		auto gameObject = editor->GetWorld()
-			->GetObjectByInstanceId(componentInstanceId.GameObjectId())
-			.DynamicCast<GameObject>();
-		if (!gameObject)
-		{
-			return nullptr;
-		}
-
-		for (auto component : gameObject->GetComponents())
-		{
-			if (component &&
-				component->GetInstanceId() == componentInstanceId)
-			{
-				return component.DynamicCast<AnimatorComponent>().GetRawPtr();
-			}
-		}
-		return nullptr;
-	}
 }
 
-uint32_t App::PullEditorMessages(char** messages, uint32_t num)
+uint32_t EditorRuntime::PullEditorMessages(char** messages, uint32_t num)
 {
-	auto editor = GetSubmodule<Editor>();
+	auto editor = App::GetSubmodule<Editor>();
 	if (!editor || !messages)
 	{
 		return 0;
@@ -220,132 +108,7 @@ uint32_t App::PullEditorMessages(char** messages, uint32_t num)
 	return numMsg;
 }
 
-uint32_t App::PullEditorViewportEvents(char** events, uint32_t num)
-{
-	if (!events || num == 0)
-	{
-		return 0;
-	}
-
-	return ExecuteOnEngineMainThread<uint32_t>(0, [events, num]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return 0u;
-			}
-
-			uint32_t numEvents = 0;
-			std::string event;
-			while (numEvents < num && editor->PullViewportEvent(event))
-			{
-				SetInteropString(event, &events[numEvents]);
-				++numEvents;
-			}
-
-			return numEvents;
-		});
-}
-
-bool App::TraceViewportRay(
-	uint64_t viewportId,
-	float normalizedX,
-	float normalizedY,
-	float& outWorldX,
-	float& outWorldY,
-	float& outWorldZ)
-{
-	outWorldX = 0.0f;
-	outWorldY = 0.0f;
-	outWorldZ = 0.0f;
-
-	return ExecuteOnEngineMainThread<bool>(
-		false,
-		[viewportId,
-			normalizedX,
-			normalizedY,
-			&outWorldX,
-			&outWorldY,
-			&outWorldZ]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			glm::vec3 worldPosition{};
-			if (!editor ||
-				!editor->TraceViewportRay(
-					viewportId,
-					normalizedX,
-					normalizedY,
-					worldPosition))
-			{
-				return false;
-			}
-
-			outWorldX = worldPosition.x;
-			outWorldY = worldPosition.y;
-			outWorldZ = worldPosition.z;
-			return true;
-		});
-}
-
-uint64_t App::GetEditorManagedMutationRevision(uint32_t kind, const char* strInstanceId)
-{
-	const std::string instanceId = strInstanceId ? strInstanceId : std::string{};
-
-	return ExecuteOnEngineMainThread<uint64_t>(0, [kind, instanceId]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return uint64_t{ 0 };
-			}
-
-			if (kind == c_selectionMutationRevisionKind)
-			{
-				return editor->GetManagedSelectionMutationRevision();
-			}
-
-			if (kind == c_objectMutationRevisionKind && !instanceId.empty())
-			{
-				const InstanceId parsedInstanceId(instanceId);
-				return editor->GetManagedObjectMutationRevision(parsedInstanceId);
-			}
-
-			return uint64_t{ 0 };
-		});
-}
-
-uint32_t App::SerializeCurrentWorld(char** yamlNode)
-{
-	if (!yamlNode)
-	{
-		return 0;
-	}
-
-	yamlNode[0] = nullptr;
-	return ExecuteOnEngineMainThread<uint32_t>(0, [yamlNode]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return 0u;
-			}
-
-			auto node = editor->SerializeWorld();
-			if (node.IsNull())
-			{
-				return 0u;
-			}
-
-			const std::string serializedNode = YAML::Dump(node);
-			const size_t length = serializedNode.length();
-			yamlNode[0] = new char[length + 1];
-			memcpy(yamlNode[0], serializedNode.c_str(), length);
-			yamlNode[0][length] = '\0';
-			return static_cast<uint32_t>(length);
-		});
-}
-
-uint32_t App::SerializeEngineTypes(char** yamlNode)
+uint32_t EditorRuntime::SerializeEngineTypes(char** yamlNode)
 {
 	if (!yamlNode)
 	{
@@ -358,7 +121,7 @@ uint32_t App::SerializeEngineTypes(char** yamlNode)
 		std::string serializedNode = YAML::Dump(node);
 		size_t length = serializedNode.length();
 
-		std::filesystem::create_directories(AssetRegistry::GetCacheFolder());
+		std::filesystem::create_directories(Workspace::PathFromUtf8(AssetRegistry::GetCacheFolder()));
 		AssetRegistry::WriteTextFile(AssetRegistry::GetCacheFolder() + "EngineTypes.yaml", serializedNode);
 
 		yamlNode[0] = new char[length + 1];
@@ -372,7 +135,7 @@ uint32_t App::SerializeEngineTypes(char** yamlNode)
 	return 0;
 }
 
-uint32_t App::SerializeEditorTypes(char** yamlNode)
+uint32_t EditorRuntime::SerializeEditorTypes(char** yamlNode)
 {
 	if (!yamlNode)
 	{
@@ -381,11 +144,11 @@ uint32_t App::SerializeEditorTypes(char** yamlNode)
 
 	yamlNode[0] = nullptr;
 	YAML::Node editorTypes = Reflection::ExportEngineTypes();
-	if (App* app = GetInstance(); app && app->m_pWorkspaceModuleManager)
+	if (const auto* module = App::GetWorkspaceModuleManager())
 	{
 		YAML::Node combinedTypes;
 		std::string mergeError;
-		if (!app->m_pWorkspaceModuleManager->BuildEditorTypeMetadata(
+		if (!module->BuildEditorTypeMetadata(
 				editorTypes,
 				combinedTypes,
 				mergeError))
@@ -419,24 +182,26 @@ uint32_t App::SerializeEditorTypes(char** yamlNode)
 	yamlNode[0] = serializedOutput.Release();
 
 	return static_cast<uint32_t>(length);
-
-	yamlNode[0] = nullptr;
-	return 0;
 }
 
-uint32_t App::SerializeWorkspaceCacheIdentity(char** yamlNode)
+uint32_t EditorRuntime::SerializeWorkspaceCacheIdentity(char** yamlNode)
 {
-	if (!yamlNode || !GetInstance())
+	if (!yamlNode || !App::GetInstance())
 	{
 		return 0;
 	}
 
 	yamlNode[0] = nullptr;
-	const auto identity = Workspace::MakeWorkspaceCacheIdentity(
+	auto identity = Workspace::MakeWorkspaceCacheIdentity(
 		"editor-types",
 		"editor-types-v1",
 		1,
-		GetWorkspaceContext());
+		App::GetWorkspaceContext());
+	const auto* module = App::GetWorkspaceModuleManager();
+	if (module && module->IsRegistered())
+	{
+		identity.m_producerIdentity += ";module-types=" + std::to_string(module->GetTypeCatalogHash());
+	}
 
 	YAML::Node identityNode;
 	identityNode["workspaceIdentity"] = identity.m_workspaceId;
@@ -458,12 +223,9 @@ uint32_t App::SerializeWorkspaceCacheIdentity(char** yamlNode)
 	yamlNode[0] = serializedOutput.Release();
 
 	return static_cast<uint32_t>(length);
-
-	yamlNode[0] = nullptr;
-	return 0;
 }
 
-bool App::LoadEditorWorld(const char* strFileId)
+bool EditorRuntime::PreviewEditorAudioAsset(const char* strFileId)
 {
 	if (!strFileId || strFileId[0] == '\0')
 	{
@@ -471,109 +233,9 @@ bool App::LoadEditorWorld(const char* strFileId)
 	}
 
 	const std::string fileIdValue = strFileId;
-	return ExecuteOnEngineMainThread<bool>(false, [fileIdValue]()
+	return App::ExecuteOnEngineMainThread<bool>(false, [fileIdValue]()
 		{
-			auto editor = GetSubmodule<Editor>();
-			auto engineLoop = GetSubmodule<EngineLoop>();
-			auto assetRegistry = GetSubmodule<AssetRegistry>();
-			if (!editor || !engineLoop || !assetRegistry)
-			{
-				return false;
-			}
-
-			const FileId fileId(fileIdValue);
-			auto worldPrefab = assetRegistry->LoadAssetFromFile<WorldPrefab>(fileId);
-			if (!worldPrefab || !worldPrefab->IsReady())
-			{
-				return false;
-			}
-			if (editor->IsSimulationEnabled() &&
-				!editor->SetSimulationEnabled(false))
-			{
-				return false;
-			}
-
-			auto oldWorld = editor->GetWorld();
-			auto newWorld = engineLoop->InstantiateWorld(worldPrefab, EngineLoop::EditorWorldMask);
-			if (!newWorld)
-			{
-				return false;
-			}
-
-			editor->SetWorld(newWorld.GetRawPtr());
-			if (oldWorld)
-			{
-				engineLoop->ExitWorld(oldWorld);
-				engineLoop->ProcessPendingWorldExits();
-			}
-
-			return true;
-		});
-}
-
-bool App::CreateEditorWorld()
-{
-	return ExecuteOnEngineMainThread<bool>(false, []()
-		{
-			auto editor = GetSubmodule<Editor>();
-			auto engineLoop = GetSubmodule<EngineLoop>();
-			if (!editor || !engineLoop)
-			{
-				return false;
-			}
-			if (editor->IsSimulationEnabled() &&
-				!editor->SetSimulationEnabled(false))
-			{
-				return false;
-			}
-
-			auto oldWorld = editor->GetWorld();
-			auto newWorld = engineLoop->CreateEmptyWorld("New Scene", EngineLoop::EditorWorldMask);
-			if (!newWorld)
-			{
-				return false;
-			}
-
-			editor->SetWorld(newWorld.GetRawPtr());
-			if (oldWorld)
-			{
-				engineLoop->ExitWorld(oldWorld);
-				engineLoop->ProcessPendingWorldExits();
-			}
-
-			return true;
-		});
-}
-
-bool App::SetEditorSimulationEnabled(bool bEnabled)
-{
-	return ExecuteOnEngineMainThread<bool>(false, [bEnabled]()
-		{
-			auto* editor = GetSubmodule<Editor>();
-			return editor && editor->SetSimulationEnabled(bEnabled);
-		});
-}
-
-bool App::IsEditorSimulationEnabled()
-{
-	return ExecuteOnEngineMainThread<bool>(false, []()
-		{
-			const auto* editor = GetSubmodule<Editor>();
-			return editor && editor->IsSimulationEnabled();
-		});
-}
-
-bool App::PreviewEditorAudioAsset(const char* strFileId)
-{
-	if (!strFileId || strFileId[0] == '\0')
-	{
-		return false;
-	}
-
-	const std::string fileIdValue = strFileId;
-	return ExecuteOnEngineMainThread<bool>(false, [fileIdValue]()
-		{
-			auto* editor = GetSubmodule<Editor>();
+			auto* editor = App::GetSubmodule<Editor>();
 			if (!editor)
 			{
 				return false;
@@ -584,348 +246,37 @@ bool App::PreviewEditorAudioAsset(const char* strFileId)
 		});
 }
 
-bool App::StartEditorGIProbesBake(
-	const EditorGIProbesBakeRequest& request,
-	std::string& outDiagnostic)
+bool EditorRuntime::RequestModelFingerprint(const char* strFileId)
 {
-	return ExecuteOnEngineMainThread<bool>(
-		false,
-		[request, &outDiagnostic]()
-		{
-			auto* editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				outDiagnostic = "the Editor submodule is unavailable";
-				return false;
-			}
-			return editor->StartGIProbesBake(request, outDiagnostic);
-		});
-}
-
-bool App::CancelEditorGIProbesBake(std::string& outDiagnostic)
-{
-	auto* editor = GetSubmodule<Editor>();
-	if (!editor)
-	{
-		outDiagnostic = "the Editor submodule is unavailable";
-		return false;
-	}
-	return editor->CancelGIProbesBake(outDiagnostic);
-}
-
-bool App::GetEditorGIProbesBakeStatus(
-	EditorGIProbesBakeStatus& outStatus)
-{
-	const auto* editor = GetSubmodule<Editor>();
-	if (!editor)
-	{
-		outStatus = {};
-		return false;
-	}
-	outStatus = editor->GetGIProbesBakeStatus();
-	return true;
-}
-
-bool App::SetEditorGISettings(
-	GISettings settings,
-	std::string& outDiagnostic)
-{
-	return ExecuteOnEngineMainThread<bool>(
-		false,
-		[settings = std::move(settings), &outDiagnostic]() mutable
-		{
-			auto* editor = GetSubmodule<Editor>();
-			auto* world = editor ? editor->GetWorld() : nullptr;
-			if (!world)
-			{
-				outDiagnostic = "the current Editor world is unavailable";
-				return false;
-			}
-			return world->SetGISettings(
-				std::move(settings),
-				outDiagnostic);
-		});
-}
-
-bool App::GetEditorGlobalIlluminationState(
-	EditorGlobalIlluminationState& outState)
-{
-	outState = {};
-	return ExecuteOnEngineMainThread<bool>(
-		false,
-		[&outState]()
-		{
-			auto* globalIllumination = ResolveEditorGlobalIllumination();
-			if (!globalIllumination)
-			{
-				return false;
-			}
-			outState.m_maxProbeStatesPerSnapshot =
-				globalIllumination->GetMaxProbeStatesPerSnapshot();
-			outState.m_mode = globalIllumination->GetWorldSettings().m_mode;
-			outState.m_runtimeSettings =
-				globalIllumination->GetWorldSettings().m_runtimeProbes;
-			outState.m_runtimeStatus =
-				globalIllumination->GetRuntimeGIProbesStatus();
-			outState.m_bRuntimePreviewEnabled =
-				globalIllumination->IsRuntimeGIProbesPreviewEnabled();
-			outState.m_runtimeEditorBudget =
-				globalIllumination->GetRuntimeGIProbesEditorBudget();
-			outState.m_bEnabled = globalIllumination->IsEnabled();
-			outState.m_probes = globalIllumination->GetProbeStates();
-			outState.m_diagnostic = globalIllumination->GetDiagnostic();
-			outState.m_compositionCount =
-				globalIllumination->GetCompositionCount();
-			outState.m_rejectedCompositionCount =
-				globalIllumination->GetRejectedCompositionCount();
-			return true;
-		});
-}
-
-bool App::SetEditorRuntimeGIProbesPreviewEnabled(
-	bool bEnabled,
-	std::string& outDiagnostic)
-{
-	return ExecuteOnEngineMainThread<bool>(
-		false,
-		[bEnabled, &outDiagnostic]()
-		{
-			auto* globalIllumination = ResolveEditorGlobalIllumination(
-				&outDiagnostic);
-			if (!globalIllumination)
-			{
-				return false;
-			}
-			return globalIllumination->SetRuntimeGIProbesPreviewEnabled(
-				bEnabled,
-				outDiagnostic);
-		});
-}
-
-bool App::SetEditorRuntimeGIProbesPaused(
-	bool bPaused,
-	std::string& outDiagnostic)
-{
-	return ExecuteOnEngineMainThread<bool>(
-		false,
-		[bPaused, &outDiagnostic]()
-		{
-			auto* globalIllumination = ResolveEditorGlobalIllumination(
-				&outDiagnostic);
-			if (!globalIllumination)
-			{
-				return false;
-			}
-			return globalIllumination->SetRuntimeGIProbesPaused(
-				bPaused,
-				outDiagnostic);
-		});
-}
-
-bool App::SetEditorRuntimeGIProbesBudget(
-	Settings::ERuntimeGIProbesEditorBudget budget,
-	std::string& outDiagnostic)
-{
-	return ExecuteOnEngineMainThread<bool>(
-		false,
-		[budget, &outDiagnostic]()
-		{
-			auto* globalIllumination = ResolveEditorGlobalIllumination(
-				&outDiagnostic);
-			if (!globalIllumination)
-			{
-				return false;
-			}
-			return globalIllumination->SetRuntimeGIProbesEditorBudget(
-				budget,
-				outDiagnostic);
-		});
-}
-
-bool App::RestartEditorRuntimeGIProbes(std::string& outDiagnostic)
-{
-	return ExecuteOnEngineMainThread<bool>(
-		false,
-		[&outDiagnostic]()
-		{
-			auto* globalIllumination = ResolveEditorGlobalIllumination(
-				&outDiagnostic);
-			if (!globalIllumination)
-			{
-				return false;
-			}
-			return globalIllumination->RestartRuntimeGIProbes(outDiagnostic);
-		});
-}
-
-bool App::RebuildEditorRuntimeGIProbesScene(std::string& outDiagnostic)
-{
-	return ExecuteOnEngineMainThread<bool>(
-		false,
-		[&outDiagnostic]()
-		{
-			auto* globalIllumination = ResolveEditorGlobalIllumination(
-				&outDiagnostic);
-			if (!globalIllumination)
-			{
-				return false;
-			}
-			return globalIllumination->RebuildRuntimeGIProbesScene(
-				outDiagnostic);
-		});
-}
-
-bool App::UpdateEditorObject(const char* strInstanceId, const char* strYamlNode)
-{
-	if (!strInstanceId || !strYamlNode)
+	if (!strFileId || !strFileId[0])
 	{
 		return false;
 	}
-
-	const std::string instanceIdValue = strInstanceId;
-	const std::string yamlValue = strYamlNode;
-	return ExecuteOnEngineMainThread<bool>(false, [instanceIdValue, yamlValue]()
+	return App::ExecuteOnEngineMainThread<bool>(false, [value = std::string(strFileId)]()
 		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return false;
-			}
-
-			const InstanceId instanceId(instanceIdValue);
-			return editor->UpdateObject(instanceId, yamlValue);
+			auto* importer = App::GetSubmodule<ModelImporter>();
+			const FileId fileId(value);
+			return importer && fileId && importer->RequestFingerprint(fileId);
 		});
 }
 
-bool App::SetEditorAnimatorParameter(
-	const char* strInstanceId,
-	const char* strName,
-	uint32_t valueKind,
-	float floatValue,
-	int32_t intValue,
-	bool boolValue)
+uint32_t EditorRuntime::GetModelFingerprintStatus(const char* strFileId)
 {
-	if (!strInstanceId || !strName || strName[0] == '\0')
+	if (!strFileId || !strFileId[0])
 	{
-		return false;
+		return static_cast<uint32_t>(ModelImporter::EFingerprintStatus::Unavailable);
 	}
-
-	const std::string instanceIdValue = strInstanceId;
-	const std::string name = strName;
-	return ExecuteOnEngineMainThread<bool>(false,
-		[instanceIdValue, name, valueKind, floatValue, intValue, boolValue]()
+	return App::ExecuteOnEngineMainThread<uint32_t>(static_cast<uint32_t>(ModelImporter::EFingerprintStatus::Unavailable),
+		[value = std::string(strFileId)]()
 		{
-			auto editor = GetSubmodule<Editor>();
-			const InstanceId instanceId(instanceIdValue);
-			auto* animator = FindEditorAnimator(editor, instanceId);
-			if (!animator)
-			{
-				return false;
-			}
-
-			switch (valueKind)
-			{
-			case 1: return animator->SetFloat(name, floatValue);
-			case 2: return animator->SetInt(name, intValue);
-			case 3: return animator->SetBool(name, boolValue);
-			case 4: return animator->SetTrigger(name);
-			case 5: return animator->ResetTrigger(name);
-			default: return false;
-			}
+			auto* importer = App::GetSubmodule<ModelImporter>();
+			const FileId fileId(value);
+			return static_cast<uint32_t>(importer && fileId ? importer->GetFingerprintStatus(fileId) :
+				ModelImporter::EFingerprintStatus::Unavailable);
 		});
 }
 
-bool App::GetEditorAnimatorState(
-	const char* strInstanceId,
-	bool& outHasController,
-	uint64_t& outControllerRevision,
-	uint64_t& outActiveStateId,
-	char** outActiveStateName,
-	float& outActiveStateTime,
-	bool& outTransitioning,
-	uint64_t& outDestinationStateId,
-	char** outDestinationStateName,
-	float& outDestinationStateTime,
-	float& outTransitionAlpha)
-{
-	outHasController = false;
-	outControllerRevision = 0;
-	outActiveStateId = InvalidAnimationControllerNodeId;
-	outActiveStateTime = 0.0f;
-	outTransitioning = false;
-	outDestinationStateId = InvalidAnimationControllerNodeId;
-	outDestinationStateTime = 0.0f;
-	outTransitionAlpha = 0.0f;
-	if (!strInstanceId || !outActiveStateName || !outDestinationStateName)
-	{
-		return false;
-	}
-	outActiveStateName[0] = nullptr;
-	outDestinationStateName[0] = nullptr;
-
-	const std::string instanceIdValue = strInstanceId;
-	return ExecuteOnEngineMainThread<bool>(false,
-		[instanceIdValue,
-			&outHasController,
-			&outControllerRevision,
-			&outActiveStateId,
-			outActiveStateName,
-			&outActiveStateTime,
-			&outTransitioning,
-			&outDestinationStateId,
-			outDestinationStateName,
-			&outDestinationStateTime,
-			&outTransitionAlpha]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			const InstanceId instanceId(instanceIdValue);
-			auto* animator = FindEditorAnimator(editor, instanceId);
-			if (!animator)
-			{
-				return false;
-			}
-
-			const auto& instance = animator->GetData().GetControllerInstance();
-			const auto& controller = instance.GetController();
-			outHasController = controller && instance.IsValid();
-			if (!outHasController)
-			{
-				SetInteropString({}, outActiveStateName);
-				SetInteropString({}, outDestinationStateName);
-				return true;
-			}
-
-			outControllerRevision = controller->GetRevision();
-			const auto& states = controller->GetStates();
-			const uint32_t activeStateIndex = instance.GetActiveStateIndex();
-			if (activeStateIndex < states.Num())
-			{
-				outActiveStateId = states[activeStateIndex].m_id;
-				SetInteropString(states[activeStateIndex].m_name, outActiveStateName);
-			}
-			else
-			{
-				SetInteropString({}, outActiveStateName);
-			}
-			outActiveStateTime = instance.GetActiveStateTime();
-			outTransitioning = instance.IsTransitioning();
-			const uint32_t destinationStateIndex = instance.GetDestinationStateIndex();
-			if (outTransitioning && destinationStateIndex < states.Num())
-			{
-				outDestinationStateId = states[destinationStateIndex].m_id;
-				SetInteropString(states[destinationStateIndex].m_name, outDestinationStateName);
-				outDestinationStateTime = instance.GetDestinationStateTime();
-				outTransitionAlpha = instance.GetTransitionAlpha();
-			}
-			else
-			{
-				SetInteropString({}, outDestinationStateName);
-			}
-			return true;
-		});
-}
-
-bool App::ReparentEditorObject(const char* strInstanceId, const char* strParentInstanceId, bool bKeepWorldTransform)
+bool EditorRuntime::ReparentEditorObject(const char* strInstanceId, const char* strParentInstanceId, bool bKeepWorldTransform)
 {
 	if (!strInstanceId)
 	{
@@ -934,9 +285,9 @@ bool App::ReparentEditorObject(const char* strInstanceId, const char* strParentI
 
 	const std::string instanceIdValue = strInstanceId;
 	const std::string parentInstanceIdValue = strParentInstanceId ? strParentInstanceId : "";
-	return ExecuteOnEngineMainThread<bool>(false, [instanceIdValue, parentInstanceIdValue, bKeepWorldTransform]()
+	return App::ExecuteOnEngineMainThread<bool>(false, [instanceIdValue, parentInstanceIdValue, bKeepWorldTransform]()
 		{
-			auto editor = GetSubmodule<Editor>();
+			auto editor = App::GetSubmodule<Editor>();
 			if (!editor)
 			{
 				return false;
@@ -953,7 +304,7 @@ bool App::ReparentEditorObject(const char* strInstanceId, const char* strParentI
 		});
 }
 
-bool App::CreateEditorGameObject(
+bool EditorRuntime::CreateEditorGameObject(
 	const char* strParentInstanceId,
 	const char* strPreferredInstanceId,
 	char** outInstanceId)
@@ -966,9 +317,9 @@ bool App::CreateEditorGameObject(
 	outInstanceId[0] = nullptr;
 	const std::string parentInstanceIdValue = strParentInstanceId ? strParentInstanceId : "";
 	const std::string preferredInstanceIdValue = strPreferredInstanceId ? strPreferredInstanceId : "";
-	return ExecuteOnEngineMainThread<bool>(false, [parentInstanceIdValue, preferredInstanceIdValue, outInstanceId]()
+	return App::ExecuteOnEngineMainThread<bool>(false, [parentInstanceIdValue, preferredInstanceIdValue, outInstanceId]()
 		{
-			auto editor = GetSubmodule<Editor>();
+			auto editor = App::GetSubmodule<Editor>();
 			if (!editor)
 			{
 				return false;
@@ -997,7 +348,7 @@ bool App::CreateEditorGameObject(
 		});
 }
 
-bool App::CreateEditorModelInstance(
+bool EditorRuntime::CreateEditorModelInstance(
 	const char* strModelFileId,
 	const char* strName,
 	const char* strParentInstanceId,
@@ -1016,7 +367,7 @@ bool App::CreateEditorModelInstance(
 
 	outInstanceId[0] = nullptr;
 	const FileId modelFileId(strModelFileId);
-	auto modelImporter = GetSubmodule<ModelImporter>();
+	auto modelImporter = App::GetSubmodule<ModelImporter>();
 	ModelPtr model;
 	if (!modelFileId ||
 		!modelImporter ||
@@ -1034,7 +385,7 @@ bool App::CreateEditorModelInstance(
 	const std::string name = strName;
 	const std::string parentInstanceIdValue = strParentInstanceId ? strParentInstanceId : "";
 	const std::string preferredInstanceIdValue = strPreferredInstanceId ? strPreferredInstanceId : "";
-	return ExecuteOnEngineMainThread<bool>(false, [
+	return App::ExecuteOnEngineMainThread<bool>(false, [
 		model,
 		name,
 		parentInstanceIdValue,
@@ -1046,7 +397,7 @@ bool App::CreateEditorModelInstance(
 		worldZ,
 		outInstanceId]()
 		{
-			auto editor = GetSubmodule<Editor>();
+			auto editor = App::GetSubmodule<Editor>();
 			if (!editor)
 			{
 				return false;
@@ -1083,49 +434,7 @@ bool App::CreateEditorModelInstance(
 		});
 }
 
-bool App::DestroyEditorObject(const char* strInstanceId)
-{
-	if (!strInstanceId)
-	{
-		return false;
-	}
-
-	const std::string instanceIdValue = strInstanceId;
-	return ExecuteOnEngineMainThread<bool>(false, [instanceIdValue]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return false;
-			}
-
-			const InstanceId instanceId(instanceIdValue);
-			return editor->DestroyObject(instanceId);
-		});
-}
-
-bool App::ResetEditorComponentToDefaults(const char* strInstanceId)
-{
-	if (!strInstanceId)
-	{
-		return false;
-	}
-
-	const std::string instanceIdValue = strInstanceId;
-	return ExecuteOnEngineMainThread<bool>(false, [instanceIdValue]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return false;
-			}
-
-			const InstanceId instanceId(instanceIdValue);
-			return editor->ResetComponentToDefaults(instanceId);
-		});
-}
-
-bool App::AddEditorComponent(
+bool EditorRuntime::AddEditorComponent(
 	const char* strInstanceId,
 	const char* strComponentTypeName,
 	const char* strPreferredInstanceId,
@@ -1140,9 +449,9 @@ bool App::AddEditorComponent(
 	const std::string instanceIdValue = strInstanceId;
 	const std::string componentTypeName = strComponentTypeName;
 	const std::string preferredInstanceIdValue = strPreferredInstanceId ? strPreferredInstanceId : "";
-	return ExecuteOnEngineMainThread<bool>(false, [instanceIdValue, componentTypeName, preferredInstanceIdValue, outInstanceId]()
+	return App::ExecuteOnEngineMainThread<bool>(false, [instanceIdValue, componentTypeName, preferredInstanceIdValue, outInstanceId]()
 		{
-			auto editor = GetSubmodule<Editor>();
+			auto editor = App::GetSubmodule<Editor>();
 			if (!editor)
 			{
 				return false;
@@ -1167,28 +476,7 @@ bool App::AddEditorComponent(
 		});
 }
 
-bool App::RemoveEditorComponent(const char* strInstanceId)
-{
-	if (!strInstanceId)
-	{
-		return false;
-	}
-
-	const std::string instanceIdValue = strInstanceId;
-	return ExecuteOnEngineMainThread<bool>(false, [instanceIdValue]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return false;
-			}
-
-			const InstanceId instanceId(instanceIdValue);
-			return editor->RemoveComponent(instanceId);
-		});
-}
-
-bool App::InstantiateEditorPrefab(const char* strFileId, const char* strParentInstanceId)
+bool EditorRuntime::InstantiateEditorPrefab(const char* strFileId, const char* strParentInstanceId)
 {
 	if (!strFileId)
 	{
@@ -1197,9 +485,9 @@ bool App::InstantiateEditorPrefab(const char* strFileId, const char* strParentIn
 
 	const std::string fileIdValue = strFileId;
 	const std::string parentInstanceIdValue = strParentInstanceId ? strParentInstanceId : "";
-	return ExecuteOnEngineMainThread<bool>(false, [fileIdValue, parentInstanceIdValue]()
+	return App::ExecuteOnEngineMainThread<bool>(false, [fileIdValue, parentInstanceIdValue]()
 		{
-			auto editor = GetSubmodule<Editor>();
+			auto editor = App::GetSubmodule<Editor>();
 			if (!editor)
 			{
 				return false;
@@ -1216,7 +504,7 @@ bool App::InstantiateEditorPrefab(const char* strFileId, const char* strParentIn
 		});
 }
 
-bool App::InstantiateEditorPrefabInstance(
+bool EditorRuntime::InstantiateEditorPrefabInstance(
 	const char* strFileId,
 	const char* strParentInstanceId,
 	bool bHasWorldPosition,
@@ -1234,7 +522,7 @@ bool App::InstantiateEditorPrefabInstance(
 	const std::string fileIdValue = strFileId;
 	const std::string parentInstanceIdValue =
 		strParentInstanceId ? strParentInstanceId : "";
-	return ExecuteOnEngineMainThread<bool>(
+	return App::ExecuteOnEngineMainThread<bool>(
 		false,
 		[fileIdValue,
 			parentInstanceIdValue,
@@ -1244,7 +532,7 @@ bool App::InstantiateEditorPrefabInstance(
 			worldZ,
 			outInstanceId]()
 		{
-			auto editor = GetSubmodule<Editor>();
+			auto editor = App::GetSubmodule<Editor>();
 			if (!editor)
 			{
 				return false;
@@ -1280,7 +568,7 @@ bool App::InstantiateEditorPrefabInstance(
 		});
 }
 
-bool App::InstantiateEditorPrefabFromYaml(
+bool EditorRuntime::InstantiateEditorPrefabFromYaml(
 	const char* strPrefabYaml,
 	const char* strParentInstanceId)
 {
@@ -1290,7 +578,7 @@ bool App::InstantiateEditorPrefabFromYaml(
 		false);
 }
 
-bool App::InstantiateEditorPrefabFromYaml(
+bool EditorRuntime::InstantiateEditorPrefabFromYaml(
 	const char* strPrefabYaml,
 	const char* strParentInstanceId,
 	bool bStrictInstanceIds)
@@ -1302,7 +590,7 @@ bool App::InstantiateEditorPrefabFromYaml(
 		nullptr);
 }
 
-bool App::InstantiateEditorPrefabFromYaml(
+bool EditorRuntime::InstantiateEditorPrefabFromYaml(
 	const char* strPrefabYaml,
 	const char* strParentInstanceId,
 	bool bStrictInstanceIds,
@@ -1315,12 +603,12 @@ bool App::InstantiateEditorPrefabFromYaml(
 
 	const std::string prefabYaml = strPrefabYaml;
 	const std::string parentInstanceIdValue = strParentInstanceId ? strParentInstanceId : "";
-	return ExecuteOnEngineMainThread<bool>(
+	return App::ExecuteOnEngineMainThread<bool>(
 		false,
 		[prefabYaml, parentInstanceIdValue, bStrictInstanceIds, outInstanceId]()
 		{
-			auto editor = GetSubmodule<Editor>();
-			auto prefabImporter = GetSubmodule<PrefabImporter>();
+			auto editor = App::GetSubmodule<Editor>();
+			auto prefabImporter = App::GetSubmodule<PrefabImporter>();
 			if (!editor || !prefabImporter)
 			{
 				return false;
@@ -1402,8 +690,7 @@ bool App::InstantiateEditorPrefabFromYaml(
 				parentInstanceId,
 				nullptr,
 				createdInstanceId,
-				bStrictInstanceIds,
-				!bStrictInstanceIds);
+				bStrictInstanceIds ? EPrefabInstanceIdPolicy::RequireExact : EPrefabInstanceIdPolicy::GenerateNew);
 			if (bInstantiated && outInstanceId)
 			{
 				SetInteropString(
@@ -1413,200 +700,4 @@ bool App::InstantiateEditorPrefabFromYaml(
 
 			return bInstantiated;
 		});
-}
-
-bool App::FocusEditorCamera(const char* strInstanceId)
-{
-	if (!strInstanceId)
-	{
-		return false;
-	}
-
-	const std::string instanceIdValue = strInstanceId;
-	return ExecuteOnEngineMainThread<bool>(
-		false,
-		[instanceIdValue]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return false;
-			}
-
-			const InstanceId instanceId(instanceIdValue);
-			return instanceId.IsGameObjectId() &&
-				editor->FocusEditorCamera(instanceId);
-		});
-}
-
-bool App::SetEditorPrefabLink(
-	const char* strInstanceId,
-	const char* strFileId)
-{
-	if (!strInstanceId || !strFileId)
-	{
-		return false;
-	}
-
-	const std::string instanceIdValue = strInstanceId;
-	const std::string fileIdValue = strFileId;
-	return ExecuteOnEngineMainThread<bool>(
-		false,
-		[instanceIdValue, fileIdValue]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return false;
-			}
-
-			const InstanceId instanceId(instanceIdValue);
-			const FileId fileId(fileIdValue);
-			return editor->SetPrefabLink(instanceId, fileId);
-		});
-}
-
-bool App::BreakEditorPrefabLink(const char* strInstanceId)
-{
-	if (!strInstanceId)
-	{
-		return false;
-	}
-
-	const std::string instanceIdValue = strInstanceId;
-	return ExecuteOnEngineMainThread<bool>(
-		false,
-		[instanceIdValue]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return false;
-			}
-
-			const InstanceId instanceId(instanceIdValue);
-			return editor->BreakPrefabLink(instanceId);
-		});
-}
-
-bool App::SetEditorViewportToolState(uint32_t operation, uint32_t space)
-{
-	return ExecuteOnEngineMainThread<bool>(
-		false,
-		[operation, space]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			EditorViewport::ETransformOperation parsedOperation{};
-			EditorViewport::ETransformSpace parsedSpace{};
-			return editor &&
-				TryParseViewportToolState(
-					operation,
-					space,
-					parsedOperation,
-					parsedSpace) &&
-				editor->SetViewportToolState(parsedOperation, parsedSpace);
-		});
-}
-
-bool App::GetEditorViewportToolState(
-	uint32_t& outOperation,
-	uint32_t& outSpace)
-{
-	outOperation = 0;
-	outSpace = 0;
-	return ExecuteOnEngineMainThread<bool>(
-		false,
-		[&outOperation, &outSpace]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return false;
-			}
-
-			EditorViewport::ETransformOperation operation{};
-			EditorViewport::ETransformSpace space{};
-			editor->GetViewportToolState(operation, space);
-			outOperation = ToInteropOperation(operation);
-			outSpace = ToInteropSpace(space);
-			return outOperation != 0 && outSpace != 0;
-		});
-}
-
-bool App::SetEditorSelection(const char* strSelectionYaml)
-{
-	if (!strSelectionYaml)
-	{
-		return false;
-	}
-
-	const std::string selectionYaml = strSelectionYaml;
-	return ExecuteOnEngineMainThread<bool>(false, [selectionYaml]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			auto* world = editor ? editor->GetWorld() : nullptr;
-			if (!world)
-			{
-				return false;
-			}
-
-			TVector<InstanceId> selection;
-			const YAML::Node yaml = YAML::Load(selectionYaml);
-			if (yaml && yaml.IsSequence())
-			{
-				selection.Reserve(yaml.size());
-				for (const auto& entry : yaml)
-				{
-					InstanceId instanceId{};
-					instanceId.Deserialize(entry);
-					if (instanceId)
-					{
-						selection.Add(instanceId);
-					}
-				}
-			}
-
-			world->SetEditorSelection(selection);
-			editor->NotifyManagedSelectionMutation();
-			return true;
-		});
-}
-
-bool App::RenderPathTracedImage(const char* strOutputPath, const char* strInstanceId, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces)
-{
-	if (!strOutputPath || strOutputPath[0] == '\0')
-	{
-		return false;
-	}
-
-	const std::string outputPath = strOutputPath;
-	const std::string instanceIdValue = strInstanceId ? strInstanceId : "";
-	return ExecuteOnEngineMainThread<bool>(false, [outputPath, instanceIdValue, height, samplesPerPixel, maxBounces]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return false;
-			}
-
-			const InstanceId instanceId(instanceIdValue);
-
-			const bool bSuccess = editor->RenderPathTracedImage(instanceId, outputPath, height, samplesPerPixel, maxBounces);
-			editor->PushMessage(bSuccess ?
-				("Path tracer export succeeded: " + outputPath) :
-				("Path tracer export failed: " + outputPath));
-			return bSuccess;
-		});
-}
-
-void App::ShowMainWindow(bool bShow)
-{
-	if (auto editor = GetSubmodule<Editor>())
-	{
-#if defined(_WIN32)
-		editor->ShowMainWindow(false);
-#else
-		editor->ShowMainWindow(bShow);
-#endif
-	}
 }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Core/Defines.h"
+#include "Platform/Window.h"
 #if defined(_WIN32)
 #include <wtypes.h>
 #endif
@@ -8,68 +8,28 @@
 #include <mutex>
 #include <optional>
 #include <string>
-#include "Math/Math.h"
 #include "Containers/Containers.h"
+
+namespace Sailor::Utils
+{
+	struct WindowSizeAndPosition
+	{
+		RECT m_windowRect; // Includes title bar, borders, etc.
+		RECT m_clientRect; // Only the client area
+		int32_t m_width;
+		int32_t m_height;
+		int32_t m_clientWidth;
+		int32_t m_clientHeight;
+		int32_t m_xPos;
+		int32_t m_yPos;
+	};
+
+	SAILOR_API WindowSizeAndPosition GetWindowSizeAndPosition(HWND hwnd);
+}
 
 namespace Sailor::Win32
 {
 	LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-}
-
-namespace Sailor::Platform
-{
-	class Window
-	{
-	public:
-
-		SAILOR_API virtual ~Window() = default;
-
-		SAILOR_API virtual bool IsShown() const = 0;
-		SAILOR_API virtual bool IsResizing() const = 0;
-		SAILOR_API virtual bool IsActive() const = 0;
-		SAILOR_API virtual bool IsRunning() const = 0;
-		SAILOR_API virtual bool IsFullscreen() const = 0;
-		SAILOR_API virtual bool IsIconic() const = 0;
-
-		SAILOR_API virtual void SetActive(bool value) = 0;
-		SAILOR_API virtual void SetRunning(bool value) = 0;
-		SAILOR_API virtual void SetFullscreen(bool value) = 0;
-		SAILOR_API virtual void SetWindowTitle(LPCSTR lString) = 0;
-
-		SAILOR_API virtual HWND GetHWND() const = 0;
-		SAILOR_API virtual HDC GetHDC() const = 0;
-		SAILOR_API virtual HINSTANCE GetHINSTANCE() const = 0;
-#if defined(__APPLE__)
-		SAILOR_API virtual void* GetMetalLayer() const = 0;
-		SAILOR_API virtual void* GetNativeView() const = 0;
-#endif
-
-		SAILOR_API virtual int32_t GetWidth() const = 0;
-		SAILOR_API virtual int32_t GetHeight() const = 0;
-		SAILOR_API virtual bool IsVsyncRequested() const = 0;
-
-		SAILOR_API virtual bool Create(LPCSTR title = "Sailor", LPCSTR className = "SailorViewport", int32_t width = 1920, int32_t height = 1080, bool bIsFullScreen = false, bool bRequestVsync = false, HWND parentHwnd = NULL) = 0;
-		SAILOR_API virtual void Destroy() = 0;
-
-		SAILOR_API virtual glm::ivec2 GetRenderArea() const = 0;
-		SAILOR_API virtual void SetRenderArea(const glm::ivec2& renderArea) = 0;
-
-		SAILOR_API virtual bool IsParentWindowValid() const = 0;
-		SAILOR_API virtual void TrackParentWindowPosition(const RECT& viewport) = 0;
-
-		SAILOR_API virtual void Show(bool bShowWindow) = 0;
-
-		SAILOR_API virtual glm::ivec2 GetCenterPointScreen() const = 0;
-		SAILOR_API virtual glm::ivec2 GetCenterPointClient() const = 0;
-		SAILOR_API virtual void SetWindowPos(const RECT& rect) = 0;
-		SAILOR_API virtual void RecalculateWindowSize() = 0;
-		SAILOR_API virtual void ChangeWindowSize(int32_t width, int32_t height, bool bIsFullScreen = false) = 0;
-		SAILOR_API virtual void ProcessSystemMessages() = 0;
-
-		SAILOR_API virtual void RequestMouseCapture(bool value) = 0;
-		SAILOR_API virtual bool IsMouseCaptured() const = 0;
-		SAILOR_API virtual glm::vec2 ConsumeMouseDelta() = 0;
-	};
 }
 
 namespace Sailor::Win32
@@ -85,6 +45,7 @@ namespace Sailor::Win32
 
 #if defined(_WIN32)
 		ATOM m_windowClassAtom = 0;
+		uint32_t m_nativeMouseButtons = 0;
 		IUnknown* m_editorViewportDropTarget = nullptr;
 		bool m_bEditorViewportDropOleInitialized = false;
 
@@ -123,7 +84,7 @@ namespace Sailor::Win32
 	public:
 
 		SAILOR_API Window() = default;
-#if defined(_WIN32) || defined(__APPLE__)
+#if defined(_WIN32)
 		SAILOR_API ~Window() override;
 #else
 		SAILOR_API ~Window() override = default;
@@ -139,46 +100,38 @@ namespace Sailor::Win32
 		SAILOR_API void SetActive(bool value) override { m_bIsActive = value; }
 		SAILOR_API void SetRunning(bool value) override { m_bIsRunning = value; }
 		SAILOR_API void SetFullscreen(bool value) override { m_bIsFullscreen = value; }
-#if defined(__APPLE__)
-		SAILOR_API void SetWindowTitle(LPCSTR lString) override;
-#else
-		SAILOR_API void SetWindowTitle(LPCSTR lString) override {
+		SAILOR_API void SetWindowTitle(const char* title) override {
 #if defined(_WIN32)
-			SetWindowText(m_hWnd, lString);
+			SetWindowText(m_hWnd, title);
 #else
-			(void)lString;
+			(void)title;
 #endif
 		}
-#endif
 
-		SAILOR_API HWND GetHWND() const override { return m_hWnd; }
-		SAILOR_API HDC GetHDC() const override { return m_hDC; }
-		SAILOR_API HINSTANCE GetHINSTANCE() const override { return m_hInstance; }
-#if defined(__APPLE__)
-		SAILOR_API void* GetMetalLayer() const override;
-		SAILOR_API void* GetNativeView() const override;
-		SAILOR_API void HandleNativeWindowWillClose(HWND nativeWindow);
-#endif
+		SAILOR_API void* GetNativeHandle() const override { return m_hWnd; }
+		SAILOR_API HWND GetHWND() const { return m_hWnd; }
+		SAILOR_API HDC GetHDC() const { return m_hDC; }
+		SAILOR_API HINSTANCE GetHINSTANCE() const { return m_hInstance; }
 
 		SAILOR_API int32_t GetWidth() const override { return m_width; }
 		SAILOR_API int32_t GetHeight() const override { return m_height; }
 		SAILOR_API bool IsVsyncRequested() const override { return m_bIsVsyncRequested; }
 
-		SAILOR_API bool Create(LPCSTR title = "Sailor", LPCSTR className = "SailorViewport", int32_t width = 1920, int32_t height = 1080, bool bIsFullScreen = false, bool bRequestVsync = false, HWND parentHwnd = NULL) override;
+		SAILOR_API bool Create(const char* title = "Sailor", const char* className = "SailorViewport", int32_t width = 1920, int32_t height = 1080, bool bIsFullScreen = false, bool bRequestVsync = false, void* parentWindow = nullptr) override;
 		SAILOR_API void Destroy() override;
 
 		SAILOR_API glm::ivec2 GetRenderArea() const override { return m_renderArea; }
 		SAILOR_API void SetRenderArea(const glm::ivec2& renderArea) override { m_renderArea = renderArea; }
 
 		SAILOR_API bool IsParentWindowValid() const override;
-		SAILOR_API void TrackParentWindowPosition(const RECT& viewport) override;
+		SAILOR_API void TrackParentWindowPosition(const RECT& viewport);
 
 		SAILOR_API void Show(bool bShowWindow) override;
 
 		// Window size
 		SAILOR_API glm::ivec2 GetCenterPointScreen() const override;
 		SAILOR_API glm::ivec2 GetCenterPointClient() const override;
-		SAILOR_API void SetWindowPos(const RECT& rect) override;
+		SAILOR_API void SetWindowPos(const RECT& rect);
 		SAILOR_API void RecalculateWindowSize() override;
 		SAILOR_API void ChangeWindowSize(int32_t width, int32_t height, bool bIsFullScreen = false) override;
 		SAILOR_API void ProcessSystemMessages() override;
@@ -218,9 +171,6 @@ namespace Sailor::Win32
 			float& outNormalizedY);
 		void QueueEditorViewportToolShortcut(uint32_t keyCode);
 		bool PullEditorViewportToolShortcut(uint32_t& outKeyCode);
-#endif
-#if defined(__APPLE__)
-		SAILOR_API static void ProcessMacMsgs();
 #endif
 
 	private:

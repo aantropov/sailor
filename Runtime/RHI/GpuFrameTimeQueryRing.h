@@ -88,27 +88,6 @@ namespace Sailor::RHI
 		return true;
 	}
 
-	inline uint32_t CalculateGpuFramesPerSecond(float frameTimeMilliseconds)
-	{
-		if (!std::isfinite(frameTimeMilliseconds) ||
-			frameTimeMilliseconds <= 0.0f)
-		{
-			return 0u;
-		}
-
-		const double framesPerSecond = 1000.0 /
-			static_cast<double>(frameTimeMilliseconds);
-		if (framesPerSecond >=
-			static_cast<double>((std::numeric_limits<uint32_t>::max)()))
-		{
-			return (std::numeric_limits<uint32_t>::max)();
-		}
-
-		const uint32_t rounded =
-			static_cast<uint32_t>(framesPerSecond + 0.5);
-		return rounded > 0u ? rounded : 1u;
-	}
-
 	enum class EGpuFrameTimeQuerySlotState : uint8_t
 	{
 		Available,

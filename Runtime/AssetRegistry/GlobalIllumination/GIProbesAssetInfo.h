@@ -31,7 +31,7 @@ namespace Sailor
 }
 
 REFL_AUTO(
-	type(Sailor::GIProbesAssetInfo, bases<Sailor::AssetInfo>),
+	type(Sailor::GIProbesAssetInfo, bases<Sailor::AssetInfo>, Sailor::Attributes::Asset{ "probes" }),
 	field(m_fileId),
 	field(m_assetFilename)
 )

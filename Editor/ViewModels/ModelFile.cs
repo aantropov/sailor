@@ -105,42 +105,23 @@ public partial class ModelFile : AssetFile
     private void OnClearAnimations() => Animations.Clear();
 
     public override Task<bool> LoadDependentResources()
+        => LoadDependentResources(CancellationToken.None);
+
+    public async Task<bool> LoadDependentResources(CancellationToken cancellationToken)
     {
+        var preview = await MauiProgram.GetService<AssetFingerprintService>()
+            .LoadModelPreviewAsync(this, cancellationToken);
         LoadRuntimeDataWithoutDirtyTracking(() =>
         {
-            var cacheDirectory =
-                MauiProgram.GetService<EngineService>()
-                    ?.GetLaunchContext()
-                    .CacheDirectory;
-            var fileId = FileId?.Value;
-            var fingerprintFilename =
-                string.IsNullOrWhiteSpace(fileId)
-                    ? null
-                    : fileId + ".png";
-            var path =
-                !string.IsNullOrWhiteSpace(cacheDirectory) &&
-                fingerprintFilename is not null &&
-                Path.GetFileName(fingerprintFilename) ==
-                    fingerprintFilename
-                    ? Path.Combine(
-                        cacheDirectory,
-                        "Fingerprints",
-                        fingerprintFilename)
-                    : null;
-
-            Fingerprint =
-                path is not null && File.Exists(path)
-                    ? ImageSource.FromFile(path)
-                    : null;
-            IsLoaded = true;
+            Fingerprint = preview;
+            IsLoaded = preview is not null && !preview.IsEmpty;
         });
-
-        return Task.FromResult(true);
+        return true;
     }
 
     public override Task Save() => Save(new ModelFileYamlConverter());
 
-    public override async Task Revert()
+    public override Task Revert()
     {
         try
         {
@@ -185,7 +166,9 @@ public partial class ModelFile : AssetFile
         }
 
         ResetDirtyState();
-        await LoadDependentResources();
+        LoadRuntimeDataWithoutDirtyTracking(() =>
+            Fingerprint = MauiProgram.GetService<AssetFingerprintService>().TryGetCachedPreview(this));
+        return Task.CompletedTask;
     }
 }
 

@@ -14,11 +14,11 @@ namespace Sailor::Framegraph
 	class DebugViewNode final : public TFrameGraphNode<DebugViewNode>
 	{
 	public:
-		SAILOR_API static const char* GetName() { return m_name; }
+		SAILOR_API static StringHash GetName() { return "DebugView"_h; }
 
 		SAILOR_API virtual Sailor::Tasks::TaskPtr<void, void> Prepare(
 			RHI::RHIFrameGraphPtr frameGraph,
-			const RHI::RHISceneViewSnapshot& sceneView) override;
+			RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Process(
 			RHI::RHIFrameGraphPtr frameGraph,
 			RHI::RHICommandListPtr transferCommandList,
@@ -30,13 +30,13 @@ namespace Sailor::Framegraph
 		void EnsurePasses();
 		void CopyResource(
 			BaseFrameGraphNode& destination,
-			const std::string& destinationName,
-			const std::string& sourceName);
+			StringHash destinationName,
+			StringHash sourceName);
 		PostProcessNode* GetDebugPass(RHI::ESceneViewRenderMode mode);
 
-		static const char* m_name;
 		TRefPtr<BlitNode> m_litPass{};
 		std::array<TRefPtr<PostProcessNode>, 3> m_debugPasses{};
+		uint64_t m_appliedParameterRevision = 0;
 	};
 
 	template class TFrameGraphNode<DebugViewNode>;

@@ -55,11 +55,11 @@ namespace Sailor::RHI
 			RHI::RHICommandListPtr secondaryDrawCmdList,
 			const glm::mat4x4& viewProjection,
 			const glm::ivec2& renderExtent) const;
-		SAILOR_API void DrawDebugMesh(
+		SAILOR_API static void DrawDebugMesh(
 			RHI::RHICommandListPtr secondaryDrawCmdList,
 			const glm::mat4x4& viewProjection,
 			const DrawSnapshot& snapshot,
-			const glm::ivec2& renderExtent) const;
+			const glm::ivec2& renderExtent);
 
 	protected:
 

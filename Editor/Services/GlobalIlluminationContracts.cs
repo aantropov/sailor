@@ -90,7 +90,8 @@ public sealed record RuntimeGIProbesSettingsDescriptor(
     float MinProbeSpacing = 1.0f,
     float NormalBias = 0.05f,
     float ViewBias = 0.05f,
-    float MaxRayDistance = 1000.0f)
+    float MaxRayDistance = 1000.0f,
+    float SunAngleThresholdDegrees = 30.0f)
 {
     public const uint CurrentVersion = 1;
     public const uint MaximumBounceCount = 64;

@@ -142,7 +142,7 @@ namespace Sailor
 		{
 			const TSharedPtr<Generation> generation = dispatch.m_generation;
 			Tasks::ITaskPtr workerTask = Tasks::CreateTask(
-				"Runtime GI Probe Trace", [this, generation]() { WorkerBatch(generation); }, EThreadType::GI);
+				"Runtime GI Probe Trace"_h, [this, generation]() { WorkerBatch(generation); }, EThreadType::GI);
 			m_workerTasks.push_back(workerTask);
 			scheduler->Run(workerTask);
 		}

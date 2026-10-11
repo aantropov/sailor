@@ -1,0 +1,18 @@
+name: DescriptorPreparation
+prefabs:
+  - gameObjects:
+      - name: Native descriptor preparation validation
+        mobilityType: Stationary
+        position: [0, 0, 0, 1]
+        rotation: [0, 0, 0, 1]
+        scale: [1, 1, 1, 1]
+        parentIndex: 4294967295
+        instanceId: 18150000000000000001
+        components: [0]
+    components:
+      - typename: Sailor::DescriptorPreparationTestComponent
+        overrideProperties:
+          testName: DescriptorPreparation
+          quitAfterFinish: true
+          fileId: NullFileId
+          instanceId: 1815000000000001_18150000000000000001

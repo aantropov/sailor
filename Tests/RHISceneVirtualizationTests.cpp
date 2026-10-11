@@ -1,5 +1,9 @@
+#include "Support/TaskTestApp.h"
 #include "Engine/World.h"
 #include "FrameGraph/BlitFormatConversion.h"
+#include "FrameGraph/FrameGraphNode.h"
+#include "FrameGraph/RHIFrameGraph.h"
+#include "RHI/DebugContext.h"
 #include "RHI/Material.h"
 #include "RHI/RenderSubmission.h"
 #include "RHI/Scene.h"
@@ -7,8 +11,15 @@
 #include "RHI/MotionHistory.h"
 
 #include <iostream>
+#include <limits>
+#include <atomic>
+#include <barrier>
+#include <thread>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
 
 using namespace Sailor;
 using namespace Sailor::Framegraph;
@@ -16,17 +27,33 @@ using namespace Sailor::RHI;
 
 namespace
 {
+	static_assert(std::is_same_v<decltype(std::declval<RHISceneVersionPtr>().GetRawPtr()), const RHISceneVersion*>);
+	static_assert(std::is_same_v<decltype(std::declval<RHISceneRecordRootPtr>().GetRawPtr()), const RHISceneRecordRoot*>);
+	static_assert(std::is_same_v<decltype(std::declval<RHISceneRecordPagePtr>().GetRawPtr()), const RHISceneRecordPage*>);
+	static_assert(std::is_same_v<decltype(std::declval<RHISceneVersionPtr>()->m_staticHandles.GetRawPtr()), const TVector<RenderInstanceHandle>*>);
+	static_assert(std::is_same_v<decltype(std::declval<RHISceneInstanceRecord>().m_topology.GetRawPtr()), const RHIResource*>);
+	static_assert(std::is_same_v<decltype(std::declval<RHISpatialSceneVersionPtr>().GetRawPtr()), const RHISpatialSceneVersion*>);
+	static_assert(std::is_same_v<decltype(std::declval<RHISpatialSceneVersionPtr>()->m_staticOctree.GetRawPtr()), const RHISceneSpatialIndex*>);
+	static_assert(std::is_same_v<decltype(std::declval<RHISceneViewSnapshot>().m_cpuLightsData.GetRawPtr()), const TVector<RHILightShaderData>*>);
+	static_assert(std::is_same_v<decltype(std::declval<RHISceneViewSnapshot>().m_cpuBoneMatrices.GetRawPtr()), const TVector<glm::mat4>*>);
+	static_assert(std::is_same_v<decltype(std::declval<RHISceneViewSnapshot>().m_sceneVersions.GetRawPtr()), const TVector<RHISceneVersionPtr>*>);
+	static_assert(std::is_same_v<decltype(std::declval<RHISceneViewSnapshot>().m_previousMotionFrame.GetRawPtr()), const RHIMotionHistoryFrame*>);
+	static_assert(std::is_same_v<decltype(std::declval<const RHISceneProxyResource&>().m_proxy.m_shadowCaster.GetRawPtr()), const RHIShadowCasterProxy*>);
+	static_assert(std::is_same_v<decltype(std::declval<RHISceneProxyResourcePtr>().GetRawPtr()), const RHISceneProxyResource*>);
+	static_assert(!std::is_default_constructible_v<RHIVisibleSceneProxy>);
+	static_assert(!std::is_default_constructible_v<RHIVisibleShadowCaster>);
+
 	class TestWorld final : public World
 	{
 	public:
 		TestWorld() : World("RHISceneVirtualizationTests", 0u, {}) {}
 	};
 
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -90,7 +117,7 @@ namespace
 			"collecting older versions must not invalidate a recycled live handle");
 	}
 
-	void TestBatchUpdatesPreserveVersionsAndFlightReplay()
+	void TestBatchUpdatesPreserveVersionsAndFlights()
 	{
 		auto scene = RHIScenePtr::Make(2u);
 		TVector<RenderInstanceHandle> handles;
@@ -110,7 +137,7 @@ namespace
 		}
 		const uint64_t revision = scene->GetRevision();
 		Require(scene->UpdateInstances(updates) == handles.Num(), "a batch must update every live handle");
-		Require(scene->GetRevision() == revision + handles.Num(), "each changed handle must retain its journal revision");
+		Require(scene->GetRevision() == revision + handles.Num(), "each changed handle must advance the scene revision");
 		auto after = scene->PublishVersion();
 		Require(after->m_stationaryHandles->Num() == 50u && after->m_dynamicHandles->Num() == 100u,
 			"batch mobility changes must rebuild the published handle lists");
@@ -125,8 +152,9 @@ namespace
 				newRecord->m_worldMatrix[3].x == float(i + 1000u),
 				"batch publication must preserve the old transform and mobility");
 		}
-		const auto replay = scene->PrepareFlight(0u, after);
-		Require(replay->m_appliedRevision == after->m_sceneRevision, "a retained flight must replay the complete batch");
+		const auto flight = scene->PrepareFlight(0u, after);
+		Require(flight->m_appliedVersion == after && flight->m_appliedRevision == after->m_sceneRevision,
+			"a freed flight must retain the complete published batch");
 
 		updates.Clear();
 		auto stale = handles[0];
@@ -136,7 +164,7 @@ namespace
 		updates.Add({ handles[1], {}, ToMask(ESceneChangeBit::None) });
 		const auto unchangedRevision = scene->GetRevision();
 		Require(scene->UpdateInstances(updates) == 1u && scene->GetRevision() == unchangedRevision,
-			"stale generations must be skipped and live no-ops must not replace records or append journal entries");
+			"stale generations and live no-ops must not replace records or advance the revision");
 		Require(scene->PublishVersion() == after, "a no-op batch must reuse the published version");
 		updates.Clear();
 		Require(scene->UpdateInstances(updates) == 0u, "an empty batch must be a no-op");
@@ -183,13 +211,110 @@ namespace
 			"publishing a version without record deltas must retain the immutable COW root");
 	}
 
+	void TestConcurrentPublishedSceneReaders()
+	{
+		auto scene = RHIScenePtr::Make();
+		const auto makeRecord = [](uint32_t value)
+		{
+			auto record = MakeRecord(42u, EMobilityType::Dynamic, float(value));
+			record.m_topologyRevision = value;
+			record.m_skeletonOffset = value + 11u;
+			RHISceneViewProxy proxy;
+			auto shadow = TSharedPtr<RHIShadowCasterProxy>::Make();
+			RHIShadowMeshProxy mesh;
+			mesh.m_localMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(2, 3, 4));
+			mesh.m_baseColorFactor = glm::vec4(float(value));
+			shadow->m_meshes.Add(std::move(mesh));
+			proxy.m_shadowCaster = std::move(shadow);
+			record.m_topology = RHISceneProxyResourcePtr::Make(std::move(proxy));
+			return record;
+		};
+		const auto handle = scene->AddInstance(makeRecord(0u));
+		for (uint32_t i = 0; i < RHISceneRecordPage::NumRecords; ++i)
+		{
+			scene->AddInstance(MakeRecord(i + 100u, EMobilityType::Static));
+		}
+		const auto first = scene->PublishVersion();
+		const auto firstPage = first->m_recordsRoot->m_pages[0];
+		const auto firstShadow = firstPage->m_slots[handle.m_slot].m_record.m_topology.StaticCast<const RHISceneProxyResource>()->m_proxy.m_shadowCaster;
+		const auto handles = first->m_dynamicHandles;
+		std::barrier step(2);
+		std::atomic<bool> bValid = true;
+		constexpr uint32_t publications = 128;
+		std::thread reader([&]()
+		{
+			for (uint32_t i = 0; i < publications; ++i)
+			{
+				step.arrive_and_wait();
+				const auto current = scene->GetCurrentVersion();
+				const RHISceneInstanceRecord* oldRecord = nullptr;
+				const RHISceneInstanceRecord* newRecord = nullptr;
+				if (!first->Resolve(handle, oldRecord) || !current->Resolve(handle, newRecord) ||
+					oldRecord != &firstPage->m_slots[handle.m_slot].m_record || oldRecord->m_worldMatrix[3].x != 0.0f ||
+					oldRecord->m_skeletonOffset != 11u || oldRecord->m_topologyRevision != 0u ||
+					newRecord->m_worldMatrix[3].x != float(newRecord->m_topologyRevision) ||
+					newRecord->m_skeletonOffset != newRecord->m_topologyRevision + 11u ||
+					current->m_dynamicHandles != handles || handles->Num() != 1u || (*handles)[0] != handle ||
+					current->m_recordsRoot->m_pages[1] != first->m_recordsRoot->m_pages[1])
+				{
+					bValid = false;
+				}
+				if (newRecord)
+				{
+					const auto topology = newRecord->m_topology.DynamicCast<const RHISceneProxyResource>();
+					if (!topology ||
+						!topology->m_proxy.m_shadowCaster ||
+						topology->m_proxy.m_shadowCaster->m_meshes[0].m_baseColorFactor != glm::vec4(float(newRecord->m_topologyRevision)) ||
+						topology->m_proxy.m_shadowCaster->m_meshes[0].m_localMatrix != glm::translate(glm::mat4(1.0f), glm::vec3(2, 3, 4))) bValid = false;
+				}
+				if (oldRecord && (oldRecord->m_topology.StaticCast<const RHISceneProxyResource>()->m_proxy.m_shadowCaster != firstShadow ||
+					firstShadow->m_meshes[0].m_baseColorFactor != glm::vec4(0.0f) ||
+					firstShadow->m_meshes[0].m_localMatrix != glm::translate(glm::mat4(1.0f), glm::vec3(2, 3, 4)))) bValid = false;
+				step.arrive_and_wait();
+			}
+		});
+		for (uint32_t value = 1; value <= publications; ++value)
+		{
+			step.arrive_and_wait();
+			if (!scene->UpdateInstance(handle, makeRecord(value),
+				ToMask(ESceneChangeBit::Transform) | ToMask(ESceneChangeBit::Bounds) |
+				ToMask(ESceneChangeBit::MeshOrLodTopology) | ToMask(ESceneChangeBit::SkeletonOffset))) bValid = false;
+			scene->PublishVersion();
+			step.arrive_and_wait();
+		}
+		reader.join();
+		Require(bValid, "concurrent publication must retain old records and reuse unchanged pages/lists while publishing coherent topology and transforms");
+		const auto latest = scene->GetCurrentVersion();
+		const RHISceneInstanceRecord* current = nullptr;
+		Require(latest->Resolve(handle, current) && current->m_topologyRevision == publications &&
+			latest->m_recordsRoot->m_pages[0] != firstPage,
+			"the last publication must contain the new record in a distinct read-only page");
+	}
+
+	void TestShadowLocalTransformPublication()
+	{
+		RHISceneViewProxy source;
+		auto shadow = TSharedPtr<RHIShadowCasterProxy>::Make();
+		shadow->m_meshes.Add(RHIShadowMeshProxy{});
+		source.m_shadowCaster = std::move(shadow);
+		const auto first = RHISceneProxyResourcePtr::Make(source);
+		shadow = TSharedPtr<RHIShadowCasterProxy>::Make(*source.m_shadowCaster);
+		shadow->m_meshes[0].m_localMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(2, 3, 4));
+		source.m_shadowCaster = std::move(shadow);
+		const auto changed = RHISceneProxyResourcePtr::Make(std::move(source));
+		Require(first->m_geometryRevision == changed->m_geometryRevision && first->m_mainRevision == changed->m_mainRevision &&
+			first->m_shadowRevision != changed->m_shadowRevision &&
+			first->m_proxy.m_shadowCaster->m_meshes[0].m_localMatrix == glm::mat4(1.0f),
+			"a shadow-only local transform change must invalidate shadow packets without changing retained topology or main revisions");
+	}
+
 	void TestRenderedMotionHistoryReleasesOldScenePages()
 	{
 		auto scene = RHIScenePtr::Make(3u);
 		const auto handle = scene->AddInstance(MakeRecord(1u, EMobilityType::Dynamic));
 		RHISceneViewSnapshot snapshot;
 		TSharedPtr<RHIMotionHistoryFrame> history;
-		TVector<TWeakPtr<RHISceneRecordPage>> oldPages;
+		TVector<TWeakPtr<const RHISceneRecordPage>> oldPages;
 		TVector<TWeakPtr<RHIMotionHistoryFrame>> oldHistory;
 		for (uint32_t frame = 0u; frame < 256u; ++frame)
 		{
@@ -215,61 +340,112 @@ namespace
 		}
 	}
 
-	void TestTwoAndThreeFlightRevisionReplay()
+	void TestTwoAndThreeFlightVersionRetention()
 	{
-		auto scene = RHIScenePtr::Make(3u);
-		const auto stationary = scene->AddInstance(MakeRecord(1ull, EMobilityType::Stationary, 1.0f));
-		const auto dynamic = scene->AddInstance(MakeRecord(2ull, EMobilityType::Dynamic, 2.0f));
-		auto first = scene->PublishVersion();
+		for (uint32_t numFlights : { 2u, 3u })
+		{
+			auto scene = RHIScenePtr::Make(numFlights);
+			const auto stationary = scene->AddInstance(MakeRecord(1ull, EMobilityType::Stationary, 1.0f));
+			const auto dynamic = scene->AddInstance(MakeRecord(2ull, EMobilityType::Dynamic, 2.0f));
+			auto first = scene->PublishVersion();
 
-		auto flight0 = scene->PrepareFlight(0u, first);
-		auto flight1 = scene->PrepareFlight(1u, first);
-		auto flight2 = scene->PrepareFlight(2u, first);
-		const RHISceneInstanceRecord* flight0Stationary = nullptr;
-		Require(flight0->m_appliedVersion->Resolve(stationary, flight0Stationary) &&
-			flight0Stationary->m_worldMatrix[3].x == 1.0f &&
-			flight0->m_bStationaryFullRebuild,
-			"the first free flight must retain the immutable stationary version without copying complete records");
-		Require(flight0->m_dynamicHandles->Num() == 1u &&
-			flight1->m_dynamicHandles->Num() == 1u &&
-			flight2->m_dynamicHandles->Num() == 1u,
-			"every flight must reference its version's dynamic handle list");
+			auto flight0 = scene->PrepareFlight(0u, first);
+			auto flight1 = scene->PrepareFlight(1u, first);
+			auto flight2 = numFlights == 3u ? scene->PrepareFlight(2u, first) : flight1;
+			const RHISceneInstanceRecord* flight0Stationary = nullptr;
+			Require(flight0->m_appliedVersion->Resolve(stationary, flight0Stationary) &&
+				flight0Stationary->m_worldMatrix[3].x == 1.0f,
+				"the first free flight must retain the immutable stationary version without copying complete records");
+			Require(flight0->m_appliedVersion->m_dynamicHandles->Num() == 1u &&
+				flight1->m_appliedVersion->m_dynamicHandles->Num() == 1u &&
+				flight2->m_appliedVersion->m_dynamicHandles->Num() == 1u,
+				"every flight must reference its version's dynamic handle list");
 
-		Require(scene->UpdateInstance(
-			stationary,
-			MakeRecord(1ull, EMobilityType::Stationary, 10.0f),
-			ToMask(ESceneChangeBit::Transform) | ToMask(ESceneChangeBit::Bounds)),
-			"the stationary record must update");
-		Require(scene->UpdateInstance(
-			dynamic,
-			MakeRecord(2ull, EMobilityType::Dynamic, 20.0f),
-			ToMask(ESceneChangeBit::Transform) | ToMask(ESceneChangeBit::Bounds)),
-			"the dynamic record must update");
-		auto second = scene->PublishVersion();
+			Require(scene->UpdateInstance(
+				stationary,
+				MakeRecord(1ull, EMobilityType::Stationary, 10.0f),
+				ToMask(ESceneChangeBit::Transform) | ToMask(ESceneChangeBit::Bounds)),
+				"the stationary record must update");
+			Require(scene->UpdateInstance(
+				dynamic,
+				MakeRecord(2ull, EMobilityType::Dynamic, 20.0f),
+				ToMask(ESceneChangeBit::Transform) | ToMask(ESceneChangeBit::Bounds)),
+				"the dynamic record must update");
+			auto second = scene->PublishVersion();
 
-		scene->PrepareFlight(0u, second);
-		const RHISceneInstanceRecord* updatedStationary = nullptr;
-		const RHISceneInstanceRecord* retainedStationary1 = nullptr;
-		const RHISceneInstanceRecord* retainedStationary2 = nullptr;
-		const RHISceneInstanceRecord* updatedDynamic = nullptr;
-		Require(flight0->m_appliedVersion->Resolve(stationary, updatedStationary) &&
-			updatedStationary->m_worldMatrix[3].x == 10.0f &&
-			flight0->m_stationaryDirtyHandles.Contains(stationary),
-			"a freed flight must advance to the latest stationary delta by handle");
-		Require(flight1->m_appliedVersion->Resolve(stationary, retainedStationary1) &&
-			flight2->m_appliedVersion->Resolve(stationary, retainedStationary2) &&
-			retainedStationary1->m_worldMatrix[3].x == 1.0f &&
-			retainedStationary2->m_worldMatrix[3].x == 1.0f,
-			"active flights must retain their previous immutable stationary version");
-		Require(flight0->m_appliedVersion->Resolve(dynamic, updatedDynamic) &&
-			updatedDynamic->m_worldMatrix[3].x == 20.0f,
-			"the reused flight must resolve dynamic state without a duplicate record array");
+			scene->PrepareFlight(0u, second);
+			const RHISceneInstanceRecord* updatedStationary = nullptr;
+			const RHISceneInstanceRecord* retainedStationary1 = nullptr;
+			const RHISceneInstanceRecord* retainedStationary2 = nullptr;
+			const RHISceneInstanceRecord* updatedDynamic = nullptr;
+			Require(flight0->m_appliedVersion->Resolve(stationary, updatedStationary) &&
+				updatedStationary->m_worldMatrix[3].x == 10.0f,
+				"a freed flight must advance to the latest stationary delta by handle");
+			Require(flight1->m_appliedVersion->Resolve(stationary, retainedStationary1) &&
+				flight2->m_appliedVersion->Resolve(stationary, retainedStationary2) &&
+				retainedStationary1->m_worldMatrix[3].x == 1.0f &&
+				retainedStationary2->m_worldMatrix[3].x == 1.0f,
+				"active flights must retain their previous immutable stationary version");
+			Require(flight0->m_appliedVersion->Resolve(dynamic, updatedDynamic) &&
+				updatedDynamic->m_worldMatrix[3].x == 20.0f,
+				"the reused flight must resolve dynamic state without a duplicate record array");
 
-		scene->PrepareFlight(1u, second);
-		scene->PrepareFlight(2u, second);
-		Require(flight1->m_appliedVersion == second &&
-			flight2->m_appliedVersion == second,
-			"two and three-flight replay must converge only when each slot is reused");
+			scene->PrepareFlight(1u, second);
+			if (numFlights == 3u) scene->PrepareFlight(2u, second);
+			Require(flight1->m_appliedVersion == second &&
+				flight2->m_appliedVersion == second,
+				"two and three-flight versions must converge only when each slot is reused");
+		}
+	}
+
+	void TestFlightRetirementWithMotionHistory()
+	{
+		for (uint32_t numFlights : { 2u, 3u })
+		{
+			auto scene = RHIScenePtr::Make(numFlights);
+			Require(!scene->PrepareFlight(0u, {}), "an unpublished scene has no flight version");
+			const auto removed = scene->AddInstance(MakeRecord(1u, EMobilityType::Stationary, 1.0f));
+			const auto moving = scene->AddInstance(MakeRecord(2u, EMobilityType::Dynamic, 2.0f));
+			auto original = scene->PublishVersion();
+			for (uint32_t slot = 0u; slot < numFlights; ++slot) scene->PrepareFlight(slot, original);
+			auto history = TSharedPtr<RHIMotionHistoryFrame>::Make();
+			history->m_sceneVersions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make(
+				TVector<RHISceneVersionPtr>{ original });
+			original.Clear();
+			Require(scene->RemoveInstance(removed), "the retained stationary instance must be removable");
+			for (uint32_t i = 0u; i < 100u; ++i)
+			{
+				Require(scene->UpdateInstance(moving, MakeRecord(2u, EMobilityType::Dynamic, float(i + 3u)),
+					ToMask(ESceneChangeBit::Transform)), "unpublished dynamic changes must succeed");
+			}
+			auto latest = scene->PublishVersion();
+			for (uint32_t slot = 0u; slot + 1u < numFlights; ++slot) scene->PrepareFlight(slot, latest);
+			scene->CollectGarbage();
+			const auto whileInFlight = scene->AddInstance(MakeRecord(3u, EMobilityType::Static));
+			Require(whileInFlight.m_slot != removed.m_slot,
+				"an older flight must prevent a removed slot from being reused");
+			const auto lastFlight = scene->PrepareFlight(numFlights - 1u, latest);
+			scene->CollectGarbage();
+			const auto whileInHistory = scene->AddInstance(MakeRecord(4u, EMobilityType::Static));
+			Require(whileInHistory.m_slot != removed.m_slot,
+				"motion history must retain the old slot after every flight has advanced");
+			const RHISceneInstanceRecord* record = nullptr;
+			Require((*history->m_sceneVersions)[0]->Resolve(removed, record) && record->m_producerKey == 1u &&
+				record->m_worldMatrix[3].x == 1.0f, "motion history must still resolve the removed owner");
+			Require(!lastFlight->m_appliedVersion->Resolve(removed, record) &&
+				lastFlight->m_appliedVersion->Resolve(moving, record) && record->m_worldMatrix[3].x == 102.0f,
+				"the new flight must contain removal and the last unpublished update");
+			history.Clear();
+			scene->CollectGarbage();
+			const auto reused = scene->AddInstance(MakeRecord(5u, EMobilityType::Stationary));
+			Require(reused.m_slot == removed.m_slot && reused.m_generation != removed.m_generation,
+				"the exact retired slot becomes reusable only after its last retained version is released");
+			auto current = scene->PublishVersion();
+			Require(!current->Resolve(removed, record) && current->Resolve(reused, record) && record->m_producerKey == 5u,
+				"the recycled generation must not revive the old handle");
+			Require(scene->PrepareFlight(numFlights + 1u, {})->m_appliedVersion == current,
+				"a newly added flight must use the current version when no explicit target is supplied");
+		}
 	}
 
 	void TestRangeRetirementAndDirtyCoalescing()
@@ -294,6 +470,119 @@ namespace
 		Require(ranges.Num() == 2u && ranges[0].m_offset == 0u && ranges[0].m_count == 10u &&
 			ranges[1].m_offset == 12u && ranges[1].m_count == 2u,
 			"overlapping and adjacent dirty ranges must be coalesced before upload");
+	}
+
+	void TestRangeCapacityBoundary()
+	{
+		constexpr auto limit = (std::numeric_limits<uint32_t>::max)();
+		RHISceneRangeAllocator allocator;
+		Require(!allocator.Allocate(0).IsValid() && allocator.GetCapacity() == 0,
+			"empty allocations must not reserve capacity");
+		const auto large = allocator.Allocate(limit - 1);
+		PhysicalAllocation original;
+		Require(allocator.Resolve(large, original) && original.m_offset == 0 && original.m_capacity == limit - 1,
+			"the range metadata must represent capacities above the last power of two");
+		const auto last = allocator.Allocate(1);
+		PhysicalAllocation tail;
+		Require(allocator.Resolve(last, tail) && tail.m_offset == limit - 1 && allocator.GetCapacity() == limit,
+			"the final representable element must remain allocatable");
+		const auto generation = allocator.GetBufferGeneration();
+		Require(!allocator.Allocate(1).IsValid(), "range allocation must reject an unrepresentable end instead of wrapping");
+		Require(allocator.GetCapacity() == limit && allocator.GetBufferGeneration() == generation,
+			"failed growth must leave capacity and buffer generation unchanged");
+		PhysicalAllocation retained;
+		Require(allocator.Resolve(large, retained) && retained.m_bufferGeneration == original.m_bufferGeneration &&
+			retained.m_offset == original.m_offset && retained.m_count == original.m_count && retained.m_capacity == original.m_capacity,
+			"growth and failed allocation must preserve older physical allocations");
+		Require(allocator.Retire(last, 3), "the last range must retire normally at capacity");
+		allocator.Collect(3);
+		const auto reused = allocator.Allocate(1);
+		Require(allocator.Resolve(reused, retained) && reused.m_slot == last.m_slot &&
+			reused.m_generation != last.m_generation && retained.m_offset == tail.m_offset &&
+			retained.m_bufferGeneration == tail.m_bufferGeneration && !allocator.Resolve(last, tail),
+			"a free range remains reusable at maximum capacity without reviving its old handle");
+		std::cout << "Scene ranges: uint32 capacity, failed growth and retained generations passed\n";
+	}
+
+	void TestRangePhysicalReuse()
+	{
+		RHISceneRangeAllocator allocator;
+		const auto older = allocator.Allocate(5);
+		PhysicalAllocation original;
+		Require(allocator.Resolve(older, original), "the first buffer generation must resolve");
+		const auto first = allocator.Allocate(1);
+		const auto second = allocator.Allocate(2);
+		const auto third = allocator.Allocate(2);
+		PhysicalAllocation firstRange, secondRange, thirdRange;
+		Require(allocator.Resolve(first, firstRange) && allocator.Resolve(second, secondRange) &&
+			allocator.Resolve(third, thirdRange) && firstRange.m_bufferGeneration != original.m_bufferGeneration,
+			"growth must keep allocations from different buffer generations distinguishable");
+		Require(allocator.Retire(first, 5) && allocator.Retire(second, 7) && !allocator.Retire(second, 7),
+			"a range may enter deferred retirement only once");
+		allocator.Collect(4);
+		const auto pending = allocator.Allocate(1);
+		PhysicalAllocation pendingRange;
+		Require(allocator.Resolve(pending, pendingRange) && pendingRange.m_offset >= thirdRange.m_offset + thirdRange.m_capacity,
+			"unfinished retired ranges must not be physically reused");
+		allocator.Collect(5);
+		const auto reused = allocator.Allocate(1);
+		PhysicalAllocation reuse;
+		Require(allocator.Resolve(reused, reuse) && reuse.m_offset == firstRange.m_offset &&
+			reuse.m_bufferGeneration == firstRange.m_bufferGeneration && reused.m_slot == first.m_slot &&
+			reused.m_generation != first.m_generation,
+			"completed retirement must reuse its physical offset with a fresh logical generation");
+		allocator.Collect(7);
+		const auto splitA = allocator.Allocate(1);
+		const auto splitB = allocator.Allocate(1);
+		PhysicalAllocation a, b;
+		Require(allocator.Resolve(splitA, a) && allocator.Resolve(splitB, b) &&
+			a.m_offset == secondRange.m_offset && b.m_offset == a.m_offset + 1,
+			"a free range must split into adjacent nonoverlapping allocations");
+		Require(allocator.Retire(splitA, 8) && allocator.Retire(splitB, 8), "split ranges must retire");
+		allocator.Collect(8);
+		const auto merged = allocator.Allocate(2);
+		PhysicalAllocation mergedRange;
+		Require(allocator.Resolve(merged, mergedRange) && mergedRange.m_offset == secondRange.m_offset &&
+			mergedRange.m_capacity == 2 && mergedRange.m_bufferGeneration == secondRange.m_bufferGeneration,
+			"adjacent free ranges must merge and retain their original buffer generation");
+		Require(allocator.Resolve(older, reuse) && reuse.m_bufferGeneration == original.m_bufferGeneration &&
+			reuse.m_offset == original.m_offset && reuse.m_capacity == original.m_capacity,
+			"recycling newer ranges must not change an older live allocation");
+		std::cout << "Scene ranges: deferred physical reuse, splitting and coalescing passed\n";
+	}
+
+	void TestDirtyRangeCountBoundary()
+	{
+		constexpr auto limit = (std::numeric_limits<uint32_t>::max)();
+		const auto ranges = RHISceneRangeAllocator::CoalesceDirtyRanges({ { limit, 1 }, { 0, limit } });
+		Require(ranges.Num() == 2 && ranges[0].m_offset == 0 && ranges[0].m_count == limit &&
+			ranges[1].m_offset == limit && ranges[1].m_count == 1,
+			"a union too large for one uint32 count must retain both dirty ranges");
+		const auto overlapping = RHISceneRangeAllocator::CoalesceDirtyRanges({ { 2, limit }, { 0, limit } });
+		Require(overlapping.Num() == 2 && overlapping[0].m_count == limit && overlapping[1].m_count == limit,
+			"an unrepresentable overlapping union must not wrap or lose its tail");
+		const auto representable = RHISceneRangeAllocator::CoalesceDirtyRanges({ { 0, limit - 1 }, { limit - 1, 1 } });
+		Require(representable.Num() == 1 && representable[0].m_offset == 0 && representable[0].m_count == limit,
+			"a representable boundary union must still coalesce");
+		std::cout << "Scene dirty ranges: representable and oversized unions passed\n";
+	}
+
+	void TestSubmissionSemaphoreRetention()
+	{
+		auto context = RHIRenderSubmissionContextPtr::Make();
+		auto semaphore = RHISemaphorePtr::Make();
+		Require(semaphore.NumRefs() == 1, "the semaphore fixture must start with one owner");
+		context->SetResourceReadySemaphore(semaphore);
+		Require(semaphore.NumRefs() == 2, "submission context must retain the resource-ready semaphore");
+		context->BeginSubmission(1, 0);
+		Require(semaphore.NumRefs() == 1, "a completed flight's next submission must release its old semaphore");
+		context->SetResourceReadySemaphore(semaphore);
+		context->InvalidateSubmissionResources();
+		Require(semaphore.NumRefs() == 1, "invalidated submission resources must release the semaphore");
+		context->SetResourceReadySemaphore(semaphore);
+		context.Clear();
+		Require(semaphore.NumRefs() == 1, "context destruction must release its retained semaphore");
+		std::cout << "Submission semaphore: retention, reuse, invalidation and destruction passed\n";
 	}
 
 	void TestImmutableMaterialBindingVersions()
@@ -484,7 +773,6 @@ namespace
 	{
 		auto scene = RHIScenePtr::Make(2u);
 		RHISceneViewProxy source;
-		source.m_worldMatrix = glm::mat4(1.0f);
 		source.m_meshModelMatrices.Add(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 2.0f, 0.0f)));
 		auto topology = RHISceneProxyResourcePtr::Make(source);
 		auto record = MakeRecord(71u, EMobilityType::Stationary);
@@ -496,21 +784,25 @@ namespace
 		auto second = scene->PublishVersion();
 		RHISceneViewSnapshot view;
 		view.m_sceneVersions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make(TVector<RHISceneVersionPtr>{ second });
-		view.m_previousMotionFrame = TSharedPtr<RHIMotionHistoryFrame>::Make();
-		view.m_previousMotionFrame->m_sceneVersions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make(TVector<RHISceneVersionPtr>{ first });
-		RHIVisibleSceneProxy current;
-		current.m_handle = handle;
-		current.m_resource = topology.GetRawPtr();
-		Require(second->Resolve(handle, current.m_record), "current motion fixture must resolve");
-		RHIVisibleSceneProxy previous;
+		auto previousFrame = TSharedPtr<RHIMotionHistoryFrame>::Make();
+		previousFrame->m_sceneVersions = TSharedPtr<const TVector<RHISceneVersionPtr>>::Make(TVector<RHISceneVersionPtr>{ first });
+		view.m_previousMotionFrame = std::move(previousFrame);
+		const RHISceneInstanceRecord* currentRecord = nullptr;
+		Require(second->Resolve(handle, currentRecord), "current motion fixture must resolve");
+		RHIVisibleSceneProxy current(handle, *currentRecord, *topology);
+		auto previous = current;
 		Require(ResolvePreviousMotionProxy(view, current, previous), "retained scene generations must resolve the previously rendered model");
 		const auto motion = MakeObjectMotionData(current.ResolveMeshWorldMatrix(0u), previous.ResolveMeshWorldMatrix(0u), previous.GetSkeletonOffset(), true);
 		Require(motion.m_state.y == 1u && glm::vec3(motion.m_previousModel[3]) == glm::vec3(0.0f, 2.0f, 0.0f),
 			"motion must preserve mesh-local transforms and the previous, not current, object position");
-		view.m_previousMotionFrame->m_sceneVersions = view.m_sceneVersions;
+		previousFrame = TSharedPtr<RHIMotionHistoryFrame>::Make();
+		previousFrame->m_sceneVersions = view.m_sceneVersions;
+		view.m_previousMotionFrame = std::move(previousFrame);
 		Require(ResolvePreviousMotionProxy(view, current, previous) && previous.ResolveMeshWorldMatrix(0u) == current.ResolveMeshWorldMatrix(0u),
 			"after the next submitted frame a stationary object must have zero object motion without another ECS mutation");
-		const auto newborn = scene->AddInstance(MakeRecord(72u, EMobilityType::Dynamic));
+		auto newbornRecord = MakeRecord(72u, EMobilityType::Dynamic);
+		newbornRecord.m_topology = topology;
+		const auto newborn = scene->AddInstance(newbornRecord);
 		auto third = scene->PublishVersion();
 		view.m_sceneVersions = TSharedPtr<TVector<RHISceneVersionPtr>>::Make(TVector<RHISceneVersionPtr>{ third });
 		current.m_handle = newborn;
@@ -550,6 +842,69 @@ namespace
 				ETextureFormat::D32_SFLOAT),
 			"matching depth formats must remain on the dedicated native depth path");
 	}
+
+	void TestDebugRecordingIsASubmissionPrerequisite()
+	{
+		for (const bool bIncludeDebugPass : { false, true })
+		{
+			Tests::TaskTestApp app;
+			auto& scheduler = app.GetScheduler();
+			scheduler.AttachCurrentThreadAsMainThread();
+			auto graph = RHIFrameGraphPtr::Make();
+			if (bIncludeDebugPass)
+			{
+				FrameGraphBuilder builder;
+				auto node = builder.CreateNode("DebugDraw"_h);
+				Require(static_cast<bool>(node),
+					"the runtime factory must create the registered DebugDraw node");
+				// No attachments: the node cannot consume its recording result.
+				graph->GetGraph().Add(std::move(node));
+			}
+			auto sceneView = RHISceneViewPtr::Make();
+			DebugContext::DrawSnapshot snapshot;
+			{
+				DebugContext context;
+				snapshot = context.GetDrawSnapshot();
+			}
+			uint32_t completed = 0u;
+			for (uint32_t camera = 0; camera < 2u; ++camera)
+			{
+				// Main-queue admission lets this test complete each camera independently.
+				sceneView->m_debugDraw.Add(Tasks::CreateTask<RHICommandListPtr>(
+					"Record retained debug snapshot"_h, [snapshot, &completed]()
+					{
+						DebugContext::DrawDebugMesh({}, glm::mat4(1.0f), snapshot, glm::ivec2(64));
+						++completed;
+						return RHICommandListPtr{};
+					}, EThreadType::Main));
+				RHISceneViewSnapshot view;
+				view.m_camera = TUniquePtr<CameraData>::Make();
+				view.m_cameraIndex = camera;
+				sceneView->m_snapshots.Add(std::move(view));
+			}
+			const auto prerequisites = graph->Prepare(sceneView);
+			Require(prerequisites.Num() == 2u,
+				"every camera recording must belong to preparation even without a usable DebugDraw pass");
+			uint32_t completedAtSubmission = 0u;
+			auto frame = Tasks::CreateTask("Submit after all recording"_h,
+				[&]() { completedAtSubmission = completed; }, EThreadType::Main);
+			for (const auto& task : prerequisites)
+			{
+				frame->Join(task);
+			}
+			frame->Run();
+			scheduler.ProcessTasksOnMainThread();
+			const bool bInitiallyBlocked = !frame->IsStarted();
+			prerequisites[0]->Run();
+			scheduler.ProcessTasksOnMainThread();
+			const bool bBlockedAfterFirstCamera = !frame->IsStarted() && completed == 1u;
+			prerequisites[1]->Run();
+			scheduler.ProcessTasksOnMainThread();
+			Require(bInitiallyBlocked && bBlockedAfterFirstCamera && frame->IsFinished() &&
+				completedAtSubmission == 2u,
+				"submission must wait for both retained recordings, not depend on DebugDraw consuming them");
+		}
+	}
 }
 
 int main()
@@ -557,11 +912,18 @@ int main()
 	try
 	{
 		TestGenerationalHandlesAndImmutableVersions();
-		TestBatchUpdatesPreserveVersionsAndFlightReplay();
+		TestBatchUpdatesPreserveVersionsAndFlights();
 		TestCopyOnWritePageSharing();
+		TestConcurrentPublishedSceneReaders();
+		TestShadowLocalTransformPublication();
 		TestRenderedMotionHistoryReleasesOldScenePages();
-		TestTwoAndThreeFlightRevisionReplay();
+		TestTwoAndThreeFlightVersionRetention();
+		TestFlightRetirementWithMotionHistory();
 		TestRangeRetirementAndDirtyCoalescing();
+		TestDirtyRangeCountBoundary();
+		TestRangeCapacityBoundary();
+		TestRangePhysicalReuse();
+		TestSubmissionSemaphoreRetention();
 		TestImmutableMaterialBindingVersions();
 		TestLocalizedShadowVersionDiff();
 		TestSubmissionCompletionToken();
@@ -569,6 +931,7 @@ int main()
 		TestBlitFormatConversionPath();
 		TestMotionHistoryContinuity();
 		TestObjectMotionUsesRenderedVersions();
+		TestDebugRecordingIsASubmissionPrerequisite();
 	}
 	catch (const std::exception& exception)
 	{

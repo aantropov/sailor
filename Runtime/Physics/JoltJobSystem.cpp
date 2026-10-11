@@ -1,6 +1,5 @@
 #include "Physics/JoltJobSystem.h"
 #include "Tasks/Scheduler.h"
-#include "Tasks/Tasks.h"
 #include <Jolt/Physics/PhysicsSettings.h>
 #include <algorithm>
 
@@ -53,30 +52,6 @@ JPH::JobHandle Physics::JoltJobSystem::CreateJob(
 	return handle;
 }
 
-void Physics::JoltJobSystem::QueueJob(JPH::JobSystem::Job* job)
-{
-	job->AddRef();
-	if (!m_scheduler)
-	{
-		job->Execute();
-		job->Release();
-		return;
-	}
-
-	m_numQueuedTasks.fetch_add(1, std::memory_order_relaxed);
-	auto task = Tasks::CreateTask(
-		"Jolt Physics",
-		[this, job]()
-		{
-			job->Execute();
-			job->Release();
-			m_numQueuedTasks.fetch_sub(1, std::memory_order_release);
-			m_numQueuedTasks.notify_all();
-		},
-		EThreadType::Worker);
-	m_scheduler->Run(task);
-}
-
 void Physics::JoltJobSystem::QueueJobs(
 	JPH::JobSystem::Job** jobs,
 	JPH::uint jobCount)
@@ -90,17 +65,18 @@ void Physics::JoltJobSystem::QueueJobs(
 void Physics::JoltJobSystem::WaitForJobs(
 	JPH::JobSystem::Barrier* barrier)
 {
+	const auto completion = m_numQueuedTasks;
 	JPH::JobSystemWithBarrier::WaitForJobs(barrier);
 
 	uint32_t numQueuedTasks =
-		m_numQueuedTasks.load(std::memory_order_acquire);
+		completion->load(std::memory_order_acquire);
 	while (numQueuedTasks != 0)
 	{
-		m_numQueuedTasks.wait(
+		completion->wait(
 			numQueuedTasks,
 			std::memory_order_acquire);
 		numQueuedTasks =
-			m_numQueuedTasks.load(std::memory_order_acquire);
+			completion->load(std::memory_order_acquire);
 	}
 }
 

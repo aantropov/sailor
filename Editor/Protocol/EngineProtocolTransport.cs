@@ -4,8 +4,7 @@ internal enum EngineProtocolInvocationKind
 {
     Request,
     Interactive,
-    Lifecycle,
-    Background
+    Lifecycle
 }
 
 internal interface IEngineProtocolTransport : IDisposable, IAsyncDisposable

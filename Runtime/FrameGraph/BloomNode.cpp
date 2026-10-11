@@ -16,10 +16,6 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 
-#ifndef _SAILOR_IMPORT_
-const char* BloomNode::m_name = "Bloom";
-#endif
-
 void BloomNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -27,8 +23,8 @@ void BloomNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	RHI::RHIRenderTargetPtr bloomRenderTarget = GetResolvedAttachment("bloom").DynamicCast<RHIRenderTarget>();
-	RHI::RHITexturePtr averageLuminance = GetResolvedAttachment("averageLuminanceSampler");
+	RHI::RHIRenderTargetPtr bloomRenderTarget = GetResolvedAttachment("bloom"_h, frameGraph.GetRawPtr()).DynamicCast<RHIRenderTarget>();
+	RHI::RHITexturePtr averageLuminance = GetResolvedAttachment("averageLuminanceSampler"_h, frameGraph.GetRawPtr());
 
 	if (!m_pComputeDownscaleShader)
 	{
@@ -54,14 +50,22 @@ void BloomNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 		return;
 	}
 
+	const auto lensDirtTexture = frameGraph->GetSampler("g_lensDirtSampler"_h);
+	if (m_bloomTarget != bloomRenderTarget || m_averageLuminance != averageLuminance || m_lensDirt != lensDirtTexture)
+	{
+		m_computeDownscaleBindings.Clear();
+		m_computeUpscaleBindings.Clear();
+		m_bloomTarget = bloomRenderTarget;
+		m_averageLuminance = averageLuminance;
+		m_lensDirt = lensDirtTexture;
+	}
+
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdCompute);
 
 	const size_t numMipBindings = bloomRenderTarget->GetMipLevels() - 1;
 
 	if (m_computeUpscaleBindings.Num() == 0)
 	{
-		RHI::RHITexturePtr lensDirtTexture = frameGraph->GetSampler("g_lensDirtSampler");
-
 		m_computeUpscaleBindings.Resize(bloomRenderTarget->GetMipLevels());
 
 		for (uint32_t i = (uint32_t)bloomRenderTarget->GetMipLevels() - 1; i >= 1; --i)
@@ -70,32 +74,32 @@ void BloomNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 			auto writeMipLevel = bloomRenderTarget->GetMipLayer(i - 1);
 
 			m_computeUpscaleBindings[i] = driver->CreateShaderBindings();
-			driver->AddSamplerToShaderBindings(m_computeUpscaleBindings[i], "u_dirt_texture", lensDirtTexture, 2);
-			driver->AddSamplerToShaderBindings(m_computeUpscaleBindings[i], "u_average_luminance", averageLuminance, 3);
+			driver->AddSamplerToShaderBindings(m_computeUpscaleBindings[i], "u_dirt_texture"_h, lensDirtTexture, 2);
+			driver->AddSamplerToShaderBindings(m_computeUpscaleBindings[i], "u_average_luminance"_h, averageLuminance, 3);
 
-			driver->AddStorageImageToShaderBindings(m_computeUpscaleBindings[i], "u_input_texture", readMipLevel, 0);
-			driver->AddStorageImageToShaderBindings(m_computeUpscaleBindings[i], "u_output_image", writeMipLevel, 1);
+			driver->AddStorageImageToShaderBindings(m_computeUpscaleBindings[i], "u_input_texture"_h, readMipLevel, 0);
+			driver->AddStorageImageToShaderBindings(m_computeUpscaleBindings[i], "u_output_image"_h, writeMipLevel, 1);
 		}
 	}
 
 	if (m_computeDownscaleBindings.Num() == 0)
 	{
 		m_computeDownscaleBindings.Resize(numMipBindings);
-	
+
 		for (uint32_t i = 0; i < bloomRenderTarget->GetMipLevels() - 1; ++i)
 		{
 			auto readMipLevel = bloomRenderTarget->GetMipLayer(i);
 			auto writeMipLevel = bloomRenderTarget->GetMipLayer(i + 1);
 
 			m_computeDownscaleBindings[i] = driver->CreateShaderBindings();
-			driver->AddStorageImageToShaderBindings(m_computeDownscaleBindings[i], "u_input_texture", readMipLevel, 0);
-			driver->AddStorageImageToShaderBindings(m_computeDownscaleBindings[i], "u_output_image", writeMipLevel, 1);
-			driver->AddSamplerToShaderBindings(m_computeDownscaleBindings[i], "u_average_luminance", averageLuminance, 2);
+			driver->AddStorageImageToShaderBindings(m_computeDownscaleBindings[i], "u_input_texture"_h, readMipLevel, 0);
+			driver->AddStorageImageToShaderBindings(m_computeDownscaleBindings[i], "u_output_image"_h, writeMipLevel, 1);
+			driver->AddSamplerToShaderBindings(m_computeDownscaleBindings[i], "u_average_luminance"_h, averageLuminance, 2);
 		}
 	}
 
-	const glm::vec4 threshold = GetVec4("threshold");
-	const glm::vec4 knee = GetVec4("knee");
+	const glm::vec4 threshold = GetVec4("threshold"_h);
+	const glm::vec4 knee = GetVec4("knee"_h);
 	const float softKnee = (std::max)(knee.x, 0.0001f);
 
 	PushConstantsDownscale downscaleParams{};
@@ -111,7 +115,7 @@ void BloomNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 	// Bloom Downscale
 	for (uint32_t i = 0; i < bloomRenderTarget->GetMipLevels() - 1; ++i)
 	{
-		downscaleParams.m_useThreshold = i == 0;
+		downscaleParams.m_bIsThresholdEnabled = i == 0;
 
 		auto readMipLevel = bloomRenderTarget->GetMipLayer(i);
 		auto writeMipLevel = bloomRenderTarget->GetMipLayer(i + 1);
@@ -130,10 +134,10 @@ void BloomNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 	}
 
 	PushConstantsUpscale upscaleParams{};
-	upscaleParams.m_bloomIntensity = GetVec4("bloomIntensity").x;
-	upscaleParams.m_dirtIntensity = GetVec4("dirtIntensity").x;
+	upscaleParams.m_bloomIntensity = GetVec4("bloomIntensity"_h).x;
+	upscaleParams.m_dirtIntensity = GetVec4("dirtIntensity"_h).x;
 	upscaleParams.m_scatter = (std::clamp)(
-		GetVec4("scatter").x,
+		GetVec4("scatter"_h).x,
 		0.0f,
 		1.0f);
 
@@ -167,4 +171,7 @@ void BloomNode::Clear()
 	m_pComputeUpscaleShader.Clear();
 	m_computeDownscaleBindings.Clear();
 	m_computeUpscaleBindings.Clear();
+	m_bloomTarget.Clear();
+	m_averageLuminance.Clear();
+	m_lensDirt.Clear();
 }

@@ -76,20 +76,10 @@ bool Physics::TryConvertWorldPoseToLocal(
 
 	const Math::Transform parentTransform =
 		Math::Transform::FromMatrix(parentWorldMatrix);
-	const glm::vec4 parentRotation(
-		parentTransform.m_rotation.x,
-		parentTransform.m_rotation.y,
-		parentTransform.m_rotation.z,
-		parentTransform.m_rotation.w);
-	if (!Math::AllFinite(parentRotation))
-	{
-		return false;
-	}
-
 	outLocalPosition = glm::vec3(localHomogeneous) /
 		localHomogeneous.w;
 	outLocalRotation = NormalizeRotation(
-		glm::inverse(NormalizeRotation(parentTransform.m_rotation)) *
+		glm::conjugate(parentTransform.GetRotation()) *
 		NormalizeRotation(worldRotation));
 	return Math::AllFinite(outLocalPosition);
 }

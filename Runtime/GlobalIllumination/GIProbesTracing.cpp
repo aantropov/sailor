@@ -57,6 +57,32 @@ namespace
 			std::sin(phi) * radius);
 	}
 
+	template<uint32_t Base>
+	float RadicalInverse(uint32_t index) noexcept
+	{
+		float value = 0.0f;
+		float scale = 1.0f / static_cast<float>(Base);
+		while (index != 0u)
+		{
+			value += static_cast<float>(index % Base) * scale;
+			index /= Base;
+			scale /= static_cast<float>(Base);
+		}
+		return value;
+	}
+
+	glm::vec3 GenerateGIProbeIrradianceDirection(uint32_t index, uint32_t seed) noexcept
+	{
+		// Unlike a latitude-ordered Fibonacci sphere, Halton prefixes cover the whole sphere.
+		// Odd bases also keep every other sample spread out for samplers that interleave techniques.
+		const float y = 2.0f * glm::fract(0.5f + RadicalInverse<3u>(index + 1u)) - 1.0f;
+		const float radius = std::sqrt((std::max)(0.0f, 1.0f - y * y));
+		const uint32_t rotationBits = seed * 747796405u;
+		const float rotation = static_cast<float>(rotationBits & 0x00ffffffu) / 16777216.0f;
+		const float phi = 2.0f * Pi * glm::fract(RadicalInverse<5u>(index + 1u) + rotation);
+		return glm::vec3(std::cos(phi) * radius, y, std::sin(phi) * radius);
+	}
+
 	bool IsCancelled(
 		const GIProbeTraceRequest& request) noexcept
 	{
@@ -541,11 +567,9 @@ bool Sailor::AccumulateGIProbeIrradianceRange(
 			return false;
 		}
 		const glm::vec3 uniformDirection =
-			GenerateGIProbeFibonacciDirection(
+			GenerateGIProbeIrradianceDirection(
 				rayIndex,
-				sequenceSampleCount,
-				request.m_settings.m_randomSeed,
-				0u);
+				request.m_settings.m_randomSeed);
 		glm::vec3 direction{};
 		float directionPdf = 0.0f;
 		if (!sampler.SamplePrimaryDirection(

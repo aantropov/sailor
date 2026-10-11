@@ -1,5 +1,6 @@
 #include "Workspace/WorkspaceContext.h"
 #include "Workspace/WorkspacePathEncoding.h"
+#include "Sailor.h"
 
 #include <chrono>
 #include <cstdlib>
@@ -8,6 +9,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 #include <yaml-cpp/yaml.h>
@@ -66,11 +68,11 @@ namespace
 		std::filesystem::path m_path;
 	};
 
-	void Require(bool condition, const std::string& message)
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -82,13 +84,25 @@ namespace
 		return canonical;
 	}
 
+	void CreateDirectoryLink(const std::filesystem::path& link, const std::filesystem::path& target)
+	{
+#if defined(_WIN32)
+		const std::wstring command = L"cmd.exe /d /c mklink /J \"" + link.native() + L"\" \"" + target.native() + L"\" >NUL";
+		Require(_wsystem(command.c_str()) == 0, "Windows junction fixture should be creatable");
+#else
+		std::error_code error;
+		std::filesystem::create_directory_symlink(target, link, error);
+		Require(!error, "directory symlink fixture should be creatable: " + error.message());
+#endif
+	}
+
 	void WriteManifest(
 		const std::filesystem::path& path,
 		const ManifestSpec& spec = {})
 	{
 		if (spec.m_createEngineContent && !spec.m_enginePath.empty())
 		{
-			const std::filesystem::path engineReference(spec.m_enginePath);
+			const std::filesystem::path engineReference = PathFromUtf8(spec.m_enginePath);
 			const std::filesystem::path engineRoot = engineReference.is_absolute()
 				? engineReference
 				: path.parent_path() / engineReference;
@@ -129,7 +143,7 @@ namespace
 		Require(output.good(), "test manifest should be writable: " + PathToUtf8(path));
 	}
 
-	void WriteText(const std::filesystem::path& path, const std::string& value)
+	void WriteText(const std::filesystem::path& path, std::string_view value)
 	{
 		std::ofstream output(path);
 		output << value;
@@ -218,6 +232,15 @@ namespace
 		const std::filesystem::path component = PathFromUtf8(utf8Component);
 		Require(PathToUtf8(component) == utf8Component,
 			"command-line workspace paths must round-trip through the native path type as UTF-8");
+		std::string source = "prefix/" + utf8Component + "/ignored";
+		const auto bounded = PathFromUtf8(std::string_view(source).substr(7, utf8Component.size()));
+		source.assign(1024, 'x');
+		Require(PathToUtf8(bounded) == utf8Component,
+			"UTF-8 paths must own exactly the view's bytes after the source changes");
+		Require(PathFromUtf8({}).empty(), "an empty view must produce an empty path");
+		const char unterminated[] = { 'A', '\xc3', '\xa9' };
+		Require(PathToUtf8(PathFromUtf8(std::string_view(unterminated, sizeof(unterminated)))) == "A\xc3\xa9",
+			"UTF-8 path conversion must accept a bounded range without a terminator");
 
 		TempDirectory fixture("utf8-command-line");
 		const std::filesystem::path workspaceRoot = fixture.Path(component);
@@ -227,6 +250,45 @@ namespace
 			"a workspace root decoded from UTF-8 command-line bytes should resolve: " + result.m_message);
 		Require(result.m_context.GetRoot() == Canonical(workspaceRoot),
 			"UTF-8 command-line path conversion must preserve the physical workspace root");
+	}
+
+	void TestManifestTextViews()
+	{
+		TempDirectory workspace("manifest-text-views");
+		std::filesystem::create_directories(workspace.Path("Engine/Content"));
+		std::filesystem::create_directories(workspace.Path("Content"));
+		const auto manifestPath = workspace.Path("workspace.sailor");
+		WorkspaceContextResolveResult result;
+		{
+			ManifestSpec spec;
+			spec.m_createEngineContent = false;
+			spec.m_workspaceId = " \tarchipelago-workspace\r\n";
+			spec.m_name = " \tDrifting Archipelago\r\n";
+			spec.m_enginePath = " \tEngine\r\n";
+			spec.m_engineReferenceKind = " \tSOURCE\r\n";
+			spec.m_content = " \t./Content/\r\n";
+			spec.m_cache = " \t./Cache/\r\n";
+			spec.m_moduleName = " \tArchipelagoLogic\r\n";
+			WriteManifest(manifestPath, spec);
+			result = ResolveWorkspaceContext(workspace.Get());
+		}
+		WriteText(manifestPath, "name: replaced\n");
+		Require(result.IsSuccess(), "trimmed manifest fields should resolve: " + result.m_message);
+		Require(result.m_context.GetWorkspaceId() == "archipelago-workspace" &&
+			result.m_context.GetWorkspaceName() == "Drifting Archipelago" &&
+			result.m_context.GetModuleName() == "ArchipelagoLogic",
+			"workspace metadata must own trimmed text after its YAML document is destroyed");
+		Require(result.m_context.GetEngineRoot() == Canonical(workspace.Path("Engine")) &&
+			result.m_context.GetContent() == Canonical(workspace.Path("Content")) &&
+			result.m_context.GetCache() == Canonical(workspace.Path("Cache")),
+			"borrowed manifest values must preserve owned, normalized workspace paths");
+
+		ManifestSpec emptyName;
+		emptyName.m_name = " \t\r\n";
+		WriteManifest(manifestPath, emptyName);
+		const auto invalid = ResolveWorkspaceContext(workspace.Get());
+		Require(!invalid.IsSuccess() && invalid.m_message == "Workspace manifest field 'name' is required.",
+			"whitespace-only required text must preserve the readable field diagnostic");
 	}
 
 	void TestManifestPathsWithSpaces()
@@ -288,6 +350,70 @@ namespace
 			"logic output path should preserve spaces");
 		Require(result.m_context.GetModuleName() == spec.m_moduleName,
 			"module name should be preserved");
+	}
+
+	void TestCanonicalPathComparison()
+	{
+#if defined(_WIN32)
+		const auto root = std::filesystem::path(L"C:/Workspace/\u00c9tude").lexically_normal();
+		const auto differentCase = std::filesystem::path(L"c:\\workspace\\\u00e9tude\\Cache").lexically_normal();
+		Require(IsPathWithin(root, differentCase), "Windows containment must compare Unicode case ordinally and accept native separators");
+#else
+		const auto root = PathFromUtf8(reinterpret_cast<const char*>(u8"/Workspace/\u00c9tude"));
+		const auto differentCase = PathFromUtf8(reinterpret_cast<const char*>(u8"/workspace/\u00e9tude/Cache"));
+		Require(!IsPathWithin(root, differentCase), "POSIX containment must keep exact component comparison");
+#endif
+		Require(IsPathWithin(root, root) && IsPathWithin(root, root / "Cache/Build"),
+			"a canonical root must contain itself and nested, possibly nonexistent paths");
+		Require(!IsPathWithin(root, root.parent_path()), "an ancestor is not inside its child");
+		auto sibling = root;
+		sibling += "-other";
+		Require(!IsPathWithin(root, sibling / "Cache"), "a shared text prefix is not a directory boundary");
+		Require(!IsPathWithin(root, root.parent_path() / "Etude/Cache"),
+			"path comparison must not fold distinct accented names linguistically");
+	}
+
+	void TestCompleteResolvedContextOwnership()
+	{
+		TempDirectory workspace("complete-context");
+		const std::string name = reinterpret_cast<const char*>(u8"Project \u042f \u00e9 \u8239");
+		ManifestSpec spec;
+		spec.m_workspaceId = "id-" + name;
+		spec.m_name = name;
+		spec.m_enginePath = name + "/Engine";
+		spec.m_content = name + "/Content";
+		spec.m_cache = name + "/Cache";
+		spec.m_source = name + "/Source";
+		spec.m_generated = name + "/Generated";
+		spec.m_build = name + "/Build";
+		spec.m_logicOutput = name + "/Binaries";
+		spec.m_moduleName = "OceanLogic";
+		auto ownedPath = [&](std::string_view value)
+		{
+			return std::filesystem::weakly_canonical(workspace.Path(PathFromUtf8(value)));
+		};
+		std::filesystem::create_directories(ownedPath(spec.m_content));
+		const auto manifest = workspace.Path("workspace.sailor");
+		WriteManifest(manifest, spec);
+		auto result = ResolveWorkspaceContext(workspace.Get());
+		Require(result.IsSuccess(), "the Unicode context must resolve: " + result.m_message);
+		auto context = std::move(result.m_context);
+		result = {};
+		WriteText(manifest, "manifestVersion: [");
+		Require(!ResolveWorkspaceContext(workspace.Get()).IsSuccess(), "the replacement manifest must be rejected");
+		Require(context.GetRoot() == Canonical(workspace.Get()) && context.GetManifest() == Canonical(manifest) &&
+			context.GetEngineRoot() == ownedPath(spec.m_enginePath) &&
+			context.GetEngineContent() == ownedPath(spec.m_enginePath + "/Content") &&
+			context.GetContent() == ownedPath(spec.m_content) && context.GetCache() == ownedPath(spec.m_cache) &&
+			context.GetSource() == ownedPath(spec.m_source) && context.GetGenerated() == ownedPath(spec.m_generated) &&
+			context.GetBuild() == ownedPath(spec.m_build) && context.GetLogicOutput() == ownedPath(spec.m_logicOutput),
+			"all resolved paths must survive moving the context and resolving a later invalid document");
+		Require(context.GetWorkspaceId() == spec.m_workspaceId && context.GetWorkspaceName() == spec.m_name &&
+			context.GetModuleName() == spec.m_moduleName && context.GetManifestVersion() == 1 &&
+			!context.IsLegacy() && !context.IsEngineMode(), "the resolved context must retain all manifest metadata");
+		Require(context.GetProjectSettingsPath() == Canonical(workspace.Get()) / "ProjectSettings.yaml" &&
+			context.GetEditorSettingsPath() == context.GetCache() / "EditorSettings.yaml",
+			"derived settings paths must remain owned by the resolved workspace and cache");
 	}
 
 	void TestManifestDefaultRecovery()
@@ -674,36 +800,152 @@ namespace
 		}
 	}
 
+	void TestWorkspaceOwnedDirectoryLink()
+	{
+		TempDirectory workspace("physical-alias");
+		const auto target = workspace.Path(PathFromUtf8(reinterpret_cast<const char*>(u8"Project \u042f \u00e9 \u8239")));
+		std::filesystem::create_directories(target / "Content");
+		CreateDirectoryLink(workspace.Path("OwnedLink"), target);
+		ManifestSpec spec;
+		spec.m_enginePath = "OwnedLink/Engine";
+		spec.m_content = "OwnedLink/Content";
+		spec.m_cache = "OwnedLink/Cache";
+		spec.m_source = "OwnedLink/Source";
+		spec.m_generated = "OwnedLink/Generated";
+		spec.m_build = "OwnedLink/Cache/Build";
+		spec.m_logicOutput = "OwnedLink/Binaries";
+		WriteManifest(workspace.Path("workspace.sailor"), spec);
+		const auto result = ResolveWorkspaceContext(workspace.Get());
+		Require(result.IsSuccess(), "links to workspace-owned directories must resolve: " + result.m_message);
+		const auto physicalRoot = Canonical(target);
+		const auto& context = result.m_context;
+		Require(context.GetContent() == physicalRoot / "Content" && context.GetCache() == physicalRoot / "Cache" &&
+			context.GetSource() == physicalRoot / "Source" && context.GetGenerated() == physicalRoot / "Generated" &&
+			context.GetBuild() == physicalRoot / "Cache/Build" && context.GetLogicOutput() == physicalRoot / "Binaries" &&
+			context.GetEngineRoot() == physicalRoot / "Engine" && context.GetEngineContent() == physicalRoot / "Engine/Content",
+			"existing and missing paths must resolve through the link to their physical workspace-owned location");
+		Require(std::filesystem::is_directory(target / "Cache") && std::filesystem::equivalent(workspace.Path("OwnedLink"), target),
+			"cache recovery must create the directory at the target without replacing the directory link");
+	}
+
 	void TestPhysicalEscape()
 	{
 		TempDirectory workspace("physical-escape");
 		TempDirectory external("physical-external");
 		std::filesystem::create_directories(external.Path("Content"));
-		const std::filesystem::path linkPath = workspace.Path("ExternalLink");
-#if defined(_WIN32)
-		const std::string command = "cmd.exe /d /c mklink /J \"" +
-			linkPath.string() + "\" \"" + external.Get().string() + "\" >NUL";
-		Require(std::system(command.c_str()) == 0,
-			"Windows junction fixture should be creatable");
-#else
-		std::error_code linkError;
-		std::filesystem::create_directory_symlink(
-			external.Get(),
-			linkPath,
-			linkError);
-		Require(!linkError, "directory symlink fixture should be creatable: " + linkError.message());
-#endif
+		CreateDirectoryLink(workspace.Path("ExternalLink"), external.Get());
 
+		for (auto field : { &ManifestSpec::m_content, &ManifestSpec::m_cache, &ManifestSpec::m_source,
+			&ManifestSpec::m_generated, &ManifestSpec::m_build, &ManifestSpec::m_logicOutput })
+		{
+			ManifestSpec spec;
+			spec.*field = "ExternalLink/Content";
+			WriteManifest(workspace.Path("workspace.sailor"), spec);
+			const auto result = ResolveWorkspaceContext(workspace.Get());
+			Require(result.m_status == EWorkspaceContextResolveStatus::PathInvalid,
+				"every physically escaping workspace-owned path must be rejected: " + result.m_message);
+			Require(result.m_message.find("physical resolution") != std::string::npos,
+				"physical escape diagnostic should explain containment failure");
+			Require(result.m_context.GetRoot().empty() && !std::filesystem::exists(workspace.Path("Content")) &&
+				!std::filesystem::exists(workspace.Path("Cache")), "path failure must not publish or recover a partial workspace");
+		}
+		WriteText(external.Path("Foreign.sailor"), "not a workspace document");
+		const auto manifestResult = ResolveWorkspaceContext(workspace.Get(), "ExternalLink/Foreign.sailor");
+		Require(manifestResult.m_status == EWorkspaceContextResolveStatus::PathInvalid &&
+			manifestResult.m_context.GetRoot().empty(), "physical manifest ownership must be checked before parsing");
+	}
+
+	void TestAppWorkspaceSwitch()
+	{
+		TempDirectory first("switch-first");
+		TempDirectory second("switch-second");
+		ManifestSpec firstSpec;
+		firstSpec.m_moduleName = "MissingFirstLogic";
+		ManifestSpec secondSpec;
+		secondSpec.m_workspaceId = "second-workspace";
+		secondSpec.m_name = "Second project";
+		secondSpec.m_enginePath = "OtherEngine";
+		secondSpec.m_cache = "OtherCache";
+		secondSpec.m_source = "OtherSource";
+		secondSpec.m_generated = "OtherGenerated";
+		secondSpec.m_build = "OtherCache/Build";
+		secondSpec.m_logicOutput = "OtherBinaries";
+		secondSpec.m_moduleName = "MissingSecondLogic";
+		WriteManifest(first.Path("workspace.sailor"), firstSpec);
+		WriteManifest(second.Path("workspace.sailor"), secondSpec);
+		for (const TempDirectory* workspace : { &first, &second, &first })
+		{
+			const auto& spec = workspace == &first ? firstSpec : secondSpec;
+			const auto root = Canonical(workspace->Get());
+			const auto projectPath = [&](std::string_view path) { return root / PathFromUtf8(path); };
+			const std::string rootArgument = PathToUtf8(root);
+			const char* arguments[] = { "Sailor", "--noconsole", "--null-audio", "--workspace", rootArgument.c_str() };
+			const auto initialized = Sailor::App::Initialize(arguments, static_cast<int32_t>(std::size(arguments)));
+			const auto context = Sailor::App::GetWorkspaceContext();
+			const auto publishedRoot = Sailor::App::GetWorkspace();
+			const bool bHasRenderer = Sailor::App::IsRendererInitialized();
+			const bool bShutdown = Sailor::App::Shutdown();
+			Require(initialized == Sailor::EAppInitializationResult::Failed && !bHasRenderer && bShutdown,
+				"workspace switching must stop at the missing logic module without creating a renderer");
+			Require(context.GetRoot() == root && publishedRoot == rootArgument + "/" &&
+				context.GetManifest() == root / "workspace.sailor" && context.GetContent() == root / "Content" &&
+				context.GetEngineRoot() == projectPath(spec.m_enginePath) && context.GetEngineContent() == projectPath(spec.m_enginePath) / "Content" &&
+				context.GetCache() == projectPath(spec.m_cache) && context.GetSource() == projectPath(spec.m_source) &&
+				context.GetGenerated() == projectPath(spec.m_generated) && context.GetBuild() == projectPath(spec.m_build) &&
+				context.GetLogicOutput() == projectPath(spec.m_logicOutput) && context.GetModuleName() == spec.m_moduleName &&
+				context.GetWorkspaceId() == spec.m_workspaceId && context.GetWorkspaceName() == spec.m_name &&
+				!context.IsLegacy() && context.GetManifestVersion() == 1,
+				"switching A to B and back must replace every published workspace path and metadata field");
+		}
+	}
+
+	void TestAppBootstrapArguments()
+	{
+		TempDirectory fixture("bootstrap-arguments");
+		const auto root = fixture.Path(PathFromUtf8(reinterpret_cast<const char*>(u8"Skipper \u042f \u00e9 \u8239 \U0001f6a2")));
+		std::filesystem::create_directories(root);
+		const auto manifestPath = root / PathFromUtf8(reinterpret_cast<const char*>(u8"Project \u00e9.sailor"));
 		ManifestSpec spec;
-		spec.m_content = "ExternalLink/Content";
-		WriteManifest(workspace.Path("workspace.sailor"), spec);
+		spec.m_moduleName = "MissingBootstrapModule";
+		WriteManifest(manifestPath, spec);
+		const auto canonicalRoot = Canonical(root);
+		const std::string expectedRoot = PathToUtf8(canonicalRoot) + "/";
+		const std::vector<std::string> worldArguments{ Sailor::Utils::wchar_to_UTF8(L"\"literal \u00e9 \U0001f6a2\""),
+			"", "\"", "\"unfinished", "Sea path with spaces.world", "--literal" };
+		for (bool bExplicitRoot : { true, false })
+		{
+			for (const auto& expectedWorld : worldArguments)
+			{
+				Sailor::EAppInitializationResult initialization;
+				{
+					Sailor::TVector<std::string> storage{ "Sailor", "--noconsole", "--null-audio", "--no-title-stats",
+						"--world", expectedWorld, "--workspace-manifest", PathToUtf8(manifestPath) };
+					if (bExplicitRoot) storage.AddRange({ "--workspace", PathToUtf8(root) });
+					Sailor::TVector<const char*> arguments;
+					for (const auto& argument : storage) arguments.Add(argument.c_str());
+					initialization = Sailor::App::Initialize(arguments.GetData(), static_cast<int32_t>(arguments.Num()));
+					for (auto& argument : storage) argument.assign(4096, 'x');
+				}
+				const std::string world = Sailor::App::GetLoadedWorldPath();
+				const std::string publishedRoot = Sailor::App::GetWorkspace();
+				const auto context = Sailor::App::GetWorkspaceContext();
+				const bool bHasRenderer = Sailor::App::IsRendererInitialized();
+				const bool bShutdown = Sailor::App::Shutdown();
+				Require(initialization == Sailor::EAppInitializationResult::Failed && !bHasRenderer && bShutdown,
+					"the missing-module fixture must resolve its workspace and stop before creating a renderer");
+				Require(context.GetRoot() == canonicalRoot && publishedRoot == expectedRoot &&
+					context.GetCache() == Canonical(root / "Cache") && context.GetManifest() == Canonical(manifestPath),
+					"App bootstrap must preserve UTF-8 workspace, manifest and project-owned cache paths after argv expires");
+				Require(world == expectedWorld,
+					"App arguments are already tokenized: literal quotes and Unicode must survive without reparsing or borrowing argv");
+			}
+		}
 
-		const WorkspaceContextResolveResult result = ResolveWorkspaceContext(workspace.Get());
-
-		Require(result.m_status == EWorkspaceContextResolveStatus::PathInvalid,
-			"physical content escape should be rejected: " + result.m_message);
-		Require(result.m_message.find("physical resolution") != std::string::npos,
-			"physical escape diagnostic should explain containment failure");
+		const std::string manifestArgument = PathToUtf8(manifestPath);
+		const char* missingValue[] = { "Sailor", "--noconsole", "--workspace-manifest", manifestArgument.c_str(), "--world" };
+		Sailor::App::Initialize(missingValue, static_cast<int32_t>(std::size(missingValue)));
+		const bool bEmptyWorld = Sailor::App::GetLoadedWorldPath().empty();
+		Require(Sailor::App::Shutdown() && bEmptyWorld, "a missing final value must remain empty without reading beyond argv");
 	}
 }
 
@@ -713,7 +955,12 @@ int main()
 	{
 		TestLegacyFallbackAndRecovery();
 		TestUtf8CommandLinePathConversion();
+		TestAppBootstrapArguments();
+		TestAppWorkspaceSwitch();
+		TestManifestTextViews();
 		TestManifestPathsWithSpaces();
+		TestCanonicalPathComparison();
+		TestCompleteResolvedContextOwnership();
 		TestManifestDefaultRecovery();
 		TestManifestDefaultsMissingOptionalV1Fields();
 		TestExplicitOptionalFieldsAreInvalid();
@@ -726,6 +973,7 @@ int main()
 		TestManifestVersionPreflightDoesNotMutateWorkspace();
 		TestManifestDiscoveryFailures();
 		TestUnsafeOwnedPaths();
+		TestWorkspaceOwnedDirectoryLink();
 		TestPhysicalEscape();
 		std::cout << "[PASS] Workspace context contract" << std::endl;
 		return 0;

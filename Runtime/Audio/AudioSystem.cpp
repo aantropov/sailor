@@ -11,6 +11,7 @@
 #include "Core/SpinLock.h"
 #include "Tasks/Scheduler.h"
 #include "Tasks/Tasks.h"
+#include "Workspace/WorkspacePathEncoding.h"
 
 #include <algorithm>
 #include <atomic>
@@ -64,7 +65,9 @@ public:
 	struct VoiceState
 	{
 		AudioTransformState m_transform{};
+		AudioVoiceSettings m_settings{};
 		uint64_t m_clipRevision = 0;
+		bool m_bInitialized = false;
 		bool m_bPlaying = false;
 	};
 
@@ -156,7 +159,7 @@ public:
 		if (bScheduleDrain)
 		{
 			scheduler->Run(Tasks::CreateTask(
-				"Process audio commands",
+				"Process audio commands"_h,
 				[this]() { DrainCommands(); },
 				EThreadType::Audio));
 		}
@@ -194,13 +197,26 @@ public:
 		{
 		case ECommandType::CreateVoice:
 		{
+			m_stateLock.Lock();
+			const bool bRequested = m_voiceStates.ContainsKey(command.m_voiceId);
+			m_stateLock.Unlock();
+			if (!bRequested)
+			{
+				break;
+			}
 			auto voice = TUniquePtr<Voice>::Make();
 			const ma_uint32 flags = command.m_clip.m_bStream
 				? MA_SOUND_FLAG_STREAM | MA_SOUND_FLAG_ASYNC
 				: MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_ASYNC;
-			const ma_result result = ma_sound_init_from_file(
+			const auto sourcePath = Workspace::PathFromUtf8(command.m_clip.m_sourcePath);
+#if defined(_WIN32)
+			const auto initializeSound = ma_sound_init_from_file_w;
+#else
+			const auto initializeSound = ma_sound_init_from_file;
+#endif
+			const ma_result result = initializeSound(
 				&m_engine,
-				command.m_clip.m_sourcePath.c_str(),
+				sourcePath.c_str(),
 				flags,
 				nullptr,
 				nullptr,
@@ -208,10 +224,14 @@ public:
 			if (result == MA_SUCCESS)
 			{
 				voice->m_bInitialized = true;
+				RefreshVoiceSettings(command.m_voiceId, *voice);
 				m_voices.Insert(command.m_voiceId, std::move(voice));
 			}
 			else
 			{
+				m_stateLock.Lock();
+				m_voiceStates.Remove(command.m_voiceId);
+				m_stateLock.Unlock();
 				SAILOR_LOG_ERROR(
 					"Cannot create audio voice for '%s': %s",
 					command.m_clip.m_sourcePath.c_str(),
@@ -232,6 +252,7 @@ public:
 				ma_sound_set_spatialization_enabled(&voice->m_sound, settings.m_bSpatial ? MA_TRUE : MA_FALSE);
 				ma_sound_set_min_distance(&voice->m_sound, (std::max)(0.01f, settings.m_minDistance));
 				ma_sound_set_max_distance(&voice->m_sound, (std::max)(settings.m_maxDistance, settings.m_minDistance));
+				RefreshVoiceSettings(command.m_voiceId, *voice);
 			}
 			break;
 		case ECommandType::SetVoiceTransform:
@@ -321,16 +342,52 @@ public:
 		m_stateLock.Unlock();
 	}
 
+	void RefreshVoiceSettings(AudioVoiceId voiceId, const Voice& voice)
+	{
+		AudioVoiceSettings settings;
+		settings.m_volume = ma_sound_get_volume(&voice.m_sound);
+		settings.m_pitch = ma_sound_get_pitch(&voice.m_sound);
+		settings.m_bLoop = ma_sound_is_looping(&voice.m_sound) == MA_TRUE;
+		settings.m_bSpatial = ma_sound_is_spatialization_enabled(&voice.m_sound) == MA_TRUE;
+		settings.m_minDistance = ma_sound_get_min_distance(&voice.m_sound);
+		settings.m_maxDistance = ma_sound_get_max_distance(&voice.m_sound);
+		m_stateLock.Lock();
+		if (auto it = m_voiceStates.Find(voiceId); it != m_voiceStates.end())
+		{
+			it.Value().m_settings = settings;
+			it.Value().m_bInitialized = true;
+		}
+		m_stateLock.Unlock();
+	}
+
 	void RefreshVoiceStates()
 	{
+		TVector<TPair<AudioVoiceId, ma_result>> failed;
 		m_stateLock.Lock();
 		for (const auto& entry : m_voiceStates)
 		{
 			VoiceState& state = *entry.m_second;
 			Voice* voice = FindVoice(entry.m_first);
+			const auto result = voice
+				? ma_resource_manager_data_source_result(voice->m_sound.pResourceManagerDataSource)
+				: MA_BUSY;
+			if (result != MA_SUCCESS && result != MA_BUSY)
+			{
+				failed.Emplace(entry.m_first, result);
+			}
 			state.m_bPlaying = voice && ma_sound_is_playing(&voice->m_sound) == MA_TRUE;
 		}
+		for (const auto& entry : failed)
+		{
+			m_voiceStates.Remove(entry.m_first);
+		}
 		m_stateLock.Unlock();
+		for (const auto& entry : failed)
+		{
+			SAILOR_LOG_ERROR("Audio voice %llu decoding failed: %s",
+				static_cast<unsigned long long>(entry.m_first), ma_result_description(entry.m_second));
+			m_voices.Remove(entry.m_first);
+		}
 	}
 
 	ma_engine m_engine{};
@@ -364,7 +421,7 @@ AudioSystem::AudioSystem(bool bForceNullDevice) :
 	}
 
 	auto initialize = Tasks::CreateTask(
-		"Initialize audio backend",
+		"Initialize audio backend"_h,
 		[this, bForceNullDevice]() { m_pImpl->InitializeBackend(bForceNullDevice); },
 		EThreadType::Audio);
 	scheduler->Run(initialize);
@@ -381,7 +438,7 @@ AudioSystem::~AudioSystem()
 
 	Flush();
 	auto shutdown = Tasks::CreateTask(
-		"Shutdown audio backend",
+		"Shutdown audio backend"_h,
 		[this]() { m_pImpl->ShutdownBackend(); },
 		EThreadType::Audio);
 	scheduler->Run(shutdown);
@@ -582,6 +639,23 @@ uint64_t AudioSystem::GetVoiceClipRevision(AudioVoiceId voiceId) const
 	const uint64_t revision = it != m_pImpl->m_voiceStates.end() ? it.Value().m_clipRevision : 0;
 	m_pImpl->m_stateLock.Unlock();
 	return revision;
+}
+
+bool AudioSystem::GetVoiceSettings(AudioVoiceId voiceId, AudioVoiceSettings& outSettings) const
+{
+	if (!m_pImpl)
+	{
+		return false;
+	}
+	m_pImpl->m_stateLock.Lock();
+	const auto it = m_pImpl->m_voiceStates.Find(voiceId);
+	const bool bInitialized = it != m_pImpl->m_voiceStates.end() && it.Value().m_bInitialized;
+	if (bInitialized)
+	{
+		outSettings = it.Value().m_settings;
+	}
+	m_pImpl->m_stateLock.Unlock();
+	return bInitialized;
 }
 
 bool AudioSystem::GetVoiceTransform(AudioVoiceId voiceId, AudioTransformState& outTransform) const

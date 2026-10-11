@@ -387,6 +387,27 @@ public sealed class ProjectContentFileOperationsTests : IDisposable
     }
 
     [Fact]
+    public void DuplicateAssetGroup_DetachesGeneratedMaterialOwnership()
+    {
+        var sourcePath = WriteSource(contentRoot, "Generated.mat", "renderQueue: Opaque");
+        var metadataPath = WriteSource(contentRoot, "Generated.mat.asset",
+            "fileId: '{11111111-2222-3333-4444-555555555555}'\n" +
+            "filename: Generated.mat\nassetInfoType: Sailor::MaterialAssetInfo\n" +
+            "sourceModel: '{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}'\nsourceMaterialIndex: 3\n");
+        var original = File.ReadAllText(metadataPath);
+
+        var result = new ProjectContentFileOperations().DuplicateAssetGroup(contentRoot, metadataPath);
+
+        Assert.True(result.Succeeded, result.Error);
+        var copied = ReadMetadataRoot(result.CreatedAssetInfoPath!);
+        Assert.False(copied.Children.ContainsKey(new YamlScalarNode("sourceModel")));
+        Assert.False(copied.Children.ContainsKey(new YamlScalarNode("sourceMaterialIndex")));
+        Assert.NotEqual(ReadFileId(metadataPath), result.CreatedFileId);
+        Assert.Equal(File.ReadAllText(sourcePath), File.ReadAllText(Path.Combine(contentRoot, "Generated Copy.mat")));
+        Assert.Equal(original, File.ReadAllText(metadataPath));
+    }
+
+    [Fact]
     public void DuplicateAssetGroup_AdvancesCopyNumberWhenAnyGroupDestinationCollides()
     {
         var sourceDirectory = Directory.CreateDirectory(Path.Combine(contentRoot, "Models")).FullName;

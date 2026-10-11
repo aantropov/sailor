@@ -39,11 +39,12 @@ VulkanSampler::VulkanSampler(VulkanDevicePtr pDevice,
 	samplerInfo.minLod = 0.0f;
 	samplerInfo.maxLod = bUseMips ? 64.0f : 0.0f;
 
-	VkSamplerReductionModeCreateInfoEXT createInfoReduction = {};
-
-	createInfoReduction.sType = VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO_EXT;
+	VkSamplerReductionModeCreateInfo createInfoReduction{ VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO };
 	createInfoReduction.reductionMode = reduction;
-	samplerInfo.pNext = &createInfoReduction;
+	if (reduction != VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE)
+	{
+		samplerInfo.pNext = &createInfoReduction;
+	}
 
 	VK_CHECK(vkCreateSampler(*m_device, &samplerInfo, nullptr, &m_textureSampler));
 }
@@ -55,7 +56,8 @@ VulkanSampler::~VulkanSampler()
 
 VulkanSamplerCache::VulkanSamplerCache(VulkanDevicePtr pDevice)
 {
-	for (uint32_t reduction = 0; reduction < 3; reduction++)
+	const uint32_t reductionCount = pDevice->IsSamplerFilterMinmaxSupported() ? 3u : 1u;
+	for (uint32_t reduction = 0; reduction < reductionCount; reduction++)
 	{
 		for (uint32_t i = 0; i < 8; i++)
 		{

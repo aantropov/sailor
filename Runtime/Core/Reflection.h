@@ -59,9 +59,7 @@ namespace Sailor::RHI
 	} \
 	virtual ::Sailor::ReflectedData GetReflectedData() const override \
 	{ \
-		::Sailor::TypeInfo typeInfo = ::Sailor::TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
-		::Sailor::ReflectedData res = ::Sailor::Reflection::ReflectStatic<::refl::trait::remove_qualifiers_t<decltype(*this)>>(this); \
-		return res; \
+		return ::Sailor::Reflection::ReflectStatic<::refl::trait::remove_qualifiers_t<decltype(*this)>>(this); \
 	} \
 	virtual void ApplyReflection(const ::Sailor::ReflectedData& reflection) override \
 	{ \
@@ -89,9 +87,7 @@ namespace Sailor::RHI
 	} \
 	virtual ::Sailor::ReflectedData GetReflectedData() const override \
 	{ \
-		::Sailor::TypeInfo typeInfo = ::Sailor::TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
-		::Sailor::ReflectedData res = ::Sailor::Reflection::ReflectStatic<::refl::trait::remove_qualifiers_t<decltype(*this)>>(this); \
-		return res; \
+		return ::Sailor::Reflection::ReflectStatic<::refl::trait::remove_qualifiers_t<decltype(*this)>>(this); \
 	} \
 	virtual void ApplyReflection(const ::Sailor::ReflectedData& reflection) override \
 	{ \
@@ -109,6 +105,7 @@ namespace Sailor::RHI
 
 namespace Sailor
 {
+	struct ReflectedTypeCatalog;
 	namespace Workspace
 	{
 		class WorkspaceModuleManager;
@@ -116,6 +113,9 @@ namespace Sailor
 
 	namespace Attributes
 	{
+		template<typename... TExtensions>
+		struct Asset;
+
 		struct Transient : refl::attr::usage::field, refl::attr::usage::function { };
 		struct SkipCDO : refl::attr::usage::field, refl::attr::usage::function { };
 
@@ -130,6 +130,13 @@ namespace Sailor
 			double m_min;
 			double m_max;
 		};
+	}
+
+	namespace Internal
+	{
+		template<typename T> struct TReflectedVector : std::false_type {};
+		template<typename T, typename TAllocator>
+		struct TReflectedVector<TVector<T, TAllocator>> : std::true_type { using ElementType = T; };
 	}
 
 #if defined(_MSC_VER)
@@ -149,10 +156,14 @@ namespace Sailor
 
 		virtual YAML::Node Serialize() const;
 		virtual void Deserialize(const YAML::Node& inData);
+		YAML::Node SerializeAssetType() const;
+		void AppendValueTypes(YAML::Node& catalog, TSet<std::string>& types, TSet<std::string>& enums) const;
+		const YAML::Node* GetDefaultValues() const;
+		bool HasAmbiguousProperties() const { return m_bHasAmbiguousProperties; }
 
 		// instances can be obtained only through calls to Get()
 		template <typename T>
-		static const TypeInfo& Get()
+		static SAILOR_MODULE_LOCAL const TypeInfo& Get()
 		{
 			static const TypeInfo ti(refl::reflect<T>());
 			return ti;
@@ -164,6 +175,7 @@ namespace Sailor
 		const TMap<std::string, PropertyRange>& PropertyRanges() const { return m_propertyRanges; }
 
 		size_t Size() const { return m_size; }
+		size_t Alignment() const { return m_alignment; }
 		size_t GetHash() const { std::hash<std::string> h; return h(m_name); }
 
 		// TODO: Should we optimize that?
@@ -173,42 +185,7 @@ namespace Sailor
 		static std::string GetReflectedEnumTypeName()
 		{
 			using EnumType = ::refl::trait::remove_qualifiers_t<TEnum>;
-
-			std::string enumName = std::string(magic_enum::enum_type_name<EnumType>());
-			constexpr const char* enumClassPrefix = "enum class ";
-			constexpr const char* enumPrefix = "enum ";
-
-			if (enumName.rfind(enumClassPrefix, 0) == 0)
-			{
-				enumName.erase(0, std::char_traits<char>::length(enumClassPrefix));
-			}
-			else if (enumName.rfind(enumPrefix, 0) == 0)
-			{
-				enumName.erase(0, std::char_traits<char>::length(enumPrefix));
-			}
-
-			if (enumName.find("::") == std::string::npos)
-			{
-				if constexpr (
-					std::is_same_v<EnumType, RHI::EFormat> ||
-					std::is_same_v<EnumType, RHI::ETextureFiltration> ||
-					std::is_same_v<EnumType, RHI::ETextureClamping> ||
-					std::is_same_v<EnumType, RHI::ESamplerReductionMode> ||
-					std::is_same_v<EnumType, RHI::EFillMode> ||
-					std::is_same_v<EnumType, RHI::ECullMode> ||
-					std::is_same_v<EnumType, RHI::EBlendMode> ||
-					std::is_same_v<EnumType, RHI::EDepthCompare> ||
-					std::is_same_v<EnumType, RHI::EShadowType>)
-				{
-					enumName = "Sailor::RHI::" + enumName;
-				}
-				else
-				{
-					enumName = "Sailor::" + enumName;
-				}
-			}
-
-			return "enum " + enumName;
+			return "enum " + GetCanonicalCppTypeName<EnumType>();
 		}
 
 		template<typename TProperty>
@@ -244,13 +221,9 @@ namespace Sailor
 			{
 				return "uint32";
 			}
-			else if constexpr (std::is_same_v<PropertyType, TVector<FileId>>)
+			else if constexpr (Internal::TReflectedVector<PropertyType>::value)
 			{
-				return "List<FileId>";
-			}
-			else if constexpr (std::is_same_v<PropertyType, TVector<float>>)
-			{
-				return "List<float>";
+				return "List<" + GetReflectedPropertyTypeName<typename Internal::TReflectedVector<PropertyType>::ElementType>() + ">";
 			}
 			else if constexpr (std::is_enum_v<PropertyType>)
 			{
@@ -260,6 +233,10 @@ namespace Sailor
 			{
 				using ElementType = std::remove_cv_t<TemplateParameter_t<PropertyType>>;
 				return "TObjectPtr<" + GetCanonicalCppTypeName<ElementType>() + ">";
+			}
+			else if constexpr (refl::trait::is_reflectable_v<PropertyType>)
+			{
+				return refl::reflect<PropertyType>().name.c_str();
 			}
 			else
 			{
@@ -311,8 +288,99 @@ namespace Sailor
 		std::string m_name;
 		std::string m_base;
 		size_t m_size;
+		size_t m_alignment;
+		bool m_bHasAmbiguousProperties = false;
 		TMap<std::string, std::string> m_props;
 		TMap<std::string, PropertyRange> m_propertyRanges;
+		TVector<std::string> m_readOnlyProperties;
+		YAML::Node (*m_serializeAssetType)() = nullptr;
+		void (*m_appendValueTypes)(YAML::Node&, TSet<std::string>&, TSet<std::string>&) = nullptr;
+		const YAML::Node* (*m_getDefaultValues)() = nullptr;
+
+		template<typename T>
+		static SAILOR_MODULE_LOCAL const YAML::Node* CaptureDefaultValues();
+
+		struct PropertyDeclaration
+		{
+			std::string_view m_declarator;
+			std::string m_typeName;
+			bool m_bIsReadable = false;
+			bool m_bIsWritable = false;
+		};
+
+		template<typename TType>
+		static bool HasAmbiguousPropertyDeclarations()
+		{
+			TMap<std::string_view, PropertyDeclaration> declarations;
+			bool bAmbiguous = false;
+			for_each(refl::reflect<TType>().members, [&](auto member)
+				{
+					constexpr bool bWritable = is_writable(member);
+					constexpr bool bReadable = is_readable(member) &&
+						!refl::descriptor::has_attribute<Attributes::Transient>(member) &&
+						!refl::descriptor::has_attribute<Attributes::SkipCDO>(member);
+					if constexpr (bWritable || bReadable)
+					{
+						const auto reader = get_reader(member);
+						using PropertyType = refl::trait::remove_qualifiers_t<decltype(reader(std::declval<TType&>()))>;
+						const std::string_view name = [&]() -> std::string_view
+						{
+							if constexpr (is_field(member) && !IsBaseOf<IReflectable, TType>) return GetYamlFieldName(member);
+							else return get_display_name(member);
+						}();
+						PropertyDeclaration declaration{
+							refl::descriptor::get_declarator(member).name.c_str(),
+							GetReflectedPropertyTypeName<PropertyType>(), bReadable, bWritable };
+						auto existing = declarations.Find(name);
+						if (existing == declarations.end())
+						{
+							declarations.Insert(name, std::move(declaration));
+						}
+						else
+						{
+							auto& previous = existing.Value();
+							bAmbiguous |= previous.m_declarator != declaration.m_declarator ||
+								previous.m_typeName != declaration.m_typeName ||
+								(previous.m_bIsReadable && bReadable) || (previous.m_bIsWritable && bWritable);
+							previous.m_bIsReadable |= bReadable;
+							previous.m_bIsWritable |= bWritable;
+						}
+					}
+				});
+			return bAmbiguous;
+		}
+
+		template<typename T>
+		static SAILOR_MODULE_LOCAL void AppendValueType(YAML::Node& catalog, TSet<std::string>& types, TSet<std::string>& enums)
+		{
+			if constexpr (Internal::TReflectedVector<T>::value)
+			{
+				AppendValueType<typename Internal::TReflectedVector<T>::ElementType>(catalog, types, enums);
+			}
+			else if constexpr (std::is_enum_v<T>)
+			{
+				const auto name = GetReflectedEnumTypeName<T>();
+				if (!enums.Insert(name)) return;
+				YAML::Node values(YAML::NodeType::Sequence);
+				for (const auto value : magic_enum::enum_names<T>()) values.push_back(value);
+				YAML::Node entry;
+				entry[name] = values;
+				catalog["enums"].push_back(entry);
+			}
+			else if constexpr (std::is_class_v<T> && refl::trait::is_reflectable_v<T> && !IsBaseOf<IReflectable, T> &&
+				!std::is_same_v<T, FileId> && !std::is_same_v<T, InstanceId>)
+			{
+				const auto& type = Get<T>();
+				if (!types.Insert(type.Name())) return;
+				catalog["engineTypes"].push_back(type.Serialize());
+				YAML::Node defaults;
+				defaults["typename"] = type.Name();
+				static const YAML::Node defaultValues = Sailor::SerializeReflected(T{});
+				defaults["defaultValues"] = YAML::Clone(defaultValues);
+				catalog["cdos"].push_back(defaults);
+				type.m_appendValueTypes(catalog, types, enums);
+			}
+		}
 
 		template<typename TProperty, typename TMember>
 		void AddPropertyRange(const std::string& propertyName, TMember)
@@ -365,13 +433,37 @@ namespace Sailor
 			}
 		}
 
-		// given a type_descriptor, we construct a TypeInfo
-		// with all the metadata we care about (currently only name)
 		template <typename T, typename... Fields>
 		TypeInfo(refl::type_descriptor<T> td)
 			: m_name(td.name)
 		{
 			m_size = sizeof(T);
+			m_alignment = alignof(T);
+			m_bHasAmbiguousProperties = HasAmbiguousPropertyDeclarations<T>();
+			if constexpr (IsBaseOf<IReflectable, T> && std::is_default_constructible_v<T>)
+			{
+				m_getDefaultValues = &CaptureDefaultValues<T>;
+			}
+			m_appendValueTypes = [](YAML::Node& catalog, TSet<std::string>& types, TSet<std::string>& enums)
+				{
+					refl::util::for_each(refl::reflect<T>().members, [&](auto member)
+						{
+							if constexpr (is_writable(member))
+							{
+								using PropertyType = std::remove_cvref_t<decltype(get_reader(member)(std::declval<T&>()))>;
+								AppendValueType<PropertyType>(catalog, types, enums);
+							}
+						});
+				};
+			if constexpr (refl::descriptor::has_attribute<Attributes::Asset>(td))
+			{
+				m_serializeAssetType = []()
+					{
+						constexpr const auto& asset =
+							refl::descriptor::get_attribute<Attributes::Asset>(refl::reflect<T>());
+						return asset.template Serialize<T>();
+					};
+			}
 
 			T* empty = nullptr;// reinterpret_cast<T*>(_malloca(m_size));
 
@@ -383,11 +475,17 @@ namespace Sailor
 					}
 				});
 
+			const auto propertyName = [](auto member) -> std::string_view
+				{
+					if constexpr (is_field(member) && !IsBaseOf<IReflectable, T>) return GetYamlFieldName(member);
+					else return get_display_name(member);
+				};
+
 			for_each(td.members, [&](auto member)
 				{
 					if constexpr (is_writable(member) /* && is_readable(member)*/)
 					{
-						const std::string displayName = get_display_name(member);
+						const std::string displayName(propertyName(member));
 
 						if constexpr (is_field(member) || refl::descriptor::is_function(member))
 						{
@@ -429,7 +527,15 @@ namespace Sailor
 					}
 				});
 
-			//_freea(empty);
+			for_each(td.members, [&](auto member)
+				{
+					if constexpr (is_readable(member) &&
+						!refl::descriptor::has_attribute<Attributes::Transient>(member))
+					{
+						const std::string name(propertyName(member));
+						if (!m_props.ContainsKey(name)) m_readOnlyProperties.AddUnique(name);
+					}
+				});
 		}
 
 		friend class ReflectedData;
@@ -444,6 +550,7 @@ namespace Sailor
 		virtual void Deserialize(const YAML::Node& inData);
 
 		const TypeInfo& GetTypeInfo() const { return *m_typeInfo; }
+		const std::string& GetTypeName() const { return m_typeInfo ? m_typeInfo->Name() : m_unresolvedTypeName; }
 		const TMap<std::string, YAML::Node>& GetProperties() const { return m_properties; }
 		TMap<std::string, YAML::Node> GetOverrideProperties() const;
 		bool IsValid() const { return m_typeInfo != nullptr; }
@@ -456,6 +563,7 @@ namespace Sailor
 
 		// TODO: Rethink the approach with raw pointer
 		const TypeInfo* m_typeInfo{};
+		std::string m_unresolvedTypeName;
 
 		// We store all properties already serialized to YAML to simplify the coding
 		// Ideally we need to introduce Proxies, that store the properties, without 
@@ -630,6 +738,11 @@ namespace Sailor
 		};
 
 		static YAML::Node ExportEngineTypes();
+		static YAML::Node ExportTypes(const TVector<const TypeInfo*>& types);
+		static bool PrepareTypeCatalog(YAML::Node metadata, TSet<std::string> registeredTypes,
+			ReflectedTypeCatalog& outCatalog, std::string& outError);
+		static bool MergeTypeMetadata(const YAML::Node& engineMetadata, const ReflectedTypeCatalog& workspace,
+			YAML::Node& outMetadata, std::string& outError);
 
 		static void RegisterFactoryMethod(const TypeInfo& type, TPlacementFactoryMethod placementNew);
 		static void RegisterType(const std::string& typeName, const TypeInfo* pType);
@@ -728,12 +841,12 @@ namespace Sailor
 		static YAML::Node ReflectEnumValues()
 		{
 			YAML::Node res;
-			TVector<std::string> values;
+			TVector<std::string_view> values;
 			constexpr auto enumValues = magic_enum::enum_names<TEnum>();
 
 			for (const auto& value : enumValues)
 			{
-				values.Add(std::string(value));
+				values.Add(value);
 			}
 
 			std::string enumName = TypeInfo::GetReflectedEnumTypeName<TEnum>();
@@ -744,6 +857,8 @@ namespace Sailor
 
 		static ComponentPtr CreateCDO(const TypeInfo& pType);
 		static void StoreCDO(const std::string& typeName, ReflectedData&& reflectedCdo);
+
+		friend class TypeInfo;
 
 		template<typename T>
 		static ReflectedData ReflectCDO(const T* ptr) requires IsBaseOf<IReflectable, T>
@@ -766,6 +881,25 @@ namespace Sailor
 			return reflection;
 		}
 	};
+
+	template<typename T>
+	const YAML::Node* TypeInfo::CaptureDefaultValues()
+	{
+		static const YAML::Node defaults = []
+			{
+				T object{};
+				return YAML::Node(Reflection::ReflectCDO(&object).GetProperties());
+			}();
+		return &defaults;
+	}
+}
+
+namespace Sailor::Utils
+{
+	SAILOR_API bool TryGetComponentInstanceId(
+		const ReflectedData& reflection,
+		InstanceId& outInstanceId,
+		std::string& outDiagnostic);
 }
 
 REFL_AUTO(

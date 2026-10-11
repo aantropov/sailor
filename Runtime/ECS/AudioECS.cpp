@@ -167,12 +167,15 @@ void AudioECS::TickSource(
 		clip && clip->IsReady() &&
 		(data.m_attemptedClip != clip ||
 		 data.m_attemptedClipRevision != clipRevision ||
+		 data.m_attemptedPlayRequest != data.m_playRequest ||
 		 data.IsDirty()))
 	{
 		data.m_attemptedClip = clip;
 		data.m_attemptedClipRevision = clipRevision;
+		data.m_attemptedPlayRequest = data.m_playRequest;
 		if (audioSystem.CreateVoice(clip, data.m_voiceId))
 		{
+			data.MarkDirty();
 			data.m_voiceClip = clip;
 			data.m_lastTransformFrame = 0;
 			data.m_bHasLastPosition = false;
@@ -280,12 +283,12 @@ void AudioECS::TickListener(
 	data.m_bIsDirty = false;
 }
 
-Tasks::ITaskPtr AudioECS::Tick(float deltaTime)
+void AudioECS::Tick(float deltaTime)
 {
 	AudioSystem* audioSystem = GetAudioSystem();
 	if (!audioSystem || !audioSystem->IsInitialized())
 	{
-		return nullptr;
+		return;
 	}
 
 	for (AudioSourceData& data : m_components)
@@ -305,8 +308,6 @@ Tasks::ITaskPtr AudioECS::Tick(float deltaTime)
 	}
 
 	audioSystem->Update();
-
-	return nullptr;
 }
 
 void AudioECS::EndPlay()

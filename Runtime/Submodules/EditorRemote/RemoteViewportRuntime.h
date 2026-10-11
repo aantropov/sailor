@@ -1,41 +1,16 @@
 #pragma once
-#include "Containers/Containers.h"
-#include "Memory/UniquePtr.hpp"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "RemoteViewportFoundation.h"
 
 namespace Sailor::EditorRemote
 {
-	struct BridgeConnectionRequest
-	{
-		uint64_t m_connectionId = 0;
-		ConnectionEpoch m_epoch = 0;
-		uint32_t m_protocolVersion = 0;
-		uint64_t m_capabilityMask = 0;
-
-		auto operator<=>(const BridgeConnectionRequest&) const = default;
-	};
-
-	struct BridgeConnectionInfo
-	{
-		uint64_t m_connectionId = 0;
-		ConnectionEpoch m_epoch = 0;
-		uint32_t m_negotiatedProtocolVersion = 0;
-		uint64_t m_negotiatedCapabilityMask = 0;
-
-		auto operator<=>(const BridgeConnectionInfo&) const = default;
-	};
-
 	class IViewportTransportBackend
 	{
 	public:
@@ -73,16 +48,17 @@ namespace Sailor::EditorRemote
 		const SessionDiagnostics& GetDiagnostics() const { return m_diagnostics; }
 		const FramePacket& GetLastFrame() const { return m_lastFrame; }
 
-		Failure BeginNegotiation()
+		Failure BeginNegotiation(uint64_t nowMs = GetMonotonicTimeMs())
 		{
-			ArmTransportReadyTimeout(0);
+			auto result = m_state.TransitionTo(SessionState::Negotiating);
+			if (!result.IsOk()) return result;
+			ArmTransportReadyTimeout(nowMs);
 			RecordDiagnostic(DiagnosticCategory::Lifecycle, DiagnosticSeverity::Info, "BeginNegotiation");
-			return m_state.TransitionTo(SessionState::Negotiating);
+			return Failure::Ok();
 		}
 
-		Failure EnsureBackendTransport(IViewportTransportBackend& backend)
+		Failure EnsureBackendTransport(IViewportTransportBackend& backend, TransportDescriptor& transport)
 		{
-			TransportDescriptor transport{};
 			auto result = backend.EnsureSurface(m_descriptor, m_connectionEpoch, m_guards.GetGeneration(), transport);
 			if (!result.IsOk())
 			{
@@ -91,7 +67,7 @@ namespace Sailor::EditorRemote
 			}
 
 			m_failure = Failure::Ok();
-			return MarkTransportReady(transport);
+			return Failure::Ok();
 		}
 
 		Failure MarkTransportReady(const TransportDescriptor& transport)
@@ -117,6 +93,8 @@ namespace Sailor::EditorRemote
 			}
 
 			m_transportReadyTimeout.Reset();
+			m_reconnectTimeout.Reset();
+			m_failure = Failure::Ok();
 			m_transportType = transport.m_transportType;
 			auto transition = m_state.TransitionTo(SessionState::Ready);
 			if (!transition.IsOk())
@@ -129,7 +107,7 @@ namespace Sailor::EditorRemote
 			return result;
 		}
 
-		Failure HandleResize(const ViewportDescriptor& descriptor)
+		Failure ValidateResize(const ViewportDescriptor& descriptor) const
 		{
 			auto validation = descriptor.Validate();
 			if (!validation.IsOk())
@@ -140,6 +118,18 @@ namespace Sailor::EditorRemote
 			{
 				return Failure::FromDomain(ErrorDomain::Protocol, 1, "Resize descriptor viewport id mismatch");
 			}
+			if (m_state.GetState() != SessionState::Resizing &&
+				!SessionStateMachine::IsTransitionAllowed(m_state.GetState(), SessionState::Resizing))
+			{
+				return Failure::FromDomain(ErrorDomain::Protocol, 1, "Session cannot resize in its current state");
+			}
+			return Failure::Ok();
+		}
+
+		Failure HandleResize(const ViewportDescriptor& descriptor, uint64_t nowMs = GetMonotonicTimeMs())
+		{
+			auto validation = ValidateResize(descriptor);
+			if (!validation.IsOk()) return validation;
 
 			auto transition = m_state.TransitionTo(SessionState::Resizing);
 			if (!transition.IsOk())
@@ -154,7 +144,7 @@ namespace Sailor::EditorRemote
 			}
 			m_lastPublishedFrameIndex = 0;
 			++m_diagnostics.m_resizeCount;
-			ArmTransportReadyTimeout(0);
+			ArmTransportReadyTimeout(nowMs);
 			RecordDiagnostic(DiagnosticCategory::Lifecycle, DiagnosticSeverity::Info, "ResizeRequested");
 			return Failure::Ok();
 		}
@@ -235,28 +225,35 @@ namespace Sailor::EditorRemote
 		Failure SetVisible(bool visible)
 		{
 			m_visible = visible;
-			if (m_state.GetState() == SessionState::Disposed)
+			if (m_state.GetState() == SessionState::Disposed || !IsReady())
 			{
 				return Failure::Ok();
 			}
 			return m_state.TransitionTo(visible ? SessionState::Active : SessionState::Paused);
 		}
 
-		Failure MarkFailure(const Failure& failure)
+		Failure MarkFailure(const Failure& failure, uint64_t nowMs = GetMonotonicTimeMs())
 		{
 			m_failure = failure;
+			m_transportReadyTimeout.Reset();
+			{
+				std::lock_guard lock(m_inputMutex);
+				m_guards.ResetTransportReady();
+			}
 			if (failure.m_scope == FailureScope::Connection)
 			{
 				++m_recoveryAttemptCount;
-				ArmReconnectTimeout(0);
+				ArmReconnectTimeout(nowMs);
 			}
 			RecordDiagnostic(DiagnosticCategory::Failure, failure.m_scope == FailureScope::Session ? DiagnosticSeverity::Warning : DiagnosticSeverity::Error, "SessionMarkedFailed", failure);
 			auto nextState = failure.m_scope == FailureScope::Session ? SessionState::Recovering : SessionState::Lost;
 			return m_state.TransitionTo(nextState);
 		}
 
-		Failure Recreate(ConnectionEpoch epoch)
+		Failure Recreate(ConnectionEpoch epoch, uint64_t nowMs = GetMonotonicTimeMs())
 		{
+			auto transition = m_state.TransitionTo(SessionState::Negotiating);
+			if (!transition.IsOk()) return transition;
 			++m_recoveryAttemptCount;
 			{
 				std::lock_guard lock(m_inputMutex);
@@ -265,12 +262,12 @@ namespace Sailor::EditorRemote
 				m_inputDisposed = false;
 			}
 			m_transportType = TransportType::Unknown;
-			m_transportReadyTimeout.Reset();
+			ArmTransportReadyTimeout(nowMs);
 			m_reconnectTimeout.Reset();
 			m_lastPublishedFrameIndex = 0;
 			m_failure = Failure::Ok();
 			RecordDiagnostic(DiagnosticCategory::Lifecycle, DiagnosticSeverity::Info, "Recreate");
-			return m_state.TransitionTo(SessionState::Negotiating);
+			return Failure::Ok();
 		}
 
 		Failure ReleaseBackendTransport(IViewportTransportBackend& backend)
@@ -391,259 +388,5 @@ namespace Sailor::EditorRemote
 		RetryBackoffState m_reconnectBackoff{};
 		uint32_t m_recoveryAttemptCount = 0;
 		SessionDiagnostics m_diagnostics{};
-	};
-
-	class ViewportSessionManager
-	{
-	public:
-		using SessionCleanupHook = std::function<void(ViewportId, ConnectionEpoch)>;
-
-		RemoteViewportSession* FindSession(ViewportId viewportId)
-		{
-			auto it = m_sessions.Find(viewportId);
-			return it != m_sessions.end() ? it.Value().GetRawPtr() : nullptr;
-		}
-
-		const RemoteViewportSession* FindSession(ViewportId viewportId) const
-		{
-			auto it = m_sessions.Find(viewportId);
-			return it != m_sessions.end() ? it.Value().GetRawPtr() : nullptr;
-		}
-
-		RemoteViewportSession& CreateOrReplaceSession(const ViewportDescriptor& descriptor, ConnectionEpoch epoch)
-		{
-			if (auto it = m_sessions.Find(descriptor.m_viewportId); it != m_sessions.end())
-			{
-				PruneEpochViewport(descriptor.m_viewportId, it.Value()->GetConnectionEpoch());
-			}
-
-			auto session = TUniquePtr<RemoteViewportSession>::Make(descriptor, epoch);
-			auto* result = session.GetRawPtr();
-			m_sessions[descriptor.m_viewportId] = std::move(session);
-			auto& epochViewports = m_viewportsByEpoch[epoch];
-			if (std::find(epochViewports.begin(), epochViewports.end(), descriptor.m_viewportId) == epochViewports.end())
-			{
-				epochViewports.Add(descriptor.m_viewportId);
-			}
-			return *result;
-		}
-
-		bool DestroySession(ViewportId viewportId)
-		{
-			auto it = m_sessions.Find(viewportId);
-			if (it == m_sessions.end())
-			{
-				return false;
-			}
-
-			const auto epoch = it.Value()->GetConnectionEpoch();
-			(void)it.Value()->Destroy();
-			if (m_cleanupHook)
-			{
-				m_cleanupHook(viewportId, epoch);
-			}
-			m_sessions.Remove(viewportId);
-			PruneEpochViewport(viewportId, epoch);
-			return true;
-		}
-
-		size_t DestroySessionsForEpoch(ConnectionEpoch epoch)
-		{
-			auto epochIt = m_viewportsByEpoch.Find(epoch);
-			if (epochIt == m_viewportsByEpoch.end())
-			{
-				return 0;
-			}
-
-			auto viewportIds = epochIt.Value();
-			size_t destroyedCount = 0;
-			for (auto viewportId : viewportIds)
-			{
-				destroyedCount += DestroySession(viewportId) ? 1u : 0u;
-			}
-			m_viewportsByEpoch.Remove(epoch);
-			return destroyedCount;
-		}
-
-		void SetCleanupHook(SessionCleanupHook hook)
-		{
-			m_cleanupHook = std::move(hook);
-		}
-
-		size_t GetSessionCount() const { return m_sessions.Num(); }
-		bool HasViewport(ViewportId viewportId) const { return m_sessions.ContainsKey(viewportId); }
-		size_t GetViewportCountForEpoch(ConnectionEpoch epoch) const
-		{
-			auto it = m_viewportsByEpoch.Find(epoch);
-			return it != m_viewportsByEpoch.end() ? it.Value().Num() : 0;
-		}
-
-	private:
-		void PruneEpochViewport(ViewportId viewportId, ConnectionEpoch epoch)
-		{
-			auto epochIt = m_viewportsByEpoch.Find(epoch);
-			if (epochIt == m_viewportsByEpoch.end())
-			{
-				return;
-			}
-
-			auto& viewports = epochIt.Value();
-			viewports.RemoveAll([viewportId](ViewportId candidate) { return candidate == viewportId; });
-			if (viewports.Num() == 0)
-			{
-				m_viewportsByEpoch.Remove(epoch);
-			}
-		}
-
-		TMap<ViewportId, TUniquePtr<RemoteViewportSession>> m_sessions{};
-		TMap<ConnectionEpoch, TVector<ViewportId>> m_viewportsByEpoch{};
-		SessionCleanupHook m_cleanupHook{};
-	};
-
-	class EditorBridgeServer
-	{
-	public:
-		using NegotiationHandler = std::function<Failure(const BridgeConnectionRequest&, BridgeConnectionInfo&)>;
-		using CommandHandler = std::function<Failure(const BridgeConnectionInfo&, const ProtocolMessage&)>;
-		using DisconnectHandler = std::function<void(const BridgeConnectionInfo&, const Failure&)>;
-
-		Failure AcceptConnection(const BridgeConnectionRequest& request)
-		{
-			if (request.m_connectionId == 0 || request.m_epoch == 0 || request.m_protocolVersion == 0)
-			{
-				return Failure::FromDomain(ErrorDomain::Protocol, 1, "Connection request must provide id, epoch, and protocol version");
-			}
-
-			BridgeConnectionInfo negotiated{};
-			negotiated.m_connectionId = request.m_connectionId;
-			negotiated.m_epoch = request.m_epoch;
-			negotiated.m_negotiatedProtocolVersion = request.m_protocolVersion;
-			negotiated.m_negotiatedCapabilityMask = request.m_capabilityMask;
-
-			if (m_negotiationHandler)
-			{
-				auto result = m_negotiationHandler(request, negotiated);
-				if (!result.IsOk())
-				{
-					return result;
-				}
-			}
-
-			auto& storedConnection = m_connections[request.m_connectionId];
-			if (storedConnection)
-			{
-				*storedConnection = negotiated;
-			}
-			else
-			{
-				storedConnection = TUniquePtr<BridgeConnectionInfo>::Make(negotiated);
-			}
-			return Failure::Ok();
-		}
-
-		Failure RouteCommand(uint64_t connectionId, const ProtocolMessage& command) const
-		{
-			auto it = m_connections.Find(connectionId);
-			if (it == m_connections.end())
-			{
-				return Failure::FromDomain(ErrorDomain::Connection, 1, "Unknown bridge connection");
-			}
-			if (command.m_envelope.m_category != MessageCategory::Command)
-			{
-				return Failure::FromDomain(ErrorDomain::Protocol, 1, "Bridge server only routes command messages");
-			}
-			if (!m_commandHandler)
-			{
-				return Failure::Ok();
-			}
-			return m_commandHandler(*it.Value(), command);
-		}
-
-		bool Disconnect(uint64_t connectionId, const Failure& reason = Failure::FromDomain(ErrorDomain::Connection, 1, "Disconnected"))
-		{
-			auto it = m_connections.Find(connectionId);
-			if (it == m_connections.end())
-			{
-				return false;
-			}
-			if (m_disconnectHandler)
-			{
-				m_disconnectHandler(*it.Value(), reason);
-			}
-			m_connections.Remove(connectionId);
-			return true;
-		}
-
-		void SetNegotiationHandler(NegotiationHandler handler) { m_negotiationHandler = std::move(handler); }
-		void SetCommandHandler(CommandHandler handler) { m_commandHandler = std::move(handler); }
-		void SetDisconnectHandler(DisconnectHandler handler) { m_disconnectHandler = std::move(handler); }
-
-		bool HasConnection(uint64_t connectionId) const { return m_connections.ContainsKey(connectionId); }
-		size_t GetConnectionCount() const { return m_connections.Num(); }
-		const BridgeConnectionInfo* FindConnection(uint64_t connectionId) const
-		{
-			auto it = m_connections.Find(connectionId);
-			return it != m_connections.end() ? it.Value().GetRawPtr() : nullptr;
-		}
-
-	private:
-		TMap<uint64_t, TUniquePtr<BridgeConnectionInfo>> m_connections{};
-		NegotiationHandler m_negotiationHandler{};
-		CommandHandler m_commandHandler{};
-		DisconnectHandler m_disconnectHandler{};
-	};
-
-	struct RenderBindingRequest
-	{
-		ViewportId m_viewportId = 0;
-		ConnectionEpoch m_connectionEpoch = 0;
-		SurfaceGeneration m_generation = 0;
-		uint32_t m_width = 0;
-		uint32_t m_height = 0;
-		bool m_visible = false;
-		bool m_ready = false;
-		FrameIndex m_lastFrameIndex = 0;
-
-		auto operator<=>(const RenderBindingRequest&) const = default;
-	};
-
-	class IEditorRenderBridge
-	{
-	public:
-		virtual ~IEditorRenderBridge() = default;
-		virtual void ApplyBinding(const RenderBindingRequest& request) = 0;
-		virtual void ReleaseBinding(ViewportId viewportId) = 0;
-	};
-
-	class EditorRenderFacade
-	{
-	public:
-		explicit EditorRenderFacade(IEditorRenderBridge& renderBridge) :
-			m_renderBridge(renderBridge)
-		{
-		}
-
-		void SyncSession(const RemoteViewportSession& session)
-		{
-			const auto& descriptor = session.GetDescriptor();
-			RenderBindingRequest request{};
-			request.m_viewportId = descriptor.m_viewportId;
-			request.m_connectionEpoch = session.GetConnectionEpoch();
-			request.m_generation = session.GetGeneration();
-			request.m_width = descriptor.m_width;
-			request.m_height = descriptor.m_height;
-			request.m_visible = session.IsVisible();
-			request.m_ready = session.IsReady();
-			request.m_lastFrameIndex = session.GetLastPublishedFrameIndex();
-			m_renderBridge.ApplyBinding(request);
-		}
-
-		void ReleaseSession(ViewportId viewportId)
-		{
-			m_renderBridge.ReleaseBinding(viewportId);
-		}
-
-	private:
-		IEditorRenderBridge& m_renderBridge;
 	};
 }

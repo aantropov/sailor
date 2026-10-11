@@ -9,6 +9,7 @@
 #include "Containers/Octree.h"
 #include "Math/Math.h"
 #include "Components/MeshRendererComponent.h"
+#include "FrameGraph/CopyTextureToRamNode.h"
 #include <string>
 
 namespace Sailor
@@ -48,14 +49,8 @@ namespace Sailor
 
 		ModelPtr m_model{};
 		GameObjectPtr m_mainModel;
-		uint32_t m_pathTraceHeight = 720;
-		uint32_t m_pathTraceSamplesPerPixel = 4;
-		uint32_t m_pathTraceMaxBounces = 1;
-		float m_pathTraceRayBiasBase = 0.01f;
-		float m_pathTraceRayBiasScale = 0.1f;
-		std::string m_pathTraceOutputPath = "pathtrace.png";
-		std::string m_pathTraceStatus;
-		double m_pathTraceLastExecutionMs = 0.0;
+		Framegraph::CopyTextureToRamNode::CaptureTask m_capture;
+		Framegraph::CopyTextureToRamNode::CaptureTask m_maskCapture;
 	};
 }
 

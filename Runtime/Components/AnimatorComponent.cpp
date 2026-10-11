@@ -48,27 +48,27 @@ void AnimatorComponent::SetAnimationSet(const AnimationSetPtr& animationSet)
 	GetOwner()->GetWorld()->GetECS<AnimationECS>()->SetAnimationSet(m_handle, animationSet);
 }
 
-bool AnimatorComponent::SetFloat(const std::string& name, float value)
+bool AnimatorComponent::SetFloat(StringHash name, float value)
 {
 	return GetData().GetControllerInstance().SetFloat(name, value);
 }
 
-bool AnimatorComponent::SetInt(const std::string& name, int32_t value)
+bool AnimatorComponent::SetInt(StringHash name, int32_t value)
 {
 	return GetData().GetControllerInstance().SetInt(name, value);
 }
 
-bool AnimatorComponent::SetBool(const std::string& name, bool value)
+bool AnimatorComponent::SetBool(StringHash name, bool value)
 {
 	return GetData().GetControllerInstance().SetBool(name, value);
 }
 
-bool AnimatorComponent::SetTrigger(const std::string& name)
+bool AnimatorComponent::SetTrigger(StringHash name)
 {
 	return GetData().GetControllerInstance().SetTrigger(name);
 }
 
-bool AnimatorComponent::ResetTrigger(const std::string& name)
+bool AnimatorComponent::ResetTrigger(StringHash name)
 {
 	return GetData().GetControllerInstance().ResetTrigger(name);
 }

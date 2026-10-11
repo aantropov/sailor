@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using SailorEditor.Controls;
 using System.Runtime.InteropServices;
+using Windows.Foundation;
 using Windows.System;
 
 namespace SailorEditor.Platforms.Windows;
@@ -26,9 +27,11 @@ public sealed class NativeSceneViewportHandler :
     readonly HashSet<VirtualKey> forwardedKeys = [];
     readonly KeyEventHandler rootKeyDownHandler;
     readonly KeyEventHandler rootKeyUpHandler;
+    readonly TypedEventHandler<UIElement, CharacterReceivedRoutedEventArgs> rootCharacterReceivedHandler;
     readonly PointerEventHandler rootPointerPressedHandler;
     UIElement? keyboardRoot;
     bool viewportFocused;
+    char pendingHighSurrogate;
     double lastPublishedWidth = -1;
     double lastPublishedHeight = -1;
     double lastPublishedScale = -1;
@@ -39,6 +42,7 @@ public sealed class NativeSceneViewportHandler :
     {
         rootKeyDownHandler = OnRootKeyDown;
         rootKeyUpHandler = OnRootKeyUp;
+        rootCharacterReceivedHandler = OnRootCharacterReceived;
         rootPointerPressedHandler = OnRootPointerPressed;
     }
 
@@ -165,6 +169,10 @@ public sealed class NativeSceneViewportHandler :
             rootKeyUpHandler,
             handledEventsToo: true);
         keyboardRoot?.AddHandler(
+            UIElement.CharacterReceivedEvent,
+            rootCharacterReceivedHandler,
+            handledEventsToo: true);
+        keyboardRoot?.AddHandler(
             UIElement.PointerPressedEvent,
             rootPointerPressedHandler,
             handledEventsToo: true);
@@ -179,9 +187,13 @@ public sealed class NativeSceneViewportHandler :
             UIElement.KeyUpEvent,
             rootKeyUpHandler);
         keyboardRoot?.RemoveHandler(
+            UIElement.CharacterReceivedEvent,
+            rootCharacterReceivedHandler);
+        keyboardRoot?.RemoveHandler(
             UIElement.PointerPressedEvent,
             rootPointerPressedHandler);
         keyboardRoot = null;
+        pendingHighSurrogate = '\0';
     }
 
     void OnSizeChanged(object sender, SizeChangedEventArgs args)
@@ -436,6 +448,7 @@ public sealed class NativeSceneViewportHandler :
             activePointerButtons != NativeSceneViewportInputModifier.None ||
             forwardedKeys.Count > 0;
         viewportFocused = false;
+        pendingHighSurrogate = '\0';
         activePointerButtons = NativeSceneViewportInputModifier.None;
         ReleaseForwardedKeys();
         if (hadInputOwnership)
@@ -464,6 +477,40 @@ public sealed class NativeSceneViewportHandler :
             PublishKey(args.Key, pressed: true);
         }
         args.Handled = true;
+    }
+
+    void OnRootCharacterReceived(UIElement sender, CharacterReceivedRoutedEventArgs args)
+    {
+        if (!viewportFocused && !HasRightMouseCapture())
+        {
+            return;
+        }
+
+        var character = args.Character;
+        args.Handled = true;
+        if (char.IsHighSurrogate(character))
+        {
+            pendingHighSurrogate = character;
+            return;
+        }
+
+        // Protobuf text is UTF-8; keep a UTF-16 pair together across callbacks.
+        string text;
+        if (char.IsLowSurrogate(character))
+        {
+            text = pendingHighSurrogate != '\0' ? new string([pendingHighSurrogate, character]) : "";
+        }
+        else
+        {
+            text = char.IsControl(character) ? "" : character.ToString();
+        }
+        pendingHighSurrogate = '\0';
+        if (text.Length != 0)
+        {
+            VirtualView?.PublishInput(new NativeSceneViewportInputEvent(
+                NativeSceneViewportInputKind.Text,
+                Text: text));
+        }
     }
 
     void OnRootKeyUp(object sender, KeyRoutedEventArgs args)

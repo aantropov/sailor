@@ -1,23 +1,33 @@
 #include "Math/Bounds.h"
+#include "Math/Math.h"
 #include "RHI/SceneView.h"
 
+#include <array>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
+#include <type_traits>
 
 using namespace Sailor;
 
 namespace
 {
-	void Require(bool condition, const std::string& message)
+	template<typename T>
+	concept HasWritableRotation = requires(T value) { value.m_rotation = glm::quat{}; };
+	static_assert(!HasWritableRotation<Math::Transform>);
+	static_assert(std::is_same_v<decltype(std::declval<Math::Transform&>().GetRotation()), const glm::quat&>);
+
+	void Require(bool condition, std::string_view message)
 	{
 		if (!condition)
 		{
-			throw std::runtime_error(message);
+			throw std::runtime_error(std::string(message));
 		}
 	}
 
@@ -79,6 +89,371 @@ namespace
 			"transformed all-negative minimum must include every corner");
 		Require(IsNear(bounds.m_max, glm::vec3(-8.0f, -18.0f, -28.0f)),
 			"transformed all-negative maximum must include every corner");
+	}
+
+	void TestAffineBoundsMatchTransformedCorners()
+	{
+		const Math::AABB original(glm::vec3(2.0f, -3.0f, 1.0f), glm::vec3(1.0f, 2.0f, 0.5f));
+		glm::mat4 shear(1.0f);
+		shear[1][0] = 0.6f;
+		shear[2][1] = -0.3f;
+		const glm::mat4 matrix = glm::translate(glm::mat4(1.0f), glm::vec3(-20.0f, 4.0f, -7.0f)) *
+			glm::rotate(glm::mat4(1.0f), 0.7f, glm::normalize(glm::vec3(1.0f, 2.0f, 3.0f))) *
+			shear * glm::scale(glm::mat4(1.0f), glm::vec3(-2.0f, 0.5f, 3.0f));
+
+		Math::AABB expected;
+		for (uint32_t corner = 0; corner < 8; ++corner)
+		{
+			const glm::vec3 point(
+				(corner & 1) ? original.m_max.x : original.m_min.x,
+				(corner & 2) ? original.m_max.y : original.m_min.y,
+				(corner & 4) ? original.m_max.z : original.m_min.z);
+			expected.Extend(glm::vec3(matrix * glm::vec4(point, 1.0f)));
+		}
+
+		Math::AABB transformed = original;
+		transformed.Apply(matrix);
+		Require(IsNear(transformed.m_min, expected.m_min) && IsNear(transformed.m_max, expected.m_max),
+			"affine bounds must enclose exactly the transformed corners, including negative scale and shear");
+	}
+
+	void TestTransformInversePointAndVectorMatchMatrices()
+	{
+		const glm::quat rotation = glm::angleAxis(0.7f, Math::vec3_Up) * glm::angleAxis(-0.4f, Math::vec3_Right);
+		const glm::vec3 scales[] = { glm::vec3(2.0f), glm::vec3(2.0f, 3.0f, 0.5f), glm::vec3(-2.0f, 0.5f, -3.0f) };
+		for (const glm::vec3& scale : scales)
+		{
+			const Math::Transform transform(glm::vec4(5.0f, -7.0f, 3.0f, 1.0f), rotation, glm::vec4(scale, 1.0f));
+			const glm::mat4 matrix = transform.Matrix();
+			for (float w : { 0.0f, 1.0f })
+			{
+				const glm::vec4 point(1.25f, -2.5f, 0.75f, w);
+				const glm::vec4 transformedPoint = transform.TransformPosition(point);
+				const glm::vec4 transformedVector = transform.TransformVector(point);
+				Require(IsNear(glm::vec3(transformedPoint), glm::vec3(matrix * glm::vec4(glm::vec3(point), 1.0f))),
+					"position transform must apply T * R * S to xyz");
+				Require(IsNear(glm::vec3(transformedVector), glm::vec3(matrix * glm::vec4(glm::vec3(point), 0.0f))),
+					"vector transform must omit translation");
+				Require(IsNear(glm::vec3(transform.InverseTransformPosition(transformedPoint)), glm::vec3(point)),
+					"inverse position must undo rotation before non-uniform scale");
+				Require(IsNear(glm::vec3(transform.InverseTransformVector(transformedVector)), glm::vec3(point)),
+					"inverse vector must undo rotation before non-uniform scale");
+				Require(transformedPoint.w == w && transformedVector.w == w &&
+					transform.InverseTransformPosition(transformedPoint).w == w &&
+					transform.InverseTransformVector(transformedVector).w == w,
+					"xyz helpers must preserve w rather than add the stored translation's w");
+			}
+		}
+	}
+
+	void TestTransformCompositionUsesParentRotationFirst()
+	{
+		const Math::Transform local(glm::vec4(1.0f, -2.0f, 3.0f, 0.0f),
+			glm::angleAxis(0.7f, Math::vec3_Right), glm::vec4(1.0f, 2.0f, -0.5f, 1.0f));
+		const Math::Transform parent(glm::vec4(-4.0f, 5.0f, 2.0f, 1.0f),
+			glm::angleAxis(-0.5f, Math::vec3_Up), glm::vec4(3.0f, 3.0f, 3.0f, 1.0f));
+		const glm::mat4 expected = parent.Matrix() * local.Matrix();
+		Require(Math::AreNearlyEqual((local * parent).Matrix(), expected),
+			"local * parent must match parent matrix times local matrix when TRS is exact");
+		Math::Transform assigned = local;
+		assigned *= parent;
+		Require(Math::AreNearlyEqual(assigned.Matrix(), expected), "in-place composition must use the same order");
+
+		const Math::Transform nonUniformParent(parent.m_position, parent.GetRotation(), glm::vec4(2.0f, -3.0f, 0.5f, 1.0f));
+		const Math::Transform unrotatedLocal(local.m_position, Math::quat_Identity, local.m_scale);
+		Require(Math::AreNearlyEqual((unrotatedLocal * nonUniformParent).Matrix(),
+			nonUniformParent.Matrix() * unrotatedLocal.Matrix()),
+			"non-uniform scale composition must remain exact when local rotation does not introduce shear");
+
+		const glm::vec4 point(1.0f, 2.0f, -3.0f, 1.0f);
+		const glm::mat4 affine = nonUniformParent.Matrix() * local.Matrix();
+		Require(IsNear(glm::vec3(affine * point),
+			glm::vec3(nonUniformParent.TransformPosition(local.TransformPosition(point)))),
+			"hierarchies with shear must be representable by the exact matrix path");
+	}
+
+	void TestTrsInverseForRepresentableTransforms()
+	{
+		const glm::quat rotation = glm::angleAxis(0.6f, Math::vec3_Up) * glm::angleAxis(0.3f, Math::vec3_Right);
+		const Math::Transform transforms[] = {
+			Math::Transform(glm::vec4(2.0f, -5.0f, 7.0f, 1.0f), rotation, glm::vec4(3.0f, 3.0f, 3.0f, 1.0f)),
+			Math::Transform(glm::vec4(-3.0f, 1.0f, 5.0f, 0.0f), rotation, glm::vec4(-2.0f, -2.0f, -2.0f, 1.0f)),
+			Math::Transform(glm::vec4(5.0f, -2.0f, 1.0f, 1.0f), Math::quat_Identity, glm::vec4(2.0f, -3.0f, 0.5f, 1.0f))
+		};
+		for (const Math::Transform& transform : transforms)
+		{
+			Require(Math::AreNearlyEqual(transform.Inverse().Matrix(), glm::inverse(transform.Matrix())),
+				"TRS inverse must equal the affine inverse when rotation and scale commute");
+			Require(Math::AreNearlyEqual(Math::Transform::FromMatrix(transform.Matrix()).Matrix(), transform.Matrix()),
+				"matrix decomposition must preserve representable TRS including reflections");
+		}
+	}
+
+	void TestRotationIsNormalizedAtConstruction()
+	{
+		const glm::quat rotation = glm::angleAxis(0.8f, Math::vec3_Up);
+		for (float scale : { 5.0f, -3.0f, 1.0e30f })
+		{
+			const Math::Transform transform(glm::vec4(0), rotation * scale);
+			Require(Math::AllFinite(transform.GetRotation()) && std::abs(glm::length(transform.GetRotation()) - 1.0f) < 0.00001f,
+				"construction must store a finite unit quaternion, not defer normalization to readers");
+			Require(std::abs(glm::dot(transform.GetRotation(), rotation)) > 0.99999f,
+				"normalization must preserve the input orientation even when its squared length overflows");
+		}
+	}
+
+	void TestAuthoredRotationWritesRemainNormalized()
+	{
+		Math::Transform transform;
+		const glm::quat rotation = glm::angleAxis(0.8f, Math::vec3_Up);
+		transform.SetRotation(rotation * 5.0f);
+		Require(IsNear(transform.GetForward(), rotation * Math::vec3_Forward),
+			"authored non-unit rotations must keep normalized direction behavior");
+		Require(IsNear(glm::vec3(transform.TransformVector(Math::vec4_Forward)), rotation * Math::vec3_Forward),
+			"vector and direction helpers must agree after an authored rotation write");
+		transform.SetRotation(glm::quat(0.0f, 0.0f, 0.0f, 0.0f));
+		Require(Math::AreNearlyEqual(transform.Matrix(), glm::mat4(1.0f)), "zero rotation must retain identity fallback");
+		transform.SetRotation(glm::quat(1.0f, std::numeric_limits<float>::quiet_NaN(), 0, 0));
+		Require(Math::AllFinite(transform.Matrix()) && IsNear(transform.GetForward(), Math::vec3_Forward),
+			"invalid authored rotation must retain finite identity fallback");
+		for (const auto& invalid : {
+			glm::quat(0.0f, 0.0f, 0.0f, 0.0f), rotation * 1.0e-12f,
+			glm::quat(std::numeric_limits<float>::infinity(), 0, 0, 0),
+			glm::quat(1, 0, -std::numeric_limits<float>::infinity(), 0) })
+		{
+			transform.SetRotation(rotation);
+			transform.SetRotation(invalid);
+			const Math::Transform constructed(glm::vec4(0), invalid);
+			Require(transform.GetRotation() == Math::quat_Identity && constructed.GetRotation() == Math::quat_Identity,
+				"the setter and constructor must store the same finite identity for zero, tiny and non-finite rotations");
+		}
+	}
+
+	void TestRotationInvariantSurvivesCompositionAndReads()
+	{
+		Math::Transform value;
+		const glm::quat stepRotation = glm::angleAxis(0.001f, glm::normalize(glm::vec3(1, 2, 3)));
+		const Math::Transform step(glm::vec4(0), stepRotation);
+		for (uint32_t i = 0; i < 4096; ++i)
+		{
+			value *= step;
+			Require(std::abs(glm::length(value.GetRotation()) - 1.0f) < 0.00001f,
+				"repeated composition must publish unit rotations, not repair them during reads");
+			const auto blended = Math::Lerp(Math::Transform::Identity, value, 0.3f);
+			Require(std::abs(glm::length(blended.GetRotation()) - 1.0f) < 0.00001f,
+				"interpolation must use the normalized construction boundary");
+		}
+		const auto expected = glm::angleAxis(4.096f, glm::normalize(glm::vec3(1, 2, 3)));
+		Require(std::abs(glm::dot(value.GetRotation(), expected)) > 0.99999f,
+			"normalizing composition must not change rotation order or accumulated orientation");
+		Math::Transform copied = value;
+		Math::Transform moved = std::move(copied);
+		copied = moved;
+		const auto stored = copied.GetRotation();
+		const auto matrix = copied.Matrix();
+		Require(IsNear(copied.GetForward(), glm::vec3(matrix * Math::vec4_Forward)) &&
+			IsNear(copied.GetRight(), glm::vec3(matrix * Math::vec4_Right)) &&
+			IsNear(copied.GetUp(), glm::vec3(matrix * Math::vec4_Up)) &&
+			IsNear(glm::vec3(copied.InverseTransformVector(copied.TransformVector(Math::vec4_Forward))), Math::vec3_Forward),
+			"all read helpers must agree after copy/move and repeated composition");
+		Require(copied.GetRotation() == stored, "reading transforms must not mutate or renormalize stored rotation");
+		copied.SetRotation(stored);
+		Require(copied.GetRotation() == stored, "assigning the stored quaternion must be exactly idempotent");
+	}
+
+	void TestPerspectiveFrustumMatchesCameraConstruction()
+	{
+		constexpr float aspect = 1.5f;
+		constexpr float fov = 60.0f;
+		constexpr float zNear = 0.5f;
+		constexpr float zFar = 80.0f;
+		const glm::mat4 world = glm::translate(glm::mat4(1.0f), glm::vec3(4.0f, 7.0f, -3.0f)) *
+			glm::rotate(glm::mat4(1.0f), 0.6f, Math::vec3_Up) *
+			glm::rotate(glm::mat4(1.0f), -0.2f, Math::vec3_Right);
+		const glm::mat4 projectionView = glm::perspectiveRH_ZO(glm::radians(fov), aspect, zFar, zNear) * glm::inverse(world);
+		const Math::Frustum projected(projectionView);
+		Math::Frustum camera;
+		camera.ExtractFrustumPlanes(world, aspect, fov, zNear, zFar);
+		Math::Frustum rawPlanes;
+		rawPlanes.ExtractFrustumPlanes(projectionView, false);
+		for (uint32_t corner = 0; corner < 8; ++corner)
+		{
+			Require(IsNear(projected.GetCorners()[corner], camera.GetCorners()[corner], 0.001f),
+				"perspective and camera frusta must reconstruct the same reverse-Z corners");
+		}
+
+		for (float depth : { 0.25f, 1.0f, 5.0f, 40.0f, 100.0f })
+		{
+			for (float x : { -1.25f, -0.75f, 0.0f, 0.75f, 1.25f })
+			{
+				for (float y : { -1.25f, -0.75f, 0.0f, 0.75f, 1.25f })
+				{
+					const float halfHeight = depth * std::tan(glm::radians(fov) * 0.5f);
+					const glm::vec3 point = world * glm::vec4(x * halfHeight * aspect, y * halfHeight, -depth, 1.0f);
+					const bool inside = depth > zNear && depth < zFar && std::abs(x) < 1.0f && std::abs(y) < 1.0f;
+					Require(projected.ContainsPoint(point) == inside && camera.ContainsPoint(point) == inside,
+						"perspective side planes must narrow toward the camera rather than form an orthographic box");
+					Require(rawPlanes.ContainsPoint(point) == inside, "plane normalization must not change point clipping");
+					const Math::Sphere sphere(point, 0.03f);
+					const Math::AABB bounds(point, glm::vec3(0.03f));
+					Require(projected.OverlapsSphere(sphere) == camera.OverlapsSphere(sphere) &&
+						projected.ContainsSphere(sphere) == camera.ContainsSphere(sphere),
+						"normalized perspective planes must preserve sphere distance queries");
+					Require(projected.OverlapsAABB(bounds) == camera.OverlapsAABB(bounds) &&
+						rawPlanes.OverlapsAABB(bounds) == camera.OverlapsAABB(bounds),
+						"raw and normalized perspective planes must agree on AABB clipping");
+				}
+			}
+		}
+	}
+
+	struct alignas(16) BatchSphereArray
+	{
+		int32_t padding = 0;
+		Math::Sphere values[9];
+	};
+
+	struct alignas(16) BatchAabbArray
+	{
+		int32_t padding = 0;
+		Math::AABB values[9];
+	};
+
+	void CheckBatchFrustumQueries(const Math::Frustum& frustum, Math::AABB* bounds, Math::Sphere* spheres)
+	{
+		const uintptr_t boundsAddress = reinterpret_cast<uintptr_t>(bounds);
+		Require(boundsAddress % alignof(Math::AABB) == 0, "AABB fixture must retain natural alignment");
+		if constexpr (alignof(Math::AABB) < 16)
+		{
+			Require(boundsAddress % 16 != 0, "AABB fixture must exercise input without SIMD alignment");
+		}
+		if (spheres)
+		{
+			const uintptr_t spheresAddress = reinterpret_cast<uintptr_t>(spheres);
+			Require(spheresAddress % alignof(Math::Sphere) == 0, "sphere fixture must retain natural alignment");
+			if constexpr (alignof(Math::Sphere) < 16)
+			{
+				Require(spheresAddress % 16 != 0, "sphere fixture must exercise input without SIMD alignment");
+			}
+		}
+
+		frustum.OverlapsAABB(nullptr, 0, nullptr);
+		frustum.OverlapsSphere(nullptr, 0, nullptr);
+		frustum.ContainsSphere(nullptr, 0, nullptr);
+		for (uint32_t count : { 0u, 1u, 3u, 4u, 5u, 8u, 9u })
+		{
+			alignas(16) std::array<int32_t, 11> results;
+			int32_t* output = results.data() + 1;
+			Require(reinterpret_cast<uintptr_t>(output) % 16 != 0, "output fixture must exercise unaligned SIMD stores");
+			auto checkRange = [&]()
+			{
+				Require(results[0] == -17, "batch query must not write before its output range");
+				for (size_t i = count + 1; i < results.size(); ++i)
+				{
+					Require(results[i] == -17, "batch query must not write beyond the requested count");
+				}
+			};
+			results.fill(-17);
+			frustum.OverlapsAABB(bounds, count, output);
+			checkRange();
+			for (uint32_t i = 0; i < count; ++i)
+			{
+				Require(output[i] == (frustum.OverlapsAABB(bounds[i]) ? 0 : 1),
+					"batch AABB overlap must preserve scalar geometry and culling polarity");
+			}
+			if (!spheres)
+			{
+				continue;
+			}
+			results.fill(-17);
+			frustum.OverlapsSphere(spheres, count, output);
+			checkRange();
+			for (uint32_t i = 0; i < count; ++i)
+			{
+				Require(output[i] == (frustum.OverlapsSphere(spheres[i]) ? 0 : 1),
+					"batch sphere overlap must preserve scalar tangent behavior and culling polarity");
+			}
+			results.fill(-17);
+			frustum.ContainsSphere(spheres, count, output);
+			checkRange();
+			for (uint32_t i = 0; i < count; ++i)
+			{
+				Require(output[i] == (frustum.ContainsSphere(spheres[i]) ? 1 : 0),
+					"batch sphere containment must preserve scalar results and containment polarity");
+			}
+		}
+	}
+
+	void TestBatchFrustumQueriesMatchScalarForAnyCount()
+	{
+		const glm::mat4 projection = glm::orthoRH_ZO(-2.0f, 2.0f, -3.0f, 3.0f, 9.0f, 1.0f);
+		const Math::Frustum frustum(projection);
+		BatchSphereArray spheres = { 0, {
+			Math::Sphere(glm::vec3(-0.75f, -1.25f, -5.0f), 0.5f),
+			Math::Sphere(glm::vec3(-3.0f, 1.0f, -6.0f), 0.25f),
+			Math::Sphere(glm::vec3(1.75f, 0.75f, -4.0f), 0.5f),
+			Math::Sphere(glm::vec3(1.5f, -1.5f, -7.0f), 0.5f),
+			Math::Sphere(glm::vec3(2.5f, 1.25f, -5.0f), 0.5f),
+			Math::Sphere(glm::vec3(0.25f, 3.5f, -3.0f), 0.25f),
+			Math::Sphere(glm::vec3(-0.5f, -0.25f, -10.75f), 0.25f),
+			Math::Sphere(glm::vec3(-1.25f, 1.75f, -0.5f), 0.5f),
+			Math::Sphere(glm::vec3(0.5f, -3.5f, -6.0f), 0.25f)
+		} };
+		BatchAabbArray bounds;
+		for (uint32_t i = 0; i < 9; ++i)
+		{
+			bounds.values[i] = Math::AABB(spheres.values[i].m_center, glm::vec3(spheres.values[i].m_radius));
+		}
+		bounds.values[5] = Math::AABB(spheres.values[5].m_center, glm::vec3(0.1f, 0.25f, 0.7f));
+		bounds.values[6] = Math::AABB(spheres.values[6].m_center, glm::vec3(0.6f, 0.2f, 0.25f));
+		bounds.values[7] = Math::AABB(spheres.values[7].m_center, glm::vec3(0.25f, 0.5f, 0.5f));
+		bounds.values[8] = Math::AABB(spheres.values[8].m_center, glm::vec3(0.25f, 0.5f, 0.2f));
+		Require(frustum.ContainsSphere(spheres.values[0]) && !frustum.OverlapsSphere(spheres.values[1]) &&
+			frustum.OverlapsSphere(spheres.values[2]) && !frustum.ContainsSphere(spheres.values[2]) &&
+			frustum.ContainsSphere(spheres.values[3]) && frustum.OverlapsSphere(spheres.values[4]) &&
+			frustum.OverlapsSphere(spheres.values[7]), "sphere inside, outside and tangent cases must retain their scalar contract");
+		Require(frustum.OverlapsAABB(bounds.values[3]) && !frustum.OverlapsAABB(bounds.values[4]) &&
+			!frustum.OverlapsAABB(bounds.values[7]) && !frustum.OverlapsAABB(bounds.values[8]),
+			"AABB overlap must exclude exterior tangencies on side and depth planes");
+
+		CheckBatchFrustumQueries(frustum, bounds.values, spheres.values);
+		Math::Frustum rawPlanes;
+		rawPlanes.ExtractFrustumPlanes(projection, false);
+		CheckBatchFrustumQueries(rawPlanes, bounds.values, nullptr);
+	}
+
+	void TestBatchPerspectiveFrustumQueriesMatchScalar()
+	{
+		const float aspect = 1.5f;
+		const float fov = glm::radians(60.0f);
+		const glm::mat4 world = glm::translate(glm::mat4(1.0f), glm::vec3(4.0f, 7.0f, -3.0f)) *
+			glm::rotate(glm::mat4(1.0f), 0.6f, Math::vec3_Up) *
+			glm::rotate(glm::mat4(1.0f), -0.2f, Math::vec3_Right);
+		const glm::mat4 projectionView = glm::perspectiveRH_ZO(fov, aspect, 80.0f, 0.5f) * glm::inverse(world);
+		const Math::Frustum frustum(projectionView);
+		const glm::vec3 cameraSamples[] = {
+			{ -0.4f, 0.3f, 2.0f }, { 1.3f, -0.6f, 5.0f }, { 0.2f, 1.4f, 7.0f },
+			{ -0.6f, -1.25f, 3.0f }, { 0.7f, 0.55f, 40.0f }, { -0.2f, 0.4f, 100.0f },
+			{ 0.1f, 0.1f, 0.1f }, { -1.3f, 0.5f, 10.0f }, { 0.1f, -0.2f, 1.0f }
+		};
+		BatchSphereArray spheres;
+		BatchAabbArray bounds;
+		for (uint32_t i = 0; i < 9; ++i)
+		{
+			const glm::vec3 sample = cameraSamples[i];
+			const float halfHeight = sample.z * std::tan(fov * 0.5f);
+			const glm::vec3 center = world * glm::vec4(sample.x * halfHeight * aspect, sample.y * halfHeight, -sample.z, 1.0f);
+			spheres.values[i] = Math::Sphere(center, 0.03f + 0.01f * i);
+			bounds.values[i] = Math::AABB(center, glm::vec3(0.01f + 0.009f * i, 0.02f + 0.006f * i, 0.03f + 0.005f * i));
+			const bool inside = sample.z > 0.5f && sample.z < 80.0f && std::abs(sample.x) < 1.0f && std::abs(sample.y) < 1.0f;
+			Require(frustum.OverlapsSphere(spheres.values[i]) == inside && frustum.ContainsSphere(spheres.values[i]) == inside &&
+				frustum.OverlapsAABB(bounds.values[i]) == inside,
+				"perspective batch fixture must distinguish clipping on every camera axis");
+		}
+		CheckBatchFrustumQueries(frustum, bounds.values, spheres.values);
+		Math::Frustum rawPlanes;
+		rawPlanes.ExtractFrustumPlanes(projectionView, false);
+		CheckBatchFrustumQueries(rawPlanes, bounds.values, nullptr);
 	}
 
 	void TestReversedShadowProjectionUsesZeroToOneDepth()
@@ -200,6 +575,47 @@ namespace
 			"distance LOD must respect the configured minimum LOD");
 	}
 
+	void TestRayAabbParallelSlabs()
+	{
+		const glm::vec3 minimum(-1), maximum(1);
+		constexpr float miss = std::numeric_limits<float>::max();
+		for (int axis = 0; axis < 3; ++axis)
+		{
+			for (float sign : { -1.0f, 1.0f })
+			{
+				for (float zero : { -0.0f, 0.0f })
+				{
+					glm::vec3 direction(zero);
+					direction[axis] = sign;
+					for (float face : { -1.0f, 0.0f, 1.0f })
+					{
+						glm::vec3 origin(0);
+						origin[axis] = -2 * sign;
+						origin[(axis + 1) % 3] = face;
+						const Math::Ray ray(origin, direction);
+						Require(Math::IntersectRayAABB(ray, minimum, maximum, 10) == 1,
+							"a parallel ray inside or on either slab face must retain the entry distance");
+						Require(Math::IntersectRayAABB(ray, minimum, maximum, 1) == miss &&
+							Math::IntersectRayAABB(ray, minimum, maximum, 1.01f) == 1,
+							"ray maximum distance must remain an exclusive bound");
+						origin[(axis + 2) % 3] = 2;
+						Require(Math::IntersectRayAABB(Math::Ray(origin, direction), minimum, maximum, 10) == miss,
+							"touching one slab must not hide a miss outside another parallel slab");
+						origin[(axis + 2) % 3] = -2;
+						Require(Math::IntersectRayAABB(Math::Ray(origin, direction), minimum, maximum, 10) == miss,
+							"parallel slab rejection must work on both sides of the box");
+					}
+					Require(Math::IntersectRayAABB(Math::Ray(glm::vec3(0), direction), minimum, maximum) == -1,
+						"a ray starting inside must retain its negative entry parameter");
+					Require(Math::IntersectRayAABB(Math::Ray(direction * 2.0f, direction), minimum, maximum) == miss,
+						"a box behind the ray must remain a miss");
+				}
+			}
+		}
+		Require(Math::IntersectRayAABB(Math::Ray(glm::vec3(-2), glm::vec3(1)), minimum, maximum) == 1,
+			"nonparallel ray entry must keep its existing parameterization");
+	}
+
 	void TestStabilizedShadowProjectionKeepsReceiverGuardBand()
 	{
 		Math::Frustum cameraSlice;
@@ -232,8 +648,19 @@ int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "ValidityRejectsSentinelAndInvertedBounds", TestValidityRejectsSentinelAndInvertedBounds },
+		{ "RayAabbParallelSlabs", TestRayAabbParallelSlabs },
 		{ "ValidityRejectsNonFiniteBounds", TestValidityRejectsNonFiniteBounds },
 		{ "TransformPreservesAllNegativeBounds", TestTransformPreservesAllNegativeBounds },
+		{ "AffineBoundsMatchTransformedCorners", TestAffineBoundsMatchTransformedCorners },
+		{ "TransformInversePointAndVectorMatchMatrices", TestTransformInversePointAndVectorMatchMatrices },
+		{ "TransformCompositionUsesParentRotationFirst", TestTransformCompositionUsesParentRotationFirst },
+		{ "TrsInverseForRepresentableTransforms", TestTrsInverseForRepresentableTransforms },
+		{ "RotationIsNormalizedAtConstruction", TestRotationIsNormalizedAtConstruction },
+		{ "AuthoredRotationWritesRemainNormalized", TestAuthoredRotationWritesRemainNormalized },
+		{ "RotationInvariantSurvivesCompositionAndReads", TestRotationInvariantSurvivesCompositionAndReads },
+		{ "PerspectiveFrustumMatchesCameraConstruction", TestPerspectiveFrustumMatchesCameraConstruction },
+		{ "BatchFrustumQueriesMatchScalarForAnyCount", TestBatchFrustumQueriesMatchScalarForAnyCount },
+		{ "BatchPerspectiveFrustumQueriesMatchScalar", TestBatchPerspectiveFrustumQueriesMatchScalar },
 		{ "ReversedShadowProjectionUsesZeroToOneDepth", TestReversedShadowProjectionUsesZeroToOneDepth },
 		{ "FrustumCenterIsTheAverageOfItsCorners", TestFrustumCenterIsTheAverageOfItsCorners },
 		{ "ReverseZFrustumCornersUseZeroToOneDepth", TestReverseZFrustumCornersUseZeroToOneDepth },

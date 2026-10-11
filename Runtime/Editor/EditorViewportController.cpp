@@ -5,7 +5,6 @@
 #include "Components/EditorComponent.h"
 #include "Components/CollisionShapeComponent.h"
 #include "Components/MeshRendererComponent.h"
-#include "Core/YamlSerializable.h"
 #include "ECS/CameraECS.h"
 #include "ECS/TransformECS.h"
 #include "Engine/GameObject.h"
@@ -18,6 +17,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <utility>
 
 using namespace Sailor;
 using namespace Sailor::EditorViewport;
@@ -243,18 +243,8 @@ bool EditorViewport::TryCalculateFramedCameraPosition(
 		return false;
 	}
 
-	const glm::vec4 cameraRotation(
-		cameraWorldTransform.m_rotation.x,
-		cameraWorldTransform.m_rotation.y,
-		cameraWorldTransform.m_rotation.z,
-		cameraWorldTransform.m_rotation.w);
 	const glm::vec3 forward = cameraWorldTransform.GetForward();
-	const float forwardLength = glm::length(forward);
-	if (!Math::AllFinite(cameraWorldTransform.m_position) ||
-		!Math::AllFinite(cameraRotation) ||
-		!Math::AllFinite(forward) ||
-		!std::isfinite(forwardLength) ||
-		forwardLength <= std::numeric_limits<float>::epsilon())
+	if (!Math::AllFinite(cameraWorldTransform.m_position))
 	{
 		return false;
 	}
@@ -276,7 +266,7 @@ bool EditorViewport::TryCalculateFramedCameraPosition(
 		radius * c_cameraFramePadding / sineHalfFov,
 		radius + zNear * 2.0f);
 	const glm::vec3 position =
-		bounds.GetCenter() - (forward / forwardLength) * distance;
+		bounds.GetCenter() - forward * distance;
 	if (!std::isfinite(radius) ||
 		!std::isfinite(distance) ||
 		!Math::AllFinite(position))
@@ -344,13 +334,7 @@ bool EditorViewport::TryConvertWorldToLocalTransform(
 	}
 
 	Math::Transform localTransform = Math::Transform::FromMatrix(localMatrix);
-	const glm::vec4 rotation(
-		localTransform.m_rotation.x,
-		localTransform.m_rotation.y,
-		localTransform.m_rotation.z,
-		localTransform.m_rotation.w);
 	if (!Math::AllFinite(localTransform.m_position) ||
-		!Math::AllFinite(rotation) ||
 		!Math::AllFinite(localTransform.m_scale) ||
 		!Math::AreNearlyEqual(
 			localTransform.Matrix(),
@@ -437,7 +421,7 @@ void EditorViewportController::Tick(World& world)
 		return;
 	}
 
-	const auto selectedObject = ResolveSelectedObject(world);
+	const auto selectedObject = world.GetPrimaryEditorSelection();
 	TickTransformGizmo(world, selectedObject);
 	if (!m_gizmoSubmittedThisFrame)
 	{
@@ -479,7 +463,7 @@ void EditorViewportController::CancelInteraction(World& world)
 	ResetImGuizmoInteractionState();
 }
 
-bool EditorViewportController::PullEvent(std::string& outEvent)
+bool EditorViewportController::PullEvent(Event& outEvent)
 {
 	if (m_pendingEvents.IsEmpty())
 	{
@@ -492,7 +476,7 @@ bool EditorViewportController::PullEvent(std::string& outEvent)
 }
 
 bool EditorViewportController::QueueAssetDropEvent(
-	const std::string& fileId,
+	std::string_view fileId,
 	float normalizedX,
 	float normalizedY)
 {
@@ -507,15 +491,8 @@ bool EditorViewportController::QueueAssetDropEvent(
 		return false;
 	}
 
-	YAML::Node event{};
-	event["kind"] = "assetDrop";
-	event["revision"] = ++m_eventRevision;
-	event["managedMutationRevision"] =
-		m_managedSelectionMutationRevision;
-	event["fileId"] = fileId;
-	event["normalizedX"] = normalizedX;
-	event["normalizedY"] = normalizedY;
-	m_pendingEvents.Add(YAML::Dump(event));
+	m_pendingEvents.Add(Event{ ++m_eventRevision, m_managedSelectionMutationRevision,
+		AssetDropEvent{ std::string(fileId), { normalizedX, normalizedY } } });
 	return true;
 }
 
@@ -530,13 +507,8 @@ bool EditorViewportController::QueueToolShortcutEvent(uint32_t keyCode)
 		return false;
 	}
 
-	YAML::Node event{};
-	event["kind"] = "toolShortcut";
-	event["revision"] = ++m_eventRevision;
-	event["managedMutationRevision"] =
-		m_managedSelectionMutationRevision;
-	event["keyCode"] = keyCode;
-	m_pendingEvents.Add(YAML::Dump(event));
+	m_pendingEvents.Add(Event{ ++m_eventRevision, m_managedSelectionMutationRevision,
+		ToolShortcutEvent{ keyCode } });
 	return true;
 }
 
@@ -576,7 +548,7 @@ bool EditorViewportController::TraceViewportRay(
 	}
 
 	TVector<PickCandidate> candidates{};
-	for (const auto& gameObject : world.GetGameObjects())
+	for (const auto& gameObject : std::as_const(world).GetGameObjects())
 	{
 		Math::AABB bounds{};
 		bool bUsesSelectableGeometry = false;
@@ -627,7 +599,7 @@ bool EditorViewportController::FocusCameraOnObject(
 
 	TObjectPtr<GameObject> cameraObject{};
 	TObjectPtr<CameraComponent> cameraComponent{};
-	for (const auto& gameObject : world.GetGameObjects())
+	for (const auto& gameObject : std::as_const(world).GetGameObjects())
 	{
 		if (!gameObject || !gameObject->GetComponent<EditorComponent>())
 		{
@@ -708,21 +680,6 @@ bool EditorViewportController::SetTransformToolState(
 	return true;
 }
 
-TObjectPtr<GameObject> EditorViewportController::ResolveSelectedObject(World& world) const
-{
-	for (auto gameObject : world.GetGameObjects())
-	{
-		if (gameObject &&
-			world.IsEditorSelected(gameObject->GetInstanceId()) &&
-			!gameObject->GetComponent<EditorComponent>())
-		{
-			return gameObject;
-		}
-	}
-
-	return {};
-}
-
 void EditorViewportController::CompleteActiveTransform(World& world)
 {
 	if (!m_dragInstanceId)
@@ -732,13 +689,8 @@ void EditorViewportController::CompleteActiveTransform(World& world)
 		return;
 	}
 
-	for (auto gameObject : world.GetGameObjects())
+	if (auto gameObject = world.GetObjectByInstanceId(m_dragInstanceId).DynamicCast<GameObject>())
 	{
-		if (!gameObject || gameObject->GetInstanceId() != m_dragInstanceId)
-		{
-			continue;
-		}
-
 		const Math::Transform finalTransform = gameObject->GetTransformComponent().GetTransform();
 		if (!AreTransformsNear(m_dragStartTransform, finalTransform))
 		{
@@ -749,7 +701,6 @@ void EditorViewportController::CompleteActiveTransform(World& world)
 				m_dragOperation,
 				m_dragSpace);
 		}
-		break;
 	}
 
 	m_dragInstanceId = InstanceId::Invalid;
@@ -848,7 +799,7 @@ void EditorViewportController::TickTransformGizmo(World& world, TObjectPtr<GameO
 		{
 			auto& transform = selectedObject->GetTransformComponent();
 			transform.SetPosition(glm::vec3(localTransform.m_position));
-			transform.SetRotation(localTransform.m_rotation);
+			transform.SetRotation(localTransform.GetRotation());
 			transform.SetScale(localTransform.m_scale);
 		}
 	}
@@ -942,7 +893,7 @@ void EditorViewportController::TickSelection(World& world)
 	}
 
 	TVector<PickCandidate> candidates{};
-	for (const auto& gameObject : world.GetGameObjects())
+	for (const auto& gameObject : std::as_const(world).GetGameObjects())
 	{
 		Math::AABB bounds{};
 		bool bUsesSelectableGeometry = false;
@@ -970,12 +921,8 @@ void EditorViewportController::TickSelection(World& world)
 
 void EditorViewportController::QueueSelectionEvent(const InstanceId& selectedInstanceId)
 {
-	YAML::Node event{};
-	event["kind"] = "selection";
-	event["revision"] = ++m_eventRevision;
-	event["managedMutationRevision"] = m_managedSelectionMutationRevision;
-	event["selectedInstanceId"] = selectedInstanceId ? selectedInstanceId.ToString() : std::string{};
-	m_pendingEvents.Add(YAML::Dump(event));
+	m_pendingEvents.Add(Event{ ++m_eventRevision, m_managedSelectionMutationRevision,
+		SelectionEvent{ selectedInstanceId } });
 }
 
 void EditorViewportController::QueueTransformEvent(
@@ -985,18 +932,6 @@ void EditorViewportController::QueueTransformEvent(
 	ETransformOperation operation,
 	ETransformSpace space)
 {
-	YAML::Node event{};
-	event["kind"] = "transform";
-	event["revision"] = ++m_eventRevision;
-	event["managedMutationRevision"] = m_dragManagedObjectMutationRevision;
-	event["instanceId"] = instanceId.ToString();
-	event["operation"] = std::string(magic_enum::enum_name(operation));
-	event["space"] = std::string(magic_enum::enum_name(space));
-	event["beforePosition"] = beforeTransform.m_position;
-	event["beforeRotation"] = beforeTransform.m_rotation;
-	event["beforeScale"] = beforeTransform.m_scale;
-	event["afterPosition"] = afterTransform.m_position;
-	event["afterRotation"] = afterTransform.m_rotation;
-	event["afterScale"] = afterTransform.m_scale;
-	m_pendingEvents.Add(YAML::Dump(event));
+	m_pendingEvents.Add(Event{ ++m_eventRevision, m_dragManagedObjectMutationRevision,
+		TransformEvent{ instanceId, beforeTransform, afterTransform, operation, space } });
 }

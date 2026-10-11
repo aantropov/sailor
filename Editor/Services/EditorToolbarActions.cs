@@ -2,9 +2,6 @@ using SailorEditor.Commands;
 using SailorEditor.Panels;
 using SailorEditor.Shell;
 using SailorEditor.ViewModels;
-using SailorEngine;
-using ViewModelComponent = SailorEditor.ViewModels.Component;
-using ViewModelGameObject = SailorEditor.ViewModels.GameObject;
 
 namespace SailorEditor.Services
 {
@@ -187,48 +184,6 @@ namespace SailorEditor.Services
             {
                 simulationGate.Release();
             }
-        }
-
-        public async Task ExportPathTracedImageAsync(bool selectedOnly)
-        {
-            var engineService = MauiProgram.GetService<EngineService>();
-            var selectionService = MauiProgram.GetService<SelectionService>();
-
-            InstanceId targetInstance = null;
-            if (selectedOnly)
-            {
-                var selectedItem = selectionService.SelectedItems.FirstOrDefault();
-                switch (selectedItem)
-                {
-                    case ViewModelComponent component:
-                        targetInstance = component.InstanceId;
-                        break;
-
-                    case ViewModelGameObject gameObject:
-                        targetInstance = gameObject.InstanceId;
-                        break;
-                }
-
-                if (targetInstance == null || targetInstance.IsEmpty())
-                {
-                    await DisplayStatus("Path Tracing", "Select a GameObject or a component first.");
-                    return;
-                }
-            }
-
-            var outputDir = Path.Combine(engineService.EngineCacheDirectory, "PathTracing");
-            Directory.CreateDirectory(outputDir);
-
-            var mode = selectedOnly ? "selection" : "scene";
-            var outputPath = Path.Combine(outputDir, $"pathtrace_{mode}_{DateTime.Now:yyyyMMdd_HHmmss}.png");
-
-            bool exported =
-                await engineService.ExportPathTracedImageAsync(
-                    outputPath,
-                    targetInstance);
-            string message = exported ? $"Saved: {outputPath}" : "Path tracing export failed. Check Console panel for details.";
-
-            await DisplayStatus("Path Tracing", message);
         }
 
         public Task SaveLayoutAsync()

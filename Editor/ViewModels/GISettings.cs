@@ -29,6 +29,7 @@ public sealed class RuntimeGIProbesSettings
     public float NormalBias { get; set; } = 0.05f;
     public float ViewBias { get; set; } = 0.05f;
     public float MaxRayDistance { get; set; } = 1000.0f;
+    public float SunAngleThresholdDegrees { get; set; } = 30.0f;
 }
 
 public sealed partial class GlobalIlluminationProbeAssetReference : ObservableObject

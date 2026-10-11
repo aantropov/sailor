@@ -57,12 +57,12 @@ namespace Sailor
 		SAILOR_PROFILE_FUNCTION();
 		std::vector<uint32_t> result;
 		result.reserve(generation.m_probes.size());
-		if (generation.m_data->m_bricks.IsEmpty())
+		if (generation.m_workingData->m_bricks.IsEmpty())
 		{
 			return result;
 		}
 
-		const GIProbeBrick& brick = generation.m_data->m_bricks[0];
+		const GIProbeBrick& brick = generation.m_workingData->m_bricks[0];
 		struct OrderedCell final
 		{
 			glm::uvec3 m_cell{};
@@ -160,8 +160,8 @@ namespace Sailor
 		generation->m_request = request;
 		generation->m_id = generationId;
 		generation->m_started = std::chrono::steady_clock::now();
-		generation->m_data = GIProbesDataPtr::Make();
-		GIProbesData& data = *generation->m_data;
+		generation->m_workingData = GIProbesDataPtr::Make();
+		GIProbesData& data = *generation->m_workingData;
 		data.m_stateName = "Runtime Experimental";
 		data.m_bakerVersion = std::string(GIProbesCurrentBakerVersion);
 		data.m_sourceWorldHash = request.m_geometryGeneration;
@@ -244,23 +244,23 @@ namespace Sailor
 		next.m_refinementQueue.clear();
 		next.m_initialCursor = 0u;
 		next.m_readyCount = 0u;
-		next.m_refinedCount = 0u;
-		next.m_dirtyCount = 0u;
+		next.m_dataRevision = 0u;
+		next.m_publishedDataRevision = 0u;
 		next.m_progressSampleCount = 0u;
 		const bool bLayoutCompatible =
 			next.m_request.m_geometryGeneration == previous.m_request.m_geometryGeneration &&
 			next.m_initialLayoutHash == previous.m_initialLayoutHash &&
 			next.m_probes.size() == previous.m_probes.size() &&
-			AreTransportSettingsCompatible(previous.m_data->m_bakeSettings, next.m_data->m_bakeSettings);
+			AreTransportSettingsCompatible(previous.m_workingData->m_bakeSettings, next.m_workingData->m_bakeSettings);
 		for (uint32_t probeIndex = 0u; probeIndex < next.m_probes.size(); ++probeIndex)
 		{
 			ProbeWork& probe = next.m_probes[probeIndex];
-			const GIProbeBrick& brick = next.m_data->m_bricks[probe.m_brickIndex];
+			const GIProbeBrick& brick = next.m_workingData->m_bricks[probe.m_brickIndex];
 			const ProbeWork* previousProbe = bLayoutCompatible ? &previous.m_probes[probeIndex] : nullptr;
 			const bool bSamePosition =
 				previousProbe &&
 				glm::all(glm::lessThanEqual(glm::abs(previousProbe->m_layoutPosition - probe.m_layoutPosition),
-					glm::vec3(next.m_data->m_bakeSettings.m_minProbeSpacing * 0.0001f)));
+					glm::vec3(next.m_workingData->m_bakeSettings.m_minProbeSpacing * 0.0001f)));
 			const bool bPreviousProbeFitsTraceVolume =
 				previousProbe && Math::AllFinite(previousProbe->m_probe.m_position) &&
 				glm::all(glm::greaterThanEqual(previousProbe->m_probe.m_position, brick.m_min)) &&
@@ -273,7 +273,7 @@ namespace Sailor
 				probe.m_bHasTransport = true;
 				const bool bReuseIrradiance =
 					next.m_request.m_lightingGeneration == previous.m_request.m_lightingGeneration &&
-					AreIrradianceSettingsCompatible(previous.m_data->m_bakeSettings, next.m_data->m_bakeSettings);
+					AreIrradianceSettingsCompatible(previous.m_workingData->m_bakeSettings, next.m_workingData->m_bakeSettings);
 				if (bReuseIrradiance)
 				{
 					probe.m_accumulator = previousProbe->m_accumulator;
@@ -297,14 +297,9 @@ namespace Sailor
 
 			if (probe.m_bReady)
 			{
-				next.m_data->m_probes[probeIndex] = probe.m_probe;
-				probe.m_bDirty = true;
+				next.m_workingData->m_probes[probeIndex] = probe.m_probe;
 				++next.m_readyCount;
-				++next.m_dirtyCount;
-			}
-			if (probe.m_bRefined)
-			{
-				++next.m_refinedCount;
+				++next.m_dataRevision;
 			}
 			next.m_progressSampleCount += GetProgressSampleCount(next, probe);
 		}
@@ -332,8 +327,8 @@ namespace Sailor
 		Generation& generation = *job.m_generation;
 		ProbeWork& work = job.m_work;
 		GIProbeTraceRequest traceRequest;
-		traceRequest.m_settings = generation.m_data->m_bakeSettings;
-		const GIProbeBrick& brick = generation.m_data->m_bricks[work.m_brickIndex];
+		traceRequest.m_settings = generation.m_workingData->m_bakeSettings;
+		const GIProbeBrick& brick = generation.m_workingData->m_bricks[work.m_brickIndex];
 		traceRequest.m_volumeMin = brick.m_min;
 		traceRequest.m_volumeMax = brick.m_max;
 		traceRequest.m_cancel = &generation.m_cancel;
@@ -341,7 +336,7 @@ namespace Sailor
 		if (!work.m_bHasTransport)
 		{
 			const float visibilityMaxDistance = CalculateGIProbeVisibilityMaxDistance(
-				*generation.m_data, generation.m_data->m_bricks[work.m_brickIndex]);
+				*generation.m_workingData, generation.m_workingData->m_bricks[work.m_brickIndex]);
 			if (!TraceGIProbeTransport(traceRequest,
 					*generation.m_request.m_sampler,
 					probeSeed,

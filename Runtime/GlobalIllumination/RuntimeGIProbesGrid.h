@@ -28,4 +28,5 @@ namespace Sailor::RuntimeGIProbesInternal
 		ProbeGrid& outGrid) noexcept;
 
 	uint32_t ResolvePublicationLimitedCapacity(const RuntimeGIProbesQualitySettings& settings) noexcept;
+	uint64_t GetPublicationUploadBytes(uint32_t probeCount) noexcept;
 }

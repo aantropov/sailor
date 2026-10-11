@@ -14,12 +14,13 @@
 
 namespace Sailor::AssetRegistryInternal
 {
+	using namespace Workspace;
 	std::atomic<uint64_t> g_nextAssetProcessingGeneration = 0;
 	thread_local AssetScanSourceRevisionCache* g_activeSourceRevisionCache = nullptr;
 
 	std::string AsFolderPath(const std::filesystem::path& path)
 	{
-		std::string result = path.generic_string();
+		std::string result = PathToUtf8(path);
 		if (!result.ends_with('/'))
 		{
 			result += '/';
@@ -38,7 +39,7 @@ namespace Sailor::AssetRegistryInternal
 
 	std::string PathKey(const std::filesystem::path& path)
 	{
-		std::string value = path.lexically_normal().generic_string();
+		std::string value = PathToUtf8(path.lexically_normal());
 #if defined(_WIN32)
 		value = Lowercase(std::move(value));
 #endif
@@ -66,14 +67,14 @@ namespace Sailor::AssetRegistryInternal
 		return path;
 	}
 
-	bool IsSafeVirtualPath(const std::string& path)
+	bool IsSafeVirtualPath(std::string_view path)
 	{
 		if (path.empty() || path.find('\0') != std::string::npos)
 		{
 			return false;
 		}
 
-		const std::filesystem::path value(path);
+		const auto value = PathFromUtf8(path);
 		if (value.is_absolute() || value.has_root_name() || value.has_root_directory())
 		{
 			return false;
@@ -97,7 +98,7 @@ namespace Sailor::AssetRegistryInternal
 		return PathKey(mount.m_root) + "\n" + VirtualPathKey(virtualPath);
 	}
 
-	std::string Extension(const std::string& path)
+	std::string Extension(std::string_view path)
 	{
 		return Lowercase(Utils::GetFileExtension(path));
 	}
@@ -109,7 +110,7 @@ namespace Sailor::AssetRegistryInternal
 			return Extension(record.m_assetVirtualPath);
 		}
 
-		return Extension(std::filesystem::path(record.m_metaVirtualPath).replace_extension().generic_string());
+		return Extension(PathToUtf8(PathFromUtf8(record.m_metaVirtualPath).replace_extension()));
 	}
 
 	bool CandidateMatches(const AssetMountCandidate* winner, const AssetMountCandidate& candidate)
@@ -138,12 +139,19 @@ namespace Sailor::AssetRegistryInternal
 		outAssetInfoType.clear();
 		outError.clear();
 
+		std::ifstream input(metaPath);
+		if (!input.is_open())
+		{
+			outError = "Cannot open asset metadata: " + PathToUtf8(metaPath);
+			return false;
+		}
+
 		bool bSuccess = false;
 		std::string yamlDiagnostic;
 		if (!External::GuardYamlExceptions(
 				[&]()
 				{
-					const YAML::Node metadata = YAML::LoadFile(metaPath.string());
+					const YAML::Node metadata = YAML::Load(input);
 					if (!metadata.IsMap())
 					{
 						outError = "metadata root must be a map";
@@ -182,7 +190,7 @@ namespace Sailor::AssetRegistryInternal
 						outAssetInfoType = assetInfoType.as<std::string>();
 					}
 					if (outFileId.empty() || outFilename.empty() ||
-						!IsSafeVirtualPath(std::filesystem::path(outFilename).generic_string()))
+						!IsSafeVirtualPath(outFilename))
 					{
 						outError = "metadata contains an empty FileId or unsafe filename";
 						return;
@@ -201,7 +209,7 @@ namespace Sailor::AssetRegistryInternal
 		return bSuccess;
 	}
 
-	FileId ParseFileId(const std::string& value)
+	FileId ParseFileId(std::string_view value)
 	{
 		FileId fileId;
 		fileId.Deserialize(YAML::Node(value));

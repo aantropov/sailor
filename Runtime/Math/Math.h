@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 
 using namespace glm;
@@ -185,3 +186,27 @@ namespace Sailor::Math
 #undef max
 #define max(a,b) (a < b ? b : a)
 #endif
+
+namespace Sailor::Utils
+{
+	SAILOR_API DWORD GetRandomColorHex();
+
+	SAILOR_API __forceinline glm::vec4 LinearToSRGB(const glm::u8vec4& linearRGB);
+	SAILOR_API __forceinline glm::vec4 SRGBToLinear(const glm::u8vec4& srgbIn);
+
+	SAILOR_API __forceinline glm::vec4 LinearToSRGB(const glm::vec4& linearRGB);
+	SAILOR_API __forceinline glm::vec4 SRGBToLinear(const glm::vec4& srgbIn);
+
+	SAILOR_API __forceinline glm::vec3 LinearToSRGB(const glm::vec3& linearRGB);
+	SAILOR_API glm::u8vec4 LinearToSRGB8(const glm::vec4& linearRGBA);
+	SAILOR_API __forceinline glm::vec3 SRGBToLinear(const glm::vec3& srgbIn);
+
+	static constexpr int32_t s_j2000 = 2451545;
+
+	SAILOR_API int32_t CalculateJulianDayNumber(int32_t year, int32_t month, int32_t day);
+	SAILOR_API double CalculateJulianDate(int32_t year, int32_t month, int32_t day, int32_t hour, int32_t minute, int32_t second);
+
+	// Julian centuries since January 1, 2000
+	SAILOR_API double CalculateJulianCenturyDate(int32_t year, int32_t month, int32_t day, int32_t hour, int32_t minute, int32_t second);
+	SAILOR_API glm::vec3 ConvertToEuclidean(float rightAscension, float declination, float radialDistance);
+}

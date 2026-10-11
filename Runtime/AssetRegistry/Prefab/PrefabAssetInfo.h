@@ -40,7 +40,7 @@ namespace Sailor
 }
 
 REFL_AUTO(
-	type(Sailor::PrefabAssetInfo, bases<Sailor::AssetInfo>),
+	type(Sailor::PrefabAssetInfo, bases<Sailor::AssetInfo>, Sailor::Attributes::Asset{ "prefab" }),
 	field(m_fileId),
 	field(m_assetFilename)
 )

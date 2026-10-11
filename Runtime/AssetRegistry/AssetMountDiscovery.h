@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <map>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Sailor
@@ -83,7 +84,7 @@ namespace Sailor
 		const TVector<AssetMountCandidate>& GetCandidates() const noexcept { return m_candidates; }
 		const TVector<AssetMountDiagnostic>& GetDiagnostics() const noexcept { return m_diagnostics; }
 
-		const AssetMountCandidate* FindByVirtualPath(const std::string& virtualPath) const noexcept;
+		const AssetMountCandidate* FindByVirtualPath(std::string_view virtualPath) const noexcept;
 		const AssetMountCandidate* FindByFileId(const std::string& fileId) const noexcept;
 
 	private:

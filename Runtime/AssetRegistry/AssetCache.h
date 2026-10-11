@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <ctime>
-#include "Containers/ConcurrentMap.h"
+#include "Containers/Map.h"
 #include "Containers/Set.h"
 #include "AssetRegistry/FileId.h"
 #include "Core/FileRevision.h"
@@ -9,6 +9,7 @@
 #include <mutex>
 #include <filesystem>
 #include <string>
+#include <string_view>
 
 namespace Sailor
 {
@@ -40,6 +41,10 @@ namespace Sailor
 		SAILOR_API Workspace::WorkspaceCacheLoadResult GetLastLoadResult() const;
 		SAILOR_API std::string GetLastSaveDiagnostic() const;
 		SAILOR_API bool IsDirty() const;
+
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+		SAILOR_API uint64_t TakeManifestWriteCountForTests();
+#endif
 
 	protected:
 
@@ -77,7 +82,7 @@ namespace Sailor
 					std::string& outDiagnostic) const;
 			};
 
-			TConcurrentMap<FileId, AssetCache::AssetCacheData::Entry> m_assets{};
+			TMap<FileId, Entry> m_assets;
 
 			SAILOR_API virtual YAML::Node Serialize() const override;
 			SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
@@ -101,11 +106,11 @@ namespace Sailor
 		SAILOR_API bool Update(
 			const FileId& id,
 			std::time_t assetImportTime,
-			const std::string& sourcePath,
+			std::string_view sourcePath,
 			const FileRevision& sourceRevision,
-			const std::string& metadataFilename,
+			std::string_view metadataFilename,
 			const FileRevision& metadataRevision,
-			const std::string& assetInfoType);
+			std::string_view assetInfoType);
 		SAILOR_API bool RestoreAssetImportTime(
 			class AssetInfo* info,
 			const FileRevision& sourceRevision) const;
@@ -138,6 +143,10 @@ namespace Sailor
 		bool m_bPreserveStorageAfterLoadFailure = false;
 		Workspace::WorkspaceCacheLoadResult m_lastLoadResult{};
 		std::string m_lastSaveDiagnostic;
+
+#if defined(SAILOR_FILE_IO_TEST_HOOKS)
+		uint64_t m_manifestWriteCount = 0;
+#endif
 
 		friend class AssetRegistry;
 	};

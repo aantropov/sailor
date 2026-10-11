@@ -97,15 +97,16 @@ glslCompute: |
             break;
         }
         
-        uint frame = uint(mod(frame.currentTime * PushConstants.fps, float(PushConstants.numFrames)));
-        uint current = uint(mod(instanceId, PushConstants.traceFrames));
-        float decay = pow(PushConstants.traceDecay, current);
-        
-        const int segmentation = 1;
-        
-        ParticleData newFrame = particlesData.instance[max(0, (frame - current)) * PushConstants.numInstances / PushConstants.traceFrames + instanceId / PushConstants.traceFrames];
-        ParticleData oldFrame = particlesData.instance[max(0, (frame - current - segmentation)) * PushConstants.numInstances / PushConstants.traceFrames + instanceId / PushConstants.traceFrames];
-        /////////
+        uint frameIndex = uint(mod(frame.currentTime * PushConstants.fps, float(PushConstants.numFrames)));
+        uint traceIndex = instanceId % PushConstants.traceFrames;
+        float decay = pow(PushConstants.traceDecay, traceIndex);
+        uint particlesPerFrame = PushConstants.numInstances / PushConstants.traceFrames;
+        uint particleIndex = instanceId / PushConstants.traceFrames;
+        uint currentFrame = frameIndex > traceIndex ? frameIndex - traceIndex : 0u;
+        uint previousFrame = currentFrame > 0u ? currentFrame - 1u : 0u;
+
+        ParticleData newFrame = particlesData.instance[currentFrame * particlesPerFrame + particleIndex];
+        ParticleData oldFrame = particlesData.instance[previousFrame * particlesPerFrame + particleIndex];
         
         float distanceBetweenPoints = distance(vec3(newFrame.m_x2, newFrame.m_y2, newFrame.m_z2), vec3(newFrame.m_x1, newFrame.m_y1, newFrame.m_z1));
         vec3 direction = normalize(vec3(newFrame.m_x2 - newFrame.m_x1, newFrame.m_y2 - newFrame.m_y1, newFrame.m_z2 - newFrame.m_z1));

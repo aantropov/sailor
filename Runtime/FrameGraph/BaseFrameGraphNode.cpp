@@ -1,84 +1,138 @@
 #include "BaseFrameGraphNode.h"
+#include "RHIFrameGraph.h"
 #include "RHI/Surface.h"
 #include "RHI/RenderTarget.h"
 #include "RHI/Texture.h"
+#include <format>
 
 using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
 
-void BaseFrameGraphNode::SetString(const std::string& name, const std::string& value)
+void BaseFrameGraphNode::SetString(StringHash name, std::string_view value)
 {
 	m_stringParams[name] = value;
+	++m_parameterRevision;
+	if (name == "Tag"_h || name == "shader"_h) m_gpuTimingName = {};
 }
 
-void BaseFrameGraphNode::SetVec4(const std::string& name, const glm::vec4& value)
+StringHash BaseFrameGraphNode::GetGpuTimingName(size_t nodeIndex)
+{
+	if (m_gpuTimingName.IsEmpty() || m_gpuTimingNodeIndex != nodeIndex)
+	{
+		std::string name = std::format("{:02d} {}", nodeIndex, m_tag.ToString());
+		for (const auto parameter : { "Tag"_h, "shader"_h })
+		{
+			std::string_view value;
+			if (TryGetString(parameter, value) && !value.empty())
+			{
+				name += '/';
+				name += value;
+			}
+		}
+		m_gpuTimingName = StringHash::Runtime(name);
+		m_gpuTimingNodeIndex = nodeIndex;
+	}
+	return m_gpuTimingName;
+}
+
+void BaseFrameGraphNode::SetVec4(StringHash name, const glm::vec4& value)
 {
 	m_vectorParams[name] = value;
+	++m_parameterRevision;
 }
 
-const glm::vec4& BaseFrameGraphNode::GetVec4(const std::string& name) const
+const glm::vec4& BaseFrameGraphNode::GetVec4(StringHash name) const
 {
 	return m_vectorParams[name];
 }
 
-void BaseFrameGraphNode::SetFloat(const std::string& name, float value)
+void BaseFrameGraphNode::SetFloat(StringHash name, float value)
 {
 	m_floatParams[name] = value;
+	++m_parameterRevision;
 }
 
-float BaseFrameGraphNode::GetFloat(const std::string& name) const
+float BaseFrameGraphNode::GetFloat(StringHash name) const
 {
 	return m_floatParams[name];
 }
 
-void BaseFrameGraphNode::SetRHIResource_Unresolved(const std::string& name, const std::string& value)
+void BaseFrameGraphNode::SetRHIResource_Unresolved(StringHash name, StringHash value)
 {
 	m_unresolvedResourceParams[name] = value;
+	m_resourceParams.Remove(name);
+	++m_parameterRevision;
+	++m_resourceRevision;
 }
 
-void BaseFrameGraphNode::SetRHIResource(const std::string& name, RHIResourcePtr value)
+void BaseFrameGraphNode::SetRHIResource(StringHash name, RHIResourcePtr value)
 {
 	m_resourceParams[name] = value;
+	m_unresolvedResourceParams.Remove(name);
+	++m_parameterRevision;
+	++m_resourceRevision;
 }
 
-RHITexturePtr BaseFrameGraphNode::GetResolvedAttachment(const std::string& name) const
+RHITexturePtr BaseFrameGraphNode::GetResolvedAttachment(StringHash name, const RHIFrameGraph* frameGraph) const
 {
-	RHI::RHITexturePtr colorAttachment;
-	if (RHISurfacePtr surface = GetRHIResource(name).DynamicCast<RHISurface>())
+	auto resource = GetRHIResource(name, frameGraph);
+	if (const auto surface = resource.DynamicCast<RHISurface>())
 	{
-		colorAttachment = surface->GetResolved();
+		return surface->GetResolved();
 	}
-	else if (RHITexturePtr texture = GetRHIResource(name).DynamicCast<RHITexture>())
-	{
-		colorAttachment = texture;
-	}
-
-	return colorAttachment;
+	return resource.DynamicCast<RHITexture>();
 }
 
-RHIResourcePtr BaseFrameGraphNode::GetRHIResource(const std::string& name) const
+RHITexturePtr BaseFrameGraphNode::GetTargetAttachment(StringHash name, const RHIFrameGraph* frameGraph) const
 {
-	if (!m_resourceParams.ContainsKey(name))
+	auto resource = GetRHIResource(name, frameGraph);
+	if (const auto surface = resource.DynamicCast<RHISurface>())
 	{
-		return RHIResourcePtr();
+		return surface->GetTarget();
 	}
-
-	return m_resourceParams[name];
+	return resource.DynamicCast<RHITexture>();
 }
 
-const std::string& BaseFrameGraphNode::GetString(const std::string& name) const
+RHITexturePtr BaseFrameGraphNode::GetSampledAttachment(StringHash name, const RHIFrameGraph* frameGraph) const
+{
+	auto texture = GetResolvedAttachment(name, frameGraph);
+	if (const auto target = texture.DynamicCast<RHIRenderTarget>())
+	{
+		if (const auto depth = target->GetDepthAspect()) return depth;
+	}
+	return texture;
+}
+
+RHIResourcePtr BaseFrameGraphNode::GetRHIResource(StringHash name, const RHIFrameGraph* frameGraph) const
+{
+	const RHIResourcePtr* resource = nullptr;
+	if (m_resourceParams.Find(name, resource)) return frameGraph ? frameGraph->ResolveResource(*resource) : *resource;
+	const StringHash* resourceName = nullptr;
+	if (frameGraph && m_unresolvedResourceParams.Find(name, resourceName))
+	{
+		return frameGraph->GetResource(*resourceName);
+	}
+	return {};
+}
+
+const std::string& BaseFrameGraphNode::GetString(StringHash name) const
 {
 	return m_stringParams[name];
 }
 
-bool BaseFrameGraphNode::TryGetString(const std::string& name, string& string) const
+bool BaseFrameGraphNode::TryGetString(StringHash name, std::string& value) const
 {
-	if (m_stringParams.ContainsKey(name))
-	{
-		string = m_stringParams[name];
-		return true;
-	}
+	std::string_view view;
+	if (!TryGetString(name, view)) return false;
+	value = view;
+	return true;
+}
 
-	return false;
+bool BaseFrameGraphNode::TryGetString(StringHash name, std::string_view& value) const
+{
+	const std::string* stored = nullptr;
+	if (!m_stringParams.Find(name, stored)) return false;
+	value = *stored;
+	return true;
 }

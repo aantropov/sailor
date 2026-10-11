@@ -6,6 +6,7 @@
 #include "Engine/Types.h"
 #include "Engine/Object.h"
 #include "Core/Reflection.h"
+#include "Containers/List.h"
 
 namespace Sailor
 {
@@ -43,8 +44,12 @@ namespace Sailor
 		virtual ~Component() = default;
 
 		GameObjectPtr m_owner;
+		// Lets World cancel this component's pending references in O(1), without scanning the list.
+		TList<TPair<ComponentPtr, ReflectedData>>::TIterator m_pendingDependency;
 
+		size_t m_frameAdded = 0;
 		bool m_bBeginPlayCalled = false;
+		bool m_bDependenciesResolved = true;
 
 		friend class TObjectPtr<Component>;
 		friend class GameObject;

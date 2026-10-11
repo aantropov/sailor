@@ -5,10 +5,15 @@
 #include "Engine/Object.h"
 #include "RHI/Types.h"
 #include "RHI/RenderSubmission.h"
-#include "RHI/Batch.hpp"
+#include "RHI/PackedDraw.hpp"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
 #include "FrameGraph/RenderSceneTextureCache.h"
+
+namespace Sailor::RHI
+{
+	class RHIMaterialPreparationCache;
+}
 
 namespace Sailor
 {
@@ -47,7 +52,7 @@ namespace Sailor
 
 		};
 
-		SAILOR_API static const char* GetName() { return m_name; }
+		SAILOR_API static StringHash GetName() { return "ShadowPrepass"_h; }
 		static constexpr float GetRasterShadowBias(
 			RHI::EShadowType shadowType,
 			float configuredBias) noexcept
@@ -56,7 +61,7 @@ namespace Sailor
 			return shadowType == RHI::EShadowType::PCF ? -configuredBias : 0.0f;
 		}
 
-		SAILOR_API virtual Tasks::TaskPtr<void, void> Prepare(RHI::RHIFrameGraphPtr frameGraph, const RHI::RHISceneViewSnapshot& sceneView) override;
+		SAILOR_API virtual Tasks::TaskPtr<void, void> Prepare(RHI::RHIFrameGraphPtr frameGraph, RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandLists, const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override;
 
@@ -82,7 +87,6 @@ namespace Sailor
 				size_t m_sizeInstanceIndices = 0u;
 				RHI::RHIShaderBindingSetPtr m_perInstanceData{};
 				RHI::RHIBufferPtr m_indirectBuffer{};
-				bool m_bUploadedThisSubmission = false;
 
 				void Begin(uint64_t viewKey)
 				{
@@ -92,16 +96,12 @@ namespace Sailor
 						m_viewKey = viewKey;
 					}
 					m_packet.Reset();
-					m_bUploadedThisSubmission = false;
 				}
 			};
 
 			void ResetForSubmission() override
 			{
-				m_numActiveShadowViews = 0u;
 				m_activeShadowViews.Clear(false);
-				m_shadowPayloadRevisions.Clear(false);
-				m_buildShadowPayloads.Clear(false);
 				m_shadowPayloadComplete.Clear(false);
 				m_renderPassColorAttachments.Clear(false);
 				m_blurDrawBindingSets.Clear(false);
@@ -118,20 +118,14 @@ namespace Sailor
 					if (entry.Second() && *entry.Second())
 					{
 						(*entry.Second())->m_packet.InvalidateUploadedState();
-						(*entry.Second())->m_bUploadedThisSubmission = false;
 					}
 				}
 			}
 
 			TMap<uint64_t, TSharedPtr<ShadowViewResources>> m_shadowViewCache{};
 			TVector<TSharedPtr<ShadowViewResources>> m_activeShadowViews{};
-			TVector<std::array<size_t, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>>
-				m_shadowPayloadRevisions{};
-			TVector<std::array<bool, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>>
-				m_buildShadowPayloads{};
 			TVector<std::array<bool, RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>>
 				m_shadowPayloadComplete{};
-			uint32_t m_numActiveShadowViews = 0u;
 			TVector<RHI::RHITexturePtr> m_renderPassColorAttachments{};
 			TVector<RHI::RHIShaderBindingSetPtr> m_blurDrawBindingSets{};
 			TVector<PerInstanceData> m_arenaRangeInstances{};
@@ -140,6 +134,11 @@ namespace Sailor
 
 			RHI::RHIShaderBindingSetPtr m_blurShaderBindings{};
 		};
+
+		void BuildStableArenas(const RHI::RHISceneViewSnapshot& sceneView, SubmissionResources& resources,
+			RHI::RHIMaterialPreparationCache& preparedMaterials, uint32_t passIndex);
+		void BuildVisiblePacket(const RHI::RHISceneViewSnapshot& sceneView, SubmissionResources& resources,
+			RHI::RHIMaterialPreparationCache& preparedMaterials, uint32_t passIndex, bool bUsesPagedArenas);
 
 		ShaderSetPtr m_pBlurVerticalShader{};
 		ShaderSetPtr m_pBlurHorizontalShader{};
@@ -156,28 +155,56 @@ namespace Sailor
 		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_maskedShadowMaterials_Pcf{};
 		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_skinnedMaskedShadowMaterials_Evsm{};
 		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_skinnedMaskedShadowMaterials_Pcf{};
+		struct CustomShadowMaterialKey
+		{
+			const RHI::RHIMaterial* m_source = nullptr;
+			RHI::VertexAttributeBits m_vertexAttributes = 0u;
+			RHI::EShadowType m_shadowType = RHI::EShadowType::PCF;
+			bool m_bMasked = false;
+
+			bool operator==(const CustomShadowMaterialKey& rhs) const
+			{
+				return m_source == rhs.m_source && m_vertexAttributes == rhs.m_vertexAttributes &&
+					m_shadowType == rhs.m_shadowType && m_bMasked == rhs.m_bMasked;
+			}
+
+			size_t GetHash() const
+			{
+				size_t result = std::hash<const RHI::RHIMaterial*>{}(m_source);
+				HashCombine(result, m_vertexAttributes, static_cast<uint32_t>(m_shadowType), m_bMasked);
+				return result;
+			}
+		};
+
 		struct CustomShadowMaterialCacheEntry
 		{
 			RHI::RHIMaterialVersionPtr m_sourceVersion{};
 			RHI::RHIMaterialPtr m_material{};
+			uint64_t m_lastUsedFrame = 0u;
 		};
-		TMap<size_t, CustomShadowMaterialCacheEntry> m_customShadowMaterials{};
+		TMap<CustomShadowMaterialKey, CustomShadowMaterialCacheEntry> m_customShadowMaterials{};
 
 		RHI::RHIMaterialPtr GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertex, RHI::EShadowType shadowType, bool bSkinned, bool bMasked);
+		RHI::RHIMaterialPtr SelectShadowMaterial(
+			RHI::RHIVertexDescriptionPtr vertex, RHI::EShadowType shadowType, bool bSkinned, bool bMasked,
+			const ShaderSetPtr& sourceShader, const RHI::RHIMaterialPtr& sourceMaterial,
+			const RHI::RHIMaterialVersionPtr& sourceVersion, uint64_t frame);
 		RHI::RHIMaterialPtr GetOrAddCustomShadowMaterial(
 			const ShaderSetPtr& sourceShader,
 			const RHI::RHIMaterialPtr& sourceMaterial,
 			const RHI::RHIMaterialVersionPtr& sourceMaterialVersion,
 			RHI::RHIVertexDescriptionPtr vertex,
 			RHI::EShadowType shadowType,
-			bool bMasked);
+			bool bMasked,
+			uint64_t frame);
+		void EvictCustomShadowMaterials(uint64_t frame);
 
 		Framegraph::TextureBindingCache m_textureBindingCache{};
-		RHI::TPackedDrawPacketPayloadCache<PerInstanceData> m_packetPayloadCache{};
 		RHI::TPackedDrawPagedArenaCache<PerInstanceData> m_pagedArenaCache{};
+		RHI::RHIPackedDrawSceneChanges m_arenaChanges;
+		// Shared by concurrent RHI preparation tasks; finalizers own separate view packets.
 		SpinLock m_syncSharedResources{};
 
-		SAILOR_SHARED_API static const char* m_name;
 	};
 
 	namespace Framegraph

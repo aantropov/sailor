@@ -393,9 +393,10 @@ vec4 GaussianBlur_Evsm(sampler2D textureSampler, vec2 uv, vec2 texelSize, ivec2 
     { 0.0586472, 0.0581645, 0.0567402, 0.0544433, 0.0513831, 0.0476999, 0.0435548, 0.039118, 0.0345572, 0.0300277, 0.0256641, 0},
     { 0.0539209, 0.0535478, 0.0524437, 0.050654, 0.0482506, 0.0453272, 0.0419936, 0.0383686, 0.034573, 0.0307232, 0.0269255, 0.0232718}};
 
-    const uint blurRadius = min(max(radius.x, radius.y), stepCount);
-    const uint blurRadius1 = min(radius.x, stepCount);
-    const uint blurRadius2 = min(radius.y, stepCount);
+    // A zero-radius lobe uses the one-tap identity filter.
+    const uint blurRadius1 = uint(clamp(radius.x, 1, stepCount));
+    const uint blurRadius2 = uint(clamp(radius.y, 1, stepCount));
+    const uint blurRadius = max(blurRadius1, blurRadius2);
 
     vec4 pixelSum = vec4(0.0f);
   
@@ -405,13 +406,13 @@ vec4 GaussianBlur_Evsm(sampler2D textureSampler, vec2 uv, vec2 texelSize, ivec2 
         vec4 umbra = vec4(0.0f);
         vec4 penumbra = vec4(0.0f);
         
-        if(i < radius.x)
+        if(i < blurRadius1)
         {
             umbra.zw = texture(textureSampler, uv + texCoordOffset).zw + texture(textureSampler, uv - texCoordOffset).zw;
             pixelSum += umbra * weights[blurRadius1-1][i];
         }
         
-        if(i < radius.y)
+        if(i < blurRadius2)
         {
             penumbra.xy = texture(textureSampler, uv + texCoordOffset).xy + texture(textureSampler, uv - texCoordOffset).xy;
             pixelSum += penumbra * weights[blurRadius2-1][i];

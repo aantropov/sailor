@@ -12,13 +12,12 @@ namespace
 	float BrushFalloff(
 		float x,
 		float z,
-		const TVector<float>& stamps,
-		size_t offset)
+		const LandscapeSculptStamp& stamp)
 	{
-		const float radius = (std::max)(stamps[offset + 2u], 0.001f);
+		const float radius = (std::max)(stamp.m_radius, 0.001f);
 		const float distance = glm::distance(
 			glm::vec2(x, z),
-			glm::vec2(stamps[offset], stamps[offset + 1u]));
+			glm::vec2(stamp.m_x, stamp.m_z));
 		const float linear = glm::clamp(
 			1.0f - distance / radius,
 			0.0f,
@@ -163,17 +162,17 @@ const TVector<Box>& GlobalIlluminationLandscapeTestScene::GetBoxes()
 	return boxes;
 }
 
-TVector<float>
+TVector<LandscapeSculptStamp>
 GlobalIlluminationLandscapeTestScene::GetLandscapeSculptStamps()
 {
-	// x, z, radius, strength, operation (0 = raise). The center stays a
+	// The center stays a
 	// readable valley while the outer stamps make the horizon unmistakably a
 	// landscape rather than a flat test plane.
 	return {
-		-23.0f, -7.0f, 20.0f, 9.0f, 0.0f,
-		23.0f, -9.0f, 21.0f, 8.0f, 0.0f,
-		-5.0f, 26.0f, 27.0f, 6.0f, 0.0f,
-		4.0f, -28.0f, 22.0f, 5.0f, 0.0f
+		{ -23.0f, -7.0f, 20.0f, 9.0f, ELandscapeSculptOperation::Raise },
+		{ 23.0f, -9.0f, 21.0f, 8.0f, ELandscapeSculptOperation::Raise },
+		{ -5.0f, 26.0f, 27.0f, 6.0f, ELandscapeSculptOperation::Raise },
+		{ 4.0f, -28.0f, 22.0f, 5.0f, ELandscapeSculptOperation::Raise }
 	};
 }
 
@@ -182,17 +181,16 @@ float GlobalIlluminationLandscapeTestScene::SampleLandscapeHeight(
 	float z)
 {
 	float height = 0.0f;
-	const TVector<float> stamps = GetLandscapeSculptStamps();
-	for (size_t offset = 0u; offset + 4u < stamps.Num(); offset += 5u)
+	const auto stamps = GetLandscapeSculptStamps();
+	for (const auto& stamp : stamps)
 	{
-		const float falloff = BrushFalloff(x, z, stamps, offset);
-		const float strength = stamps[offset + 3u] * falloff;
-		const uint32_t operation = static_cast<uint32_t>(stamps[offset + 4u]);
-		if (operation == 0u)
+		const float falloff = BrushFalloff(x, z, stamp);
+		const float strength = stamp.m_strength * falloff;
+		if (stamp.m_operation == ELandscapeSculptOperation::Raise)
 		{
 			height += strength;
 		}
-		else if (operation == 1u)
+		else if (stamp.m_operation == ELandscapeSculptOperation::Lower)
 		{
 			height -= strength;
 		}

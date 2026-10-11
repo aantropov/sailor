@@ -12,10 +12,27 @@
 
 using namespace Sailor;
 using namespace Sailor::AssetRegistryInternal;
+using namespace Sailor::Workspace;
 
 bool AssetRegistry::ScanContentFolder()
 {
 	SAILOR_PROFILE_FUNCTION();
+	if (m_scheduler != nullptr && !m_scheduler->IsMainThread())
+	{
+		SAILOR_LOG_ERROR("Asset registry scans may only be committed from the main thread.");
+		return false;
+	}
+	bool bPendingScan = false;
+	{
+		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
+		bPendingScan = m_scanProcessingTasks.ContainsIf([](const auto& task) { return task && !task->IsFinished(); });
+	}
+	if (bPendingScan)
+	{
+		// Finish the previous batch before replacing its asset infos and acknowledgement state.
+		m_scheduler->ProcessTasksOnMainThread();
+		m_scheduler->WaitIdle({EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render});
+	}
 	bool bHasLazyIndex = false;
 	if (g_bUseLazyAssetInfoLoading)
 	{
@@ -87,14 +104,14 @@ bool AssetRegistry::ScanContentFolder()
 		{
 			invalidMetadata.Insert(metaKey);
 			SAILOR_LOG_ERROR("Invalid asset metadata '%s': %s.",
-				metaFile.m_physicalPath.generic_string().c_str(),
+				PathToUtf8(metaFile.m_physicalPath).c_str(),
 				metadataError.c_str());
 			const std::string invalidMetaPath = PathKey(metaFile.m_physicalPath);
 			bool bInvalidatesLiveAsset = false;
 			for (const auto& loadedAsset : m_loadedAssetInfo)
 			{
 				if (loadedAsset.m_second != nullptr && *loadedAsset.m_second != nullptr &&
-					PathKey((*loadedAsset.m_second)->GetMetaFilepath()) == invalidMetaPath)
+					PathKey(PathFromUtf8((*loadedAsset.m_second)->GetMetaFilepath())) == invalidMetaPath)
 				{
 					bInvalidatesLiveAsset = true;
 					break;
@@ -111,21 +128,21 @@ bool AssetRegistry::ScanContentFolder()
 		for (const auto& loadedAsset : m_loadedAssetInfo)
 		{
 			if (loadedAsset.m_second != nullptr && *loadedAsset.m_second != nullptr &&
-				PathKey((*loadedAsset.m_second)->GetMetaFilepath()) == metadataPhysicalPath &&
+				PathKey(PathFromUtf8((*loadedAsset.m_second)->GetMetaFilepath())) == metadataPhysicalPath &&
 				(*loadedAsset.m_second)->GetFileId() != ParseFileId(fileId))
 			{
 				SAILOR_LOG_ERROR(
 					"Asset metadata FileId changed during reload; preserving the previous registry generation: %s",
-					metaFile.m_physicalPath.generic_string().c_str());
+					PathToUtf8(metaFile.m_physicalPath).c_str());
 				return false;
 			}
 		}
 
 		const std::string basenameVirtualPath =
-			std::filesystem::path(metaFile.m_virtualPath).replace_extension().generic_string();
+			PathToUtf8(PathFromUtf8(metaFile.m_virtualPath).replace_extension());
 		const auto basenameAsset = filesByMountAndVirtualPath.Find(MountFileKey(metaFile.m_mount, basenameVirtualPath));
-		const bool bFilenameMatchesBasename = std::filesystem::path(filename).generic_string() ==
-											  std::filesystem::path(basenameVirtualPath).filename().generic_string();
+		const bool bFilenameMatchesBasename = PathToUtf8(PathFromUtf8(filename)) ==
+											  PathToUtf8(PathFromUtf8(basenameVirtualPath).filename());
 
 		StagedAssetRecord record;
 		record.m_candidate.m_mount = metaFile.m_mount;
@@ -145,13 +162,13 @@ bool AssetRegistry::ScanContentFolder()
 		else
 		{
 			const std::string declaredVirtualPath =
-				(std::filesystem::path(metaFile.m_virtualPath).parent_path() / filename).generic_string();
+				PathToUtf8(PathFromUtf8(metaFile.m_virtualPath).parent_path() / PathFromUtf8(filename));
 			const auto declaredAsset =
 				filesByMountAndVirtualPath.Find(MountFileKey(metaFile.m_mount, declaredVirtualPath));
 			if (declaredAsset == filesByMountAndVirtualPath.end())
 			{
 				SAILOR_LOG_ERROR("Asset metadata '%s' references missing source '%s' and was skipped.",
-					metaFile.m_physicalPath.generic_string().c_str(),
+					PathToUtf8(metaFile.m_physicalPath).c_str(),
 					declaredVirtualPath.c_str());
 				continue;
 			}
@@ -185,7 +202,8 @@ bool AssetRegistry::ScanContentFolder()
 		record.m_candidate.m_virtualPath = assetFile.m_virtualPath;
 		record.m_assetPath = assetFile.m_physicalPath;
 		record.m_assetVirtualPath = assetFile.m_virtualPath;
-		record.m_metaPath = assetFile.m_physicalPath.string() + "." + MetaFileExtension;
+		record.m_metaPath = assetFile.m_physicalPath;
+		record.m_metaPath += "." + std::string(MetaFileExtension);
 		record.m_metaVirtualPath = metaVirtualPath;
 		record.m_bPrimary = true;
 		record.m_bMetadataInvalid = invalidMetadata.Contains(metaKey) ||
@@ -218,11 +236,11 @@ bool AssetRegistry::ScanContentFolder()
 			record.m_assetVirtualPath,
 			record.m_candidate.m_mount.m_kind,
 			record.m_candidate.m_mount.m_bWritable};
-		if (!sourceRevisionCache.TryGet(location.m_physicalPath.generic_string(), location.m_revision))
+		if (!sourceRevisionCache.TryGet(PathToUtf8(location.m_physicalPath), location.m_revision))
 		{
 			SAILOR_LOG_ERROR(
 				"Failed to capture effective Content revision; preserving the previous registry generation: %s",
-				location.m_physicalPath.generic_string().c_str());
+				PathToUtf8(location.m_physicalPath).c_str());
 			return false;
 		}
 		stagedContentWinners[VirtualPathKey(record.m_assetVirtualPath)] = std::move(location);
@@ -280,7 +298,7 @@ bool AssetRegistry::ScanContentFolder()
 				for (const auto& loadedAsset : m_loadedAssetInfo)
 				{
 					if (loadedAsset.m_second != nullptr && *loadedAsset.m_second != nullptr &&
-						PathKey((*loadedAsset.m_second)->GetAssetFilepath()) == missingMetaAssetPath)
+						PathKey(PathFromUtf8((*loadedAsset.m_second)->GetAssetFilepath())) == missingMetaAssetPath)
 					{
 						rollbackStaging();
 						SAILOR_LOG_ERROR(
@@ -303,16 +321,16 @@ bool AssetRegistry::ScanContentFolder()
 				rollbackStaging();
 				SAILOR_LOG_ERROR("Asset metadata appeared during staged import; preserving it and the previous "
 								 "registry generation: %s",
-					record.m_metaPath.generic_string().c_str());
+					PathToUtf8(record.m_metaPath).c_str());
 				return false;
 			}
 			AssetInfoPtr assetInfo =
-				handler->ImportAsset(record.m_assetPath.string(), record.m_assetVirtualPath, false, false);
+				handler->ImportAsset(PathToUtf8(record.m_assetPath), record.m_assetVirtualPath, false, false);
 			if (assetInfo == nullptr)
 			{
 				rollbackStaging();
 				SAILOR_LOG_ERROR("Failed to import asset metadata during staged load: %s",
-					record.m_metaPath.generic_string().c_str());
+					PathToUtf8(record.m_metaPath).c_str());
 				return false;
 			}
 			importedMetadata.Add({handler, assetInfo});
@@ -335,13 +353,13 @@ bool AssetRegistry::ScanContentFolder()
 		const bool bWasPreviouslyExpired =
 			previousAssetInfo != m_loadedAssetInfo.end() &&
 			(previousAssetInfo.Value()->IsMetaExpired() || previousAssetInfo.Value()->IsAssetExpired() ||
-				PathKey(previousAssetInfo.Value()->GetAssetFilepath()) != PathKey(record.m_assetPath) ||
+				PathKey(PathFromUtf8(previousAssetInfo.Value()->GetAssetFilepath())) != PathKey(record.m_assetPath) ||
 				bEffectiveContentChanged);
 
 		IAssetInfoHandler* handler =
 			GetAssetInfoHandler(HandlerExtension(record), record.m_assetInfoType, record.m_bPrimary);
 		check(handler);
-		AssetInfoPtr assetInfo = handler->LoadAssetInfo(record.m_metaPath.string(),
+		AssetInfoPtr assetInfo = handler->LoadAssetInfo(PathToUtf8(record.m_metaPath),
 			record.m_metaVirtualPath,
 			record.m_candidate.m_mount.m_kind,
 			record.m_candidate.m_mount.m_bWritable,
@@ -351,7 +369,7 @@ bool AssetRegistry::ScanContentFolder()
 		{
 			rollbackStaging();
 			SAILOR_LOG_ERROR(
-				"Failed to load asset metadata during staged load: %s", record.m_metaPath.generic_string().c_str());
+				"Failed to load asset metadata during staged load: %s", PathToUtf8(record.m_metaPath).c_str());
 			return false;
 		}
 		if (assetInfo->GetFileId().ToString() != record.m_candidate.m_fileId)
@@ -359,17 +377,17 @@ bool AssetRegistry::ScanContentFolder()
 			delete assetInfo;
 			rollbackStaging();
 			SAILOR_LOG_ERROR(
-				"Asset metadata FileId changed during staged load: %s", record.m_metaPath.generic_string().c_str());
+				"Asset metadata FileId changed during staged load: %s", PathToUtf8(record.m_metaPath).c_str());
 			return false;
 		}
-		if (PathKey(assetInfo->GetMetaFilepath()) != PathKey(record.m_metaPath) ||
-			PathKey(assetInfo->GetAssetFilepath()) != PathKey(record.m_assetPath))
+		if (PathKey(PathFromUtf8(assetInfo->GetMetaFilepath())) != PathKey(record.m_metaPath) ||
+			PathKey(PathFromUtf8(assetInfo->GetAssetFilepath())) != PathKey(record.m_assetPath))
 		{
 			delete assetInfo;
 			rollbackStaging();
 			SAILOR_LOG_ERROR(
 				"Asset metadata paths changed during staged load; preserving the previous registry generation: %s",
-				record.m_metaPath.generic_string().c_str());
+				PathToUtf8(record.m_metaPath).c_str());
 			return false;
 		}
 
@@ -433,7 +451,7 @@ bool AssetRegistry::ScanContentFolder()
 		const std::string virtualPathKey = VirtualPathKey(virtualPath);
 		const auto effectiveWinner = stagedContentWinners.Find(virtualPathKey);
 		if (effectiveWinner != stagedContentWinners.end() &&
-			PathKey(effectiveWinner.Value().m_physicalPath) == PathKey(pending.m_assetInfo->GetAssetFilepath()))
+			PathKey(effectiveWinner.Value().m_physicalPath) == PathKey(PathFromUtf8(pending.m_assetInfo->GetAssetFilepath())))
 		{
 			handledEffectiveContentChanges.Insert(virtualPathKey);
 		}
@@ -441,13 +459,6 @@ bool AssetRegistry::ScanContentFolder()
 
 	if (Tasks::Scheduler* scheduler = m_scheduler)
 	{
-		if (!scheduler->IsMainThread())
-		{
-			rollbackStaging();
-			SAILOR_LOG_ERROR("Asset registry generations may only be committed from the main thread; preserving the "
-							 "previous generation.");
-			return false;
-		}
 		scheduler->WaitIdle({EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render});
 	}
 
@@ -475,6 +486,20 @@ bool AssetRegistry::ScanContentFolder()
 		return false;
 	}
 
+	TVector<FileId> changedAssets;
+	for (const PendingAssetNotification& pending : pendingNotifications)
+	{
+		if (pending.m_bImported || pending.m_assetInfo->m_bPendingWasExpired)
+		{
+			changedAssets.Add(pending.m_assetInfo->GetFileId());
+		}
+	}
+	if (!BeginScanProcessing(changedAssets))
+	{
+		rollbackStaging();
+		return false;
+	}
+
 	TMap<FileId, AssetInfoPtr> previousAssetInfos = std::move(m_loadedAssetInfo);
 	m_loadedAssetInfo = std::move(stagedAssetInfos);
 	m_fileIds = std::move(stagedFileIds);
@@ -482,11 +507,6 @@ bool AssetRegistry::ScanContentFolder()
 	m_contentMounts = discovery.m_mounts;
 	m_contentFileWinners = std::move(stagedContentWinners);
 	DeleteAssetInfos(previousAssetInfos);
-	{
-		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
-		m_bCollectScanProcessingTasks = true;
-		m_bScanProcessingActive = true;
-	}
 	// Listener callbacks can change a source. Start a fresh commit snapshot so
 	// cache acknowledgements still inspect each shared source once and only record
 	// the post-callback revision when it matches the imported revision.
@@ -523,10 +543,6 @@ bool AssetRegistry::ScanContentFolder()
 			}
 		}
 	}
-	{
-		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
-		m_bCollectScanProcessingTasks = false;
-	}
 	TSet<FileId> liveAssetIds;
 	for (const auto& loadedAsset : m_loadedAssetInfo)
 	{
@@ -548,6 +564,6 @@ bool AssetRegistry::ScanContentFolder()
 		}
 	}
 	m_assetCache.Prune(liveAssetIds);
-	m_assetCache.SaveCache();
+	FinishScanProcessing();
 	return true;
 }

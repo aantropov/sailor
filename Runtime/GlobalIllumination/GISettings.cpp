@@ -148,9 +148,9 @@ bool GISettings::Deserialize(
 		}
 
 		const YAML::Node runtimeProbes = globalIllumination["runtimeProbes"];
-		if (!runtimeProbes || !parsedSettings.m_runtimeProbes.Deserialize(runtimeProbes))
+		if (runtimeProbes && !parsedSettings.m_runtimeProbes.Deserialize(runtimeProbes))
 		{
-			outDiagnostic = "globalIllumination.runtimeProbes is incomplete";
+			outDiagnostic = "globalIllumination.runtimeProbes contains invalid settings";
 			return false;
 		}
 

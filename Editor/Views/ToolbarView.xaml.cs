@@ -33,14 +33,6 @@ namespace SailorEditor.Views
             => RunToolbarAction(
                 () => actions.ToggleSimulationAsync(),
                 actions.IsSimulating ? "Stop simulation" : "Simulate");
-        private void OnPathTraceSceneButtonClicked(object sender, EventArgs e)
-            => RunToolbarAction(
-                () => actions.ExportPathTracedImageAsync(false),
-                "Path trace scene");
-        private void OnPathTraceSelectionButtonClicked(object sender, EventArgs e)
-            => RunToolbarAction(
-                () => actions.ExportPathTracedImageAsync(true),
-                "Path trace selection");
         private void OnSaveLayoutButtonClicked(object sender, EventArgs e)
             => RunToolbarAction(actions.SaveLayoutAsync, "Save layout");
         private void OnResetLayoutButtonClicked(object sender, EventArgs e)

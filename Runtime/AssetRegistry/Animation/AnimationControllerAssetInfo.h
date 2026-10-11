@@ -51,13 +51,13 @@ namespace Sailor
 }
 
 REFL_AUTO(
-	type(Sailor::AnimationControllerAssetInfo, bases<Sailor::AssetInfo>),
+	type(Sailor::AnimationControllerAssetInfo, bases<Sailor::AssetInfo>, Sailor::Attributes::Asset{ "animcontroller" }),
 	field(m_fileId),
 	field(m_assetFilename)
 )
 
 REFL_AUTO(
-	type(Sailor::AnimationSetAssetInfo, bases<Sailor::AssetInfo>),
+	type(Sailor::AnimationSetAssetInfo, bases<Sailor::AssetInfo>, Sailor::Attributes::Asset{ "animset" }),
 	field(m_fileId),
 	field(m_assetFilename)
 )

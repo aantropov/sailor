@@ -16,8 +16,12 @@
 #include "Core/Submodule.h"
 #include "Tasks/Scheduler.h"
 #include "GraphicsDriver.h"
-#include "GpuFrameTimeQueryRing.h"
+#include "RendererTimings.h"
+#include "Readback.h"
 #include "SceneView.h"
+#include "FrameGraph/SkyParameters.h"
+
+namespace Sailor::Framegraph { class SkyNode; }
 
 namespace Sailor
 {
@@ -33,9 +37,7 @@ namespace Sailor::RHI
 		// TODO: Move to RHI::Constants?
 		static constexpr uint32_t GPUCullingGroupSize = 256;
 
-		static constexpr uint32_t MaxFramesInQueue = 2;
-
-			SAILOR_API Renderer(class Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
+			SAILOR_API Renderer(Platform::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
 			SAILOR_API ~Renderer() override;
 			SAILOR_API bool IsInitialized() const { return m_bIsInitialized; }
 
@@ -44,12 +46,14 @@ namespace Sailor::RHI
 		SAILOR_API RHI::EFormat GetDepthFormat() const;
 
 		SAILOR_API void FixLostDevice();
+		// Main can sample fresh input once flight setup has dispatched node preparation.
+		SAILOR_API bool CanPrepareFrame() const { return !m_bIsFrameQueued.load(std::memory_order_acquire); }
 		SAILOR_API bool PushFrame(const Sailor::FrameState& frame);
 		SAILOR_API void WaitIdle();
 
 		SAILOR_API const Stats& GetStats() const { return m_stats; }
-		SAILOR_API TVector<GpuTiming> GetSlowestGpuTimings() const;
-		SAILOR_API TVector<GpuTiming> GetGpuTimings() const;
+		SAILOR_API GpuTimingSnapshot GetGpuTimings() const;
+		SAILOR_API void RefreshGpuTimings() { m_gpuTimingGeneration.fetch_add(1u, std::memory_order_release); }
 		SAILOR_API RHIGlobalIlluminationRenderStats
 			GetGlobalIlluminationRenderStats() const;
 
@@ -59,17 +63,34 @@ namespace Sailor::RHI
 		SAILOR_API RHISceneViewPtr GetOrAddSceneView(WorldPtr worldPtr);
 		SAILOR_API void RemoveSceneView(WorldPtr worldPtr);
 
-		SAILOR_API void BeginConditionalDestroy();
+		SAILOR_API bool BeginConditionalDestroy();
 		SAILOR_API void RefreshFrameGraph() { m_bFrameGraphOutdated = true; }
 		SAILOR_API bool EnsureFrameGraph();
 
 		SAILOR_API FrameGraphPtr GetFrameGraph() { return m_frameGraph; }
+		// Render queues completed captures; only Main reads the published frame.
+		SAILOR_API void QueueEditorReadback(ReadbackFramePtr frame);
+		SAILOR_API ReadbackFramePtr GetEditorReadback() const { return m_editorReadback; }
+		SAILOR_API bool HasEditorReadback() const { return m_bHasEditorReadback; }
 
 		SAILOR_API static void MemoryStats();
 
+	private:
+		friend class RendererSubmissionTestAccess;
+		struct FrameSubmission;
+		void CaptureSceneView(FrameSubmission& submission, const Sailor::FrameState& frame);
+		bool AcquireSubmission(FrameSubmission& submission);
+		void PrepareSceneView(FrameSubmission& submission);
+		void RecordAndSubmitFrame(FrameSubmission& submission, const Sailor::FrameState& frame);
+		void CompleteFrame(FrameSubmission& submission);
+		void ReturnSceneView(RHISceneViewPtr& sceneView);
+
 	protected:
+		SAILOR_API void UpdateSkyParameters(WorldPtr world, RHIFrameGraphPtr graph);
 		void UpdateMemoryStats();
-		void PublishGpuTimings(const TVector<GpuTiming>& timings);
+		void PublishGpuTimings(const std::optional<GpuTimingResult>& timings);
+		void InvalidateGpuTimings();
+		void ResetFrameCadence();
 		void UpdateGlobalIlluminationRenderStats(
 			const RHIGlobalIlluminationRenderStats& stats);
 
@@ -77,24 +98,27 @@ namespace Sailor::RHI
 
 		std::atomic<bool> m_bFrameGraphOutdated = false;
 		std::atomic<bool> m_bForceStop = false;
+		std::atomic<bool> m_bIsFrameQueued = false;
 
 		RHI::Stats m_stats{};
 
-		struct GpuTimingHistory final
-		{
-			std::string m_name;
-			TGpuTimingAverage<60u> m_average;
-			uint64_t m_lastSeenGeneration = 0u;
-		};
+		mutable SpinLock m_globalIlluminationStatsLock;
+		RHIGlobalIlluminationRenderStats m_globalIlluminationStats{};
 
 		mutable SpinLock m_gpuTimingsLock;
-		TVector<GpuTimingHistory> m_gpuTimingHistory;
-		TVector<GpuTiming> m_gpuTimings;
-		uint64_t m_gpuTimingGeneration = 0u;
+		RendererTimings m_timings;
+		GpuTimingSnapshot m_gpuTimings;
+		std::atomic<uint64_t> m_gpuTimingGeneration = 0u;
+		uint64_t m_profiledFrameGraphGeneration = 0u;
+		bool m_bGpuQueriesEnabled = false;
 
-		class Win32::Window* m_pViewport;
+		Platform::Window* m_pViewport;
 
 		FrameGraphPtr m_frameGraph{};
+		TRefPtr<Framegraph::SkyNode> m_skyNode;
+		SkyParameters m_publishedSkyParams;
+		ReadbackFramePtr m_editorReadback{};
+		bool m_bHasEditorReadback = false;
 		TConcurrentMap<WorldPtr, TList<TPair<RHISceneViewPtr,bool>>, 4, ERehashPolicy::Never> m_cachedSceneViews{};
 			TUniquePtr<IGraphicsDriver> m_driverInstance{};
 			Tasks::ITaskPtr m_previousRenderFrame{};
@@ -102,7 +126,6 @@ namespace Sailor::RHI
 			TVector<RHIRenderSubmissionContextPtr> m_submissionContexts{};
 			std::atomic<uint64_t> m_nextSubmissionId = 1ull;
 			uint64_t m_frameGraphResourceGeneration = 0ull;
-			bool m_bUseDriverDepthBuffer = false;
 			bool m_bIsInitialized = false;
 		};
 	};

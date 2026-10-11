@@ -170,9 +170,7 @@ void* Page::Allocate(size_t size, size_t alignment)
 			{
 				freeBlock = MoveHeader(freeBlock, freeSpaceLeft);
 
-				//we never shift the first block
-				check(pPrev);
-				m_occupiedSpace += pPrev->m_bIsFree ? -freeSpaceLeft : freeSpaceLeft;
+				m_occupiedSpace += pPrev && pPrev->m_bIsFree ? -freeSpaceLeft : freeSpaceLeft;
 			}
 
 			const size_t freeSpaceRight = freeBlock->m_size - size;
@@ -414,7 +412,7 @@ void* PoolAllocator::Allocate(size_t size, size_t alignment)
 	}
 
 	const size_t quadraticGrow = (size_t)pow(2.0, (double)m_pages.Num());
-	const size_t neededPlace = size + sizeof(Header);
+	const size_t neededPlace = size + sizeof(Header) + alignment - 1;
 	const size_t maxBlockSize = 1024ull * 1024ull * 1024ull * 1u;
 	const size_t newPageSize = std::max(neededPlace, std::min(maxBlockSize, quadraticGrow * m_pageSize));
 
@@ -676,8 +674,10 @@ HeapAllocator::HeapAllocator()
 
 void* HeapAllocator::Allocate(size_t size, size_t alignment)
 {
-	size_t alignedSize = CalculateAlignedSize(size);
-	bool bSmallAllocator = alignedSize < 256 && size < 256;
+	check(alignment != 0 && (alignment & (alignment - 1)) == 0);
+	alignment = (std::max)(alignment, alignof(Header));
+	const size_t alignedSize = CalculateAlignedSize(size, alignment);
+	const bool bSmallAllocator = alignedSize < 256 && alignment <= alignof(std::max_align_t);
 
 	void* res = nullptr;
 	if (bSmallAllocator)
@@ -686,7 +686,8 @@ void* HeapAllocator::Allocate(size_t size, size_t alignment)
 	}
 	else
 	{
-		res = m_allocator.Allocate(size, alignment);
+		const size_t roundedSize = (size + alignof(Header) - 1) & ~(alignof(Header) - 1);
+		res = m_allocator.Allocate(roundedSize, alignment);
 	}
 
 	if (!res)
@@ -705,6 +706,11 @@ void* HeapAllocator::Allocate(size_t size, size_t alignment)
 bool HeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
 {
 	check(ptr);
+	check(alignment != 0 && (alignment & (alignment - 1)) == 0);
+	if (reinterpret_cast<uintptr_t>(ptr) % alignment != 0)
+	{
+		return false;
+	}
 
 	// Quick look to get allocator type
 	if (((SmallPoolAllocator::SmallHeader*)ShiftPtr(ptr, -(int32_t)sizeof(SmallPoolAllocator::SmallHeader)))->m_meta == 1)
@@ -719,9 +725,8 @@ bool HeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
 			return true;
 		}
 
-		// TODO: Investigate why TryAddMoreSpace caused randomly crash (allocatedThread is corrupted, maybe that is related to Vector implementation?) 
-		// TODO2: Add the proper check occupied space, is that is the real reason of the issue?
-		return m_allocator.TryAddMoreSpace(ptr, size);
+		const size_t roundedSize = (size + alignof(Header) - 1) & ~(alignof(Header) - 1);
+		return m_allocator.TryAddMoreSpace(ptr, roundedSize);
 	}
 	else
 	{
@@ -759,9 +764,8 @@ void HeapAllocator::Free(void* ptr)
 	}
 }
 
-size_t HeapAllocator::CalculateAlignedSize(size_t blockSize) const
+size_t HeapAllocator::CalculateAlignedSize(size_t blockSize, size_t alignment) const
 {
-	const size_t alignment = 8;
-	size_t fullData = sizeof(SmallPoolAllocator::SmallHeader) + blockSize;
+	const size_t fullData = sizeof(SmallPoolAllocator::SmallHeader) + blockSize;
 	return fullData + (fullData % alignment == 0 ? 0 : (alignment - fullData % alignment));
 }

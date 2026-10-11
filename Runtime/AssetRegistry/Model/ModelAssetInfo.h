@@ -38,6 +38,7 @@ namespace Sailor
 		SAILOR_API virtual IAssetInfoHandler* GetHandler() override;
 
 	private:
+		SAILOR_API void CopyMetadata(const AssetInfo& source) override;
 
 		TVector<FileId> m_materials;
 		TVector<FileId> m_animations;
@@ -71,7 +72,7 @@ namespace Sailor
 }
 
 REFL_AUTO(
-	type(Sailor::ModelAssetInfo, bases<Sailor::AssetInfo>),
+	type(Sailor::ModelAssetInfo, bases<Sailor::AssetInfo>, Sailor::Attributes::Asset{ "glb", "gltf" }),
 	field(m_fileId),
 	field(m_assetFilename),
 	field(m_bShouldGenerateMaterials),

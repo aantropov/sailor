@@ -237,12 +237,32 @@
 	  <Content Include="AI\AGENT.md" CopyToOutputDirectory="PreserveNewest" />
 	</ItemGroup>
 
-	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst' and '$(Configuration)' == 'Debug'">
-	  <Content Include="..\build-mac-vcpkg\Lib\Debug\Sailor-Debug.dylib" Link="Sailor-Debug.dylib" CopyToOutputDirectory="PreserveNewest" />
-	</ItemGroup>
+    <PropertyGroup>
+        <SailorNativeBuildDirectory Condition="'$(SailorNativeBuildDirectory)' == '' and $([MSBuild]::IsOSPlatform('osx'))">$(MSBuildProjectDirectory)/../build-mac-vcpkg</SailorNativeBuildDirectory>
+        <SailorNativeBuildDirectory Condition="'$(SailorNativeBuildDirectory)' == ''">$(MSBuildProjectDirectory)/../build</SailorNativeBuildDirectory>
+        <SailorRuntimeConfiguration>Release</SailorRuntimeConfiguration>
+        <SailorRuntimeConfiguration Condition="'$(Configuration)' == 'Debug'">RelWithDebInfo</SailorRuntimeConfiguration>
+        <SailorRuntimeConfiguration Condition="'$(Configuration)' == 'Debug' and $([MSBuild]::IsOSPlatform('osx'))">Debug</SailorRuntimeConfiguration>
+    </PropertyGroup>
 
-	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst' and '$(Configuration)' != 'Debug'">
-	  <Content Include="..\build-mac-vcpkg\Lib\Release\Sailor-Release.dylib" Link="Sailor-Release.dylib" CopyToOutputDirectory="PreserveNewest" />
-	</ItemGroup>
+    <!-- Compile Workspace uses the SDK from the same build as the embedded runtime. -->
+    <Target Name="PrepareSailorWorkspaceSdk" BeforeTargets="PrepareForBuild"
+            Condition="'$(DesignTimeBuild)' != 'true' and Exists('$(SailorNativeBuildDirectory)/Lib/cmake_install.cmake')">
+        <PropertyGroup>
+            <SailorEditorSdkDirectory>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/$(IntermediateOutputPath)EngineSDK'))</SailorEditorSdkDirectory>
+        </PropertyGroup>
+        <Exec Command="cmake --install &quot;$(SailorNativeBuildDirectory)/Lib&quot; --config $(SailorRuntimeConfiguration) --prefix &quot;$(SailorEditorSdkDirectory)&quot;" />
+        <ItemGroup>
+            <_SailorSdkFile Include="$(SailorEditorSdkDirectory)/**/*" />
+            <Content Include="@(_SailorSdkFile)">
+                <Link>EngineSDK/%(_SailorSdkFile.RecursiveDir)%(_SailorSdkFile.Filename)%(_SailorSdkFile.Extension)</Link>
+                <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            </Content>
+        </ItemGroup>
+    </Target>
+
+    <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">
+        <Content Include="$(SailorNativeBuildDirectory)/Lib/$(SailorRuntimeConfiguration)/Sailor-$(SailorRuntimeConfiguration).dylib" Link="Sailor-$(SailorRuntimeConfiguration).dylib" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
 
 </Project>

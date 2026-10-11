@@ -164,14 +164,15 @@ public sealed class SceneViewportInteractionTests
     public void AssetDropPayload_CreatesForEverySerializedFileIdFormat(
         string fileId)
     {
+        const string canonicalId = "01234567-89AB-CDEF-0123-456789ABCDEF";
         Assert.True(SceneViewportAssetDropPayload.TryCreate(
             new SailorEngine.FileId(fileId),
             out var payload));
         Assert.Equal(
-            SceneViewportAssetDropPayload.Prefix + fileId,
+            SceneViewportAssetDropPayload.Prefix + canonicalId,
             payload);
         Assert.Equal(
-            SceneViewportAssetDropPayload.Prefix.Length + fileId.Length,
+            SceneViewportAssetDropPayload.Prefix.Length + canonicalId.Length,
             payload.Length);
         Assert.True(
             payload.Length <= SceneViewportAssetDropPayload.MaxLength);

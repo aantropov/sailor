@@ -139,6 +139,7 @@ namespace SailorEditor.Views
                 nativeViewportHost.HostHandleChanged += handle =>
                 {
                     nativeHostHandle = handle;
+                    viewportAdapter.SetNativeHost(handle, nativeViewportScale);
                     Console.WriteLine($"[SceneView] native host handle changed: 0x{handle.ToInt64():X}");
                     if (handle != nint.Zero)
                     {
@@ -342,7 +343,8 @@ namespace SailorEditor.Views
                 remoteModifiers,
                 input.Pressed,
                 focused,
-                captured);
+                captured,
+                input.Text);
             return NativeViewportInputDispatchResult.Forwarded;
         }
 

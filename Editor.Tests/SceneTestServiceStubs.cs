@@ -8,7 +8,8 @@ namespace SailorEditor.Controls
         PointerWheel = 3,
         Key = 4,
         Focus = 5,
-        Capture = 6
+        Capture = 6,
+        Text = 7
     }
 
     [Flags]
@@ -35,7 +36,8 @@ namespace SailorEditor.Controls
         NativeSceneViewportInputModifier Modifiers = NativeSceneViewportInputModifier.None,
         bool Pressed = false,
         bool Focused = false,
-        bool Captured = false);
+        bool Captured = false,
+        string Text = "");
 }
 
 namespace SailorEditor.Services
@@ -48,7 +50,8 @@ namespace SailorEditor.Services
         PointerWheel = 3,
         Key = 4,
         Focus = 5,
-        Capture = 6
+        Capture = 6,
+        Text = 7
     }
 
     [Flags]

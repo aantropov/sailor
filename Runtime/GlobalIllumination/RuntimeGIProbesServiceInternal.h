@@ -30,19 +30,20 @@ namespace Sailor
 		{
 			RuntimeGIProbesInternal::ProbeCellKey m_key{};
 			GIProbeIrradianceAccumulator m_accumulator{};
+			// Transport and the last resolved coefficients; the accumulator may be further ahead.
 			GIProbe m_probe{};
 			glm::vec3 m_layoutPosition{};
 			uint32_t m_brickIndex = 0u;
 			bool m_bHasTransport = false;
 			bool m_bReady = false;
 			bool m_bRefined = false;
-			bool m_bDirty = false;
 		};
 
 		struct Generation final
 		{
 			RuntimeGIProbesStartRequest m_request{};
-			GIProbesDataPtr m_data{};
+			// Ready results only; unfinished probes remain environment-fallback slots.
+			GIProbesDataPtr m_workingData{};
 			std::vector<ProbeWork> m_probes{};
 			std::vector<uint32_t> m_initialQueue{};
 			std::deque<uint32_t> m_warmingQueue{};
@@ -54,11 +55,16 @@ namespace Sailor
 			uint32_t m_effectiveCapacity = 0u;
 			size_t m_initialCursor = 0u;
 			uint32_t m_readyCount = 0u;
-			uint32_t m_refinedCount = 0u;
-			uint32_t m_dirtyCount = 0u;
+			uint64_t m_dataRevision = 0u;
+			uint64_t m_publishedDataRevision = 0u;
 			uint64_t m_progressSampleCount = 0u;
 			bool m_bFailed = false;
-			bool m_bPublished = false;
+
+			bool IsFullyRefined() const noexcept
+			{
+				return m_progressSampleCount ==
+					static_cast<uint64_t>(m_probes.size()) * m_request.m_qualitySettings.m_targetSamplesPerProbe;
+			}
 		};
 
 		struct Job final
@@ -72,6 +78,15 @@ namespace Sailor
 		{
 			TSharedPtr<Generation> m_generation{};
 			uint32_t m_workerCount = 0u;
+		};
+
+		struct Publication final
+		{
+			TSharedPtr<Generation> m_generation;
+			// A captured revision, prepared outside the service lock and then retained by frames.
+			GIProbesDataPtr m_snapshot;
+			uint64_t m_dataRevision = 0u;
+			uint64_t m_uploadBytes = 0u;
 		};
 
 		mutable std::mutex m_mutex;
@@ -103,18 +118,21 @@ namespace Sailor
 			std::string& outDiagnostic);
 		void ReuseGenerationState(Generation& next, const Generation& previous);
 
-		bool TryTakeJob(const TSharedPtr<Generation>& generation, Job& outJob);
+		SAILOR_SHARED_API bool TryTakeJob(const TSharedPtr<Generation>& generation, Job& outJob);
 		static bool HasQueuedWork(const Generation& generation) noexcept;
 		bool CanDispatchWorkLocked() const noexcept;
 		DispatchBatch GetDispatchBatch() const noexcept;
 		void WorkerBatch(TSharedPtr<Generation> generation,
 			uint32_t maximumJobCount = (std::numeric_limits<uint32_t>::max)());
 		void PumpWorkerTasks();
-		bool ExecuteJob(Job& job, std::string& outDiagnostic);
+		SAILOR_SHARED_API bool ExecuteJob(Job& job, std::string& outDiagnostic);
 
 		void FailGenerationLocked(Generation& generation, std::string diagnostic);
-		void CommitJob(const Job& job, bool bSuccess, std::string diagnostic, double elapsedMilliseconds);
+		SAILOR_SHARED_API void CommitJob(const Job& job, bool bSuccess, std::string diagnostic, double elapsedMilliseconds);
 		void UpdateStatusLocked();
+		SAILOR_SHARED_API bool CapturePublication(Publication& outPublication);
+		SAILOR_SHARED_API static std::string PreparePublication(Publication& publication);
+		SAILOR_SHARED_API void CommitPublication(Publication& publication, std::string diagnostic);
 		void PublishIfNeeded();
 	};
 }
