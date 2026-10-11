@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstring>
 #include <iostream>
 #include <map>
@@ -213,7 +214,9 @@ namespace Sailor::Tests
 			ShadowObservation paused;
 			FrameState previous;
 			uint32_t reused = 0, invalidated = 0;
-			for (uint32_t frame = 0; frame < 36; ++frame)
+			uint32_t submittedFrames = 0;
+			const auto warmupDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+			for (uint32_t frame = 0; frame < 36;)
 			{
 				if (frame == 12) animator->Play();
 				if (frame == 14) animator->Stop();
@@ -223,7 +226,7 @@ namespace Sailor::Tests
 					clip->m_frames[1].m_position.x += 0.1f;
 				}
 				const auto time = previous.GetTime() + (frame == 12 ? 500 : frame == 13 ? 0 : 16);
-				FrameState current(world.GetRawPtr(), time, {}, { 32, 24 }, frame ? &previous : nullptr);
+				FrameState current(world.GetRawPtr(), time, {}, { 32, 24 }, submittedFrames++ ? &previous : nullptr);
 				engine->ProcessCpuFrame(current);
 				const auto version = world->GetECS<StaticMeshRendererECS>()->GetRHIScene()->GetCurrentVersion();
 				Require(version->m_stationaryHandles && version->m_stationaryHandles->Num() == 1,
@@ -237,8 +240,18 @@ namespace Sailor::Tests
 				const auto observed = node->m_observation;
 				Require(observed.m_completion && observed.m_completion->Wait(5000000000ull) == EFenceStatus::Finished,
 					"the actual submitted shadow draw and readback must finish");
-				for (const auto& payload : observed.m_payloads)
-					Require(payload && payload->IsSuccessful(), "the production shadow pass must complete its payload");
+				const bool bPayloadComplete = std::all_of(observed.m_payloads.begin(), observed.m_payloads.end(),
+					[](const auto& payload) { return payload && payload->IsSuccessful(); });
+				// A cold shader may skip the pass. Advance real frames until it renders;
+				// once the baseline exists, every payload must succeed without retries.
+				if (frame == 0 && !bPayloadComplete)
+				{
+					Require(std::chrono::steady_clock::now() < warmupDeadline,
+						"the asynchronous shadow pass must become ready during warmup");
+					previous = std::move(current);
+					continue;
+				}
+				Require(bPayloadComplete, "the production shadow pass must complete its payload");
 				const uint32_t pose = frame / 12;
 				Require(observed.m_bones && observed.m_bones->Num() == 1 &&
 					std::abs((*observed.m_bones)[0][3].x - 0.1f * pose) < 1e-6f,
@@ -301,12 +314,13 @@ namespace Sailor::Tests
 					}
 				}
 				previous = std::move(current);
+				++frame;
 			}
 			Require(flights.size() == Renderer::GetDriver()->GetMaxFramesInFlight() &&
 				reused >= 24 && invalidated == flights.size() * 2,
 				"paused poses must reuse warm flights, with one invalidation per flight after resume and an in-place edit");
 			std::cout << "Animation shadow cache: real World/PushFrame, 36 frames, " << flights.size()
-				<< " flights, paused reuse, playback and in-place pose updates, retained snapshots and changed PCF pixels passed\n";
+				<< " flights, " << submittedFrames - 36 << " warmup frames, paused reuse, playback and in-place pose updates, retained snapshots and changed PCF pixels passed\n";
 		}
 		catch (...)
 		{

@@ -72,6 +72,7 @@ namespace Sailor
 			}
 
 			RHI::TPackedDrawPacket<PerInstanceData> m_packet;
+			bool m_bAreMaterialsReady = true;
 			RHI::RHIShaderBindingSetPtr m_perInstanceData{};
 			size_t m_sizePerInstanceData = 0u;
 			size_t m_sizeInstanceIndices = 0u;

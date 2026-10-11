@@ -45,16 +45,16 @@ RHI::RHIMaterialPtr ShadowPrepassNode::SelectShadowMaterial(
 	const ShaderSetPtr& sourceShader, const RHI::RHIMaterialPtr& sourceMaterial,
 	const RHI::RHIMaterialVersionPtr& sourceVersion, uint64_t frame)
 {
-	auto material = GetOrAddShadowMaterial(vertex, shadowType, bSkinned, bMasked);
-	if (sourceMaterial)
+	if (sourceShader && sourceMaterial)
 	{
-		if (auto custom = GetOrAddCustomShadowMaterial(
-			sourceShader, sourceMaterial, sourceVersion, vertex, shadowType, bMasked, frame))
+		auto asset = App::GetSubmodule<ShaderCompiler>()->LoadShaderAsset(sourceShader->GetFileId());
+		if (asset && asset->GetSupportedDefines().Contains("PACKED_SHADOW_CASTER"))
 		{
-			material = std::move(custom);
+			return GetOrAddCustomShadowMaterial(
+				sourceShader, sourceMaterial, sourceVersion, vertex, shadowType, bMasked, frame);
 		}
 	}
-	return material;
+	return GetOrAddShadowMaterial(vertex, shadowType, bSkinned, bMasked);
 }
 
 RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertexDescription, RHI::EShadowType shadowType, bool bSkinned, bool bMasked)
@@ -87,10 +87,9 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDesc
 			defines.Add("MASKED");
 		}
 
-		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderFileId->GetFileId(), pShader, defines))
+		App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderFileId->GetFileId(), pShader, defines);
+		if (pShader && pShader->IsReady())
 		{
-			check(pShader->IsReady());
-
 			const ECullMode cullMode = bMasked ? ECullMode::None : ECullMode::Back;
 			const float shadowBias = GetRasterShadowBias(
 				shadowType,
@@ -164,10 +163,11 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddCustomShadowMaterial(
 	}
 
 	ShaderSetPtr shadowShader;
-	if (!shaderCompiler->LoadShader_Immediate(
+	shaderCompiler->LoadShader(
 		sourceShader->GetFileId(),
 		shadowShader,
-		defines) || !shadowShader->IsReady())
+		defines);
+	if (!shadowShader || !shadowShader->IsReady())
 	{
 		return nullptr;
 	}
@@ -230,8 +230,7 @@ Tasks::TaskPtr<void, void> ShadowPrepassNode::Prepare(RHIFrameGraphPtr frameGrap
 		!TryGetString("VirtualizeInstancePayloads"_h, virtualizeInstancePayloadsSetting) ||
 		virtualizeInstancePayloadsSetting != "false";
 
-	// Shader cache misses can wait for Worker jobs, so material/arena preparation
-	// uses RHI. Independent packet finalization runs on the general Worker pool.
+	// Material creation belongs to RHI; packet finalization only needs CPU data.
 	return Tasks::CreateTask("Prepare ShadowPrepassNode"_h,
 		[this, holdRhiResources = frameGraph, &sceneView, bVirtualizeInstancePayloads]()
 		{
@@ -811,10 +810,11 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	if (bHasBlur && !m_pBlurShaderBindings)
 	{
 		auto shaderFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Blur.shader");
-		const bool bVerticalReady = m_pBlurVerticalShader ||
-			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderFileId->GetFileId(), m_pBlurVerticalShader, { "VERTICAL", "EVSM" });
-		const bool bHorizontalReady = m_pBlurHorizontalShader ||
-			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderFileId->GetFileId(), m_pBlurHorizontalShader, { "HORIZONTAL", "EVSM" });
+		auto compiler = App::GetSubmodule<ShaderCompiler>();
+		compiler->LoadShader(shaderFileId->GetFileId(), m_pBlurVerticalShader, { "VERTICAL", "EVSM" });
+		compiler->LoadShader(shaderFileId->GetFileId(), m_pBlurHorizontalShader, { "HORIZONTAL", "EVSM" });
+		const bool bVerticalReady = m_pBlurVerticalShader && m_pBlurVerticalShader->IsReady();
+		const bool bHorizontalReady = m_pBlurHorizontalShader && m_pBlurHorizontalShader->IsReady();
 
 		if (bVerticalReady && bHorizontalReady)
 		{
@@ -834,6 +834,23 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 				}
 			}
 		}
+	}
+
+	bool bAreResourcesReady = !bHasBlur || m_pBlurShaderBindings;
+	for (const auto& payload : submissionResources->m_shadowPayloadComplete)
+	{
+		bAreResourcesReady &= std::all_of(payload.begin(), payload.end(), [](bool bReady) { return bReady; });
+	}
+	if (!bAreResourcesReady)
+	{
+		for (const auto& shadowPass : sceneView.m_shadowMapsToUpdate)
+		{
+			if (shadowPass.m_payloadCompletionToken)
+			{
+				shadowPass.m_payloadCompletionToken->Complete(false);
+			}
+		}
+		return;
 	}
 
 	if (bHasBlur && !blurShaderBindings && m_pBlurShaderBindings)

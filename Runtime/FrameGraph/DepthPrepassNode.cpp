@@ -101,7 +101,8 @@ RHI::RHIMaterialPtr DepthPrepassNode::GetOrAddDepthMaterial(
 			defines.Add("MASKED");
 		}
 
-		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderFileId->GetFileId(), pShader, defines) && pShader->IsReady())
+		App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderFileId->GetFileId(), pShader, defines);
+		if (pShader && pShader->IsReady())
 		{
 			RenderState renderState = RHI::RenderState(true, true, 0.0f, false, cullMode, EBlendMode::None, EFillMode::Fill, "DepthOnly"_h.GetHash(), true);
 			material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, renderState, pShader);
@@ -150,6 +151,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 
 			packet.Reset();
 			customPacket.Reset();
+			submissionResources->m_bAreMaterialsReady = true;
 			syncSharedResources.Lock();
 			if (bVirtualizeInstancePayloads)
 			{
@@ -264,6 +266,7 @@ void DepthPrepassNode::BuildStableArenas(const RHISceneViewSnapshot& sceneView,
 				depthMaterial->GetRenderState().IsEnabledZWrite();
 			if (!bReady)
 			{
+				resources.m_bAreMaterialsReady = false;
 				if (bRequiredCustomDepth)
 				{
 					bCustomPayloadComplete = false;
@@ -514,6 +517,7 @@ void DepthPrepassNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 
 			if (!bIsDepthMaterialReady)
 			{
+				resources.m_bAreMaterialsReady = false;
 				continue;
 			}
 			RHIBatch batch = preparedMaterials.MakeBatch(depthMaterial, mesh);
@@ -631,6 +635,7 @@ void DepthPrepassNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 					depthMaterial->GetRenderState().IsEnabledZWrite();
 				if (!bIsDepthMaterialReady)
 				{
+					resources.m_bAreMaterialsReady = false;
 					continue;
 				}
 
@@ -751,7 +756,8 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 		this,
 		sceneView.m_cameraIndex,
 		0u);
-	if (resources->m_packet.GetNumInstances() == 0u && resources->m_customPacket.GetNumInstances() == 0u)
+	if (!resources->m_bAreMaterialsReady ||
+		(resources->m_packet.GetNumInstances() == 0u && resources->m_customPacket.GetNumInstances() == 0u))
 	{
 		return;
 	}
