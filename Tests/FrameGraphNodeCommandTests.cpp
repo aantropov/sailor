@@ -931,6 +931,7 @@ frame:
 				Require(!importer->LoadFrameGraph(id, retained) && retained == previous &&
 					!importer->Instantiate(id, retained) && retained == previous,
 					"a failed build must leave the caller's existing graph unchanged");
+				App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Worker, EThreadType::RHI });
 			}
 			if (failure == "missing-file")
 			{
@@ -946,7 +947,16 @@ frame:
 				write(valid);
 			}
 			FrameGraphPtr repaired, instance, cached;
-			Require(importer->LoadFrameGraph(id, repaired) && repaired &&
+			const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+			while (!importer->LoadFrameGraph(id, repaired))
+			{
+				Require(!repaired && std::chrono::steady_clock::now() < deadline,
+					"the repaired graph must finish loading without publishing a partial result");
+				App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Worker, EThreadType::RHI });
+				Renderer::GetDriver()->WaitIdle();
+				Renderer::GetDriver()->TrackResources_ThreadSafe();
+			}
+			Require(repaired &&
 				importer->Instantiate(id, instance) && instance &&
 				importer->LoadFrameGraph(id, cached) && cached == repaired,
 				"repairing the file or its dependency must allow retry and normal cache reuse");
