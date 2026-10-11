@@ -1,4 +1,5 @@
 #include "Sailor.h"
+#include "Support/RendererReady.h"
 #include "RHI/Surface.h"
 #include "Core/FileRevision.h"
 #include "AssetRegistry/AssetRegistry.h"
@@ -505,7 +506,7 @@ namespace
 		using namespace RHI;
 		auto* renderer = App::GetSubmodule<Renderer>();
 		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
-		Require(renderer->EnsureFrameGraph(), "the real renderer must have a graph for demand testing");
+		Require(Tests::WaitForRendererGraph(), "the real renderer must have a graph for demand testing");
 		auto graph = renderer->GetFrameGraph()->GetRHI();
 		auto originalNodes = std::move(graph->GetGraph());
 		const auto originalMode = App::GetEditorRenderMode();

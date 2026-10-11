@@ -123,7 +123,7 @@ FrameGraphAssetPtr FrameGraphImporter::LoadFrameGraphAsset(FileId uid)
 	return FrameGraphAssetPtr();
 }
 
-bool FrameGraphImporter::LoadFrameGraph_Immediate(FileId uid, FrameGraphPtr& outFrameGraph)
+bool FrameGraphImporter::LoadFrameGraph(FileId uid, FrameGraphPtr& outFrameGraph)
 {
 	auto it = m_loadedFrameGraphs.Find(uid);
 	if (it != m_loadedFrameGraphs.end())
@@ -148,6 +148,32 @@ bool FrameGraphImporter::LoadFrameGraph_Immediate(FileId uid, FrameGraphPtr& out
 FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const FrameGraphAssetPtr& frameGraphAsset) const
 {
 	RHI::RHIFrameGraphPtr pRhiFrameGraph = RHI::RHIFrameGraphPtr::Make();
+
+	// Resolve imported samplers before allocating the graph's render targets.
+	for (const auto& sampler : frameGraphAsset->m_samplers)
+	{
+		TexturePtr texture;
+		if (sampler.m_second->m_fileId)
+		{
+			App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_second->m_fileId, texture);
+		}
+		else if (auto assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(sampler.m_second->m_path))
+		{
+			App::GetSubmodule<TextureImporter>()->LoadTexture(assetInfo->GetFileId(), texture);
+		}
+		if (!texture)
+		{
+			const std::string source = sampler.m_second->m_fileId ? sampler.m_second->m_fileId.ToString() : sampler.m_second->m_path;
+			SAILOR_LOG_ERROR("Cannot build frame graph %s: sampler '%s' could not load texture '%s'.",
+				uid.ToString().c_str(), sampler.m_first.c_str(), source.c_str());
+			return {};
+		}
+		if (!texture->IsReady())
+		{
+			return {};
+		}
+		pRhiFrameGraph->SetSampler(StringHash::Runtime(sampler.m_first), texture->GetRHI());
+	}
 
 	auto& graph = pRhiFrameGraph->GetGraph();
 
@@ -214,29 +240,6 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const Frame
 		}
 	}
 
-	for (const auto& sampler : frameGraphAsset->m_samplers)
-	{
-		TexturePtr texture;
-		bool bLoaded = false;
-		if (sampler.m_second->m_fileId)
-		{
-			bLoaded = App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(sampler.m_second->m_fileId, texture);
-		}
-		else if (auto assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(sampler.m_second->m_path))
-		{
-			bLoaded = App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(assetInfo->GetFileId(), texture);
-		}
-
-		if (!bLoaded)
-		{
-			const std::string source = sampler.m_second->m_fileId ? sampler.m_second->m_fileId.ToString() : sampler.m_second->m_path;
-			SAILOR_LOG_ERROR("Cannot build frame graph %s: sampler '%s' could not load texture '%s'.",
-				uid.ToString().c_str(), sampler.m_first.c_str(), source.c_str());
-			return {};
-		}
-		pRhiFrameGraph->SetSampler(StringHash::Runtime(sampler.m_first), texture->GetRHI());
-	}
-
 	for (auto& node : frameGraphAsset->m_nodes)
 	{
 		const auto name = StringHash::Runtime(node.m_name);
@@ -295,7 +298,7 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const Frame
 	return pFrameGraph;
 }
 
-bool FrameGraphImporter::Instantiate_Immediate(FileId uid, FrameGraphPtr& outFrameGraph)
+bool FrameGraphImporter::Instantiate(FileId uid, FrameGraphPtr& outFrameGraph)
 {
 	if (auto pFrameGraphAsset = LoadFrameGraphAsset(uid))
 	{

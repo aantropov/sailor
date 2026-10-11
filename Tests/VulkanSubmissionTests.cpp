@@ -1,4 +1,5 @@
 #include "Sailor.h"
+#include "Support/RendererReady.h"
 #include "Components/SkyComponent.h"
 #include "Components/CameraComponent.h"
 #include "FrameGraph/DebugDrawNode.h"
@@ -3151,17 +3152,17 @@ frame: []
 				auto output = retainPrevious ? previous : FrameGraphPtr{};
 				SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), test.error, false, test.rejectAt);
 				const auto before = nativeSubmitAttempts;
-				const bool loaded = importer->LoadFrameGraph_Immediate(test.id, output);
+				const bool loaded = importer->LoadFrameGraph(test.id, output);
 				Require(!loaded && output == (retainPrevious ? previous : FrameGraphPtr{}) &&
 					nativeSubmitAttempts == before + test.attempts,
 					"an imported graph must reject every failed attachment stage without replacing caller state or entering its cache");
 			}
 			FrameGraphPtr repaired, cached;
-			Require(importer->LoadFrameGraph_Immediate(test.id, repaired) && repaired, "the same graph asset must retry after attachment refusal");
+			Require(importer->LoadFrameGraph(test.id, repaired) && repaired, "the same graph asset must retry after attachment refusal");
 			{
 				SubmitOverride refusal(VulkanSubmissionTestAccess::UploadQueue(*device), test.error);
 				const auto before = nativeSubmitAttempts;
-				Require(importer->LoadFrameGraph_Immediate(test.id, cached) && cached == repaired && nativeSubmitAttempts == before,
+				Require(importer->LoadFrameGraph(test.id, cached) && cached == repaired && nativeSubmitAttempts == before,
 					"a successfully imported graph must retain its warm cache identity without resubmission");
 			}
 			auto graph = repaired->GetRHI();
@@ -3216,7 +3217,7 @@ frame: []
 		auto device = VulkanApi::GetInstance()->GetMainDevice();
 		auto renderer = App::GetSubmodule<Renderer>();
 		auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
-		Require(renderer->EnsureFrameGraph(), "the lighting fixture requires its empty renderer graph");
+		Require(Tests::WaitForRendererGraph(), "the lighting fixture requires its empty renderer graph");
 		auto observer = TRefPtr<LightingPublicationNode>::Make();
 		renderer->GetFrameGraph()->GetRHI()->GetGraph().Add(observer);
 		for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
@@ -5201,7 +5202,7 @@ frame: []
 				Require(EditorRuntime::ApplyPendingEditorViewportOnEngineThread(), "App viewport sweep must apply each new render extent");
 			}
 			renderer->RefreshFrameGraph();
-			Require(renderer->EnsureFrameGraph() && renderer->HasEditorReadback(),
+			Require(Tests::WaitForRendererGraph() && renderer->HasEditorReadback(),
 				"an editor graph without an authored readback must receive an asynchronous producer");
 			auto graph = renderer->GetFrameGraph()->GetRHI();
 			size_t producers = 0;
@@ -6019,7 +6020,7 @@ frame: []
 		auto* renderer = App::GetSubmodule<Renderer>();
 		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
 		auto* engine = App::GetSubmodule<EngineLoop>();
-		Require(renderer->EnsureFrameGraph(), "submission ownership requires the real graph");
+		Require(Tests::WaitForRendererGraph(), "submission ownership requires the real graph");
 		auto graph = renderer->GetFrameGraph()->GetRHI();
 		const auto nodes = graph->GetGraph();
 		auto world = engine->GetWorld();
@@ -6101,7 +6102,7 @@ frame: []
 		auto& driver = Renderer::GetDriver();
 		auto device = VulkanApi::GetInstance()->GetMainDevice();
 		renderer->WaitIdle();
-		Require(renderer->EnsureFrameGraph(), "pending renderer flight requires a real graph");
+		Require(Tests::WaitForRendererGraph(), "pending renderer flight requires a real graph");
 		auto graph = renderer->GetFrameGraph()->GetRHI();
 		const auto nodes = graph->GetGraph();
 		auto world = engine->GetWorld();
@@ -6334,7 +6335,7 @@ frame: []
 		auto* renderer = App::GetSubmodule<Renderer>();
 		auto* engine = App::GetSubmodule<EngineLoop>();
 		renderer->WaitIdle();
-		Require(engine->GetWorlds().IsEmpty() && renderer->EnsureFrameGraph(),
+		Require(engine->GetWorlds().IsEmpty() && Tests::WaitForRendererGraph(),
 			"debug lifetime checks require an idle renderer and no previous world");
 		auto world = engine->CreateEmptyWorld("Delayed debug recording", EngineLoop::DefaultWorldMask);
 		world->Instantiate("Second camera")->AddComponent<CameraComponent>();
@@ -6442,7 +6443,7 @@ frame: []
 		auto& window = App::GetMainWindow();
 		const auto originalExtent = window->GetRenderArea();
 		renderer->RefreshFrameGraph();
-		Require(renderer->EnsureFrameGraph(), "outcome tests require a fresh real graph");
+		Require(Tests::WaitForRendererGraph(), "outcome tests require a fresh real graph");
 		auto graph = renderer->GetFrameGraph()->GetRHI();
 		auto originalNodes = graph->GetGraph();
 		TRefPtr<SubmissionLifecycleNode> node;
@@ -6605,7 +6606,7 @@ frame: []
 		auto device = VulkanApi::GetInstance()->GetMainDevice();
 		auto world = engine->GetWorld();
 		renderer->WaitIdle();
-		Require(renderer->EnsureFrameGraph(), "timing publication requires the real renderer graph");
+		Require(Tests::WaitForRendererGraph(), "timing publication requires the real renderer graph");
 		auto graph = renderer->GetFrameGraph()->GetRHI();
 		auto originalNodes = graph->GetGraph();
 		const auto originalMode = App::GetRenderStatsMode();
@@ -6848,7 +6849,7 @@ frame: []
 		auto& driver = Renderer::GetDriver();
 		auto* renderer = App::GetSubmodule<Renderer>();
 		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
-		Require(renderer->EnsureFrameGraph(), "world switching requires the renderer graph");
+		Require(Tests::WaitForRendererGraph(), "world switching requires the renderer graph");
 		auto graph = renderer->GetFrameGraph()->GetRHI();
 		const auto originalNodes = graph->GetGraph();
 		auto observer = TRefPtr<SkyPublicationNode>::Make();
@@ -6933,7 +6934,7 @@ frame: []
 		auto world = engine->CreateEmptyWorld("Frame pacing", EngineLoop::EditorWorldMask);
 		EditorRuntime::SetEditorRenderTargetSize(64, 48);
 		EditorRuntime::ApplyPendingEditorViewportOnEngineThread();
-		Require(renderer->EnsureFrameGraph(), "App pacing requires a real frame graph");
+		Require(Tests::WaitForRendererGraph(), "App pacing requires a real frame graph");
 		auto graph = renderer->GetFrameGraph()->GetRHI();
 		const auto nodes = graph->GetGraph();
 		graph->GetGraph().Clear();

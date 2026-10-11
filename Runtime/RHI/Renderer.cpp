@@ -438,6 +438,8 @@ bool Renderer::EnsureFrameGraph()
 		return false;
 	}
 
+	// Imported samplers must finish loading before the first graph can be built.
+	m_driverInstance->TrackResources_ThreadSafe();
 	RefreshGpuTimings();
 	m_editorReadback.Clear();
 	m_bHasEditorReadback = false;
@@ -447,7 +449,7 @@ bool Renderer::EnsureFrameGraph()
 	const char* frameGraphAssetPath = FrameGraphImporter::GetRendererAssetPath();
 	if (auto frameGraphFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(frameGraphAssetPath))
 	{
-		App::GetSubmodule<FrameGraphImporter>()->Instantiate_Immediate(frameGraphFileId->GetFileId(), m_frameGraph);
+		App::GetSubmodule<FrameGraphImporter>()->Instantiate(frameGraphFileId->GetFileId(), m_frameGraph);
 	}
 	else
 	{

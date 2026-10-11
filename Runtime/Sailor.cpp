@@ -722,12 +722,10 @@ EAppInitializationResult App::Initialize(const char** commandLineArgs, int32_t n
 	}
 
 #if defined(__APPLE__)
-	if (!App::HasEditor() && !renderer->EnsureFrameGraph())
-#else
-	if (!renderer->EnsureFrameGraph())
+	if (!App::HasEditor())
 #endif
 	{
-		SAILOR_LOG_ERROR("App initialization warning: renderer frame graph is still unavailable after bootstrap.");
+		renderer->EnsureFrameGraph();
 	}
 
 	SAILOR_LOG("Sailor Engine initialized");

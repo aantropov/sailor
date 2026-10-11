@@ -1,4 +1,5 @@
 #include "Sailor.h"
+#include "Support/RendererReady.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
@@ -772,7 +773,7 @@ frame:
 	void TestImportedBindings(FileId id)
 	{
 		FrameGraphPtr instance;
-		Require(App::GetSubmodule<FrameGraphImporter>()->LoadFrameGraph_Immediate(id, instance) && instance,
+		Require(App::GetSubmodule<FrameGraphImporter>()->LoadFrameGraph(id, instance) && instance,
 			"the real importer must build the attachment graph");
 		auto graph = instance->GetRHI();
 		auto node = graph->GetGraphNode("Bindings"_h);
@@ -868,7 +869,7 @@ frame:
 		auto importer = App::GetSubmodule<FrameGraphImporter>();
 		auto registry = App::GetSubmodule<AssetRegistry>();
 		FrameGraphPtr previous;
-		Require(importer->LoadFrameGraph_Immediate(validId, previous) && previous,
+		Require(importer->LoadFrameGraph(validId, previous) && previous,
 			"the valid graph must be available before testing failed replacements");
 		auto valid = YAML::LoadFile(registry->GetAssetInfoPtr(validId)->GetAssetFilepath());
 		valid["frame"].push_back(YAML::Load("{name: ExperimentalParticles, tag: Particles}"));
@@ -923,12 +924,12 @@ frame:
 			for (uint32_t attempt = 0; attempt < 2; ++attempt)
 			{
 				FrameGraphPtr rejected;
-				Require(!importer->LoadFrameGraph_Immediate(id, rejected) && !rejected &&
-					!importer->Instantiate_Immediate(id, rejected) && !rejected,
+				Require(!importer->LoadFrameGraph(id, rejected) && !rejected &&
+					!importer->Instantiate(id, rejected) && !rejected,
 					"a failed build must not return or cache a partial graph");
 				auto retained = previous;
-				Require(!importer->LoadFrameGraph_Immediate(id, retained) && retained == previous &&
-					!importer->Instantiate_Immediate(id, retained) && retained == previous,
+				Require(!importer->LoadFrameGraph(id, retained) && retained == previous &&
+					!importer->Instantiate(id, retained) && retained == previous,
 					"a failed build must leave the caller's existing graph unchanged");
 			}
 			if (failure == "missing-file")
@@ -945,9 +946,9 @@ frame:
 				write(valid);
 			}
 			FrameGraphPtr repaired, instance, cached;
-			Require(importer->LoadFrameGraph_Immediate(id, repaired) && repaired &&
-				importer->Instantiate_Immediate(id, instance) && instance &&
-				importer->LoadFrameGraph_Immediate(id, cached) && cached == repaired,
+			Require(importer->LoadFrameGraph(id, repaired) && repaired &&
+				importer->Instantiate(id, instance) && instance &&
+				importer->LoadFrameGraph(id, cached) && cached == repaired,
 				"repairing the file or its dependency must allow retry and normal cache reuse");
 			Require(instance->GetRHI() != repaired->GetRHI(), "instantiation must still create an independent graph");
 			for (auto graph : { repaired->GetRHI(), instance->GetRHI() })
@@ -999,7 +1000,7 @@ renderTargets:
 		const auto id = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(path.string());
 		auto importer = App::GetSubmodule<FrameGraphImporter>();
 		FrameGraphPtr instance;
-		Require(importer->Instantiate_Immediate(id, instance), "a valid relative-dimension graph must instantiate");
+		Require(importer->Instantiate(id, instance), "a valid relative-dimension graph must instantiate");
 		auto graph = instance->GetRHI();
 		const glm::ivec2 renderSize((std::max)(1u, render.m_width / 4), (std::max)(1u, render.m_height / 4));
 		const glm::ivec2 viewportSize((std::max)(1, viewport.x / 4), (std::max)(1, viewport.y / 4));
@@ -1233,7 +1234,7 @@ frame:
 		const auto id = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(path.string());
 		auto importer = App::GetSubmodule<FrameGraphImporter>();
 		FrameGraphPtr firstInstance, secondInstance;
-		Require(importer->Instantiate_Immediate(id, firstInstance) && importer->Instantiate_Immediate(id, secondInstance),
+		Require(importer->Instantiate(id, firstInstance) && importer->Instantiate(id, secondInstance),
 			"both static MSAA graph instances must load");
 		const auto samples = App::GetSubmodule<Renderer>()->GetMsaaSamples();
 		for (auto instance : { firstInstance, secondInstance })
@@ -3243,7 +3244,7 @@ frame:
 			Require(task->GetResult().empty(), task->GetResult().c_str());
 		};
 		auto* renderer = App::GetSubmodule<Renderer>();
-		Require(renderer->EnsureFrameGraph(), "the real SkyComponent handoff needs the renderer's frame graph");
+		Require(Tests::WaitForRendererGraph(), "the real SkyComponent handoff needs the renderer's frame graph");
 		auto productionGraph = renderer->GetFrameGraph()->GetRHI();
 		const auto originalNodes = productionGraph->GetGraph();
 		auto sky = TRefPtr<SkyCommandProbe>::Make();
@@ -6470,8 +6471,8 @@ frame:
 		auto importer = App::GetSubmodule<FrameGraphImporter>();
 		FrameGraphPtr rejected;
 		Require(!importer->LoadFrameGraphAsset(ids[1]) &&
-			!importer->LoadFrameGraph_Immediate(ids[1], rejected) && !rejected &&
-			!importer->Instantiate_Immediate(ids[1], rejected) && !rejected,
+			!importer->LoadFrameGraph(ids[1], rejected) && !rejected &&
+			!importer->Instantiate(ids[1], rejected) && !rejected,
 			"invalid static declarations must report a failed load, not escape as an exception or partial graph");
 		auto registry = App::GetSubmodule<AssetRegistry>();
 		std::ifstream validFile(registry->GetAssetInfoPtr(ids[0])->GetAssetFilepath());
@@ -6479,18 +6480,18 @@ frame:
 		repairedFile << validFile.rdbuf();
 		repairedFile.close();
 		Require(static_cast<bool>(validFile) && static_cast<bool>(repairedFile) &&
-			importer->LoadFrameGraph_Immediate(ids[1], rejected) && rejected,
+			importer->LoadFrameGraph(ids[1], rejected) && rejected,
 			"a failed graph load must retry successfully after its temporary fixture is repaired");
 		TVector<FrameGraphPtr> instances(2);
-		Require(importer->LoadFrameGraph_Immediate(ids[0], instances[0]) &&
-			importer->Instantiate_Immediate(ids[0], instances[1]), "both graph instances must load");
+		Require(importer->LoadFrameGraph(ids[0], instances[0]) &&
+			importer->Instantiate(ids[0], instances[1]), "both graph instances must load");
 		Require(instances[0]->GetRHI() != instances[1]->GetRHI() &&
 			instances[0]->GetRHI()->GetSurface("Main"_h) != instances[1]->GetRHI()->GetSurface("Main"_h),
 			"instantiating the same asset must not share mutable targets or nodes");
 		for (const auto id : repairedGraphs)
 		{
 			FrameGraphPtr repaired;
-			Require(importer->LoadFrameGraph_Immediate(id, repaired) && repaired,
+			Require(importer->LoadFrameGraph(id, repaired) && repaired,
 				"every repaired graph must remain available for actual rendering");
 			instances.Add(repaired);
 		}

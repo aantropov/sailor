@@ -1,4 +1,5 @@
 #include "Support/LifecyclePrefab.h"
+#include "Support/RendererReady.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "Engine/EngineLoop.h"
 #include "RHI/Renderer.h"
@@ -180,7 +181,7 @@ namespace Sailor::Tests
 	{
 		auto* engine = App::GetSubmodule<EngineLoop>();
 		auto* renderer = App::GetSubmodule<RHI::Renderer>();
-		Require(engine->GetWorlds().IsEmpty() && renderer->EnsureFrameGraph(),
+		Require(engine->GetWorlds().IsEmpty() && Tests::WaitForRendererGraph(),
 			"the world lifecycle fixture requires the completed preceding engine-loop tests");
 		auto graph = renderer->GetFrameGraph()->GetRHI();
 		const auto originalNodes = graph->GetGraph();

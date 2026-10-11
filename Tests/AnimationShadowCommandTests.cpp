@@ -1,4 +1,5 @@
 #include "AssetRegistry/Animation/AnimationImporter.h"
+#include "Support/RendererReady.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Model/ModelImporter.h"
@@ -139,7 +140,7 @@ namespace Sailor::Tests
 		auto* engine = App::GetSubmodule<EngineLoop>();
 		auto* renderer = App::GetSubmodule<Renderer>();
 		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
-		Require(engine->GetWorlds().IsEmpty() && renderer->EnsureFrameGraph(),
+		Require(engine->GetWorlds().IsEmpty() && Tests::WaitForRendererGraph(),
 			"the animation shadow fixture follows the completed world-switch test");
 		auto graph = renderer->GetFrameGraph()->GetRHI();
 		const auto originalNodes = graph->GetGraph();
