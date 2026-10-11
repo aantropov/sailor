@@ -12,6 +12,7 @@
 #include "RHI/CommandList.h"
 #include "RHI/GpuCulling.h"
 #include "RHI/Lighting.h"
+#include "RHI/RenderTarget.h"
 #include "RHI/Shader.h"
 #include "Workspace/WorkspacePathEncoding.h"
 #include <algorithm>
@@ -414,7 +415,7 @@ void main() {
 	}
 
 	template<typename Instance>
-	void CheckCullingReadback(RHIShaderPtr shader)
+	void CheckCullingReadback(RHIShaderPtr shader, bool bOcclusion)
 	{
 		constexpr uint32_t Count = Renderer::GPUCullingGroupSize + 3;
 		constexpr uint32_t FirstInstance = 7;
@@ -422,6 +423,7 @@ void main() {
 		constexpr uint32_t FirstOutput = FirstCandidate + Count + 11;
 		constexpr uint32_t Sentinel = 0xdeadbeefu;
 		const auto bIsVisible = [](uint32_t id) { return id % 5 < 3; };
+		const auto bIsSkinned = [](uint32_t id) { return id % 7 == 0; };
 
 		// Keep the wrong 192-byte stride within initialized storage, so the RED
 		// case proves incorrect object selection rather than an out-of-bounds read.
@@ -430,6 +432,7 @@ void main() {
 		{
 			instances[id].model = glm::translate(glm::mat4(1), glm::vec3(bIsVisible(id) ? 0 : 1000, 0, -10));
 			instances[id].sphereBounds = glm::vec4(0, 0, 0, 0.5f);
+			instances[id].skeletonOffset = bIsSkinned(id) ? 0u : 0xFFFFFFFFu;
 		}
 		std::vector<uint32_t> indices(FirstOutput + Count + 3, Sentinel);
 		for (uint32_t i = 0; i < Count; ++i) indices[FirstCandidate + i] = FirstInstance + i;
@@ -469,14 +472,28 @@ void main() {
 		driver->AddBufferToShaderBindings(bindings[1], indexBuffer, "instanceIndices"_h, 1);
 		driver->AddBufferToShaderBindings(bindings[2], indirectBuffer, "drawIndexedIndirect"_h, 0);
 		driver->AddBufferToShaderBindings(bindings[3], frameBuffer, "frame"_h, 0);
+		RHIRenderTargetPtr highZ;
+		if (bOcclusion)
+		{
+			highZ = driver->CreateRenderTarget(glm::ivec2(1), 1, EFormat::R32_SFLOAT,
+				ETextureFiltration::Nearest, ETextureClamping::Clamp);
+			driver->AddSamplerToShaderBindings(bindings[0], "depthHighZ"_h, highZ, 0);
+		}
 
 		auto command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 		commands->BeginCommandList(command, true);
+		if (highZ)
+		{
+			commands->ImageMemoryBarrier(command, highZ, EImageLayout::TransferDstOptimal);
+			commands->ClearImage(command, highZ, glm::vec4(0.5f));
+			commands->ImageMemoryBarrierForComputeSampling(command, highZ);
+		}
 		GpuCullingPushConstants constants{};
 		constants.m_numBatches = static_cast<uint32_t>(batches.size());
 		constants.m_numInstances = Count;
 		constants.m_firstInstanceIndex = FirstOutput;
 		constants.m_firstCandidateInstance = FirstCandidate;
+		constants.m_bEnableOcclusion = bOcclusion ? 1u : 0u;
 		RecordGpuCullingDispatches(*commands, command, shader, bindings, constants, Renderer::GPUCullingGroupSize, false);
 		commands->MemoryBarrier(command, static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit), static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
 		commands->EndCommandList(command);
@@ -491,9 +508,11 @@ void main() {
 			for (uint32_t i = 0; i < expected.m_instanceCount; ++i)
 			{
 				const uint32_t id = FirstInstance + expected.m_firstInstance - FirstOutput + i;
-				if (bIsVisible(id))
+				if (bIsSkinned(id) || (!bOcclusion && bIsVisible(id)))
+				{
 					Require(actualIndices[expected.m_firstInstance + visible++] == id,
-						"GPU culling must retain the exact visible object IDs in order");
+						"GPU culling must retain skinned meshes regardless of bind-pose bounds and cull static meshes");
+				}
 			}
 			const auto& actual = actualBatches[batch];
 			Require(actual.m_instanceCount == visible && actual.m_indexCount == expected.m_indexCount &&
@@ -510,26 +529,50 @@ void main() {
 	{
 		for (bool bDepth : { false, true })
 		{
-			const auto shader = Load("Shaders/ComputeMeshCulling.shader", bDepth ? TVector<std::string>{ "DEPTH_INSTANCE_LAYOUT" } : TVector<std::string>{});
-			for (bool bNamed : { true, false })
+			for (bool bOcclusion : { false, true })
 			{
-				const auto compute = bNamed ? shader->GetDebugComputeShaderRHI() : shader->GetComputeShaderRHI();
-				auto task = Tasks::CreateTask<std::string>("Culling layout readback"_h, [compute, bDepth]() -> std::string
+				TVector<std::string> defines;
+				if (bDepth)
 				{
-					try
+					defines.Add("DEPTH_INSTANCE_LAYOUT");
+				}
+				if (bOcclusion)
+				{
+					defines.Add("OCCLUSION_CULLING");
+				}
+				const auto shader = Load("Shaders/ComputeMeshCulling.shader", defines);
+				for (bool bNamed : { true, false })
+				{
+					const auto compute = bNamed ? shader->GetDebugComputeShaderRHI() : shader->GetComputeShaderRHI();
+					auto task = Tasks::CreateTask<std::string>("Culling layout readback"_h, [compute, bDepth, bOcclusion]() -> std::string
 					{
-						if (bDepth) CheckCullingReadback<DepthInstance>(compute);
-						else CheckCullingReadback<MainInstance>(compute);
-						return {};
+						try
+						{
+							if (bDepth)
+							{
+								CheckCullingReadback<DepthInstance>(compute, bOcclusion);
+							}
+							else
+							{
+								CheckCullingReadback<MainInstance>(compute, bOcclusion);
+							}
+							return {};
+						}
+						catch (const std::exception& error)
+						{
+							return error.what();
+						}
+					}, EThreadType::Render);
+					task->Run();
+					task->Wait();
+					const auto label = bDepth ? "depth" : "main";
+					if (!task->GetResult().empty())
+					{
+						throw std::runtime_error(std::string(label) + " culling readback: " + task->GetResult());
 					}
-					catch (const std::exception& error) { return error.what(); }
-				}, EThreadType::Render);
-				task->Run();
-				task->Wait();
-				const auto label = bDepth ? "depth" : "main";
-				if (!task->GetResult().empty()) throw std::runtime_error(std::string(label) + " culling readback: " + task->GetResult());
-				std::cout << "GPU culling ABI: " << label << (bNamed ? " named" : " optimized") <<
-					", 259 candidates, two workgroups, two indirect draws and preserved input/guards passed\n";
+					std::cout << "GPU culling ABI: " << label << (bNamed ? " named" : " optimized") <<
+						", occlusion=" << bOcclusion << ", 259 mixed static/skinned candidates, two workgroups, two indirect draws and preserved input/guards passed\n";
+				}
 			}
 		}
 	}

@@ -195,6 +195,14 @@ glslCompute: |
         // them into a separate output range before phase 1 compacts that range.
         uint instanceId = instanceIndices.instance[candidateIndex];
 
+        // Bind-pose bounds do not enclose animated vertices. Keep skinned
+        // instances without running frustum or Hi-Z tests on those bounds.
+        if (data.instance[instanceId].skeletonOffset != 0xFFFFFFFFu)
+        {
+          instanceIndices.instance[compactIndex] = instanceId;
+          return;
+        }
+
         bool bIsCulled = FrustumCulling(instanceId);
         #ifdef OCCLUSION_CULLING
           if (!bIsCulled && PushConstants.enableOcclusion != 0u)
