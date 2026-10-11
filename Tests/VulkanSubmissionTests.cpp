@@ -5970,6 +5970,10 @@ frame: []
 			scheduler->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 			renderer->WaitIdle();
 			driver->TrackResources_ThreadSafe();
+			const auto baseMaterial = material->GetOrAddRHI(
+				driver->GetOrAddVertexDescription<VertexP3N3T3B3UV2C4I4W4>());
+			Require(baseMaterial->GetBindings() == material->GetShaderBindings(),
+				"the completed upload must publish bindings without a readiness poll");
 			Require(material->IsReady(), "the base layout must be ready before mesh workers request another layout");
 
 			bool bRemainedReady = true;

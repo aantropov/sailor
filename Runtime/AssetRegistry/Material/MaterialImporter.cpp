@@ -129,23 +129,8 @@ void Material::SetRenderState(const RHI::RenderState& renderState)
 
 bool Material::IsReady() const
 {
-	const bool bReady = m_bIsInitialized.load(std::memory_order_acquire) && m_shader && m_shader->IsReady() &&
+	return m_bIsInitialized.load(std::memory_order_acquire) && m_shader && m_shader->IsReady() &&
 		m_commonShaderBindings.IsValid() && m_commonShaderBindings->IsReady();
-	if (bReady)
-	{
-		// Mesh workers may add a vertex layout while another worker polls readiness.
-		m_rhiMaterials.LockAll();
-		for (const auto& entry : m_rhiMaterials)
-		{
-			auto material = entry.m_second;
-			if (material)
-			{
-				material->TryPublishPendingBindings();
-			}
-		}
-		m_rhiMaterials.UnlockAll();
-	}
-	return bReady;
 }
 
 MaterialPtr Material::CreateInstance(WorldPtr world, const MaterialPtr& material)
@@ -536,6 +521,7 @@ void Material::ForcelyUpdateUniforms()
 		if (material)
 		{
 			material->StageBindings(m_commonShaderBindings);
+			fence->AddObservable(material);
 		}
 	}
 	m_rhiMaterials.UnlockAll();

@@ -434,6 +434,13 @@ bool RHIMaterial::TryPublishPendingBindings()
 	return true;
 }
 
+void RHIMaterial::TraceVisit(RHIResourcePtr visitor, bool& bShouldRemoveFromList)
+{
+	// The upload fence visits the bindings first, making them ready for publication.
+	TryPublishPendingBindings();
+	bShouldRemoveFromList = true;
+}
+
 uint64_t RHIMaterial::GetGlobalPublishedVersionRevision()
 {
 	return g_publishedRhiMaterialRevision.load(std::memory_order_acquire);

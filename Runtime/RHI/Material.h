@@ -87,7 +87,7 @@ namespace Sailor::RHI
 
 	using RHIMaterialVersionPtr = TRefPtr<RHIMaterialVersion>;
 
-	class RHIMaterial : public RHIResource
+	class RHIMaterial : public RHIResource, public IObservable
 	{
 	public:
 #if defined(SAILOR_BUILD_WITH_VULKAN)
@@ -119,6 +119,7 @@ namespace Sailor::RHI
 		SAILOR_API void SetBindings(RHIShaderBindingSetPtr bindings);
 		SAILOR_API void StageBindings(RHIShaderBindingSetPtr bindings);
 		SAILOR_API bool TryPublishPendingBindings();
+		SAILOR_API void TraceVisit(RHIResourcePtr visitor, bool& bShouldRemoveFromList) override;
 		SAILOR_API static uint64_t GetGlobalPublishedVersionRevision();
 		SAILOR_API static uint64_t BeginSubmissionVersionCapture(uint64_t submissionId);
 		SAILOR_API static void EndSubmissionVersionCapture(uint64_t submissionId);
