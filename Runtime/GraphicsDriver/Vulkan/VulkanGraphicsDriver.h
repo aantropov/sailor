@@ -323,7 +323,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual void ExecuteSecondaryCommandList(RHI::RHICommandListPtr cmd, RHI::RHICommandListPtr cmdSecondary) override;
 		SAILOR_API virtual void PushConstants(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, size_t size, const void* ptr) override;
 		SAILOR_API virtual void GenerateMipMaps(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr target) override;
-		SAILOR_API virtual void ConvertEquirect2Cubemap(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr equirect, RHI::RHICubemapPtr cubemap) override;
+		SAILOR_API virtual bool ConvertEquirect2Cubemap(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr equirect, RHI::RHICubemapPtr cubemap) override;
 
 		SAILOR_API virtual void CopyBufferToImage(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr src, RHI::RHITexturePtr dst) override;
 		SAILOR_API virtual void CopyImageToBuffer(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr src, RHI::RHIBufferPtr dst) override;

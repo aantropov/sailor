@@ -1314,6 +1314,10 @@ namespace
 
 	void RequireGpuEnvironment(const FileId& id, const GIProbesPreparedScene& scene)
 	{
+		const auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeEquirect2Cube.shader");
+		ShaderSetPtr conversionShader;
+		Require(shaderInfo && App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderInfo->GetFileId(), conversionShader),
+			"the conversion shader must be ready before the GPU parity measurement");
 		TexturePtr texture;
 		Require(App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(id, texture), "the GPU environment must load");
 		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
@@ -1337,7 +1341,8 @@ namespace
 				auto convert = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 				commands->BeginCommandList(convert, true);
 				commands->ImageMemoryBarrier(convert, cube, EImageLayout::ComputeWrite);
-				commands->ConvertEquirect2Cubemap(convert, texture->GetRHI(), cube);
+				Require(commands->ConvertEquirect2Cubemap(convert, texture->GetRHI(), cube),
+					"the ready conversion must record its dispatch");
 				commands->ImageMemoryBarrier(convert, cube, EImageLayout::ShaderReadOnlyOptimal);
 				cube->ForceSetDefaultLayout(EImageLayout::ShaderReadOnlyOptimal);
 				commands->EndCommandList(convert);

@@ -82,7 +82,7 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	{
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeBrdfLut.shader"))
 		{
-			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderInfo->GetFileId(), m_pComputeBrdfShader);
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pComputeBrdfShader);
 		}
 
 		m_computeBrdfBindings = driver->CreateShaderBindings();
@@ -92,7 +92,7 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	{
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeEnvMap_IBL.shader"))
 		{
-			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderInfo->GetFileId(), m_pComputeSpecularShader);
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pComputeSpecularShader);
 		}
 
 		m_computeSpecularBindings = driver->CreateShaderBindings();
@@ -102,7 +102,7 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	{
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeSheenEnvMap.shader"))
 		{
-			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderInfo->GetFileId(), m_pComputeSheenShader);
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pComputeSheenShader);
 		}
 
 		m_computeSheenBindings = driver->CreateShaderBindings();
@@ -112,10 +112,19 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	{
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeIrradianceMap.shader"))
 		{
-			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderInfo->GetFileId(), m_pComputeIrradianceShader);
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pComputeIrradianceShader);
 		}
 
 		m_computeIrradianceBindings = driver->CreateShaderBindings();
+	}
+
+	if (!m_pComputeBrdfShader || !m_pComputeBrdfShader->IsReady() ||
+		!m_pComputeSpecularShader || !m_pComputeSpecularShader->IsReady() ||
+		!m_pComputeSheenShader || !m_pComputeSheenShader->IsReady() ||
+		!m_pComputeIrradianceShader || !m_pComputeIrradianceShader->IsReady())
+	{
+		commands->EndDebugRegion(commandList);
+		return;
 	}
 
 	const RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::ColorAttachment_Bit |
@@ -184,11 +193,9 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		}
 		if (source.m_type == EEnvironmentSource::Texture)
 		{
-			if (!m_envMapTexture || m_envMapTexture->GetFileId() != source.m_texture.m_fileId)
+			if (!m_envMapTexture || m_envMapTexture->GetFileId() != source.m_texture.m_fileId || !m_envMapTexture->IsReady())
 			{
-				TexturePtr texture;
-				if (App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(source.m_texture.m_fileId, texture))
-					m_envMapTexture = std::move(texture);
+				App::GetSubmodule<TextureImporter>()->LoadTexture(source.m_texture.m_fileId, m_envMapTexture);
 				commands->EndDebugRegion(commandList);
 				return;
 			}
@@ -242,7 +249,12 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			commands->BeginDebugRegion(commandList, "Generate Raw Env Cubemap from Equirect"_h, DebugContext::Color_CmdCompute);
 			{
 				commands->ImageMemoryBarrier(commandList, rawEnvCubemap, EImageLayout::ComputeWrite);
-				commands->ConvertEquirect2Cubemap(commandList, authoredSource, rawEnvCubemap);
+				if (!commands->ConvertEquirect2Cubemap(commandList, authoredSource, rawEnvCubemap))
+				{
+					commands->EndDebugRegion(commandList);
+					commands->EndDebugRegion(commandList);
+					return;
+				}
 				commands->ImageMemoryBarrier(commandList, rawEnvCubemap, EImageLayout::TransferDstOptimal);
 
 				commands->GenerateMipMaps(commandList, rawEnvCubemap);
@@ -601,7 +613,11 @@ void EnvironmentNode::ProcessLocalReflection(RHIFrameGraphPtr frameGraph, RHICom
 	if (!sheen) return;
 	commands->BeginDebugRegion(commandList, "Local scene reflection"_h, DebugContext::Color_CmdCompute);
 	commands->ImageMemoryBarrier(commandList, raw, EImageLayout::ComputeWrite);
-	commands->ConvertEquirect2Cubemap(commandList, m_localUploadTexture, raw);
+	if (!commands->ConvertEquirect2Cubemap(commandList, m_localUploadTexture, raw))
+	{
+		commands->EndDebugRegion(commandList);
+		return;
+	}
 	commands->ImageMemoryBarrier(commandList, raw, EImageLayout::TransferDstOptimal);
 	commands->GenerateMipMaps(commandList, raw);
 

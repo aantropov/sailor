@@ -7378,6 +7378,7 @@ namespace Sailor::Tests
 		App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 		WorkerUploadOverride refusal(error, transfer);
 		load();
+		App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 		Require(workerSubmitRefusals.load() == 1 && workerSubmitWasOffCaller.load(),
 			"the upload task must reach exactly one native initialization refusal off the calling thread");
 	}

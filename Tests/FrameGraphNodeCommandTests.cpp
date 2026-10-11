@@ -3349,6 +3349,8 @@ frame:
 		try
 		{
 			onRender([&]() { process(false, true); }); // Warm BRDF independently of a completed sky.
+			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Worker, EThreadType::RHI });
+			onRender([&]() { process(false, true); });
 			const auto first = handoff(100);
 			onRender([&]()
 			{
@@ -3531,7 +3533,15 @@ frame:
 			commands->BeginCommandList(upload, true);
 			commands->BeginCommandList(draw, true);
 			node->Process(graph, upload, draw, {});
-			CompleteCommands(upload, draw);
+			if (upload->GetNumRecordedCommands() || draw->GetNumRecordedCommands())
+			{
+				CompleteCommands(upload, draw);
+			}
+			else
+			{
+				commands->EndCommandList(upload);
+				commands->EndCommandList(draw);
+			}
 			driver->TrackResources_ThreadSafe();
 		};
 		const auto checkPixels = [&](RHIFrameGraphPtr source, glm::vec3 expected)
@@ -3601,9 +3611,14 @@ frame:
 				for (const auto name : names) Require(!graph->GetSampler(name), "failed source upload must not publish dependent environment maps");
 			});
 		}
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+		while (!graph->GetSampler(names[0]) && std::chrono::steady_clock::now() < deadline)
+		{
+			onRender(process);
+			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Worker, EThreadType::RHI });
+		}
 		onRender([&]()
 		{
-			for (uint32_t frame = 0; frame < 16 && !graph->GetSampler(names[0]); ++frame) process();
 			checkPixels(graph, { 4, 0.5f, 0.25f });
 			Require(graph->GetSampler("g_brdfSampler"_h).IsValid(), "the same Environment node must retry its BRDF target");
 			std::cout << "Environment BRDF target: native refusal, no dependent publication and same-node HDR pixel recovery passed\n";
