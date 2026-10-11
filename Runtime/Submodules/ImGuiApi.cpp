@@ -262,8 +262,34 @@ ImGuiApi::PreparedFramePtr ImGuiApi::PrepareFrame(RHI::RHICommandListPtr transfe
 	const auto cursor = (io.ConfigFlags & ImGuiConfigFlags_NoMouseCursorChange) ? ImGuiMouseCursor_COUNT
 		: io.MouseDrawCursor ? ImGuiMouseCursor_None : ImGui::GetMouseCursor();
 	g_requestedMouseCursor.store(cursor, std::memory_order_relaxed);
-	const Data* bd = ImGui_GetBackendData();
-	if (!bd->FontTexture) return {};
+	Data* bd = ImGui_GetBackendData();
+	if (!bd->FontTexture || !bd->FontTexture->IsReady())
+	{
+		return {};
+	}
+	if (!bd->Material)
+	{
+		if (!bd->Shader)
+		{
+			if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ImGuiUI.shader"))
+			{
+				App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), bd->Shader);
+			}
+		}
+		if (!bd->Shader || !bd->Shader->IsReady())
+		{
+			return {};
+		}
+		auto& driver = RHI::Renderer::GetDriver();
+		RHI::RenderState renderState(false, false, 0.0f, false, RHI::ECullMode::None,
+			RHI::EBlendMode::AlphaBlending, RHI::EFillMode::Fill, 0, false);
+		bd->Material = driver->CreateMaterial(driver->GetOrAddVertexDescription<RHI::VertexP2UV2C1>(),
+			RHI::EPrimitiveTopology::TriangleList, renderState, bd->Shader, bd->ShaderBindings);
+	}
+	if (!bd->Material || !bd->Material->IsReady())
+	{
+		return {};
+	}
 	auto frame = TSharedPtr<PreparedFrame>::Make(ImGui::GetDrawData());
 	frame->Material = bd->Material;
 	frame->ShaderBindings = bd->ShaderBindings;
@@ -548,22 +574,8 @@ bool ImGuiApi::ImGui_Init(InitInfo* info)
 
 	if (auto uiShaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ImGuiUI.shader"))
 	{
-		App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(uiShaderInfo->GetFileId(), bd->Shader);
+		App::GetSubmodule<ShaderCompiler>()->LoadShader(uiShaderInfo->GetFileId(), bd->Shader);
 	}
-
-	check(bd->Shader.IsValid());
-
-	RHI::RenderState renderState = RHI::RenderState(false, false, 0.0f, false, RHI::ECullMode::None,
-		RHI::EBlendMode::AlphaBlending, RHI::EFillMode::Fill, 0, false);
-
-	RHI::RHIVertexDescriptionPtr vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP2UV2C1>();
-
-	bd->Material = RHI::Renderer::GetDriver()->CreateMaterial(
-		vertexDescription,
-		RHI::EPrimitiveTopology::TriangleList,
-		renderState,
-		bd->Shader,
-		bd->ShaderBindings);
 
 	return true;
 }

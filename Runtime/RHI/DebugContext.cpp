@@ -264,7 +264,8 @@ void DebugContext::Tick(RHI::RHICommandListPtr transferCmd, float deltaTime)
 		auto shaderFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Gizmo.shader");
 		ShaderSetPtr pShader;
 
-		if (!App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderFileId->GetFileId(), pShader))
+		App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderFileId->GetFileId(), pShader);
+		if (!pShader || !pShader->IsReady())
 		{
 			return;
 		}
