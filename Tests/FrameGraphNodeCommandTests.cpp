@@ -3541,6 +3541,9 @@ frame:
 			{
 				commands->EndCommandList(upload);
 				commands->EndCommandList(draw);
+				// Complete texture creation's separate upload without submitting an empty frame
+				// that could consume the source-upload refusal injected by this fixture.
+				driver->WaitIdle();
 			}
 			driver->TrackResources_ThreadSafe();
 		};
