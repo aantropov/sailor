@@ -223,8 +223,8 @@ namespace Sailor::RHI
 		"Visible shadow records must remain lightweight immutable references.");
 
 	/**
-	 * Immutable after publication. ECS producers rebuild this adapter only when
-	 * their scene data changes; render views retain and share it across submissions.
+	 * Immutable while retained by render views. The producer can update a retired
+	 * index using the changed record pages instead of rebuilding its octrees.
 	 */
 	class RHISceneSpatialIndex
 	{
@@ -249,6 +249,10 @@ namespace Sailor::RHI
 			}
 			return partition->Update(center, extents, handle);
 		}
+
+		SAILOR_API void UpdatePartition(const RHISceneRecordRoot& records,
+			const RHISceneRecordRoot* previous, EMobilityType mobility, size_t partitionIndex);
+		size_t GetNumPartitions() const { return m_partitions.Num(); }
 
 		size_t Num() const
 		{

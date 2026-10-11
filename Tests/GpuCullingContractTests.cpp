@@ -1481,6 +1481,123 @@ renderTargets:
 		}
 	}
 
+	void TestIncrementalSpatialIndexVisibility()
+	{
+		constexpr size_t NumPartitions = 4u;
+		const std::array mobilities{ EMobilityType::Static, EMobilityType::Stationary, EMobilityType::Dynamic };
+		auto scene = RHI::RHIScenePtr::Make();
+		TVector<RHI::RenderInstanceHandle> handles;
+		for (uint32_t i = 0; i < 192u; ++i)
+		{
+			RHI::RHISceneInstanceRecord record;
+			record.m_mobility = mobilities[i % mobilities.size()];
+			record.m_worldBounds = Math::AABB(glm::vec3(int(i % 24u) * 6 - 72, 0, -int(i / 24u) * 10 - 5), glm::vec3(1));
+			handles.Add(scene->AddInstance(record));
+		}
+		auto previous = scene->PublishVersion();
+		std::array<TSharedPtr<RHI::RHISceneSpatialIndex>, 3> indices;
+		auto update = [&](RHI::RHISceneSpatialIndex& index, const RHI::RHISceneVersion& version,
+			const RHI::RHISceneRecordRoot* oldRecords, EMobilityType mobility)
+			{
+				std::vector<std::thread> workers;
+				for (size_t partition = 0; partition < NumPartitions; ++partition)
+				{
+					workers.emplace_back([&, partition]()
+						{
+							index.UpdatePartition(*version.m_recordsRoot, oldRecords, mobility, partition);
+						});
+				}
+				for (auto& worker : workers)
+				{
+					worker.join();
+				}
+			};
+		auto verify = [&](const RHI::RHISceneSpatialIndex& index, const RHI::RHISceneVersion& version, EMobilityType mobility)
+			{
+				Math::Frustum frustum;
+				frustum.ExtractFrustumPlanes(glm::mat4(1), 1.0f, 60.0f, 0.1f, 150.0f);
+				std::vector<uint32_t> expected, visible;
+				size_t count = 0;
+				for (const auto handle : handles)
+				{
+					const RHI::RHISceneInstanceRecord* record = nullptr;
+					if (version.Resolve(handle, record) && record->m_mobility == mobility)
+					{
+						++count;
+						if (frustum.OverlapsAABB(record->m_worldBounds))
+						{
+							expected.push_back(handle.m_slot);
+						}
+					}
+				}
+				index.Trace(frustum, [&](const RHI::RenderInstanceHandle& handle)
+					{
+						const RHI::RHISceneInstanceRecord* record = nullptr;
+						Require(version.Resolve(handle, record), "spatial indices must not return a retired generation");
+						visible.push_back(handle.m_slot);
+					});
+				std::sort(expected.begin(), expected.end());
+				std::sort(visible.begin(), visible.end());
+				Require(index.Num() == count && visible == expected,
+					"incremental spatial updates must preserve visibility after movement, removal and mobility changes");
+			};
+		for (size_t i = 0; i < mobilities.size(); ++i)
+		{
+			indices[i] = TSharedPtr<RHI::RHISceneSpatialIndex>::Make(glm::ivec3(0), 4096u, 4u, NumPartitions);
+			update(*indices[i], *previous, nullptr, mobilities[i]);
+			verify(*indices[i], *previous, mobilities[i]);
+		}
+		auto retained = TSharedPtr<RHI::RHISceneSpatialIndex>::Make(glm::ivec3(0), 4096u, 4u, NumPartitions);
+		update(*retained, *previous, nullptr, EMobilityType::Dynamic);
+		for (size_t i = 0; i < handles.Num(); ++i)
+		{
+			if (i % 11u == 0u)
+			{
+				scene->RemoveInstance(handles[i]);
+				continue;
+			}
+			RHI::RHISceneInstanceRecord record;
+			scene->ResolveCurrent(handles[i], record);
+			record.m_worldBounds.m_min.x += 12;
+			record.m_worldBounds.m_max.x += 12;
+			if (i % 7u == 0u)
+			{
+				record.m_mobility = mobilities[(i + 1u) % mobilities.size()];
+			}
+			scene->UpdateInstance(handles[i], record, RHI::ESceneChangeBit::Bounds | RHI::ESceneChangeBit::Mobility);
+		}
+		auto current = scene->PublishVersion();
+		for (size_t i = 0; i < mobilities.size(); ++i)
+		{
+			update(*indices[i], *current, previous->m_recordsRoot.GetRawPtr(), mobilities[i]);
+			verify(*indices[i], *current, mobilities[i]);
+			update(*indices[i], *current, current->m_recordsRoot.GetRawPtr(), mobilities[i]);
+			verify(*indices[i], *current, mobilities[i]);
+		}
+		verify(*retained, *previous, EMobilityType::Dynamic);
+
+		// Skip a removal revision, as an index retained by an older render frame would.
+		auto retiredRecords = current->m_recordsRoot;
+		scene->RemoveInstance(handles[1]);
+		scene->PublishVersion();
+		previous.Clear();
+		current.Clear();
+		scene->CollectGarbage();
+		RHI::RHISceneInstanceRecord replacement;
+		replacement.m_mobility = EMobilityType::Dynamic;
+		replacement.m_worldBounds = Math::AABB(glm::vec3(0, 0, -20), glm::vec3(1));
+		const auto recycled = scene->AddInstance(replacement);
+		Require(recycled.m_slot == handles[1].m_slot && recycled.m_generation != handles[1].m_generation,
+			"cached record pages must not prevent retired slots from being recycled");
+		handles.Add(recycled);
+		current = scene->PublishVersion();
+		for (size_t i = 0; i < mobilities.size(); ++i)
+		{
+			update(*indices[i], *current, retiredRecords.GetRawPtr(), mobilities[i]);
+			verify(*indices[i], *current, mobilities[i]);
+		}
+	}
+
 	void TestDynamicSpatialRootIsolation()
 	{
 		RHI::RHISceneViewProxy proxy;
@@ -2513,6 +2630,7 @@ int main(int argc, char** argv)
 		{ "PackedDrawEqualKeysPreserveBindingOrder", TestPackedDrawEqualKeysPreserveBindingOrder },
 		{ "DynamicSpatialRootIsolation", TestDynamicSpatialRootIsolation },
 		{ "ParallelSpatialIndexVisibility", TestParallelSpatialIndexVisibility },
+		{ "IncrementalSpatialIndexVisibility", TestIncrementalSpatialIndexVisibility },
 		{ "InstancedViewLodAndDistanceContract", TestInstancedViewLodAndDistanceContract },
 		{ "SnapshotCameraLodContract", TestSnapshotCameraLodContract },
 		{ "BatchTextureBindingIdentityContract", TestBatchTextureBindingIdentityContract },

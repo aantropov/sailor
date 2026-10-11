@@ -119,6 +119,14 @@ namespace Sailor
 		SAILOR_API virtual void OnComponentUnregistered(size_t index, StaticMeshRendererData& component) override;
 		void PublishSceneVersion(uint8_t spatialChangeMask = 0x7u);
 
+		struct CachedSpatialIndex
+		{
+			TSharedPtr<RHI::RHISceneSpatialIndex> m_index;
+			RHI::RHISceneRecordRootPtr m_records;
+			uint64_t m_sceneRevision = 0u;
+			EMobilityType m_mobility = EMobilityType::Static;
+		};
+		TVector<CachedSpatialIndex> m_spatialIndexCache;
 		RHI::RHISpatialSceneVersionPtr m_publishedSceneVersion{};
 		RHI::RHIScenePtr m_rhiScene{};
 		TMap<size_t, RHI::RenderInstanceHandle> m_renderInstanceHandles{};

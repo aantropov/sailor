@@ -85,20 +85,6 @@ namespace
 		return outWorldBounds.IsValid();
 	}
 
-	void GetConservativeOctreeBounds(
-		const Math::AABB& bounds,
-		glm::ivec3& outCenter,
-		glm::ivec3& outExtents)
-	{
-		const glm::ivec3 minimum = glm::ivec3(glm::floor(bounds.m_min));
-		const glm::ivec3 maximum = glm::ivec3(glm::ceil(bounds.m_max));
-		outCenter = minimum + (maximum - minimum) / 2;
-		outExtents = glm::max(
-			maximum - outCenter,
-			outCenter - minimum);
-		outExtents = glm::max(outExtents, glm::ivec3(1));
-	}
-
 	bool AreShadowCastersEqual(
 		const RHI::RHIShadowCasterProxy& lhs,
 		const RHI::RHIShadowCasterProxy& rhs)
@@ -250,45 +236,54 @@ void StaticMeshRendererECS::PublishSceneVersion(uint8_t spatialChangeMask)
 			(spatialChangeMask & StationarySpatialChange) != 0u;
 		const bool bRebuildDynamic = !m_publishedSceneVersion ||
 			(spatialChangeMask & DynamicSpatialChange) != 0u;
-		auto rebuildSpatialRoot = [&](const TSharedPtr<const TVector<RHI::RenderInstanceHandle>>& handles)
+		auto updateSpatialRoot = [&](const TSharedPtr<const TVector<RHI::RenderInstanceHandle>>& handles, EMobilityType mobility)
 			{
-				SAILOR_PROFILE_SCOPE("Rebuild scene spatial root");
+				SAILOR_PROFILE_SCOPE("Update scene spatial root");
 				const size_t numHandles = handles ? handles->Num() : 0u;
 				const auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
 				const size_t numWorkers = scheduler ? (std::max)(size_t(1u), size_t(scheduler->GetNumWorkerThreads())) : 1u;
 				const size_t numPartitions = (std::max)(size_t(1u),
 					(std::min)(numWorkers, (numHandles + 511u) / 512u));
 				const size_t partitionSize = (numHandles + numPartitions - 1u) / numPartitions;
-				auto index = TSharedPtr<RHI::RHISceneSpatialIndex>::Make(
-					glm::ivec3(0), 16536 * 16, 4, numPartitions, (std::max)(size_t(64u), partitionSize));
-				auto buildPartition = [&](size_t partition)
+				size_t cacheSlot = m_spatialIndexCache.FindIf([mobility](const CachedSpatialIndex& entry)
 					{
-						SAILOR_PROFILE_SCOPE("Build scene spatial partition");
-						const size_t end = (std::min)(numHandles, (partition + 1u) * partitionSize);
-						for (size_t i = partition * partitionSize; i < end; ++i)
-						{
-							const auto handle = (*handles)[i];
-							const RHI::RHISceneInstanceRecord* record = nullptr;
-							if (!version->m_sceneVersion->Resolve(handle, record) || !record)
-							{
-								continue;
-							}
-							glm::ivec3 center{}, extents{};
-							GetConservativeOctreeBounds(record->m_worldBounds, center, extents);
-							index->Update(center, extents, handle, partition);
-						}
+						return entry.m_mobility == mobility && !entry.m_index.IsShared();
+					});
+				if (cacheSlot == -1)
+				{
+					cacheSlot = m_spatialIndexCache.Num();
+					m_spatialIndexCache.AddDefault(1u);
+				}
+				auto& cached = m_spatialIndexCache[cacheSlot];
+				if (!cached.m_index || cached.m_index->GetNumPartitions() != numPartitions)
+				{
+					cached.m_index = TSharedPtr<RHI::RHISceneSpatialIndex>::Make(
+						glm::ivec3(0), 16536 * 16, 4, numPartitions, (std::max)(size_t(64u), partitionSize));
+					cached.m_records.Clear();
+				}
+				cached.m_mobility = mobility;
+				auto index = cached.m_index;
+				if (cached.m_records && cached.m_sceneRevision == version->m_sceneVersion->m_sceneRevision)
+				{
+					return index;
+				}
+				auto updatePartition = [&](size_t partition)
+					{
+						SAILOR_PROFILE_SCOPE("Update scene spatial partition");
+						index->UpdatePartition(*version->m_sceneVersion->m_recordsRoot,
+							cached.m_records.GetRawPtr(), mobility, partition);
 					};
 				if (numPartitions == 1u)
 				{
-					buildPartition(0u);
+					updatePartition(0u);
 				}
 				else
 				{
 					TVector<Tasks::ITaskPtr> tasks;
 					for (size_t partition = 0u; partition < numPartitions; ++partition)
 					{
-						auto task = Tasks::CreateTask("Build scene spatial partition"_h,
-							[&, partition]() { buildPartition(partition); }, EThreadType::Worker);
+						auto task = Tasks::CreateTask("Update scene spatial partition"_h,
+							[&, partition]() { updatePartition(partition); }, EThreadType::Worker);
 						task->Run();
 						tasks.Add(task);
 					}
@@ -297,14 +292,16 @@ void StaticMeshRendererECS::PublishSceneVersion(uint8_t spatialChangeMask)
 						task->Wait();
 					}
 				}
+				cached.m_records = version->m_sceneVersion->m_recordsRoot;
+				cached.m_sceneRevision = version->m_sceneVersion->m_sceneRevision;
 				return index;
 			};
 		version->m_staticOctree = bRebuildStatic ?
-			rebuildSpatialRoot(version->m_sceneVersion->m_staticHandles) : m_publishedSceneVersion->m_staticOctree;
+			updateSpatialRoot(version->m_sceneVersion->m_staticHandles, EMobilityType::Static) : m_publishedSceneVersion->m_staticOctree;
 		version->m_stationaryOctree = bRebuildStationary ?
-			rebuildSpatialRoot(version->m_sceneVersion->m_stationaryHandles) : m_publishedSceneVersion->m_stationaryOctree;
+			updateSpatialRoot(version->m_sceneVersion->m_stationaryHandles, EMobilityType::Stationary) : m_publishedSceneVersion->m_stationaryOctree;
 		version->m_dynamicOctree = bRebuildDynamic ?
-			rebuildSpatialRoot(version->m_sceneVersion->m_dynamicHandles) : m_publishedSceneVersion->m_dynamicOctree;
+			updateSpatialRoot(version->m_sceneVersion->m_dynamicHandles, EMobilityType::Dynamic) : m_publishedSceneVersion->m_dynamicOctree;
 	}
 	m_publishedSceneVersion = std::move(version);
 	m_pendingSpatialChangeMask = 0u;
@@ -934,6 +931,7 @@ void StaticMeshRendererECS::EndPlay()
 {
 	ECS::TSystem<StaticMeshRendererECS, StaticMeshRendererData>::EndPlay();
 	m_publishedSceneVersion.Clear();
+	m_spatialIndexCache.Clear();
 	m_rhiScene.Clear();
 	m_renderInstanceHandles.Clear();
 	m_sceneVersionRevision = 0ull;

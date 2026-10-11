@@ -518,6 +518,49 @@ const Math::AABB& RHIVisibleShadowCaster::GetWorldBounds() const
 	return m_record->m_worldBounds;
 }
 
+void RHISceneSpatialIndex::UpdatePartition(const RHISceneRecordRoot& records,
+	const RHISceneRecordRoot* previous, EMobilityType mobility, size_t partitionIndex)
+{
+	const size_t numPages = (std::max)(records.m_pages.Num(), previous ? previous->m_pages.Num() : 0u);
+	for (size_t pageIndex = partitionIndex; pageIndex < numPages; pageIndex += m_partitions.Num())
+	{
+		const auto* page = pageIndex < records.m_pages.Num() ? records.m_pages[pageIndex].GetRawPtr() : nullptr;
+		const auto* oldPage = previous && pageIndex < previous->m_pages.Num() ? previous->m_pages[pageIndex].GetRawPtr() : nullptr;
+		if (page == oldPage)
+		{
+			continue;
+		}
+		for (uint32_t slotIndex = 0u; slotIndex < RHISceneRecordPage::NumRecords; ++slotIndex)
+		{
+			const auto* slot = page ? &page->m_slots[slotIndex] : nullptr;
+			const auto* oldSlot = oldPage ? &oldPage->m_slots[slotIndex] : nullptr;
+			const bool bPresent = slot && slot->m_bActive && slot->m_record.m_mobility == mobility;
+			const bool bWasPresent = oldSlot && oldSlot->m_bActive && oldSlot->m_record.m_mobility == mobility;
+			const uint32_t handleSlot = static_cast<uint32_t>(pageIndex * RHISceneRecordPage::NumRecords + slotIndex);
+			const bool bSameInstance = bPresent && bWasPresent && slot->m_generation == oldSlot->m_generation;
+			if (bWasPresent && !bSameInstance && m_partitions[partitionIndex])
+			{
+				m_partitions[partitionIndex]->Remove({ handleSlot, oldSlot->m_generation });
+			}
+			if (!bPresent)
+			{
+				continue;
+			}
+			const auto& bounds = slot->m_record.m_worldBounds;
+			if (bSameInstance && bounds.m_min == oldSlot->m_record.m_worldBounds.m_min &&
+				bounds.m_max == oldSlot->m_record.m_worldBounds.m_max)
+			{
+				continue;
+			}
+			const glm::ivec3 minimum(glm::floor(bounds.m_min));
+			const glm::ivec3 maximum(glm::ceil(bounds.m_max));
+			const glm::ivec3 center = minimum + (maximum - minimum) / 2;
+			const glm::ivec3 extents = glm::max(glm::max(maximum - center, center - minimum), glm::ivec3(1));
+			Update(center, extents, { handleSlot, slot->m_generation }, partitionIndex);
+		}
+	}
+}
+
 EMobilityType RHIVisibleShadowCaster::GetMobility() const
 {
 	return m_record->m_mobility;
