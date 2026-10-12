@@ -2213,7 +2213,7 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 									ray.SetDirection(glm::normalize(pixelDir));
 									TLASHit primaryHit{};
 									alphaCoverage += IntersectScene(ray, primaryHit, std::numeric_limits<float>::max(), (uint32_t)(-1), (uint32_t)(-1)) ? 1.0f : 0.0f;
-									accumulator += Raytrace(ray, params.m_maxBounces, (uint32_t)(-1), (uint32_t)(-1), std::numeric_limits<float>::max(), params, 1.0f, randomState, true);
+									accumulator += Raytrace(ray, params.m_maxBounces, (uint32_t)(-1), (uint32_t)(-1), std::numeric_limits<float>::max(), params, 1.0f, randomState, {});
 								}
 
 								vec3 res = accumulator / (float)params.m_msaa;
@@ -2323,7 +2323,8 @@ bool PathTracer::SamplePreparedSceneRay(
 	float maxDistance,
 	const Params& params,
 	uint32_t randomSeed,
-	PreparedRaySample& outSample) const
+	PreparedRaySample& outSample,
+	float primaryDirectionPdf) const
 {
 	if (!SamplePreparedSceneVisibility(
 			origin,
@@ -2353,7 +2354,7 @@ bool PathTracer::SamplePreparedSceneRay(
 			params,
 			1.0f,
 			randomState,
-			true);
+			{ origin, primaryDirectionPdf });
 	}
 	else if (params.m_bIncludeEnvironment)
 	{
@@ -3027,21 +3028,13 @@ bool PathTracer::AppendEmissiveTriangles(uint32_t instanceIndex, const ScenePrep
 	return true;
 }
 
-vec3 PathTracer::SampleDirectEmissive(
-	const TLASHit& receiverHit,
-	const LightingModel::SampledData& receiverMaterial,
-	const vec3& viewDirection,
-	const vec3& worldNormal,
-	float fromIor,
-	float toIor,
-	const Params& params,
-	uint32_t& randomState) const
+bool PathTracer::SampleEmissiveLight(const vec3& origin, uint32_t& randomState, EmissiveLightSample& outSample) const
 {
 	if (m_emissiveTriangles->IsEmpty() ||
 		!std::isfinite(m_totalEmissiveWeight) ||
 		m_totalEmissiveWeight <= 0.0f)
 	{
-		return vec3(0.0f);
+		return false;
 	}
 
 	const float selectedWeight =
@@ -3058,12 +3051,6 @@ vec3 PathTracer::SampleDirectEmissive(
 		m_emissiveTriangles->end() ?
 		*selectedIt :
 			(*m_emissiveTriangles)[m_emissiveTriangles->Num() - 1u];
-	if (source.m_instanceIndex == receiverHit.m_instanceIndex &&
-		source.m_triangleIndex == receiverHit.m_triangleIndex)
-	{
-		return vec3(0.0f);
-	}
-
 	const vec2 randomSample = NextRandomVec2_01(randomState);
 	const float sqrtSample = std::sqrt(randomSample.x);
 	const glm::vec3 barycentric(
@@ -3074,13 +3061,13 @@ vec3 PathTracer::SampleDirectEmissive(
 		barycentric.x * source.m_vertices[0] +
 		barycentric.y * source.m_vertices[1] +
 		barycentric.z * source.m_vertices[2];
-	const glm::vec3 receiverToTarget = target - receiverHit.m_hit.m_point;
+	const glm::vec3 receiverToTarget = target - origin;
 	const float distanceSquared = glm::dot(
 		receiverToTarget,
 		receiverToTarget);
 	if (!std::isfinite(distanceSquared) || distanceSquared <= 1e-8f)
 	{
-		return vec3(0.0f);
+		return false;
 	}
 
 	const float distance = std::sqrt(distanceSquared);
@@ -3091,7 +3078,7 @@ vec3 PathTracer::SampleDirectEmissive(
 	const float emitterAreaVectorLength = glm::length(emitterAreaVector);
 	if (emitterAreaVectorLength <= 1e-8f)
 	{
-		return vec3(0.0f);
+		return false;
 	}
 	const glm::vec3 emitterNormal =
 		emitterAreaVector / emitterAreaVectorLength;
@@ -3101,12 +3088,12 @@ vec3 PathTracer::SampleDirectEmissive(
 			m_preparedMaterials->m_materials[source.m_materialIndex],
 			signedEmitterCosine >= 0.0f))
 	{
-		return vec3(0.0f);
+		return false;
 	}
 	const float emitterCosine = std::abs(signedEmitterCosine);
 	if (emitterCosine <= 1e-6f)
 	{
-		return vec3(0.0f);
+		return false;
 	}
 
 	const float selectionProbability =
@@ -3116,7 +3103,7 @@ vec3 PathTracer::SampleDirectEmissive(
 		distanceSquared / emitterCosine;
 	if (!std::isfinite(solidAnglePdf) || solidAnglePdf <= 1e-8f)
 	{
-		return vec3(0.0f);
+		return false;
 	}
 
 	const Material& emitterMaterial =
@@ -3179,16 +3166,66 @@ vec3 PathTracer::SampleDirectEmissive(
 		glm::vec3(0.0f));
 	if (glm::dot(emittedRadiance, emittedRadiance) <= 0.0f)
 	{
+		return false;
+	}
+
+	outSample = { target, direction, emittedRadiance, solidAnglePdf, source.m_instanceIndex, source.m_triangleIndex };
+	return true;
+}
+
+float PathTracer::EmissiveLightPdf(const vec3& origin, const TLASHit& hit) const
+{
+	// Sources retain geometry order, both on initial capture and material refresh.
+	const auto source = std::lower_bound(m_emissiveTriangles->begin(), m_emissiveTriangles->end(), hit,
+		[](const EmissiveTriangle& light, const TLASHit& surface)
+		{
+			return light.m_instanceIndex < surface.m_instanceIndex ||
+				(light.m_instanceIndex == surface.m_instanceIndex && light.m_triangleIndex < surface.m_triangleIndex);
+		});
+	if (source == m_emissiveTriangles->end() || source->m_instanceIndex != hit.m_instanceIndex ||
+		source->m_triangleIndex != hit.m_triangleIndex)
+	{
+		return 0.0f;
+	}
+
+	const vec3 delta = hit.m_hit.m_point - origin;
+	const float distanceSquared = glm::dot(delta, delta);
+	if (distanceSquared <= 1e-8f)
+	{
+		return 0.0f;
+	}
+	const vec3 normal = glm::cross(source->m_vertices[1] - source->m_vertices[0],
+		source->m_vertices[2] - source->m_vertices[0]) / (2.0f * source->m_area);
+	const float cosine = std::abs(glm::dot(normal, delta / std::sqrt(distanceSquared)));
+	return cosine > 1e-6f ?
+		(source->m_weight / m_totalEmissiveWeight) * distanceSquared / (source->m_area * cosine) : 0.0f;
+}
+
+vec3 PathTracer::SampleDirectEmissive(
+	const TLASHit& receiverHit,
+	const LightingModel::SampledData& receiverMaterial,
+	const vec3& viewDirection,
+	const vec3& worldNormal,
+	float fromIor,
+	float toIor,
+	uint32_t numBsdfSamples,
+	const Params& params,
+	uint32_t& randomState) const
+{
+	EmissiveLightSample light;
+	if (!SampleEmissiveLight(receiverHit.m_hit.m_point, randomState, light) ||
+		(light.m_instanceIndex == receiverHit.m_instanceIndex && light.m_triangleIndex == receiverHit.m_triangleIndex))
+	{
 		return vec3(0.0f);
 	}
 
 	const glm::vec3 visibilityOrigin = OffsetRayOrigin(
 		receiverHit.m_hit.m_point,
 		receiverHit.m_geometricNormal,
-		direction,
+		light.m_direction,
 		params.m_rayBiasBase,
 		params.m_rayBiasScale);
-	const glm::vec3 visibilityVector = target - visibilityOrigin;
+	const glm::vec3 visibilityVector = light.m_position - visibilityOrigin;
 	const float visibilityDistance = glm::length(visibilityVector);
 	if (!std::isfinite(visibilityDistance) || visibilityDistance <= 1e-5f)
 	{
@@ -3210,26 +3247,29 @@ vec3 PathTracer::SampleDirectEmissive(
 		return vec3(0.0f);
 	}
 
+	const float bsdfPdf = LightingModel::ReflectionPdf(
+		receiverMaterial, worldNormal, viewDirection, light.m_direction, fromIor, toIor);
+	const float weight = LightingModel::PowerHeuristic(1, light.m_pdf, numBsdfSamples, bsdfPdf);
 	return LightingModel::CalculateBRDFCosineWeighted(
 		viewDirection,
 		worldNormal,
-		direction,
+		light.m_direction,
 		receiverMaterial,
 		fromIor,
-		toIor) * emittedRadiance *
-		transmittance / solidAnglePdf;
+		toIor) * light.m_radiance *
+		(transmittance * weight / light.m_pdf);
 }
 
 vec3 PathTracer::Raytrace(
 	const Math::Ray& ray,
-	uint32_t bounceLimit,
+	int32_t bounceLimit,
 	uint32_t ignoreInstance,
 	uint32_t ignoreTriangle,
 	float maxRayDistance,
 	const PathTracer::Params& params,
 	float environmentIor,
 	uint32_t& randomState,
-	bool bAllowEmissiveHit) const
+	const RaySampleMIS& previousSample) const
 {
 
 	uint32_t randSeedX = NextRandomRange(randomState, 681u);
@@ -3245,7 +3285,7 @@ vec3 PathTracer::Raytrace(
 		ignoreTriangle);
 	if (bHitScene)
 	{
-		const bool bIsFirstIntersection = bounceLimit == params.m_maxBounces;
+		const bool bIsFirstIntersection = bounceLimit == static_cast<int32_t>(params.m_maxBounces);
 
 		const Math::Triangle& tri = GetTriangle(hit);
 		vec3 faceNormal{}, tangent{}, bitangent{};
@@ -3290,6 +3330,36 @@ vec3 PathTracer::Raytrace(
 		const bool bHasAlphaBlending = !sample.m_bIsOpaque && sample.m_baseColor.a < 1.0f;
 		const uint32_t numSamples = bHasAlphaBlending ? std::max(1u, (uint32_t)round(sample.m_baseColor.a * (float)params.m_numSamples)) : params.m_numSamples;
 		const uint32_t numAmbientSamples = bHasAlphaBlending ? std::max(1u, (uint32_t)round(sample.m_baseColor.a * (float)params.m_numAmbientSamples)) : params.m_numAmbientSamples;
+		const float coverage = bHasAlphaBlending ? sample.m_baseColor.a : 1.0f;
+		vec3 emittedAndTransmitted(0.0f);
+		if (params.m_bIncludeEmissive &&
+			glm::any(glm::greaterThan(sample.m_emissive, vec3(0.0f))) &&
+			IsMaterialFaceVisible(material, bFrontFace))
+		{
+			const float weight = previousSample.m_bsdfPdf > 0.0f ?
+				LightingModel::PowerHeuristic(1, previousSample.m_bsdfPdf, 1,
+					EmissiveLightPdf(previousSample.m_origin, hit)) : 1.0f;
+			emittedAndTransmitted = LightingModel::CalculateEmittedRadiance(
+				sample, worldNormal, viewDirection) * (coverage * weight);
+		}
+		if (bHasAlphaBlending)
+		{
+			const Math::Ray throughRay(hit.m_hit.m_point + ray.GetDirection() * 0.0001f, ray.GetDirection());
+			PathTracer::Params throughParams = params;
+			throughParams.m_numSamples = std::max(1u, params.m_numSamples - numSamples);
+			throughParams.m_numAmbientSamples = std::max(1u, params.m_numAmbientSamples - numAmbientSamples);
+			const float remainingDistance = (std::max)(0.0f,
+				maxRayDistance - glm::length(throughRay.GetOrigin() - ray.GetOrigin()));
+			// Straight-through coverage retains the previous sampling vertex and bounce budget.
+			emittedAndTransmitted += (1.0f - coverage) * Raytrace(throughRay, bounceLimit,
+				hit.m_instanceIndex, hit.m_triangleIndex, remainingDistance, throughParams,
+				environmentIor, randomState, previousSample);
+		}
+		// The final BSDF ray still samples direct emission, but cannot scatter again.
+		if (bounceLimit < 0)
+		{
+			return emittedAndTransmitted;
+		}
 
 		const bool bFullMetallic = sample.m_orm.z == 1.0f;
 		const bool bOnlySpecularRay =
@@ -3382,6 +3452,7 @@ vec3 PathTracer::Raytrace(
 				worldNormal,
 				interfaceFromIor,
 				interfaceToIor,
+				bIsFirstIntersection ? numSamples : 1u,
 				params,
 				randomState);
 		}
@@ -3392,7 +3463,8 @@ vec3 PathTracer::Raytrace(
 		const bool bHasEnvironmentLighting = params.m_bIncludeEnvironment &&
 			(params.m_ambient.x + params.m_ambient.y + params.m_ambient.z > 0.0f ||
 				m_bHasRuntimeEnvironment || m_bHasRuntimeDiffuseEnvironment);
-		if (bHasEnvironmentLighting || bounceLimit > 0)
+		if (bHasEnvironmentLighting || bounceLimit > 0 ||
+			(params.m_bIncludeEmissive && !m_emissiveTriangles->IsEmpty()))
 		{
 			// Random ray
 			vec3 ambient1 = vec3(0, 0, 0);
@@ -3520,6 +3592,11 @@ vec3 PathTracer::Raytrace(
 				}
 
 				Ray rayToLight(OffsetRayOrigin(hit.m_hit.m_point, hit.m_geometricNormal, direction, params.m_rayBiasBase, params.m_rayBiasScale), direction);
+				const float directEnvironmentPdf = DirectEnvironmentPdf(worldNormal, direction);
+				const bool bEnvironmentTechniqueSupportsDirection = bHasEnvironmentLighting &&
+					!bThickVolume && !bOnlySpecularRay && !bTransmissionRay && directEnvironmentPdf > 0.0f;
+				const float environmentWeight = bEnvironmentTechniqueSupportsDirection ?
+					LightingModel::PowerHeuristic(numExtraSamples, pdf, ambientNumSamples, directEnvironmentPdf) : 1.0f;
 
 				TLASHit hitLight{};
 				if (!IntersectScene(rayToLight, hitLight, std::numeric_limits<float>().max(), hit.m_instanceIndex, hit.m_triangleIndex))
@@ -3529,30 +3606,16 @@ vec3 PathTracer::Raytrace(
 							(m_bHasRuntimeDiffuseEnvironment ? SampleRuntimeDiffuseEnvironment(direction) : params.m_ambient)) :
 						vec3(0.0f);
 					const vec3 value = SanitizeRadiance(term * env);
-					const float directEnvironmentPdf =
-						DirectEnvironmentPdf(worldNormal, direction);
-					const bool bEnvironmentTechniqueSupportsDirection =
-						bHasEnvironmentLighting &&
-						!bThickVolume &&
-						!bOnlySpecularRay &&
-						!bTransmissionRay &&
-						directEnvironmentPdf > 0.0f;
-					const float misWeight = bEnvironmentTechniqueSupportsDirection ?
-						LightingModel::PowerHeuristic(
-							static_cast<int32_t>(numExtraSamples),
-							pdf,
-							static_cast<int32_t>(ambientNumSamples),
-							directEnvironmentPdf) : 1.0f;
 
 					// Ambient lighting
-					ambient2 += value * misWeight;
+					ambient2 += value * environmentWeight;
 
 					// A miss reaches the environment directly from this surface.
 					// It already belongs to the MIS ambient estimator above; adding
 					// it to the recursive estimator would count the same sky path
 					// twice.
 				}
-				else if (bounceLimit > 0)
+				else
 				{
 					// Indirect
 					vec3 lightAttenuation = vec3(1, 1, 1);
@@ -3565,11 +3628,12 @@ vec3 PathTracer::Raytrace(
 							distance);
 					}
 
-					// Non-delta emitter paths are sampled explicitly above. Keeping
-					// their BSDF-hit estimator as well would count the same path twice.
-					const bool bAllowNextEmissiveHit =
-						bOnlySpecularRay || bTransmissionRay ||
-						m_emissiveTriangles->IsEmpty();
+					// Combine light and BSDF sampling: area sampling alone has very
+					// high variance on glossy surfaces. Delta/refraction paths have no
+					// competing direct-emission technique.
+					const RaySampleMIS nextSample{ hit.m_hit.m_point,
+						bOnlySpecularRay || bTransmissionRay ? 0.0f : pdf * numExtraSamples,
+						environmentWeight };
 					const vec3 raytraced = Raytrace(
 						rayToLight,
 						bounceLimit - 1,
@@ -3579,7 +3643,7 @@ vec3 PathTracer::Raytrace(
 						params,
 						newEnvironmentIor,
 						randomState,
-						bAllowNextEmissiveHit);
+						nextSample);
 
 					const vec3 value = SanitizeRadiance(
 						term * lightAttenuation * raytraced);
@@ -3603,31 +3667,7 @@ vec3 PathTracer::Raytrace(
 			}
 		}
 
-		if (params.m_bIncludeEmissive &&
-			bAllowEmissiveHit &&
-			IsMaterialFaceVisible(material, bFrontFace))
-		{
-			res += LightingModel::CalculateEmittedRadiance(
-				sample,
-				worldNormal,
-				viewDirection);
-		}
-
-		// Alpha Blending
-		if (bounceLimit > 0 && bHasAlphaBlending)
-		{
-			Math::Ray newRay{};
-			newRay.SetDirection(ray.GetDirection());
-			newRay.SetOrigin(hit.m_hit.m_point + ray.GetDirection() * 0.0001f);
-
-			PathTracer::Params p = params;
-			p.m_maxBounces = std::max(0u, params.m_maxBounces - 1);
-			p.m_numSamples = std::max(1u, params.m_numSamples - numSamples);
-			p.m_numAmbientSamples = std::max(1u, params.m_numAmbientSamples - numAmbientSamples);
-
-			res = res * sample.m_baseColor.a +
-				Raytrace(newRay, bounceLimit - 1, hit.m_instanceIndex, hit.m_triangleIndex, std::numeric_limits<float>::max(), p, environmentIor, randomState, bAllowEmissiveHit) * (1.0f - sample.m_baseColor.a);
-		}
+		return res * coverage + emittedAndTransmitted;
 	}
 	else
 	{
@@ -3642,7 +3682,7 @@ vec3 PathTracer::Raytrace(
 		}
 	}
 
-	return res;
+	return res * previousSample.m_environmentWeight;
 }
 
 glm::vec4 PathTracer::SampleMaterialBaseColor(

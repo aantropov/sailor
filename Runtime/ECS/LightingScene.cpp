@@ -1,7 +1,10 @@
 #include "ECS/LightingECS.h"
 #include "ECS/TransformECS.h"
+#include "Components/LightComponent.h"
+#include "Components/SkyComponent.h"
 #include "Engine/GameObject.h"
 #include "GlobalIllumination/GISettings.h"
+#include "Raytracing/SkyEnvironmentGenerator.h"
 #include "RHI/DebugContext.h"
 #include "RHI/SceneView.h"
 #include "Settings/GraphicsSettings.h"
@@ -195,15 +198,21 @@ void LightingECS::CollectLightProxies(TVector<Raytracing::LightProxy>& outLights
 	outLights.Clear();
 	const size_t numGpuLightSlots = GetGpuLightSlotsCount(m_components.Num());
 	outLights.Reserve(numGpuLightSlots);
+	TObjectPtr<SkyComponent> sky;
+	const LightData* skyLight = nullptr;
+	if (bGlobalIlluminationBakeContributorsOnly)
+	{
+		sky = GetSky();
+		if (sky && sky->GetDirectionalLight())
+		{
+			skyLight = &sky->GetDirectionalLight()->GetData();
+		}
+	}
 
 	for (size_t index = 0; index < numGpuLightSlots; ++index)
 	{
 		const auto& light = m_components[index];
 		if (!light.m_bIsActive || &light == excludedLight)
-		{
-			continue;
-		}
-		if (!glm::any(glm::greaterThan(light.m_intensity, glm::vec3(0.0f))))
 		{
 			continue;
 		}
@@ -232,6 +241,19 @@ void LightingECS::CollectLightProxies(TVector<Raytracing::LightProxy>& outLights
 		lightProxy.m_worldPosition = transform.GetWorldPosition();
 		lightProxy.m_direction = glm::normalize(transform.GetForwardVector());
 		lightProxy.m_intensity = light.m_intensity;
+		if (&light == skyLight)
+		{
+			// Capture the sun and sky from the same authored state, even before
+			// SkyComponent and TransformECS have applied this tick's light pose.
+			const auto& parameters = sky->GetSkyParameters();
+			lightProxy.m_direction = glm::vec3(parameters.m_lightDirection);
+			lightProxy.m_worldPosition = -lightProxy.m_direction * 9000.0f;
+			lightProxy.m_intensity = Raytracing::CalculateDirectSunIlluminance(parameters);
+		}
+		if (!glm::any(glm::greaterThan(lightProxy.m_intensity, glm::vec3(0.0f))))
+		{
+			continue;
+		}
 		lightProxy.m_indirectLightingIntensity = light.m_indirectLightingIntensity;
 		lightProxy.m_bounds = glm::vec3(light.m_radius);
 		lightProxy.m_cutOff = vec2(glm::cos(glm::radians(light.m_cutOff.x)), glm::cos(glm::radians(light.m_cutOff.y)));

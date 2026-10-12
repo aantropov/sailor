@@ -1218,6 +1218,18 @@ float LightingModel::ReflectionPdf(
 		false);
 }
 
+float LightingModel::ReflectionPdf(
+	const SampledData& sample,
+	const vec3& worldNormal,
+	const vec3& viewDirection,
+	const vec3& lightDirection,
+	float fromIor,
+	float toIor)
+{
+	return ReflectionPdfForInterface(sample, worldNormal, viewDirection, lightDirection,
+		fromIor, toIor, sample.m_thicknessFactor > 0.0f);
+}
+
 vec3 LightingModel::ImportanceSampleLambert(vec2 Xi, const vec3& n)
 {
 	float phi = 2.0f * glm::pi<float>() * Xi.x;

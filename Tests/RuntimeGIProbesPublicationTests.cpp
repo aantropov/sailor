@@ -86,7 +86,7 @@ namespace
 	{
 	public:
 		bool Sample(const glm::vec3&, const glm::vec3& direction, float distance, uint32_t,
-			GIProbeBakeRaySample& sample, std::string&) const override
+			GIProbeBakeRaySample& sample, std::string&, float = 0.0f) const override
 		{
 			sample = {};
 			sample.m_distance = distance;
@@ -141,7 +141,7 @@ namespace
 		public:
 			explicit MixedValiditySampler(uint32_t embeddedProbeCount) : m_embeddedProbeCount(embeddedProbeCount) {}
 			bool Sample(const glm::vec3& origin, const glm::vec3& direction, float distance, uint32_t,
-				GIProbeBakeRaySample& sample, std::string&) const override
+				GIProbeBakeRaySample& sample, std::string&, float = 0.0f) const override
 			{
 				sample = {};
 				sample.m_bHit = m_embeddedProbeCount == 8 || (m_embeddedProbeCount == 4 && origin.x < 0.0f);
