@@ -10,9 +10,7 @@ Sailor is a long-running passion project rooted in a lifetime of work with compu
 
 ## Showcase
 
-[![Sailor Engine - First Look: watch the showcase on YouTube](.github/media/showcase-cover.png)](https://youtu.be/WgifakC2LU0)
-
-[**Watch the first public showcase on YouTube**](https://youtu.be/WgifakC2LU0): the editor, runtime global illumination, ECS-driven traffic, water and physics, and interactive visuals. ForestRiver and NightCity were created with AI through Sailor's engine integration. This is development footage, not a performance benchmark.
+[**First Look: watch the showcase on YouTube**](https://youtu.be/WgifakC2LU0)
 
 Please visit the Wiki to explore the engine's technical design in detail: [**Technical Overview and Details**](https://github.com/aantropov/sailor/wiki).
 
@@ -27,19 +25,13 @@ Visit the Wiki to explore everything you need to get started, understand the eng
 
 Four native 4K captures. Click an image to view it at full resolution.
 
-### ForestRiver
-
 Terrain, vegetation, water, and atmospheric lighting.
 
 [![ForestRiver: a wooded river valley with vegetation shadows and atmospheric lighting](.github/media/forest-river.jpg)](.github/media/forest-river.jpg)
 
-### The Light Pavilion
-
 Physically based materials, reflections, and runtime global illumination.
 
 [![DemoSailor Light Pavilion: material spheres, reflections, and indirect lighting](.github/media/light-pavilion.jpg)](.github/media/light-pavilion.jpg)
-
-### SwarmAlien
 
 Raymarched forms and interactive visuals for art installations.
 
