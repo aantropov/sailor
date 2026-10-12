@@ -114,6 +114,18 @@ namespace
 			coefficientIndex <= 3u ? 2.0f / 3.0f : 0.25f;
 	}
 
+	void ProjectIrradianceSample(const glm::vec3& direction, const glm::vec3& weightedRadiance,
+		GIProbeIrradianceAccumulator& accumulator)
+	{
+		float basis[GIProbeSphericalHarmonicsCoefficientCount]{};
+		EvaluateSphericalHarmonicsBasis(direction, basis);
+		for (uint32_t index = 0u; index < GIProbeSphericalHarmonicsCoefficientCount; ++index)
+		{
+			accumulator.m_weightedCoefficients[index] +=
+				weightedRadiance * basis[index] * IrradianceConvolution(index);
+		}
+	}
+
 	bool SampleVisibility(
 		const GIProbeTraceRequest& request,
 		const IGIProbeBakeRaySampler& sampler,
@@ -611,7 +623,8 @@ bool Sailor::AccumulateGIProbeIrradianceRange(
 					rayIndex,
 					2u),
 				sample,
-				outDiagnostic))
+				outDiagnostic,
+				directionPdf))
 		{
 			return false;
 		}
@@ -621,16 +634,12 @@ bool Sailor::AccumulateGIProbeIrradianceRange(
 			glm::vec3(0.0f);
 		const float projectionScale = 1.0f /
 			(static_cast<float>(sequenceSampleCount) * directionPdf);
-		float basis[GIProbeSphericalHarmonicsCoefficientCount]{};
-		EvaluateSphericalHarmonicsBasis(direction, basis);
-		for (uint32_t coefficientIndex = 0u;
-			coefficientIndex < GIProbeSphericalHarmonicsCoefficientCount;
-			++coefficientIndex)
-		{
-			workingAccumulator.m_weightedCoefficients[coefficientIndex] +=
-				radiance * basis[coefficientIndex] * projectionScale *
-				IrradianceConvolution(coefficientIndex);
-		}
+		ProjectIrradianceSample(direction, radiance * projectionScale, workingAccumulator);
+
+		glm::vec3 emissionDirection;
+		const glm::vec3 emission = sampler.SampleEmission(position, request.m_settings.m_maxRayDistance,
+			MixGIProbeRandomSeed(request.m_settings.m_randomSeed, 0u, rayIndex, 4u), emissionDirection);
+		ProjectIrradianceSample(emissionDirection, emission / static_cast<float>(sequenceSampleCount), workingAccumulator);
 		++workingAccumulator.m_sampleCount;
 	}
 	accumulator = workingAccumulator;

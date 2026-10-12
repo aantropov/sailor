@@ -61,7 +61,10 @@ namespace Sailor::Raytracing
 			float maxDistance,
 			uint32_t randomSeed,
 			GIProbeBakeRaySample& outSample,
-			std::string& outDiagnostic) const override;
+			std::string& outDiagnostic,
+			float primaryDirectionPdf = 0.0f) const override;
+		glm::vec3 SampleEmission(const glm::vec3& origin, float maxDistance,
+			uint32_t randomSeed, glm::vec3& outDirection) const override;
 		bool SampleVisibility(
 			const glm::vec3& origin,
 			const glm::vec3& direction,
@@ -71,6 +74,7 @@ namespace Sailor::Raytracing
 			std::string& outDiagnostic) const override;
 
 	private:
+		float PrimaryDirectionPdf(const glm::vec3& direction) const;
 		void ConfigureParameters(const GIProbesBakeSettings& settings,
 			const glm::vec3& fallbackEnvironment);
 

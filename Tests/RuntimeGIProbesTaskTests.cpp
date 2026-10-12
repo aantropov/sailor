@@ -60,7 +60,7 @@ namespace
 		GatedSampler(uint32_t blockedRays, glm::vec3 radiance) : m_blockedRays(blockedRays), m_radiance(radiance) {}
 
 		bool Sample(const glm::vec3&, const glm::vec3&, float distance, uint32_t,
-			GIProbeBakeRaySample& sample, std::string& diagnostic) const override
+			GIProbeBakeRaySample& sample, std::string& diagnostic, float = 0.0f) const override
 		{
 			if (!CheckQueue(diagnostic)) return false;
 			++m_irradianceRays;

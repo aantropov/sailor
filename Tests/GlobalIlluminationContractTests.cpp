@@ -1121,7 +1121,7 @@ namespace
 			float maxDistance,
 			uint32_t,
 			GIProbeBakeRaySample& outSample,
-			std::string&) const override
+			std::string&, float = 0.0f) const override
 		{
 			m_irradianceSampleCount.fetch_add(1u, std::memory_order_relaxed);
 			m_lastMaxDistance.store(maxDistance, std::memory_order_relaxed);
@@ -1173,7 +1173,7 @@ namespace
 	{
 	public:
 		bool Sample(const glm::vec3&, const glm::vec3& direction, float maxDistance,
-			uint32_t, GIProbeBakeRaySample& outSample, std::string&) const override
+			uint32_t, GIProbeBakeRaySample& outSample, std::string&, float = 0.0f) const override
 		{
 			++m_sampleCount;
 			// Three independent analytic fields: a constant sphere and its two hemispheres.
@@ -1248,7 +1248,7 @@ namespace
 			float maxDistance,
 			uint32_t randomSeed,
 			GIProbeBakeRaySample& outSample,
-			std::string&) const override
+			std::string&, float = 0.0f) const override
 		{
 			const float value = static_cast<float>(randomSeed & 0xffffu) /
 				65535.0f;
@@ -1271,7 +1271,7 @@ namespace
 			float,
 			uint32_t,
 			GIProbeBakeRaySample&,
-			std::string& outDiagnostic) const override
+			std::string& outDiagnostic, float = 0.0f) const override
 		{
 			outDiagnostic = "intentional runtime GI sampler failure";
 			return false;
@@ -1294,7 +1294,7 @@ namespace
 		{}
 
 		bool Sample(const glm::vec3&, const glm::vec3&, float, uint32_t,
-			GIProbeBakeRaySample&, std::string& outDiagnostic) const override
+			GIProbeBakeRaySample&, std::string& outDiagnostic, float = 0.0f) const override
 		{
 			struct Completion
 			{
@@ -1369,7 +1369,7 @@ namespace
 			float maxDistance,
 			uint32_t,
 			GIProbeBakeRaySample& outSample,
-			std::string& outDiagnostic) const override
+			std::string& outDiagnostic, float = 0.0f) const override
 		{
 			outSample.m_radiance = glm::vec3(1.0f);
 			outSample.m_distance = maxDistance;
@@ -1415,7 +1415,7 @@ namespace
 			float maxDistance,
 			uint32_t,
 			GIProbeBakeRaySample& outSample,
-			std::string& outDiagnostic) const override
+			std::string& outDiagnostic, float = 0.0f) const override
 		{
 			const float pdf = direction.y >= 0.0f ? UpperPdf : LowerPdf;
 			outSample.m_radiance = glm::vec3(pdf * RadianceOverPdf);
@@ -1448,7 +1448,7 @@ namespace
 			float maxDistance,
 			uint32_t randomSeed,
 			GIProbeBakeRaySample& outSample,
-			std::string& outDiagnostic) const override
+			std::string& outDiagnostic, float = 0.0f) const override
 		{
 			{
 				std::unique_lock<std::mutex> lock(m_mutex);
@@ -1600,7 +1600,7 @@ namespace
 			float maxDistance,
 			uint32_t,
 			GIProbeBakeRaySample& outSample,
-			std::string&) const override
+			std::string&, float = 0.0f) const override
 		{
 			m_sampleCount.fetch_add(1u, std::memory_order_relaxed);
 			const bool bPositiveXAxis = direction.x > 0.9999f &&
@@ -1631,7 +1631,7 @@ namespace
 			float maxDistance,
 			uint32_t randomSeed,
 			GIProbeBakeRaySample& outSample,
-			std::string& outDiagnostic) const override
+			std::string& outDiagnostic, float = 0.0f) const override
 		{
 			if (!SampleVisibility(
 					origin,
@@ -1687,7 +1687,7 @@ namespace
 			float maxDistance,
 			uint32_t randomSeed,
 			GIProbeBakeRaySample& outSample,
-			std::string& outDiagnostic) const override
+			std::string& outDiagnostic, float = 0.0f) const override
 		{
 			if (!SampleVisibility(
 					origin,
@@ -1741,7 +1741,7 @@ namespace
 			float maxDistance,
 			uint32_t randomSeed,
 			GIProbeBakeRaySample& outSample,
-			std::string& outDiagnostic) const override
+			std::string& outDiagnostic, float = 0.0f) const override
 		{
 			if (!SampleVisibility(
 					origin,
@@ -1784,7 +1784,7 @@ namespace
 			float maxDistance,
 			uint32_t,
 			GIProbeBakeRaySample& outSample,
-			std::string& outDiagnostic) const override
+			std::string& outDiagnostic, float = 0.0f) const override
 		{
 			outSample = {};
 			outSample.m_radiance = glm::vec3(0.25f);
@@ -8784,6 +8784,137 @@ prefabs:
 		}
 	}
 
+	void TestPrimaryEmissionProbeSampling()
+	{
+		const auto emitter = MakeLightingTriangle({ 0.9f, 2, -0.1f }, { 1.1f, 2, -0.1f }, { 1, 2, 0.1f },
+			{ 0, -1, 0 }, { 1, 0, 0 }, { 0, 0, 1 }, glm::vec4(1));
+		LocalLightScene scene({ emitter });
+		const glm::vec3 emission(2000, 400, 100);
+		scene.m_materials[0]->SetUniform("material.emissiveFactor"_h, glm::vec4(emission, 0));
+		GIProbeTraceRequest request;
+		request.m_settings.m_bounceCount = 0;
+		request.m_settings.m_bIncludeSky = false;
+		request.m_settings.m_bIncludeDirectLighting = false;
+		Raytracing::GIProbesPathTracer sampler;
+		Require(sampler.Initialize(scene.m_instances, scene.m_materials, {}, request.m_settings),
+			"the small primary emitter must initialize");
+
+		// Independent area quadrature for the constant SH coefficient of the emitter.
+		const glm::vec3 origin(0, 1, 0);
+		const float area = glm::length(glm::cross(emitter.m_vertices[1] - emitter.m_vertices[0],
+			emitter.m_vertices[2] - emitter.m_vertices[0])) * 0.5f;
+		double solidAngle = 0;
+		constexpr uint32_t Resolution = 64;
+		for (uint32_t y = 0; y < Resolution; ++y)
+		{
+			for (uint32_t x = 0; x < Resolution; ++x)
+			{
+				const float u = std::sqrt((x + 0.5f) / Resolution);
+				const float v = (y + 0.5f) / Resolution;
+				const glm::vec3 delta = emitter.m_vertices[0] * (1 - u) +
+					emitter.m_vertices[1] * (u * (1 - v)) + emitter.m_vertices[2] * (u * v) - origin;
+				const float distance = glm::length(delta);
+				solidAngle += area * delta.y / (distance * distance * distance);
+			}
+		}
+		const glm::vec3 expected = emission * static_cast<float>(solidAngle / (Resolution * Resolution) * 0.2820947918);
+		std::string diagnostic;
+		for (uint32_t seed = 0; seed < 8; ++seed)
+		{
+			request.m_settings.m_randomSeed = seed;
+			GIProbeIrradianceAccumulator accumulated;
+			Require(AccumulateGIProbeIrradianceRange(request, sampler, origin, seed, 0, 128, 128,
+				accumulated, diagnostic), diagnostic);
+			GIProbe probe;
+			Require(ResolveGIProbeIrradiance(accumulated, probe, diagnostic), diagnostic);
+			Require(glm::length(probe.m_irradiance[0] - expected) < glm::length(expected) * 0.03f,
+				"128 probe samples must resolve a small emitter without missed light or double counting");
+			GIProbeIrradianceAccumulator progressive;
+			for (uint32_t begin = 0; begin < 128; begin += 16)
+			{
+				Require(AccumulateGIProbeIrradianceRange(request, sampler, origin, seed, begin, 16, 128,
+					progressive, diagnostic), diagnostic);
+			}
+			Require(progressive.m_weightedCoefficients == accumulated.m_weightedCoefficients,
+				"progressive emitter batches must match the uninterrupted probe integral");
+		}
+
+		GIProbeBakeRaySample visible;
+		Require(sampler.Sample(origin, glm::normalize(emitter.m_centroid - origin), 10, 1, visible, diagnostic), diagnostic);
+		Require(glm::length(visible.m_radiance - emission) < 0.001f,
+			"ordinary reflection rays must retain directly visible emission");
+		glm::vec3 direction;
+		Require(sampler.SampleEmission(origin, 0.5f, 1, direction) == glm::vec3(0),
+			"probe emission must respect the maximum trace distance");
+		request.m_settings.m_bIncludeEmissive = false;
+		Require(sampler.Initialize(scene.m_instances, scene.m_materials, {}, request.m_settings), "disabled emitter setup");
+		Require(sampler.SampleEmission(origin, 10, 1, direction) == glm::vec3(0),
+			"disabled emission must not enter the explicit probe estimator");
+
+		auto blocker = MakeLightingBlocker(1.5f);
+		blocker.m_materialIndex = 1;
+		LocalLightScene occluded({ emitter, blocker });
+		occluded.m_materials[0]->SetUniform("material.emissiveFactor"_h, glm::vec4(emission, 0));
+		occluded.m_materials.Add(MakeDiffuseFixtureMaterial(occluded.m_allocator, glm::vec3(0.8f)));
+		request.m_settings.m_bIncludeEmissive = true;
+		Require(sampler.Initialize(occluded.m_instances, occluded.m_materials, {}, request.m_settings), "occluded emitter setup");
+		for (uint32_t seed = 0; seed < 32; ++seed)
+		{
+			Require(sampler.SampleEmission(origin, 10, seed, direction) == glm::vec3(0),
+				"explicit emitter samples must not leak through an opaque blocker");
+		}
+	}
+
+	void TestNearbyEmissionProbeSampling()
+	{
+		const auto emitter = MakeLightingBlocker(0.05f);
+		LocalLightScene scene({ emitter });
+		const glm::vec3 emission(20, 4, 1);
+		scene.m_materials[0]->SetUniform("material.baseColorFactor"_h, glm::vec4(0, 0, 0, 1));
+		scene.m_materials[0]->SetUniform("material.metallicFactor"_h, 1.0f);
+		scene.m_materials[0]->SetUniform("material.emissiveFactor"_h, glm::vec4(emission, 0));
+		GIProbeTraceRequest request;
+		request.m_settings.m_bounceCount = 0;
+		request.m_settings.m_bIncludeSky = false;
+		request.m_settings.m_bIncludeDirectLighting = false;
+		Raytracing::GIProbesPathTracer sampler;
+		// Analytic solid angle of the triangle as seen from the probe at the origin.
+		const glm::dvec3 a(emitter.m_vertices[0]), b(emitter.m_vertices[1]), c(emitter.m_vertices[2]);
+		const double solidAngle = 2 * std::atan2(std::abs(glm::dot(a, glm::cross(b, c))),
+			glm::length(a) * glm::length(b) * glm::length(c) + glm::dot(a, b) * glm::length(c) +
+			glm::dot(b, c) * glm::length(a) + glm::dot(c, a) * glm::length(b));
+		std::string diagnostic;
+		for (bool bIncludeSky : { false, true })
+		{
+			request.m_settings.m_bIncludeSky = bIncludeSky;
+			Require(sampler.Initialize(scene.m_instances, scene.m_materials, {}, request.m_settings),
+				"nearby emitter fixture");
+			const glm::vec3 sky = bIncludeSky ? glm::vec3(0.2f, 0.5f, 1.0f) : glm::vec3(0);
+			if (bIncludeSky)
+			{
+				TVector<glm::vec4> pixels;
+				for (uint32_t pixel = 0; pixel < 128; ++pixel)
+				{
+					pixels.Add(glm::vec4(sky, 1));
+				}
+				sampler.SetEnvironmentLinear(pixels, { 16, 8 });
+			}
+			const glm::vec3 expected = (emission * static_cast<float>(solidAngle) +
+				sky * static_cast<float>(4 * glm::pi<double>() - solidAngle)) * 0.2820947918f;
+			for (uint32_t seed = 0; seed < 8; ++seed)
+			{
+				request.m_settings.m_randomSeed = seed;
+				GIProbeIrradianceAccumulator accumulated;
+				Require(AccumulateGIProbeIrradianceRange(request, sampler, glm::vec3(0), seed, 0, 128, 128,
+					accumulated, diagnostic), diagnostic);
+				GIProbe probe;
+				Require(ResolveGIProbeIrradiance(accumulated, probe, diagnostic), diagnostic);
+				Require(glm::length(probe.m_irradiance[0] - expected) < glm::length(expected) * 0.08f,
+					"nearby emission and HDR sky sampling must preserve energy without rare spikes");
+			}
+		}
+	}
+
 	void TestCpuAlphaCutoutTraversal()
 	{
 		Memory::ObjectAllocatorPtr allocator =
@@ -9179,7 +9310,9 @@ int main(int argc, char** argv)
 		RunTest(
 			"EmissiveTrianglesIlluminateProbeReceivers",
 			TestEmissiveTrianglesIlluminateProbeReceivers);
+		RunTest("PrimaryEmissionProbeSampling", TestPrimaryEmissionProbeSampling);
 		RunTest("GlossyEmissionSampling", TestGlossyEmissionSampling);
+		RunTest("NearbyEmissionProbeSampling", TestNearbyEmissionProbeSampling);
 		RunTest("AlphaCoverageEnvironmentMIS", TestAlphaCoverageEnvironmentMIS);
 		RunTest(
 			"CpuAlphaCutoutTraversal",

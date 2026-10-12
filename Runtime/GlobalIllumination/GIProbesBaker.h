@@ -43,7 +43,16 @@ namespace Sailor
 			float maxDistance,
 			uint32_t randomSeed,
 			GIProbeBakeRaySample& outSample,
-			std::string& outDiagnostic) const = 0;
+			std::string& outDiagnostic,
+			float primaryDirectionPdf = 0.0f) const = 0;
+		// Emitter samples include visibility, reciprocal PDF and the MIS weight
+		// against SamplePrimaryDirection. Ordinary rays (PDF zero) retain full emission.
+		virtual glm::vec3 SampleEmission(const glm::vec3& origin, float maxDistance,
+			uint32_t randomSeed, glm::vec3& outDirection) const
+		{
+			outDirection = glm::vec3(0.0f, 1.0f, 0.0f);
+			return glm::vec3(0.0f);
+		}
 		virtual bool SampleVisibility(
 			const glm::vec3& origin,
 			const glm::vec3& direction,

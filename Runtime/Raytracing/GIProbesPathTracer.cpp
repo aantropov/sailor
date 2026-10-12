@@ -2,6 +2,7 @@
 
 #include "Core/LogMacros.h"
 
+#include <algorithm>
 #include <cmath>
 
 using namespace Sailor;
@@ -160,6 +161,13 @@ bool GIProbesPathTracer::SetEnvironmentLinear(const TVector<glm::vec4>& image, c
 	return false;
 }
 
+float GIProbesPathTracer::PrimaryDirectionPdf(const glm::vec3& direction) const
+{
+	constexpr float UniformSpherePdf = 0.07957747154594766788f;
+	return m_pathTracer.m_bUseRuntimeEnvironmentImportance ?
+		0.5f * (UniformSpherePdf + m_pathTracer.RuntimeEnvironmentImportancePdf(direction)) : UniformSpherePdf;
+}
+
 bool GIProbesPathTracer::SamplePrimaryDirection(
 	const glm::vec3& uniformDirection,
 	uint32_t,
@@ -195,13 +203,7 @@ bool GIProbesPathTracer::SamplePrimaryDirection(
 			return false;
 		}
 	}
-	else
-	{
-		directionImportancePdf =
-			m_pathTracer.RuntimeEnvironmentImportancePdf(outDirection);
-	}
-
-	outPdf = 0.5f * (UniformSpherePdf + directionImportancePdf);
+	outPdf = PrimaryDirectionPdf(outDirection);
 	outDiagnostic.clear();
 	return std::isfinite(outPdf) && outPdf > 0.0f;
 }
@@ -212,7 +214,8 @@ bool GIProbesPathTracer::Sample(
 	float maxDistance,
 	uint32_t randomSeed,
 	GIProbeBakeRaySample& outSample,
-	std::string& outDiagnostic) const
+	std::string& outDiagnostic,
+	float primaryDirectionPdf) const
 {
 	outSample = {};
 	if (!m_bInitialized)
@@ -228,7 +231,8 @@ bool GIProbesPathTracer::Sample(
 		maxDistance,
 		m_params,
 		randomSeed,
-		sample))
+		sample,
+		primaryDirectionPdf))
 	{
 		outDiagnostic = "GI probe path tracer rejected a bake ray";
 		return false;
@@ -239,6 +243,28 @@ bool GIProbesPathTracer::Sample(
 	outSample.m_bBackFace = sample.m_bBackFace;
 	outDiagnostic.clear();
 	return true;
+}
+
+glm::vec3 GIProbesPathTracer::SampleEmission(const glm::vec3& origin, float maxDistance,
+	uint32_t randomSeed, glm::vec3& outDirection) const
+{
+	outDirection = glm::vec3(0.0f, 1.0f, 0.0f);
+	PathTracer::EmissiveLightSample light;
+	if (!m_params.m_bIncludeEmissive || !m_pathTracer.SampleEmissiveLight(origin, randomSeed, light))
+	{
+		return glm::vec3(0.0f);
+	}
+	const float distance = glm::length(light.m_position - origin);
+	if (distance > maxDistance)
+	{
+		return glm::vec3(0.0f);
+	}
+	outDirection = light.m_direction;
+	const float endpointTolerance = (std::max)(0.0001f, distance * 0.0001f);
+	const float visibility = m_pathTracer.TraceDirectLightTransmittance(
+		Math::Ray(origin, light.m_direction), (std::max)(0.0f, distance - endpointTolerance));
+	const float weight = LightingModel::PowerHeuristic(1, light.m_pdf, 1, PrimaryDirectionPdf(light.m_direction));
+	return light.m_radiance * (visibility * weight / light.m_pdf);
 }
 
 bool GIProbesPathTracer::SampleVisibility(
