@@ -1,6 +1,18 @@
 # Sailor Engine
 
-**Sailor Engine** is a high-performance game engine prototype with a bindless graphics renderer based on `Vulkan 1.3` and efficient multithreading. It features task management, advanced memory allocators, and a data-driven design for modern game development.
+**Sailor Engine** is an independent real-time engine for games, visual effects, interactive art, and experimental demos. It combines a bindless `Vulkan 1.3` renderer with a multithreaded `C++20` runtime, custom memory allocators, and a data-driven frame graph.
+
+The editor is built in **C# with .NET MAUI**, with component-based scene authoring, landscape tools, and project build workflows. Its MCP integration lets AI assistants work directly with scenes, assets, and components through the editor.
+
+Sailor is a long-running passion project rooted in a lifetime of work with computer graphics. The engine's core was originally designed and written by hand, with a focus on extensible rendering and creative experimentation.
+
+**In active development.** Current desktop targets are Windows and macOS. Linux, Android, and iOS ports are under evaluation.
+
+## Showcase
+
+[![Sailor Engine - First Look: watch the showcase on YouTube](.github/media/showcase-cover.png)](https://youtu.be/WgifakC2LU0)
+
+[**Watch the first public showcase on YouTube**](https://youtu.be/WgifakC2LU0): the editor, runtime global illumination, ECS-driven traffic, water and physics, and interactive visuals. ForestRiver and NightCity were created with AI through Sailor's engine integration. This is development footage, not a performance benchmark.
 
 Please visit the Wiki to explore the engine's technical design in detail: [**Technical Overview and Details**](https://github.com/aantropov/sailor/wiki).
 
@@ -13,30 +25,51 @@ Visit the Wiki to explore everything you need to get started, understand the eng
 
 ## Screenshots
 
-### Realtime (PBR, Forward+, Raymarching, CSSM, Tone Mapping GPGPU, etc)
-<p float="left">
-  <img src="https://github.com/aantropov/sailor/assets/3637761/2135ae32-b95b-4bdb-bbbb-ec1e01b40946" width="400" />
-  <img src="https://github.com/aantropov/sailor/assets/3637761/2ca20784-5784-4e77-a824-8e3032919785" width="400" />
-  <img src="https://github.com/aantropov/sailor/assets/3637761/6ac3e042-7519-43c3-b7ab-a1e14b7b4df2" width="400" />
-  <img src="https://user-images.githubusercontent.com/3637761/216842844-0312267c-52a6-41d4-ba6d-a2b785fb7725.png" width="400" />
-</p>
+Four native 4K captures. Click an image to view it at full resolution.
 
-### Pathtracer (CPU, GLTF)
-<p float="left">
-  <img src="https://github.com/aantropov/sailor/assets/3637761/086c1dc0-f7f4-47a4-bd0f-d2cef4e84fd8" width="400" />
-  <img src="https://github.com/aantropov/sailor/assets/3637761/84e58446-65d2-4358-90ec-8d6a59a81076" width="400" />
-</p>
+### ForestRiver
+
+Terrain, vegetation, water, and atmospheric lighting.
+
+[![ForestRiver: a wooded river valley with vegetation shadows and atmospheric lighting](.github/media/forest-river.jpg)](.github/media/forest-river.jpg)
+
+### The Light Pavilion
+
+Physically based materials, reflections, and runtime global illumination.
+
+[![DemoSailor Light Pavilion: material spheres, reflections, and indirect lighting](.github/media/light-pavilion.jpg)](.github/media/light-pavilion.jpg)
+
+### SwarmAlien
+
+Raymarched forms and interactive visuals for art installations.
+
+[![SwarmAlien: a human-shaped swarm rendered against a black background](.github/media/swarm-alien.jpg)](.github/media/swarm-alien.jpg)
 
 ### Editor
-<img width="1131" height="837" alt="Screenshot 2026-05-22 at 22 51 40" src="https://github.com/user-attachments/assets/1b313ae5-1eda-42eb-8a0e-99cdf976d932" />
 
+The C# / .NET MAUI editor, with the Content browser expanded and the Atmosphere object selected in the Inspector.
+
+[![Sailor Editor: the Light Pavilion scene, expanded Content folders, and SkyComponent settings](.github/media/editor-pavilion.jpg)](.github/media/editor-pavilion.jpg)
+
+<details>
+<summary>Screenshot notes and asset credits</summary>
+
+Captured with the Ultra preset and resolution factor 1.0. MSAA 8x applies to the relevant raster passes; SwarmAlien uses its own raymarching pass. The editor screenshot includes the complete application window. SwarmAlien uses synthetic audience input in this capture, not a live webcam recording.
+
+ForestRiver includes [Poly Haven](https://polyhaven.com) assets (CC0). The pavilion includes [RobotExpressive](https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf/RobotExpressive) by Tomas Laulhe / Quaternius, with modifications by Don McCurdy (CC0).
+
+</details>
 
 ## Features
 
-- **Rendering:** Bindless Renderer, Frame Graph, Forward+ Lighting, PBR, Raymarching, CPU-based Path Tracing.
-- **Core:** Multithreading, custom memory allocators.
-- **Editor:** Built with `.NET MAUI`.
-- **Engine:** Built with `C++20` (`MSVC` and `clang`).
+- **Rendering:** Bindless Vulkan renderer, data-driven frame graph, Forward+ lighting, physically based materials, GPU frustum and occlusion culling, and mesh LODs.
+- **Lighting and atmosphere:** Baked and runtime GI probes, local reflections, cascaded shadow maps, atmospheric sky, volumetric clouds, and fog.
+- **Visual effects:** Raymarching, GPU particles, CPU path tracing, MSAA, camera and object motion blur, bloom, exposure, and tone mapping.
+- **Worlds and simulation:** Component-based scenes, ECS, skeletal animation, Jolt physics, and landscape and vegetation streaming.
+- **Core:** Task-based multithreading, parallel render preparation, custom memory allocators, and engine-owned containers.
+- **Editor:** C# / .NET MAUI, component and asset inspectors, landscape authoring, and workspace build and reload tools.
+- **AI-assisted workflows:** MCP tools for scene creation, asset inspection, component editing, and editor automation.
+- **Engine development:** C++20 with MSVC and Clang; extensible components, ECS systems, and rendering nodes for project-specific behavior.
 
 ## Dependencies
 
