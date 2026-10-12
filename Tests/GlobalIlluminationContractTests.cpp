@@ -7680,6 +7680,37 @@ prefabs:
 		world.Clear();
 	}
 
+	void TestGICaptureUsesCurrentSun()
+	{
+		GlobalIlluminationMobilityTestWorld world;
+		auto sky = world.Instantiate("Sky")->AddComponent<SkyComponent>();
+		auto sunObject = world.Instantiate("Sun");
+		sunObject->SetMobilityType(EMobilityType::Stationary);
+		auto sun = sunObject->AddComponent<LightComponent>();
+		sun->SetLightType(ELightType::Directional);
+		sky->SetDirectionalLight(sun);
+		auto lighting = world.GetECS<LightingECS>();
+		for (float angle : { 38.0f, 12.0f, -8.0f, 38.0f, 12.0f })
+		{
+			sky->SetSunAngle(angle);
+			sky->SetSunIlluminance(glm::vec3(angle < 0 ? 50 : 18000));
+			TVector<Raytracing::LightProxy> beforeTick, afterTick;
+			lighting->GetGlobalIlluminationBakeLightProxies(beforeTick);
+			sky->Tick(0.0f);
+			world.GetECS<TransformECS>()->Tick(0.0f);
+			lighting->GetGlobalIlluminationBakeLightProxies(afterTick);
+			Require(beforeTick.Num() == afterTick.Num(),
+				"GI must capture the current sun even when the previous tick had a dark sun");
+			for (size_t index = 0; index < beforeTick.Num(); ++index)
+			{
+				Require(glm::length(beforeTick[index].m_direction - afterTick[index].m_direction) < 0.00001f &&
+					glm::length(beforeTick[index].m_intensity - afterTick[index].m_intensity) < 0.0001f,
+					"GI sun capture must not depend on SkyComponent/TransformECS tick order");
+			}
+		}
+		world.Clear();
+	}
+
 	void TestRuntimeGISunAngleThreshold()
 	{
 		GlobalIlluminationMobilityTestWorld world;
@@ -8912,6 +8943,7 @@ int main(int argc, char** argv)
 			TestReceiverPlaneProbeRejection);
 		RunTest("WorldBindingRoundTripAndModes", TestWorldBindingRoundTripAndModes);
 		RunTest("WorldRuntimeProbeDefaults", TestWorldRuntimeProbeDefaults);
+		RunTest("GICaptureUsesCurrentSun", TestGICaptureUsesCurrentSun);
 		RunTest("RuntimeGISunAngleThreshold", TestRuntimeGISunAngleThreshold);
 		RunTest(
 			"ProbeBakeSavedWorldComparisonIgnoresEditorOnlyPrefabs",
