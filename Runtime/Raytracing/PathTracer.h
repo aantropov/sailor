@@ -175,7 +175,8 @@ namespace Sailor::Raytracing
 			float maxDistance,
 			const Params& params,
 			uint32_t randomSeed,
-			PreparedRaySample& outSample) const;
+			PreparedRaySample& outSample,
+			float primaryDirectionPdf = 0.0f) const;
 		SAILOR_SHARED_API bool SamplePreparedSceneVisibility(
 			const vec3& origin,
 			const vec3& direction,
@@ -272,6 +273,17 @@ namespace Sailor::Raytracing
 
 		bool AppendEmissiveTriangles(uint32_t instanceIndex, const ScenePreparationProgressCallback& progress,
 			const ScenePreparationProgress& state);
+		struct EmissiveLightSample
+		{
+			vec3 m_position{};
+			vec3 m_direction{};
+			vec3 m_radiance{};
+			float m_pdf = 0.0f;
+			uint32_t m_instanceIndex = 0u;
+			uint32_t m_triangleIndex = 0u;
+		};
+		bool SampleEmissiveLight(const vec3& origin, uint32_t& randomState, EmissiveLightSample& outSample) const;
+		float EmissiveLightPdf(const vec3& origin, const TLASHit& hit) const;
 		vec3 SampleDirectEmissive(
 			const TLASHit& receiverHit,
 			const LightingModel::SampledData& receiverMaterial,
@@ -279,12 +291,19 @@ namespace Sailor::Raytracing
 			const vec3& worldNormal,
 			float fromIor,
 			float toIor,
+			uint32_t numBsdfSamples,
 			const Params& params,
 			uint32_t& randomState) const;
 
-		vec3 Raytrace(const Math::Ray& r, uint32_t bounceLimit, uint32_t ignoreInstance, uint32_t ignoreTriangle,
+		struct RaySampleMIS
+		{
+			vec3 m_origin{};
+			float m_bsdfPdf = 0.0f; // Includes the number of BSDF samples at the previous vertex.
+			float m_environmentWeight = 1.0f;
+		};
+		vec3 Raytrace(const Math::Ray& r, int32_t bounceLimit, uint32_t ignoreInstance, uint32_t ignoreTriangle,
 			float maxRayDistance, const Params& params, float environmentIor,
-			uint32_t& randomState, bool bAllowEmissiveHit) const;
+			uint32_t& randomState, const RaySampleMIS& previousSample) const;
 		vec3 SampleRuntimeEnvironment(const vec3& direction) const;
 		vec3 SampleRuntimeDiffuseEnvironment(const vec3& direction) const;
 		SAILOR_SHARED_API vec3 SampleRuntimeDirectEnvironment(const vec3& direction) const;

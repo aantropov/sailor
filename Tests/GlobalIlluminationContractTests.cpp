@@ -8715,6 +8715,75 @@ prefabs:
 			"extinguishing an emitter must rebuild its distribution without darkening the previous receiver");
 	}
 
+	void TestAlphaCoverageEnvironmentMIS()
+	{
+		auto cover = MakeLightingTriangle({ -10000, 2, -10000 }, { 10000, 2, -10000 }, { 0, 2, 10000 },
+			{ 0, -1, 0 }, { 1, 0, 0 }, { 0, 0, 1 }, glm::vec4(1));
+		cover.m_materialIndex = 1;
+		LocalLightScene scene({ MakeLightingFloor(), cover });
+		scene.m_materials[0]->SetUniform("material.indexOfRefraction"_h, 1.0f);
+		auto mask = MakeDiffuseFixtureMaterial(scene.m_allocator, glm::vec3(0));
+		mask->SetUniform("material.baseColorFactor"_h, glm::vec4(0, 0, 0, 0.5f));
+		mask->SetUniform("material.metallicFactor"_h, 1.0f);
+		mask->SetRenderState(RHI::RenderState(true, false, 0.0f, false,
+			RHI::ECullMode::None, RHI::EBlendMode::AlphaBlending));
+		scene.m_materials.Add(mask);
+		scene.m_params.m_ambient = glm::vec3(1);
+		scene.m_params.m_bIncludeEnvironment = true;
+		scene.m_params.m_bIncludeDirectLighting = false;
+		Raytracing::PathTracer tracer;
+		Require(tracer.InitializeScene(scene.m_instances, scene.m_materials, {}, false), "covered floor fixture");
+		for (uint32_t bounces : { 0u, 1u })
+		{
+			scene.m_params.m_maxBounces = bounces;
+			glm::vec3 mean(0);
+			for (uint32_t index = 0; index < 512; ++index)
+			{
+				Raytracing::PathTracer::PreparedRaySample sample;
+				Require(tracer.SamplePreparedSceneRay({ 0, 1, 0 }, { 0, -1, 0 }, 10,
+					scene.m_params, index, sample), "covered floor ray");
+				mean += sample.m_radiance / 512.0f;
+			}
+			Require(glm::length(mean - glm::vec3(0.4f)) < 0.025f,
+				"a half-covered unit sky must light the 0.8 Lambert receiver once; bounces=" +
+				std::to_string(bounces) + ", radiance=" + std::to_string(mean.x));
+		}
+	}
+
+	void TestGlossyEmissionSampling()
+	{
+		auto emitter = MakeLightingBlocker(2.0f);
+		emitter.m_materialIndex = 1;
+		LocalLightScene scene({ MakeLightingFloor(), emitter });
+		scene.m_materials[0]->SetUniform("material.baseColorFactor"_h, glm::vec4(1));
+		scene.m_materials[0]->SetUniform("material.metallicFactor"_h, 1.0f);
+		scene.m_materials[0]->SetUniform("material.roughnessFactor"_h, 0.08f);
+		auto light = MakeDiffuseFixtureMaterial(scene.m_allocator, glm::vec3(0));
+		light->SetUniform("material.emissiveFactor"_h, glm::vec4(20, 4, 1, 0));
+		scene.m_materials.Add(light);
+		scene.m_params.m_bIncludeDirectLighting = false;
+		scene.m_params.m_bIncludeEmissive = true;
+		scene.m_params.m_maxBounces = 1;
+		Raytracing::PathTracer tracer;
+		Require(tracer.InitializeScene(scene.m_instances, scene.m_materials, {}, false), "glossy emitter fixture");
+		for (uint32_t batch = 0; batch < 8; ++batch)
+		{
+			scene.m_params.m_maxBounces = batch < 4 ? 0 : 1;
+			scene.m_params.m_numSamples = batch % 4 < 2 ? 1 : 4;
+			glm::vec3 mean(0);
+			for (uint32_t index = 0; index < 128; ++index)
+			{
+				Raytracing::PathTracer::PreparedRaySample sample;
+				Require(tracer.SamplePreparedSceneRay({ 0, 1, 0 }, { 0, -1, 0 }, 10,
+					scene.m_params, batch * 128 + index, sample), "glossy receiver ray");
+				mean += sample.m_radiance / 128.0f;
+			}
+			// A white near-mirror facing a broad source retains nearly all its radiance.
+			Require(glm::length(mean - glm::vec3(20, 4, 1)) < 2.0f,
+				"128 glossy samples must preserve broad-source energy without rare emitter spikes");
+		}
+	}
+
 	void TestCpuAlphaCutoutTraversal()
 	{
 		Memory::ObjectAllocatorPtr allocator =
@@ -8914,6 +8983,31 @@ prefabs:
 				0.0f),
 			"an opaque surface behind alpha-blended layers must still block "
 			"the remaining direct light");
+
+		// Coverage transmits a ray without scattering; the bounce limit must not
+		// discard the source behind these layers or leave their emission unscaled.
+		for (size_t index = 0; index < materials.Num(); ++index)
+		{
+			const float alpha = index == 0 ? 0.25f : (index == 1 ? 0.5f : 1.0f);
+			materials[index]->SetUniform("material.baseColorFactor"_h, glm::vec4(0, 0, 0, alpha));
+			materials[index]->SetUniform("material.metallicFactor"_h, 1.0f);
+		}
+		materials[0]->SetUniform("material.emissiveFactor"_h, glm::vec4(4, 0, 0, 0));
+		materials[2]->SetUniform("material.emissiveFactor"_h, glm::vec4(20, 4, 1, 0));
+		Require(pathTracer.InitializeScene(instances, materials, {}, false), "alpha-emission fixture");
+		Raytracing::PathTracer::Params params;
+		params.m_maxBounces = 0;
+		params.m_bIncludeEnvironment = params.m_bIncludeDirectLighting = false;
+		params.m_bIncludeEmissive = true;
+		Raytracing::PathTracer::PreparedRaySample sample;
+		Require(pathTracer.SamplePreparedSceneRay({ 0, 2, 0 }, { 0, -1, 0 }, 4, params, 11, sample),
+			"alpha-emission ray must hit the layers");
+		RequireRadianceNear(sample.m_radiance, glm::vec3(20, 4, 1) * 0.375f + glm::vec3(1, 0, 0),
+			"emission through coverage must match visibility even with zero scattering bounces");
+		Require(pathTracer.SamplePreparedSceneRay({ 0, 2, 0 }, { 0, -1, 0 }, 1.2f, params, 11, sample),
+			"short alpha-emission ray must hit the first layer");
+		RequireRadianceNear(sample.m_radiance, glm::vec3(1, 0, 0),
+			"alpha continuation must respect the remaining trace distance");
 	}
 }
 
@@ -9085,6 +9179,8 @@ int main(int argc, char** argv)
 		RunTest(
 			"EmissiveTrianglesIlluminateProbeReceivers",
 			TestEmissiveTrianglesIlluminateProbeReceivers);
+		RunTest("GlossyEmissionSampling", TestGlossyEmissionSampling);
+		RunTest("AlphaCoverageEnvironmentMIS", TestAlphaCoverageEnvironmentMIS);
 		RunTest(
 			"CpuAlphaCutoutTraversal",
 			TestCpuAlphaCutoutTraversal);

@@ -100,6 +100,13 @@ namespace Sailor::Raytracing
 			const vec3& worldNormal,
 			const vec3& viewDirection,
 			const vec3& lightDirection);
+		static float ReflectionPdf(
+			const SampledData& sample,
+			const vec3& worldNormal,
+			const vec3& viewDirection,
+			const vec3& lightDirection,
+			float fromIor,
+			float toIor);
 		static vec3 ImportanceSampleLambert(vec2 Xi, const vec3& n);
 		static vec3 ImportanceSampleHemisphere(vec2 Xi, const vec3& n);
 		static vec3 ImportanceSampleGGX(vec2 Xi, float roughness, const vec3& n);
