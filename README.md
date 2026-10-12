@@ -10,7 +10,7 @@ Sailor is a long-running passion project rooted in a lifetime of work with compu
 
 ## Showcase
 
-[![Sailor Engine - NightCity: watch the showcase on YouTube](.github/media/night-city.jpg)](https://youtu.be/WgifakC2LU0)
+[![Sailor Engine - First Look: watch the showcase on YouTube](.github/media/showcase-cover.png)](https://youtu.be/WgifakC2LU0)
 
 [**Watch the first public showcase on YouTube**](https://youtu.be/WgifakC2LU0): the editor, runtime global illumination, ECS-driven traffic, water and physics, and interactive visuals. ForestRiver and NightCity were created with AI through Sailor's engine integration. This is development footage, not a performance benchmark.
 
@@ -57,8 +57,6 @@ The C# / .NET MAUI editor, with the Content browser expanded and the Atmosphere 
 Captured with the Ultra preset and resolution factor 1.0. MSAA 8x applies to the relevant raster passes; SwarmAlien uses its own raymarching pass. The editor screenshot includes the complete application window. SwarmAlien uses synthetic audience input in this capture, not a live webcam recording.
 
 ForestRiver includes [Poly Haven](https://polyhaven.com) assets (CC0). The pavilion includes [RobotExpressive](https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf/RobotExpressive) by Tomas Laulhe / Quaternius, with modifications by Don McCurdy (CC0).
-
-NightCity uses [Car Concept](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept) by Eric Chadwick, Darmstadt Graphics Group GmbH (2024), adapted for DemoSailor under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Logos and trademarks retain their respective owners' rights; no endorsement is implied.
 
 </details>
 
