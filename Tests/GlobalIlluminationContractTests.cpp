@@ -8715,6 +8715,40 @@ prefabs:
 			"extinguishing an emitter must rebuild its distribution without darkening the previous receiver");
 	}
 
+	void TestSpatiallyCoherentProbeScattering()
+	{
+		LocalLightScene scene({ MakeLightingFloor() });
+		scene.m_materials[0]->SetUniform("material.metallicFactor"_h, 0.7f);
+		scene.m_materials[0]->SetUniform("material.roughnessFactor"_h, 0.25f);
+		GIProbeTraceRequest request;
+		request.m_settings.m_bounceCount = 1;
+		request.m_settings.m_bIncludeEmissive = false;
+		request.m_settings.m_bIncludeDirectLighting = false;
+		request.m_settings.m_maxRayDistance = 30;
+		Raytracing::GIProbesPathTracer sampler;
+		Require(sampler.Initialize(scene.m_instances, scene.m_materials, {}, request.m_settings, glm::vec3(1)),
+			"uniformly lit floor fixture");
+		GIProbe reference;
+		std::string diagnostic;
+		for (uint32_t index = 0; index < 5; ++index)
+		{
+			GIProbeIrradianceAccumulator accumulated;
+			Require(AccumulateGIProbeIrradianceRange(request, sampler, { index * 0.25f, 1, 0 }, index,
+				0, 128, 128, accumulated, diagnostic), diagnostic);
+			GIProbe probe;
+			Require(ResolveGIProbeIrradiance(accumulated, probe, diagnostic), diagnostic);
+			if (index == 0)
+			{
+				reference = probe;
+			}
+			for (uint32_t coefficient = 0; coefficient < GIProbeSphericalHarmonicsCoefficientCount; ++coefficient)
+			{
+				Require(glm::length(probe.m_irradiance[coefficient] - reference.m_irradiance[coefficient]) < 0.00001f,
+					"translating a probe over a uniform floor must not create spatial noise in indirect light");
+			}
+		}
+	}
+
 	void TestAlphaCoverageEnvironmentMIS()
 	{
 		auto cover = MakeLightingTriangle({ -10000, 2, -10000 }, { 10000, 2, -10000 }, { 0, 2, 10000 },
@@ -9313,6 +9347,7 @@ int main(int argc, char** argv)
 		RunTest("PrimaryEmissionProbeSampling", TestPrimaryEmissionProbeSampling);
 		RunTest("GlossyEmissionSampling", TestGlossyEmissionSampling);
 		RunTest("NearbyEmissionProbeSampling", TestNearbyEmissionProbeSampling);
+		RunTest("SpatiallyCoherentProbeScattering", TestSpatiallyCoherentProbeScattering);
 		RunTest("AlphaCoverageEnvironmentMIS", TestAlphaCoverageEnvironmentMIS);
 		RunTest(
 			"CpuAlphaCutoutTraversal",

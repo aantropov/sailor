@@ -613,13 +613,15 @@ bool Sailor::AccumulateGIProbeIrradianceRange(
 		direction /= directionLength;
 
 		GIProbeBakeRaySample sample;
+		// Shared paths keep a uniform surface uniform across neighboring probes;
+		// independent per-probe bounce seeds turn sampling noise into lighting blobs.
 		if (!sampler.Sample(
 				position,
 				direction,
 				request.m_settings.m_maxRayDistance,
 				MixGIProbeRandomSeed(
 					request.m_settings.m_randomSeed,
-					probeSeed,
+					0u,
 					rayIndex,
 					2u),
 				sample,
