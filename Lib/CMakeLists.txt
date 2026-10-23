@@ -247,6 +247,21 @@ foreach(Source IN ITEMS ${SAILOR_RUNTIME_SOURCES})
 endforeach()
 
 add_library(SailorLib SHARED ${SAILOR_RUNTIME_SOURCES} ${SAILOR_LIB_SOURCES})
+if(WIN32)
+	target_sources(SailorLib PRIVATE "${PROJECT_BINARY_DIR}/ApplicationIcon.rc")
+	set_source_files_properties("${PROJECT_BINARY_DIR}/ApplicationIcon.rc" PROPERTIES
+		OBJECT_DEPENDS "${PROJECT_SOURCE_DIR}/Resources/AppIcon/appicon.ico")
+elseif(APPLE)
+	set(SAILOR_APPLICATION_ICON "${PROJECT_SOURCE_DIR}/Resources/AppIcon/appicon.png")
+	set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+		"${SAILOR_APPLICATION_ICON}")
+	file(READ "${SAILOR_APPLICATION_ICON}" SAILOR_APPLICATION_ICON_BYTES HEX)
+	string(REGEX REPLACE "[0-9a-f][0-9a-f]" "0x\\0,"
+		SAILOR_APPLICATION_ICON_BYTES "${SAILOR_APPLICATION_ICON_BYTES}")
+	configure_file("${PROJECT_SOURCE_DIR}/Resources/AppIcon/ApplicationIconData.h.in"
+		"${CMAKE_CURRENT_BINARY_DIR}/ApplicationIconData.h" @ONLY)
+	target_include_directories(SailorLib PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+endif()
 add_library(Sailor::Runtime ALIAS SailorLib)
 set_property(TARGET SailorLib PROPERTY FOLDER "Libraries")
 set_property(TARGET SailorLib PROPERTY EXPORT_NAME Runtime)

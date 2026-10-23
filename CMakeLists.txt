@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.21)
 project(Sailor VERSION 0.1)
 
+if(WIN32)
+	enable_language(RC)
+	configure_file(Resources/AppIcon/ApplicationIcon.rc.in
+		"${PROJECT_BINARY_DIR}/ApplicationIcon.rc" @ONLY)
+endif()
+
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)

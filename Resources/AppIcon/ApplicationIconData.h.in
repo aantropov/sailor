@@ -1,0 +1,6 @@
+#pragma once
+
+namespace
+{
+	constexpr unsigned char c_applicationIconData[] = { @SAILOR_APPLICATION_ICON_BYTES@ };
+}

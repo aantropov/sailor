@@ -3,6 +3,7 @@
 #include "Platform/Mac/Window.h"
 #include "Platform/Win32/Input.h"
 #include "Sailor.h"
+#include "ApplicationIconData.h"
 
 #import <Cocoa/Cocoa.h>
 #import <CoreGraphics/CoreGraphics.h>
@@ -516,6 +517,11 @@ bool Window::Create(const char* title, const char*, int32_t inWidth, int32_t inH
 		if (!bRunsInsideEditor)
 		{
 			[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+			// Standalone executables also run without an app bundle or a fixed working directory.
+			NSData* iconData = [NSData dataWithBytes:c_applicationIconData length:sizeof(c_applicationIconData)];
+			NSImage* icon = [[NSImage alloc] initWithData:iconData];
+			[NSApp setApplicationIconImage:icon];
+			[icon release];
 		}
 
 		const NSWindowStyleMask style = parentWindow == nullptr ?
