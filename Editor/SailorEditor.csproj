@@ -34,6 +34,7 @@
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'tizen'">6.5</SupportedOSPlatformVersion>
 		<AllowUnsafeBlocks>True</AllowUnsafeBlocks>
 		<BaseOutputPath>..\Binaries\Editor\</BaseOutputPath>
+        <ApplicationIcon Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">Resources\AppIcon\appicon.ico</ApplicationIcon>
 		<SignAssembly>False</SignAssembly>
 		<Title>SailorEditor</Title>
 		<PackageProjectUrl>https://github.com/aantropov/sailor</PackageProjectUrl>
@@ -71,8 +72,7 @@
 
 	<ItemGroup>
 		<!-- App Icon -->
-        <MauiIcon Include="..\Resources\AppIcon\appicon.png" Link="Resources\AppIcon\appicon.png"
-                  BaseSize="640,640" Resize="true" Color="#FFFFFF" />
+        <MauiIcon Include="Resources\AppIcon\appicon.png" BaseSize="640,640" Resize="true" Color="#FFFFFF" />
 
 		<!-- Splash Screen -->
 		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#512BD4" BaseSize="128,128" />

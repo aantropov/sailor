@@ -47,7 +47,6 @@ namespace
 {
 	constexpr UINT c_destroyWindowMessage = WM_APP + 0x351;
 	constexpr UINT c_updateMouseCaptureMessage = WM_APP + 0x352;
-	constexpr wchar_t c_applicationIconResource[] = L"SAILOR_APP_ICON";
 	constexpr std::wstring_view c_editorAssetDropPrefix =
 		L"SailorEditor.Asset:";
 	constexpr size_t c_unbracedFileIdLength = 36;
@@ -496,17 +495,7 @@ bool Window::Create(const char* title, const char* className, int32_t inWidth, i
 	wcx.lpfnWndProc = reinterpret_cast<WNDPROC>(WindowProc);
 	wcx.hInstance = m_hInstance;
 	wcx.lpszClassName = className;
-	// The engine can be hosted by an editor or workspace executable.
-	HMODULE iconModule = nullptr;
-	if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-		GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-		c_applicationIconResource, &iconModule))
-	{
-		wcx.hIcon = static_cast<HICON>(LoadImageW(iconModule, c_applicationIconResource,
-			IMAGE_ICON, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_SHARED));
-		wcx.hIconSm = static_cast<HICON>(LoadImageW(iconModule, c_applicationIconResource,
-			IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED));
-	}
+	wcx.hIcon = LoadIcon(NULL, IDI_APPLICATION);
 	wcx.hCursor = LoadCursor(NULL, IDC_ARROW);
 
 	m_windowClassAtom = RegisterClassEx(&wcx);

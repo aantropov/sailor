@@ -1,8 +1,5 @@
 if(WIN32)
-	add_executable(SailorExec WIN32 Main.cpp SailorEngine.manifest
-		"${PROJECT_BINARY_DIR}/ApplicationIcon.rc")
-	set_source_files_properties("${PROJECT_BINARY_DIR}/ApplicationIcon.rc" PROPERTIES
-		OBJECT_DEPENDS "${PROJECT_SOURCE_DIR}/Resources/AppIcon/appicon.ico")
+	add_executable(SailorExec WIN32 Main.cpp SailorEngine.manifest)
 else()
 	add_executable(SailorExec Main.cpp)
 endif()
