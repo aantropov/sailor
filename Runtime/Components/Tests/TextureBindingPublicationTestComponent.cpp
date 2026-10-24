@@ -305,6 +305,7 @@ struct Sailor::TextureBindingPublicationState
 	std::array<Tasks::TaskPtr<TexturePtr>, 2> m_loads{};
 	std::array<uint32_t, 2> m_indices{};
 	ShaderSetPtr m_shader;
+	std::array<ShaderSetPtr, 2> m_passShaders;
 	Samplers m_sourceA, m_sourceB;
 	TextureImporter::TextureSamplerSlotSnapshot m_unrelatedA;
 	TVector<uint32_t> m_requested;
@@ -655,6 +656,16 @@ namespace
 		auto shaderInfo = registry->GetAssetInfoPtr("Tests/Shaders/TextureBindingPublication.shader");
 		if (!shaderInfo) return "fixture shader metadata is missing";
 		App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), state.m_shader);
+		const std::array passShaderPaths{ "Shaders/DepthOnly.shader", "Shaders/ShadowCaster.shader" };
+		for (uint32_t i = 0u; i < passShaderPaths.size(); ++i)
+		{
+			auto info = registry->GetAssetInfoPtr(passShaderPaths[i]);
+			if (!info)
+			{
+				return std::format("fixture pass shader metadata is missing: {}", passShaderPaths[i]);
+			}
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(info->GetFileId(), state.m_passShaders[i], { "MASKED" });
+		}
 		return {};
 	}
 }
@@ -681,6 +692,14 @@ void TextureBindingPublicationTestComponent::Tick(float)
 	if (state.m_phase == Phase::Loading)
 	{
 		if (!state.m_shader || !state.m_shader->IsReady()) return;
+		// Prepare may defer a pass while its shader loads; publication checks require ready passes.
+		for (const auto& shader : state.m_passShaders)
+		{
+			if (!shader || !shader->IsReady())
+			{
+				return;
+			}
+		}
 		for (uint32_t i = 0u; i < 2u; ++i)
 		{
 			if (!state.m_loads[i] || !state.m_loads[i]->IsFinished()) return;
