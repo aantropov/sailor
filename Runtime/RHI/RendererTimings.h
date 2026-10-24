@@ -21,7 +21,7 @@ namespace Sailor::RHI
 	public:
 		using Clock = std::chrono::steady_clock;
 
-		bool RecordFrame(Clock::time_point now, const FrameSubmissionResult& submission)
+		bool RecordFrame(Clock::time_point now, const FrameSubmissionResult& submission, uint64_t presentedFrameCount)
 		{
 			if (!submission.m_bSubmitted)
 			{
@@ -31,11 +31,16 @@ namespace Sailor::RHI
 			{
 				m_bHasFrame = true;
 				m_intervalStartedAt = now;
+				m_lastPresentedFrameCount = presentedFrameCount;
 				return false;
 			}
 
 			++m_renderFrames;
-			m_presentedFrames += submission.m_bPresented ? 1u : 0u;
+			// Present runs independently: zero or several presentations may finish
+			// between two scene submissions. Also tolerate a new device's counter.
+			m_presentedFrames += presentedFrameCount >= m_lastPresentedFrameCount ?
+				presentedFrameCount - m_lastPresentedFrameCount : presentedFrameCount;
+			m_lastPresentedFrameCount = presentedFrameCount;
 			const double seconds = std::chrono::duration<double>(now - m_intervalStartedAt).count();
 			if (seconds < 1.0)
 			{
@@ -157,7 +162,8 @@ namespace Sailor::RHI
 		Clock::time_point m_intervalStartedAt{};
 		bool m_bHasFrame = false;
 		uint32_t m_renderFrames = 0u;
-		uint32_t m_presentedFrames = 0u;
+		uint64_t m_presentedFrames = 0u;
+		uint64_t m_lastPresentedFrameCount = 0u;
 		uint32_t m_renderFps = 0u;
 		uint32_t m_presentFps = 0u;
 		TVector<TimingHistory> m_history;

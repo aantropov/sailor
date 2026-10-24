@@ -91,8 +91,13 @@ namespace Sailor::RHI
 
 		// Waits only the flight slot that is about to be reused. This must happen
 		// before FrameGraph preparation mutates any submission-owned resources.
-		SAILOR_API virtual bool BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSwapchainImage) = 0;
+		// Deferred presentation exposes an owned scene output as BackBuffer. A ready
+		// render target does not imply that the window can accept a presentation yet.
+		SAILOR_API virtual bool BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSwapchainImage,
+			bool bDeferPresentation = false) = 0;
 		SAILOR_API virtual uint32_t GetMaxFramesInFlight() const = 0;
+		// Cumulative accepted presents, sampled independently of scene submissions.
+		SAILOR_API virtual uint64_t GetPresentedFrameCount() const { return 0; }
 
 		SAILOR_API virtual bool AcquireNextImage() = 0;
 		// Submit the flight acquired by BeginRenderSubmission/AcquireNextImage.

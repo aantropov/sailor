@@ -1226,7 +1226,7 @@ bool App::Shutdown()
 			editor->CancelGIProbesBake(diagnostic);
 		}
 		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render,
-			EThreadType::Editor, EThreadType::Background, EThreadType::Physics, EThreadType::Audio, EThreadType::GI });
+			EThreadType::Editor, EThreadType::Background, EThreadType::Physics, EThreadType::Audio, EThreadType::GI, EThreadType::Present });
 	}
 
 	EditorRuntime::ResetForAppLifecycle();
@@ -1245,7 +1245,7 @@ bool App::Shutdown()
 	if (scheduler)
 	{
 		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render,
-			EThreadType::Editor, EThreadType::Background, EThreadType::Physics, EThreadType::Audio, EThreadType::GI });
+			EThreadType::Editor, EThreadType::Background, EThreadType::Physics, EThreadType::Audio, EThreadType::GI, EThreadType::Present });
 		s_pInstance->m_pendingAssetReloadTask.Clear();
 	}
 
@@ -1263,7 +1263,7 @@ bool App::Shutdown()
 	{
 		// EndPlay may queue work that still uses the remaining submodules.
 		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render,
-			EThreadType::Editor, EThreadType::Background, EThreadType::Physics, EThreadType::Audio, EThreadType::GI });
+			EThreadType::Editor, EThreadType::Background, EThreadType::Physics, EThreadType::Audio, EThreadType::GI, EThreadType::Present });
 	}
 	RemoveSubmodule<Physics::JoltRuntime>();
 	RemoveSubmodule<ECS::ECSFactory>();

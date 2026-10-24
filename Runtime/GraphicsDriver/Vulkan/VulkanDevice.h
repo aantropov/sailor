@@ -10,6 +10,7 @@
 #include "VulkanMemory.h"
 #include "VulkanBufferMemory.h"
 #include "VulkanPipileneStates.h"
+#include "Tasks/Tasks.h"
 
 using namespace Sailor;
 
@@ -68,7 +69,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API VkResult WaitIdle();
 		SAILOR_API void WaitIdlePresentQueue();
 
-		SAILOR_API bool BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSwapchainImage);
+		SAILOR_API bool BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSwapchainImage,
+			bool bDeferPresentation = false);
 		SAILOR_API bool AcquireNextImage();
 		SAILOR_API uint32_t GetMaxFramesInFlight() const;
 		VulkanFencePtr GetCurrentFrameFence() const { return m_syncFences[m_currentFrame]; }
@@ -78,6 +80,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API bool PresentFrame(const FrameState& state, const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& waitSemaphores);
 		SAILOR_API bool WasLastFrameSubmitSuccessful() const { return m_bLastFrameSubmitSuccessful; }
+		bool WasLastFramePresented() const { return m_bLastFramePresented; }
+		uint64_t GetPresentedFrameCount() const { return m_presentedFrameCount.load(); }
 		SAILOR_API bool SubmitFrameWithoutPresent(const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& waitSemaphores);
 
 		SAILOR_API bool IsSwapChainOutdated() const { return m_bIsSwapChainOutdated; }
@@ -190,6 +194,12 @@ namespace Sailor::GraphicsDriver::Vulkan
 			bool hasSwapchainImage, TVector<VkCommandBuffer>& outCommands);
 		bool SubmitFrame(const VkSubmitInfo& submitInfo);
 		bool ConsumeAcquiredImage();
+		void DrainPresentationTasks();
+		bool PresentScene(uint32_t output);
+		bool QueuePresent(uint32_t image);
+		bool CreateSceneOutputs();
+		bool SubmitScene(const TVector<VulkanCommandBufferPtr>& commands,
+			const TVector<VulkanSemaphorePtr>& waits, VulkanSemaphorePtr ready = {});
 
 		VkPhysicalDeviceProperties m_physicalDeviceProperties{};
 		VkPhysicalDeviceDepthStencilResolveProperties m_depthStencilResolveProperties{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_STENCIL_RESOLVE_PROPERTIES };
@@ -214,6 +224,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		// We have one global present queeueu
 		VulkanQueuePtr m_presentQueue;
+		VulkanQueuePtr m_presentationCopyQueue;
 		VulkanQueuePtr m_graphicsQueue;
 		VulkanQueuePtr m_computeQueue;
 		VulkanQueuePtr m_transferQueue;
@@ -242,6 +253,21 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TVector<VulkanFencePtr> m_syncImages;
 		TVector<VulkanFencePtr> m_presentFences;
 		TVector<bool> m_swapchainImagesInitialized;
+		TVector<VulkanImageViewPtr> m_sceneOutputs;
+		// Present retains at most m_maxFramesInFlight outputs. Reserve the same
+		// number for Render so it can keep submitting while presentation is blocked.
+		TVector<Tasks::TaskPtr<bool>> m_presentationTasks;
+		TVector<VulkanSemaphorePtr> m_sceneReadySemaphores;
+		uint32_t m_currentSceneOutput = 0;
+		VulkanCommandPoolPtr m_presentationCommandPool;
+		VulkanCommandBufferPtr m_sceneOutputInitialization;
+		VulkanFencePtr m_sceneOutputInitializationFence;
+		TVector<VulkanCommandBufferPtr> m_presentationCommands;
+		TVector<VulkanFencePtr> m_presentationCopyFences;
+		bool m_bDeferredPresentation = false;
+		bool m_bLastFramePresented = false;
+		std::atomic<uint64_t> m_presentedFrameCount = 0;
+		std::atomic<VkResult> m_presentationError = VK_SUCCESS;
 		std::optional<uint32_t> m_acquiredImageFlight;
 		size_t m_currentFrame = 0;
 		uint32_t m_currentSwapchainImageIndex = 0;

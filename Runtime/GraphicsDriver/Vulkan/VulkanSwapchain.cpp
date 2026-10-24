@@ -71,7 +71,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 	createSwapChainInfo.imageArrayLayers = 1;
 	createSwapChainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 
-	VulkanQueueFamilyIndices indices = VulkanApi::FindQueueFamilies(device->GetPhysicalDevice(), m_surface);
+	const auto& indices = device->GetQueueFamilies();
 	check(indices.m_graphicsFamily.has_value());
 	check(indices.m_presentFamily.has_value());
 
@@ -125,6 +125,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 		m_swapchainImageViews.Add(VulkanImageViewPtr::Make(m_device, m_swapchainImages[i]));
 
 		m_swapchainImages[i]->m_defaultLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		m_swapchainImages[i]->m_format = m_surfaceFormat.format;
 		m_swapchainImages[i]->m_mipLevels = 1;
 		m_swapchainImages[i]->m_arrayLayers = 1;
 		m_swapchainImages[i]->m_extent = VkExtent3D(m_swapchainExtent.width, m_swapchainExtent.height, 1);

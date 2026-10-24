@@ -404,7 +404,7 @@ if(APPLE)
         target_link_libraries(VulkanSubmissionTests PRIVATE ${SAILOR_TEST_MOLTENVK_LIBRARY})
     endif()
     target_link_libraries(VulkanSubmissionTests PRIVATE VulkanCapabilityOverrides protobuf::libprotobuf "-framework IOSurface" "-framework CoreFoundation"
-        "-framework QuartzCore" "-framework Metal")
+        "-framework QuartzCore" "-framework Metal" "-framework Foundation")
 endif()
 # GPU scenarios are explicit command-line modes; default CTest needs no device.
 add_test(NAME VulkanSubmissionTests COMMAND VulkanSubmissionTests)

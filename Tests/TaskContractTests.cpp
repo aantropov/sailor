@@ -561,11 +561,32 @@ namespace
 			"interned task text must outlive the task object");
 	}
 
+	void TestPresentQueueIndependence()
+	{
+		Tests::TaskTestApp app;
+		auto& scheduler = app.GetScheduler();
+		scheduler.Initialize();
+		std::atomic<bool> release{ false }, secondRan{ false };
+		auto present = Tasks::CreateTask("Blocked presentation"_h, [&]() { release.wait(false); }, EThreadType::Present);
+		auto second = Tasks::CreateTask("Next presentation"_h, [&]() { secondRan = true; }, EThreadType::Present);
+		auto render = Tasks::CreateTask("Independent rendering"_h, []() {}, EThreadType::Render);
+		present->Run();
+		second->Run();
+		render->Run();
+		const bool rendered = WaitForTask(scheduler, render);
+		const bool serialized = !secondRan.load();
+		release = true;
+		release.notify_all();
+		const bool drained = WaitForTask(scheduler, second);
+		Require(rendered, "a stalled Present queue must not stall Render");
+		Require(serialized && drained, "Present must serialize and drain its tasks");
+	}
+
 	void TestThreadNameIdentifiers()
 	{
 		constexpr std::array types{ EThreadType::Render, EThreadType::Worker,
 			EThreadType::RHI, EThreadType::Editor, EThreadType::Background,
-			EThreadType::Physics, EThreadType::Audio, EThreadType::GI };
+			EThreadType::Physics, EThreadType::Audio, EThreadType::GI, EThreadType::Present };
 		std::array<StringHash, types.size()> names;
 		{
 			Tests::TaskTestApp app;
@@ -602,6 +623,8 @@ int main()
 	{
 		TestTaskNameLifetime();
 		std::cout << "[PASS] TaskNameLifetime\n";
+		TestPresentQueueIndependence();
+		std::cout << "[PASS] PresentQueueIndependence\n";
 		TestThreadNameIdentifiers();
 		std::cout << "[PASS] ThreadNameIdentifiers\n";
 		TestContinuationsBeforeDuringAndAfterCompletion();

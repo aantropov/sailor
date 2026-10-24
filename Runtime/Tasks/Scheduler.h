@@ -55,7 +55,11 @@ namespace Sailor
 		Audio = 7,
 
 		// Bounded runtime probe tracing on a dedicated utility-priority pool.
-		GI = 8
+		GI = 8,
+
+		// Serialized window acquisition, copying and presentation. Display pacing
+		// must not occupy Render or the general-purpose Worker pool.
+		Present = 9
 	};
 
 	namespace Tasks

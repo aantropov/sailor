@@ -131,7 +131,7 @@ void WorkerThread::Process()
 
 	SAILOR_PROFILE_THREAD_NAME(threadName.c_str());
 
-	if (m_threadType == EThreadType::Render || m_threadType == EThreadType::RHI)
+	if (m_threadType == EThreadType::Render || m_threadType == EThreadType::RHI || m_threadType == EThreadType::Present)
 	{
 #if defined(_WIN32)
 		SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
@@ -208,7 +208,7 @@ void Scheduler::Initialize()
 	const unsigned numGIThreads = (std::max)(
 		1u,
 		(std::min)(MaxGIThreads, coresCount));
-	const unsigned numReservedThreads = 8u + numRHIThreads;
+	const unsigned numReservedThreads = 9u + numRHIThreads;
 	// Dedicated queues are often idle or throttled. Reserving all of their
 	// threads must not prevent an eight-way gameplay batch from running.
 	const unsigned minimumWorkers = (std::min)(8u, (std::max)(1u, coresCount));
@@ -226,6 +226,13 @@ void Scheduler::Initialize()
 	m_renderingThreadId = newRenderingThread->GetThreadId();
 	m_threadTypes[m_renderingThreadId] = EThreadType::Render;
 	m_workerThreads.Emplace(newRenderingThread);
+
+	WorkerThread* newPresentThread = new WorkerThread(*this, "Present Thread"_h, EThreadType::Present,
+		m_refreshCondVar[(uint32_t)EThreadType::Present],
+		m_queueMutex[(uint32_t)EThreadType::Present],
+		m_pSharedTaskQueue[(uint32_t)EThreadType::Present]);
+	m_threadTypes[newPresentThread->GetThreadId()] = EThreadType::Present;
+	m_workerThreads.Emplace(newPresentThread);
 
 	for (uint32_t i = 0; i < numThreads; i++)
 	{
@@ -337,6 +344,7 @@ Scheduler::~Scheduler()
 	NotifyWorkerThread(EThreadType::Physics, true);
 	NotifyWorkerThread(EThreadType::Audio, true);
 	NotifyWorkerThread(EThreadType::GI, true);
+	NotifyWorkerThread(EThreadType::Present, true);
 
 	for (auto& worker : m_workerThreads)
 	{

@@ -168,6 +168,7 @@ VulkanDevice::~VulkanDevice()
 
 bool VulkanDevice::BeginConditionalDestroy()
 {
+	DrainPresentationTasks();
 	// Keep device resources alive if pending work could not be drained.
 	if (!m_bIsDeviceLost && (!ConsumeAcquiredImage() || WaitIdle() != VK_SUCCESS) && !m_bIsDeviceLost)
 	{
@@ -193,6 +194,14 @@ bool VulkanDevice::BeginConditionalDestroy()
 	m_syncImages.Clear();
 	m_syncFences.Clear();
 
+	m_presentationCommands.Clear();
+	m_presentationCopyFences.Clear();
+	m_sceneOutputs.Clear();
+	m_presentationTasks.Clear();
+	m_sceneReadySemaphores.Clear();
+	m_presentationCommandPool.Clear();
+	m_sceneOutputInitialization.Clear();
+	m_sceneOutputInitializationFence.Clear();
 	m_frameDeps.Clear();
 	m_acquiredImageFlight.reset();
 
@@ -205,6 +214,7 @@ bool VulkanDevice::BeginConditionalDestroy()
 void VulkanDevice::Shutdown()
 {
 	m_presentQueue.Clear();
+	m_presentationCopyQueue.Clear();
 	m_graphicsQueue.Clear();
 	m_computeQueue.Clear();
 	m_transferQueue.Clear();
@@ -465,6 +475,15 @@ TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 
 void VulkanDevice::CreateFrameSyncSemaphores()
 {
+	m_presentationCommands.Clear();
+	m_presentationCopyFences.Clear();
+	m_sceneOutputs.Clear();
+	m_presentationTasks.Clear();
+	m_sceneReadySemaphores.Clear();
+	m_presentationCommandPool.Clear();
+	m_sceneOutputInitialization.Clear();
+	m_sceneOutputInitializationFence.Clear();
+	m_bDeferredPresentation = false;
 	m_presentFences.Clear();
 	m_imageAvailableSemaphores.Clear();
 	m_renderFinishedSemaphores.Clear();
@@ -517,6 +536,7 @@ bool VulkanDevice::RecreateSwapchain(Platform::Window* pViewport)
 	m_bIsSwapChainOutdated = false;
 	m_bIsSwapChainSuboptimal = false;
 	m_frameSubmissionError = VK_SUCCESS;
+	m_presentationError = VK_SUCCESS;
 	m_bLastFrameSubmitSuccessful = false;
 
 	return true;
@@ -539,18 +559,50 @@ bool VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	}
 
 	m_queueFamilies = VulkanApi::FindQueueFamilies(physicalDevice, m_surface);
+	uint32_t familyCount = 0;
+	vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &familyCount, nullptr);
+	TVector<VkQueueFamilyProperties> families(familyCount);
+	vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &familyCount, families.GetData());
+	uint32_t copyFamily = m_queueFamilies.m_graphicsFamily.value();
+	uint32_t presentIndex = 0;
+	// Prefer an unused graphics/present family. MoltenVK exposes independent
+	// Metal queues as separate Vulkan families, with one queue in each family.
+	for (uint32_t family = 0; family < familyCount; ++family)
+	{
+		if (family == m_queueFamilies.m_graphicsFamily || family == m_queueFamilies.m_computeFamily ||
+			family == m_queueFamilies.m_transferFamily || !(families[family].queueFlags & VK_QUEUE_GRAPHICS_BIT))
+		{
+			continue;
+		}
+		VkBool32 supported = VK_FALSE;
+		if (vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, family, *m_surface, &supported) == VK_SUCCESS && supported)
+		{
+			copyFamily = family;
+			m_queueFamilies.m_presentFamily = family;
+			break;
+		}
+	}
+	if (copyFamily == m_queueFamilies.m_graphicsFamily && families[copyFamily].queueCount > 1)
+	{
+		VkBool32 supported = VK_FALSE;
+		if (vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, copyFamily, *m_surface, &supported) == VK_SUCCESS && supported)
+		{
+			m_queueFamilies.m_presentFamily = copyFamily;
+			presentIndex = 1;
+		}
+	}
 	TVector<VkDeviceQueueCreateInfo> queueCreateInfos;
 	TSet<uint32_t> uniqueQueueFamilies = { m_queueFamilies.m_graphicsFamily.value(),
 		m_queueFamilies.m_presentFamily.value(),
 		m_queueFamilies.m_transferFamily.value(),
 		m_queueFamilies.m_computeFamily.value() };
-	float queuePriority = 1.0f;
+	const float queuePriorities[] = { 1.0f, 1.0f };
 	for (uint32_t queueFamily : uniqueQueueFamilies)
 	{
 		VkDeviceQueueCreateInfo queueCreateInfo{ VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
 		queueCreateInfo.queueFamilyIndex = queueFamily;
-		queueCreateInfo.queueCount = 1;
-		queueCreateInfo.pQueuePriorities = &queuePriority;
+		queueCreateInfo.queueCount = queueFamily == m_queueFamilies.m_presentFamily ? presentIndex + 1 : 1;
+		queueCreateInfo.pQueuePriorities = queuePriorities;
 		queueCreateInfos.Add(queueCreateInfo);
 	}
 
@@ -655,9 +707,8 @@ bool VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	// A VkQueue requires external synchronization. Queue families commonly alias
 	// the same family/index on MoltenVK, so all aliases must share one wrapper and
 	// therefore one submission lock.
-	auto getOrCreateQueue = [this](uint32_t queueFamilyIndex) -> VulkanQueuePtr
+	auto getOrCreateQueue = [this](uint32_t queueFamilyIndex, uint32_t queueIndex = 0) -> VulkanQueuePtr
 		{
-			constexpr uint32_t queueIndex = 0;
 			const VulkanQueuePtr queues[] = {
 				m_graphicsQueue,
 				m_computeQueue,
@@ -684,7 +735,12 @@ bool VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	m_graphicsQueue = getOrCreateQueue(m_queueFamilies.m_graphicsFamily.value());
 	m_computeQueue = getOrCreateQueue(m_queueFamilies.m_computeFamily.value());
 	m_transferQueue = getOrCreateQueue(m_queueFamilies.m_transferFamily.value());
-	m_presentQueue = getOrCreateQueue(m_queueFamilies.m_presentFamily.value());
+	m_presentQueue = getOrCreateQueue(m_queueFamilies.m_presentFamily.value(), presentIndex);
+	m_presentationCopyQueue = getOrCreateQueue(copyFamily,
+		copyFamily == m_queueFamilies.m_presentFamily ? presentIndex : 0);
+	SAILOR_LOG("Vulkan presentation queue: family=%u index=%u; graphics family=%u index=%u; independent=%d",
+		m_presentationCopyQueue->QueueFamilyIndex(), m_presentationCopyQueue->QueueIndex(),
+		m_graphicsQueue->QueueFamilyIndex(), m_graphicsQueue->QueueIndex(), m_presentationCopyQueue != m_graphicsQueue);
 	return true;
 }
 
@@ -781,14 +837,16 @@ void VulkanDevice::CleanupSwapChain()
 
 void VulkanDevice::WaitIdlePresentQueue()
 {
+	DrainPresentationTasks();
 	m_presentQueue->WaitIdle();
 }
 
 VkResult VulkanDevice::WaitIdle()
 {
+	DrainPresentationTasks();
 	VkResult result = VK_SUCCESS;
 	for (auto* queue : { m_graphicsQueue.GetRawPtr(), m_computeQueue.GetRawPtr(),
-		m_transferQueue.GetRawPtr(), m_presentQueue.GetRawPtr() })
+		m_transferQueue.GetRawPtr(), m_presentQueue.GetRawPtr(), m_presentationCopyQueue.GetRawPtr() })
 	{
 		const VkResult queueResult = queue->WaitIdle();
 		if (queueResult == VK_ERROR_DEVICE_LOST) m_bIsDeviceLost = true;
@@ -853,6 +911,10 @@ bool VulkanDevice::FixLostDevice(Platform::Window* pViewport)
 
 VulkanImageViewPtr VulkanDevice::GetBackBuffer() const
 {
+	if (m_bDeferredPresentation && m_currentSceneOutput < m_sceneOutputs.Num())
+	{
+		return m_sceneOutputs[m_currentSceneOutput];
+	}
 	return m_swapchain->GetImageViews()[m_currentSwapchainImageIndex];
 }
 
@@ -873,12 +935,19 @@ uint32_t VulkanDevice::GetMaxFramesInFlight() const
 	return m_maxFramesInFlight;
 }
 
-bool VulkanDevice::BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSwapchainImage)
+bool VulkanDevice::BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSwapchainImage,
+	bool bDeferPresentation)
 {
+	if (m_bDeferredPresentation != bDeferPresentation)
+	{
+		// A mode change is a lifecycle boundary; normal frames never wait here.
+		DrainPresentationTasks();
+	}
+	m_bDeferredPresentation = bDeferPresentation;
 	outFlightSlot = static_cast<uint32_t>(m_currentFrame);
 	outHasSwapchainImage = false;
 
-	if (m_bIsDeviceLost || m_frameSubmissionError != VK_SUCCESS ||
+	if (m_bIsDeviceLost || m_frameSubmissionError != VK_SUCCESS || m_presentationError != VK_SUCCESS ||
 		m_currentFrame >= m_syncFences.Num() || !m_syncFences[m_currentFrame])
 	{
 		return false;
@@ -902,6 +971,31 @@ bool VulkanDevice::BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSw
 	if (m_bIsSwapChainOutdated)
 	{
 		return true;
+	}
+
+	if (bDeferPresentation)
+	{
+		if (!CreateSceneOutputs())
+		{
+			return false;
+		}
+		for (uint32_t i = 1; i <= m_sceneOutputs.Num(); ++i)
+		{
+			const uint32_t output = (m_currentSceneOutput + i) % m_sceneOutputs.Num();
+			const auto& task = m_presentationTasks[output];
+			if (!task || task->IsFinished())
+			{
+				if (task && !task->GetResult())
+				{
+					return false;
+				}
+				m_currentSceneOutput = output;
+				outHasSwapchainImage = true;
+				return true;
+			}
+		}
+		check(false); // Admission leaves at least the render-flight outputs free.
+		return false;
 	}
 
 	VkResult result = m_swapchain->AcquireNextImage(UINT64_MAX, m_imageAvailableSemaphores[m_currentFrame], VulkanFencePtr(), m_currentSwapchainImageIndex);
@@ -944,7 +1038,8 @@ void VulkanDevice::PrepareFrameCommands(const TVector<VulkanCommandBufferPtr>& p
 	bool hasSwapchainImage, TVector<VkCommandBuffer>& outCommands)
 {
 	m_frameDeps[m_currentFrame].Clear(false);
-	const bool initializeImage = hasSwapchainImage && !m_swapchainImagesInitialized[m_currentSwapchainImageIndex];
+	const bool initializeImage = !m_bDeferredPresentation &&
+		hasSwapchainImage && !m_swapchainImagesInitialized[m_currentSwapchainImageIndex];
 	if (initializeImage || !m_bDepthBufferInitialized)
 	{
 		VulkanCommandBufferPtr transitCmd = CreateCommandBuffer(RHI::ECommandListQueue::Graphics);
@@ -1001,6 +1096,7 @@ bool VulkanDevice::SubmitFrame(const VkSubmitInfo& submitInfo)
 
 bool VulkanDevice::ConsumeAcquiredImage()
 {
+	DrainPresentationTasks();
 	if (!m_acquiredImageFlight) return true;
 
 	// A refused frame did not consume the acquire semaphore. Queue its wait
@@ -1024,6 +1120,31 @@ bool VulkanDevice::ConsumeAcquiredImage()
 
 bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& semaphoresToWait)
 {
+	m_bLastFramePresented = false;
+	if (m_bDeferredPresentation)
+	{
+		uint32_t pending = 0;
+		for (const auto& task : m_presentationTasks)
+		{
+			pending += task && !task->IsFinished();
+		}
+		const bool enqueue = !primaryCommandBuffers.IsEmpty() && !m_bIsSwapChainOutdated &&
+			pending < m_maxFramesInFlight;
+		const uint32_t output = m_currentSceneOutput;
+		if (!SubmitScene(primaryCommandBuffers, semaphoresToWait,
+			enqueue ? m_sceneReadySemaphores[output] : VulkanSemaphorePtr()))
+		{
+			return false;
+		}
+		if (enqueue)
+		{
+			auto task = Tasks::CreateTask<bool>("Present completed scene"_h,
+				[this, output]() { return PresentScene(output); }, EThreadType::Present);
+			m_presentationTasks[output] = task;
+			task->Run();
+		}
+		return true;
+	}
 	m_bLastFrameSubmitSuccessful = false;
 	if (m_bIsDeviceLost || m_frameSubmissionError != VK_SUCCESS) return false;
 
@@ -1083,6 +1204,216 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 	m_acquiredImageFlight.reset();
 	m_swapchainImagesInitialized[m_currentSwapchainImageIndex] = true;
 
+	m_bLastFramePresented = QueuePresent(m_currentSwapchainImageIndex);
+	return m_bLastFramePresented;
+}
+
+bool VulkanDevice::CreateSceneOutputs()
+{
+	if (!m_sceneOutputs.IsEmpty())
+	{
+		return true;
+	}
+
+	TVector<VulkanImageViewPtr> outputs;
+	for (uint32_t flight = 0; flight < 2u * m_maxFramesInFlight; ++flight)
+	{
+		auto image = VulkanImagePtr::Make(VulkanDevicePtr(this));
+		const auto extent = m_swapchain->GetExtent();
+		image->m_extent = { extent.width, extent.height, 1 };
+		image->m_format = m_swapchain->GetImageFormat();
+		image->m_mipLevels = 1;
+		image->m_arrayLayers = 1;
+		image->m_usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+			VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+		image->m_defaultLayout = VK_IMAGE_LAYOUT_GENERAL;
+		if (m_graphicsQueue->QueueFamilyIndex() != m_presentationCopyQueue->QueueFamilyIndex())
+		{
+			image->m_sharingMode = VK_SHARING_MODE_CONCURRENT;
+			image->m_queueFamilyIndices = { m_graphicsQueue->QueueFamilyIndex(), m_presentationCopyQueue->QueueFamilyIndex() };
+		}
+		image->Compile();
+		if ((VkImage)*image == VK_NULL_HANDLE)
+		{
+			return false;
+		}
+		if (image->Bind(VulkanDeviceMemoryPtr::Make(VulkanDevicePtr(this),
+			image->GetMemoryRequirements(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), 0) != VK_SUCCESS)
+		{
+			return false;
+		}
+		auto view = VulkanImageViewPtr::Make(VulkanDevicePtr(this), image);
+		view->Compile();
+		if ((VkImageView)*view == VK_NULL_HANDLE)
+		{
+			return false;
+		}
+		SetDebugName(VK_OBJECT_TYPE_IMAGE, (uint64_t)(VkImage)*image, "Scene output"_h);
+		outputs.Add(std::move(view));
+	}
+	// Initialize before any FrameGraph split can submit a use of these images.
+	// Retain this one command until swapchain recovery/shutdown drains the queue.
+	m_sceneOutputInitialization = CreateCommandBuffer(RHI::ECommandListQueue::Graphics);
+	m_sceneOutputInitialization->BeginCommandList();
+	for (const auto& output : outputs)
+	{
+		m_sceneOutputInitialization->ImageMemoryBarrier(output, output->m_format,
+			VK_IMAGE_LAYOUT_UNDEFINED, output->GetImage()->m_defaultLayout);
+	}
+	m_sceneOutputInitialization->EndCommandList();
+	VkSubmitInfo initialize{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
+	initialize.commandBufferCount = 1;
+	initialize.pCommandBuffers = m_sceneOutputInitialization->GetHandle();
+	m_sceneOutputInitializationFence = VulkanFencePtr::Make(VulkanDevicePtr(this));
+	m_frameSubmissionError = m_graphicsQueue->Submit(initialize, m_sceneOutputInitializationFence);
+	if (m_frameSubmissionError == VK_SUCCESS)
+	{
+		// One initialization per swapchain generation, before other queues can
+		// submit FrameGraph splits that reference a scene output.
+		m_frameSubmissionError = m_sceneOutputInitializationFence->Wait();
+	}
+	if (m_frameSubmissionError != VK_SUCCESS)
+	{
+		m_bIsSwapChainOutdated = true;
+		if (m_frameSubmissionError == VK_ERROR_DEVICE_LOST)
+		{
+			m_bIsDeviceLost = true;
+		}
+		return false;
+	}
+	m_sceneOutputs = std::move(outputs);
+	m_presentationTasks.Resize(m_sceneOutputs.Num());
+	for (size_t output = 0; output < m_sceneOutputs.Num(); ++output)
+	{
+		m_sceneReadySemaphores.Add(VulkanSemaphorePtr::Make(VulkanDevicePtr(this)));
+	}
+	m_presentationCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this),
+		m_presentationCopyQueue->QueueFamilyIndex(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+	m_presentationCommands.Resize(m_swapchain->GetImageViews().Num());
+	for (size_t image = 0; image < m_swapchain->GetImageViews().Num(); ++image)
+	{
+		m_presentationCopyFences.Add(VulkanFencePtr::Make(VulkanDevicePtr(this), VK_FENCE_CREATE_SIGNALED_BIT));
+	}
+	return true;
+}
+
+void VulkanDevice::DrainPresentationTasks()
+{
+	for (auto& task : m_presentationTasks)
+	{
+		if (task)
+		{
+			task->Wait();
+		}
+	}
+}
+
+bool VulkanDevice::PresentScene(uint32_t output)
+{
+	check(App::GetSubmodule<Tasks::Scheduler>()->GetCurrentThreadType() == EThreadType::Present);
+	if (m_bIsSwapChainOutdated || m_bIsDeviceLost)
+	{
+		return false;
+	}
+	auto fail = [this](VkResult result)
+	{
+		if (result != VK_ERROR_OUT_OF_DATE_KHR)
+		{
+			m_presentationError = result;
+		}
+		if (result == VK_ERROR_DEVICE_LOST)
+		{
+			m_bIsDeviceLost = true;
+		}
+		m_bIsSwapChainOutdated = true;
+		return false;
+	};
+
+	// WSI waits, including a driver's lazy drawable acquisition during submit,
+	// belong entirely to this task. Never take the scene queue when an independent
+	// presentation queue is available.
+	auto acquired = VulkanFencePtr::Make(VulkanDevicePtr(this));
+	uint32_t image = 0;
+	VkResult result = m_swapchain->AcquireNextImage(UINT64_MAX, {}, acquired, image);
+	if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+	{
+		return fail(result);
+	}
+	if (result == VK_SUBOPTIMAL_KHR)
+	{
+		m_bIsSwapChainSuboptimal = true;
+	}
+	result = acquired->Wait();
+	if (result != VK_SUCCESS)
+	{
+		return fail(result);
+	}
+	const auto copyFence = m_presentationCopyFences[image];
+	result = copyFence->Wait();
+	if (result != VK_SUCCESS)
+	{
+		return fail(result);
+	}
+	const auto source = m_sceneOutputs[output];
+	const auto destination = m_swapchain->GetImageViews()[image];
+	auto command = VulkanCommandBufferPtr::Make(VulkanDevicePtr(this),
+		m_presentationCommandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+	command->BeginCommandList();
+	// A one-shot acquire fence can remain referenced by WSI after the copy ends.
+	// Retain it with this image's command until the image is reacquired.
+	command->AddDependency(acquired);
+	command->AddDependency(source);
+	command->ImageMemoryBarrier(destination, destination->m_format,
+		m_swapchainImagesInitialized[image] ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	VkImageCopy region{};
+	region.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+	region.dstSubresource = region.srcSubresource;
+	region.extent = source->GetImage()->m_extent;
+	// GENERAL avoids a layout change on the scene image from another queue.
+	// The ready semaphore supplies visibility; task completion after copyFence
+	// proves all reads ended before Render may select this output again.
+	vkCmdCopyImage(*command, *source->GetImage(), VK_IMAGE_LAYOUT_GENERAL,
+		*destination->GetImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+	command->ImageMemoryBarrier(destination, destination->m_format,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+	command->EndCommandList();
+	m_presentationCommands[image] = command;
+
+	VkSemaphore ready = *m_sceneReadySemaphores[output];
+	VkSemaphore finished = *m_renderFinishedSemaphores[image];
+	VkPipelineStageFlags stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+	VkSubmitInfo submit{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
+	submit.waitSemaphoreCount = 1;
+	submit.pWaitSemaphores = &ready;
+	submit.pWaitDstStageMask = &stage;
+	submit.commandBufferCount = 1;
+	submit.pCommandBuffers = command->GetHandle();
+	submit.signalSemaphoreCount = 1;
+	submit.pSignalSemaphores = &finished;
+	result = copyFence->Reset();
+	if (result == VK_SUCCESS)
+	{
+		result = m_presentationCopyQueue->Submit(submit, copyFence);
+	}
+	if (result != VK_SUCCESS)
+	{
+		return fail(result);
+	}
+	m_numSubmittedCommandBuffersAcc.fetch_add(1u, std::memory_order_relaxed);
+	m_swapchainImagesInitialized[image] = true;
+	const bool presented = QueuePresent(image);
+	result = copyFence->Wait();
+	if (result != VK_SUCCESS)
+	{
+		return fail(result);
+	}
+	return presented;
+}
+
+bool VulkanDevice::QueuePresent(uint32_t image)
+{
+	VkSemaphore signalSemaphores[] = { *m_renderFinishedSemaphores[image] };
 	VkPresentInfoKHR presentInfo{};
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 	presentInfo.waitSemaphoreCount = 1;
@@ -1090,7 +1421,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 	VkSwapchainKHR swapChains[] = { *m_swapchain };
 	presentInfo.swapchainCount = 1;
 	presentInfo.pSwapchains = swapChains;
-	presentInfo.pImageIndices = &m_currentSwapchainImageIndex;
+	presentInfo.pImageIndices = &image;
 	VkResult presentResult = VK_SUCCESS;
 	VulkanFencePtr presentFence;
 	VkSwapchainPresentFenceInfoEXT fenceInfo{ VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT };
@@ -1146,16 +1477,27 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 	else if (presentResult != VK_SUCCESS)
 	{
 		m_bIsSwapChainOutdated = true;
-		m_frameSubmissionError = presentResult;
+		m_presentationError = presentResult;
 		if (presentResult == VK_ERROR_DEVICE_LOST) m_bIsDeviceLost = true;
 		SAILOR_LOG_ERROR("Failed to present swap chain image: %d", static_cast<int>(presentResult));
 		return false;
 	}
 
-	return presentResult == VK_SUCCESS || presentResult == VK_SUBOPTIMAL_KHR;
+	const bool presented = presentResult == VK_SUCCESS || presentResult == VK_SUBOPTIMAL_KHR;
+	if (presented)
+	{
+		++m_presentedFrameCount;
+	}
+	return presented;
 }
 
 bool VulkanDevice::SubmitFrameWithoutPresent(const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& semaphoresToWait)
+{
+	return SubmitScene(primaryCommandBuffers, semaphoresToWait);
+}
+
+bool VulkanDevice::SubmitScene(const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers,
+	const TVector<VulkanSemaphorePtr>& semaphoresToWait, VulkanSemaphorePtr ready)
 {
 	m_bLastFrameSubmitSuccessful = false;
 	if (m_bIsDeviceLost || m_frameSubmissionError != VK_SUCCESS) return false;
@@ -1202,8 +1544,9 @@ bool VulkanDevice::SubmitFrameWithoutPresent(const TVector<VulkanCommandBufferPt
 	submitInfo.pWaitDstStageMask = waitStages;
 	submitInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.Num());
 	submitInfo.pCommandBuffers = commandBuffers.Num() > 0 ? &commandBuffers[0] : nullptr;
-	submitInfo.signalSemaphoreCount = 0;
-	submitInfo.pSignalSemaphores = nullptr;
+	submitInfo.signalSemaphoreCount = ready ? 1 : 0;
+	VkSemaphore readyHandle = ready ? (VkSemaphore)*ready : VK_NULL_HANDLE;
+	submitInfo.pSignalSemaphores = ready ? &readyHandle : nullptr;
 
 	const bool submitted = SubmitFrame(submitInfo);
 

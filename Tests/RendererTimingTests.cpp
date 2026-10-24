@@ -89,7 +89,7 @@ namespace
 		RendererTimings queriesOff;
 		queriesOn.ResetGpuTimings(1);
 		const RendererTimings::Clock::time_point start{};
-		Require(!queriesOn.RecordFrame(start, { true, true }) && !queriesOff.RecordFrame(start, { true, true }),
+		Require(!queriesOn.RecordFrame(start, { true, true }, 1) && !queriesOff.RecordFrame(start, { true, true }, 1),
 			"the first completed frame primes the cadence interval");
 		for (uint32_t frame = 1; frame <= 10; ++frame)
 		{
@@ -97,8 +97,8 @@ namespace
 			// CPU preparation, acquire waits and idle time fill the rest of each 100 ms interval.
 			queriesOn.PublishGpuTimings(Result(1, frame, now - 5ms, 5.0f,
 				{ { "Render"_h, ECommandListQueue::Graphics, 5.0f } }));
-			const bool updated = queriesOn.RecordFrame(now, { true, true });
-			Require(updated == queriesOff.RecordFrame(now, { true, true }) && updated == (frame == 10),
+			const bool updated = queriesOn.RecordFrame(now, { true, true }, frame + 1);
+			Require(updated == queriesOff.RecordFrame(now, { true, true }, frame + 1) && updated == (frame == 10),
 				"query readiness must not change the wall-clock reporting interval");
 		}
 		Require(queriesOn.GetRenderFps() == 10 && queriesOn.GetPresentFps() == 10 &&
@@ -106,8 +106,8 @@ namespace
 			"5 ms GPU work at 100 ms frame intervals is 10 FPS, not 200 FPS");
 		queriesOn.ResetGpuTimings(2);
 		Require(queriesOn.GetRenderFps() == 10, "disabling or restarting profiling must not reset frame cadence");
-		Require(!queriesOn.RecordFrame(start + 1500ms, { true, true }) &&
-			queriesOn.RecordFrame(start + 2500ms, { true, true }),
+		Require(!queriesOn.RecordFrame(start + 1500ms, { true, true }, 12) &&
+			queriesOn.RecordFrame(start + 2500ms, { true, true }, 13),
 			"long gaps between render tasks must stay in the cadence denominator");
 		Require(queriesOn.GetRenderFps() == 1 && queriesOn.GetPresentFps() == 1,
 			"two completed frames over 1.5 seconds must not be reported as two FPS");
@@ -117,40 +117,55 @@ namespace
 	{
 		RendererTimings timings;
 		const RendererTimings::Clock::time_point start{};
-		timings.RecordFrame(start, { true, false });
+		timings.RecordFrame(start, { true, false }, 0);
 		for (uint32_t frame = 1; frame <= 20; ++frame)
 		{
-			timings.RecordFrame(start + frame * 50ms, { true, false });
+			timings.RecordFrame(start + frame * 50ms, { true, false }, 0);
 		}
 		Require(timings.GetRenderFps() == 20 && timings.GetPresentFps() == 0,
 			"offscreen render submissions must not manufacture swapchain presents");
 		for (uint32_t frame = 1; frame <= 20; ++frame)
 		{
-			timings.RecordFrame(start + 1s + frame * 50ms, { true, frame % 2 == 0 });
+			timings.RecordFrame(start + 1s + frame * 50ms, { true, frame % 2 == 0 }, frame / 2);
 		}
 		Require(timings.GetRenderFps() == 20 && timings.GetPresentFps() == 10,
 			"mixed offscreen and swapchain frames need separate cadence counters");
 		timings.ResetFrameCadence();
 		Require(timings.GetRenderFps() == 0 && timings.GetPresentFps() == 0,
 			"failed frame submission must clear the reported cadence");
-		Require(!timings.RecordFrame(start + 10s, { true, true }), "the next successful frame must start a fresh interval");
+		Require(!timings.RecordFrame(start + 10s, { true, true }, 11), "the next successful frame must start a fresh interval");
 	}
 
 	void TestAcceptedSubmitSurvivesFailedPresent()
 	{
 		RendererTimings timings;
 		const RendererTimings::Clock::time_point start{};
-		timings.RecordFrame(start, { true, true });
+		timings.RecordFrame(start, { true, true }, 1);
 		for (uint32_t frame = 1; frame <= 10; ++frame)
 		{
-			Require(!timings.RecordFrame(start + frame * 100ms - 50ms, {}),
+			Require(!timings.RecordFrame(start + frame * 100ms - 50ms, {}, frame),
 				"a rejected submission must not contribute a rendered or presented frame");
 			// An out-of-date swapchain can reject presentation after accepting its GPU submission.
 			const FrameSubmissionResult submission{ true, frame != 10 };
-			timings.RecordFrame(start + frame * 100ms, submission);
+			timings.RecordFrame(start + frame * 100ms, submission, 1 + (std::min)(frame, 9u));
 		}
 		Require(timings.GetRenderFps() == 10 && timings.GetPresentFps() == 9,
 			"a successful submit with failed present still contributes to render cadence");
+	}
+
+	void TestAsynchronousPresentCadence()
+	{
+		RendererTimings timings;
+		const RendererTimings::Clock::time_point start{};
+		timings.RecordFrame(start, { true, false }, 100);
+		timings.RecordFrame(start + 500ms, { true, false }, 106);
+		timings.RecordFrame(start + 1s, { true, false }, 114);
+		Require(timings.GetRenderFps() == 2 && timings.GetPresentFps() == 14,
+			"asynchronous presents must be counted even when this scene has not presented");
+		timings.RecordFrame(start + 1500ms, { true, false }, 2);
+		timings.RecordFrame(start + 2s, { true, false }, 5);
+		Require(timings.GetRenderFps() == 2 && timings.GetPresentFps() == 5,
+			"device counter replacement must not underflow presentation cadence");
 	}
 
 	void TestGpuAggregationPreservesQueues()
@@ -376,6 +391,7 @@ int main()
 		TestWallClockCadenceDoesNotDependOnGpuDuration();
 		TestOffscreenFramesAreNotPresents();
 		TestAcceptedSubmitSurvivesFailedPresent();
+		TestAsynchronousPresentCadence();
 		TestGpuAggregationPreservesQueues();
 		TestTimingNameLifetime();
 		TestPendingInvalidAndNewGeneration();
