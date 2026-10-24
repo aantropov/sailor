@@ -1846,6 +1846,21 @@ renderTargets:
 		Require(movedSnapshot.ResolveMesh(movedSnapshot.m_proxies[0], 0u) == baseOnlyMesh &&
 			movedSnapshot.ResolveMesh(shadowOnlyPass.m_meshList[0], 0u) == lod2,
 			"shadow-only LOD chains must not be skipped when the main meshes have no LODs");
+
+		auto fixedSource = resource->m_proxy;
+		fixedSource.m_lodPolicy.m_maxLod = 0u;
+		auto fixedResource = RHI::RHISceneProxyResourcePtr::Make(std::move(fixedSource));
+		auto fixedRecord = farRecord;
+		fixedRecord.m_topology = fixedResource;
+		movedSnapshot.ResetForReuse();
+		movedSnapshot.m_proxies.Emplace(RHI::RenderInstanceHandle{}, fixedRecord, *fixedResource);
+		movedSnapshot.m_shadowMapsToUpdate.Resize(1u);
+		movedSnapshot.m_shadowMapsToUpdate[0].m_meshList.Emplace(RHI::RenderInstanceHandle{}, fixedRecord, *fixedResource);
+		movedSnapshot.PrepareLods(glm::mat4(1.0f), projection);
+		Require(movedSnapshot.ResolveMesh(movedSnapshot.m_proxies[0], 0u) == baseMesh &&
+			movedSnapshot.ResolveMesh(movedSnapshot.m_shadowMapsToUpdate[0].m_meshList[0], 0u) == shorterMesh &&
+			movedSnapshot.m_lodMeshes.IsEmpty(),
+			"fixed LOD zero must use base geometry directly without building per-instance LOD storage");
 	}
 	void TestCustomShadowMaterialKey()
 	{
@@ -1947,6 +1962,99 @@ renderTargets:
 		Require(batches.Num() == 2,
 			"batch identity must include the texture binding set handle, not its descriptor count");
 
+	}
+
+	void TestCompatibleMaterialsShareDrawsAndRetainVersions()
+	{
+		using namespace RHI;
+		auto vertex = RHIShaderPtr::Make(EShaderStage::Vertex);
+		auto fragment = RHIShaderPtr::Make(EShaderStage::Fragment);
+		auto texture = RHITexturePtr::Make(ETextureFiltration::Nearest, ETextureClamping::Repeat, false);
+		auto otherTexture = RHITexturePtr::Make(ETextureFiltration::Nearest, ETextureClamping::Repeat, false);
+		auto makeBindings = [&](RHITexturePtr second)
+		{
+			auto bindings = RHIShaderBindingSetPtr::Make();
+			auto binding = bindings->GetOrAddShaderBinding("textures"_h);
+			ShaderLayoutBinding layout;
+			layout.m_name = "textures"_h;
+			layout.m_set = 3u;
+			layout.m_arrayCount = 2u;
+			binding->SetLayout(layout);
+			binding->SetTextureBindings({ texture, second });
+			bindings->RecalculateCompatibility();
+			return bindings;
+		};
+		auto mesh = RHIMeshPtr::Make();
+		mesh->m_vertexBuffer = RHIBufferPtr::Make(EBufferUsageBit::VertexBuffer_Bit, EMemoryPropertyBit::DeviceLocal);
+		mesh->m_indexBuffer = RHIBufferPtr::Make(EBufferUsageBit::IndexBuffer_Bit, EMemoryPropertyBit::DeviceLocal);
+		TVector<RHIMaterialPtr> materials;
+		TVector<RHIMaterialVersionPtr> versions;
+		TPackedDrawPacket<uint32_t> packet;
+		for (uint32_t index = 0u; index < 256u; ++index)
+		{
+			auto material = RHIMaterialPtr::Make(RenderState{}, vertex, fragment);
+			material->SetBindings(makeBindings(texture));
+			versions.Add(material->GetVersion());
+			packet.Add(RHIBatch(material, mesh), mesh, index, index);
+			materials.Add(std::move(material));
+		}
+		packet.Finalize();
+		Require(packet.GetGroups().Num() == 1u && packet.GetNumDrawInstances() == 256u,
+			"compatible resources must instance across 256 distinct material versions");
+		std::array<bool, 256u> seen{};
+		for (uint32_t index = 0u; index < 256u; ++index)
+		{
+			const auto value = packet.GetPayload(EMobilityType::Dynamic).m_instances[index];
+			Require(value < seen.size() && !seen[value],
+				"combining materials must preserve each instance's material payload");
+			seen[value] = true;
+			materials[index]->SetBindings(makeBindings(otherTexture));
+			Require(versions[index].NumRefs() > 1u,
+				"every submitted material allocation must survive replacement, including non-representative materials");
+		}
+		auto changedBatch = RHIBatch(materials[0], mesh);
+		Require(!(changedBatch == packet.GetGroups()[0].m_batch),
+			"a change after the first entry in a texture array must prevent batching");
+		auto differentTopology = RHIMaterialPtr::Make(RenderState{}, vertex, fragment,
+			RHIVertexDescriptionPtr{}, EPrimitiveTopology::LineList);
+		differentTopology->SetBindings(makeBindings(texture));
+		Require(!(RHIBatch(differentTopology, mesh) == packet.GetGroups()[0].m_batch),
+			"different primitive topologies must never share a pipeline draw");
+		packet.Reset();
+		for (const auto& version : versions)
+		{
+			Require(version.NumRefs() == 1u, "recycling the packet must release every retired allocation");
+		}
+	}
+
+	void TestTextureBindingGrouping()
+	{
+		TVector<TVector<uint32_t>> requests;
+		for (uint32_t index = 0u; index < 256u; ++index)
+		{
+			requests.Add({ 0u, 4096u + index });
+		}
+		const auto groups = Framegraph::Details::BuildTextureBindingGroups(requests);
+		Require(groups.m_textures.Num() == 16u && groups.m_requestGroups.Num() == requests.Num(),
+			"256 distinct textures must share 16 bounded local sets rather than one set per material");
+		for (uint32_t request = 0u; request < requests.Num(); ++request)
+		{
+			const auto& textures = groups.m_textures[groups.m_requestGroups[request]];
+			Require(textures.Num() <= 17u && textures[0] == 0u &&
+				std::find(textures.begin(), textures.end(), requests[request][1]) != textures.end(),
+				"a grouped set must retain the default and the exact high-index texture of every member");
+		}
+		for (auto& request : requests)
+		{
+			request = { 7u, 0u, 7u };
+		}
+		const auto shared = Framegraph::Details::BuildTextureBindingGroups(requests);
+		Require(shared.m_textures.Num() == 1u && shared.m_textures[0] == TVector<uint32_t>{ 0u, 7u },
+			"materials sharing a texture must reuse one canonical set");
+		const auto overlap = Framegraph::Details::BuildTextureBindingGroups({ { 0u, 1u, 2u, 3u, 4u }, { 3u, 2u }, { 6u } });
+		Require(overlap.m_requestGroups[0] == overlap.m_requestGroups[1] &&
+			overlap.m_requestGroups[0] != overlap.m_requestGroups[2],
+			"a large material set can serve a subset without absorbing unrelated textures");
 	}
 
 	void TestTextureSamplerPublication()
@@ -2634,6 +2742,8 @@ int main(int argc, char** argv)
 		{ "InstancedViewLodAndDistanceContract", TestInstancedViewLodAndDistanceContract },
 		{ "SnapshotCameraLodContract", TestSnapshotCameraLodContract },
 		{ "BatchTextureBindingIdentityContract", TestBatchTextureBindingIdentityContract },
+		{ "CompatibleMaterialsShareDrawsAndRetainVersions", TestCompatibleMaterialsShareDrawsAndRetainVersions },
+		{ "TextureBindingGrouping", TestTextureBindingGrouping },
 		{ "CustomShadowMaterialKey", TestCustomShadowMaterialKey },
 		{ "TextureSamplerPublication", TestTextureSamplerPublication },
 		{ "ShaderReadOnlyBarrierSynchronizesShaderSampling", TestShaderReadOnlyBarrierSynchronizesShaderSampling },

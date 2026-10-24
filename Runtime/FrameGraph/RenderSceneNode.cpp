@@ -45,11 +45,12 @@ namespace
 	bool TryPrepareBatch(const RHIMaterialPtr& material, const RHIMeshPtr& mesh,
 		RHIMaterialPreparationCache& preparedMaterials, RHIBatch& batch)
 	{
-		if (!mesh || !preparedMaterials.Get(material).m_bHasGraphicsShaders)
+		const auto& prepared = preparedMaterials.Get(material);
+		if (!mesh || !prepared.m_bHasGraphicsShaders)
 		{
 			return false;
 		}
-		batch = preparedMaterials.MakeBatch(material, mesh);
+		batch = preparedMaterials.MakeBatch(prepared, mesh);
 		const auto* bindings = batch.GetMaterialBindingsRaw();
 		return bindings && !bindings->GetShaderBindings().IsEmpty();
 	}
@@ -350,6 +351,138 @@ RHIShaderBindingSetPtr Details::GetTextureBindingSet(
 #endif
 }
 
+TextureBindingGroups Details::BuildTextureBindingGroups(const TVector<TVector<uint32_t>>& requests)
+{
+	auto normalize = [](TVector<uint32_t>& textures)
+	{
+		textures.Add(0u);
+		std::sort(textures.begin(), textures.end());
+		size_t count = 0u;
+		for (uint32_t texture : textures)
+		{
+			if (count == 0u || textures[count - 1u] != texture)
+			{
+				textures[count++] = texture;
+			}
+		}
+		textures.Resize(count);
+	};
+	TVector<uint32_t> allTextures;
+	for (const auto& request : requests)
+	{
+		for (uint32_t texture : request)
+		{
+			allTextures.Add(texture);
+		}
+	}
+	normalize(allTextures);
+	const size_t targetSize = (std::min)(size_t(MaxTextureSlotsPerBatch),
+		(std::max)(size_t(2u), static_cast<size_t>(std::ceil(std::sqrt(double(allTextures.Num()))))));
+	TextureBindingGroups result;
+	TVector<uint32_t> merged;
+	for (const auto& request : requests)
+	{
+		uint32_t bestGroup = static_cast<uint32_t>(result.m_textures.Num());
+		size_t bestAdded = (std::numeric_limits<size_t>::max)();
+		for (uint32_t groupIndex = 0u; groupIndex < result.m_textures.Num(); ++groupIndex)
+		{
+			const auto& group = result.m_textures[groupIndex];
+			merged = group;
+			for (uint32_t texture : request)
+			{
+				merged.Add(texture);
+			}
+			normalize(merged);
+			const size_t added = merged.Num() - group.Num();
+			if ((merged.Num() <= targetSize || added == 0u) && added < bestAdded)
+			{
+				bestGroup = groupIndex;
+				bestAdded = added;
+				if (added == 0u)
+				{
+					break;
+				}
+			}
+		}
+		if (bestGroup == result.m_textures.Num())
+		{
+			result.m_textures.Add(request);
+		}
+		else
+		{
+			for (uint32_t texture : request)
+			{
+				result.m_textures[bestGroup].Add(texture);
+			}
+		}
+		normalize(result.m_textures[bestGroup]);
+		result.m_requestGroups.Add(bestGroup);
+	}
+	return result;
+}
+
+void Details::ApplyTextureBindingGroups(TextureBindingCache& cache,
+	TextureBindingGroupingCache& groupingCache, TVector<RHI::PackedDrawGroup>& draws, uint64_t frame)
+{
+#if defined(__APPLE__)
+	TMap<const RHIShaderBindingSet*, uint32_t> sourceIndices;
+	TVector<RHIShaderBindingSetPtr> sources;
+	for (const auto& draw : draws)
+	{
+		const auto& bindings = draw.m_batch.m_textureBindings;
+		if (bindings && sourceIndices.Insert(bindings.GetRawPtr(), static_cast<uint32_t>(sources.Num())))
+		{
+			sources.Add(bindings);
+		}
+	}
+	if (sources.Num() <= 1u)
+	{
+		return;
+	}
+	if (groupingCache.m_sources != sources)
+	{
+		TVector<TVector<uint32_t>> requests(sources.Num());
+		uint32_t found = 0u;
+		for (const auto& entry : cache)
+		{
+			const uint32_t* index = nullptr;
+			if (sourceIndices.Find(entry.Second()->m_textureBindings.GetRawPtr(), index))
+			{
+				requests[*index] = entry.First().GetTextures();
+				++found;
+			}
+		}
+		if (found != sources.Num())
+		{
+			return;
+		}
+		groupingCache.m_sources = std::move(sources);
+		groupingCache.m_plan = BuildTextureBindingGroups(requests);
+	}
+	const auto& plan = groupingCache.m_plan;
+	TVector<RHIShaderBindingSetPtr> bindings(plan.m_textures.Num());
+	TVector<uint32_t> limits(plan.m_textures.Num());
+	for (uint32_t index = 0u; index < plan.m_textures.Num(); ++index)
+	{
+		bool current = false;
+		bindings[index] = GetTextureBindingSet(cache, plan.m_textures[index], frame, limits[index], current);
+	}
+	for (auto& draw : draws)
+	{
+		const uint32_t* source = nullptr;
+		if (sourceIndices.Find(draw.m_batch.m_textureBindings.GetRawPtr(), source))
+		{
+			const uint32_t group = plan.m_requestGroups[*source];
+			if (bindings[group])
+			{
+				draw.m_batch.m_textureBindings = bindings[group];
+				draw.m_batch.m_supportedMeshesPerBatch = limits[group];
+			}
+		}
+	}
+#endif
+}
+
 void Details::EvictTextureBindingCache(
 	TextureBindingCache& textureBindingCache,
 	uint64_t frame)
@@ -436,6 +569,10 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 			{
 				packet.Finalize(false);
 			}
+			syncSharedResources.Lock();
+			Details::ApplyTextureBindingGroups(m_textureBindingCache, m_textureBindingGroupingCache,
+				packet.m_groups, sceneViewSnapshot.m_frame);
+			syncSharedResources.Unlock();
 			orderedDrawItems.Clear(false);
 		}, EThreadType::RHI);
 
@@ -645,8 +782,6 @@ void RenderSceneNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 				continue;
 			}
 
-			const auto& preparedMaterial = preparedMaterials.Get(material);
-
 			uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
 #if defined(__APPLE__)
 			bool bCurrentTextureBindings = false;
@@ -688,6 +823,7 @@ void RenderSceneNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 				continue;
 			}
 
+			const auto& preparedMaterial = preparedMaterials.Get(material);
 			auto data = MakeInstanceData(
 				sceneView, proxy, *mesh, preparedMaterial, i);
 
@@ -1146,6 +1282,7 @@ void RenderSceneNode::Clear()
 {
 #if defined(__APPLE__)
 	m_textureBindingCache.Clear();
+	m_textureBindingGroupingCache = {};
 #endif
 	m_pagedArenaCache.Clear();
 }

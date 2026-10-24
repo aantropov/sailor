@@ -51,7 +51,11 @@ namespace Sailor::RHI
 
 		RHIBatch MakeBatch(const RHIMaterialPtr& material, const RHIMeshPtr& mesh)
 		{
-			const auto& entry = Get(material);
+			return MakeBatch(Get(material), mesh);
+		}
+
+		static RHIBatch MakeBatch(const Entry& entry, const RHIMeshPtr& mesh)
+		{
 			RHIBatch result;
 			result.m_material = entry.m_material;
 			result.m_materialVersion = entry.m_version;

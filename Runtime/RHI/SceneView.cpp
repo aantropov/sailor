@@ -930,7 +930,8 @@ void RHISceneViewSnapshot::PrepareLods(const glm::mat4& viewMatrix, const glm::m
 		{
 			LodOffsets offsets;
 			const auto* source = proxy.GetSource();
-			if (!source->m_lodPolicy.m_bEnabled || !proxy.m_resource->m_bHasLods)
+			if (!source->m_lodPolicy.m_bEnabled || source->m_lodPolicy.m_maxLod == 0u ||
+				!proxy.m_resource->m_bHasLods)
 			{
 				return offsets;
 			}

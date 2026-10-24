@@ -77,11 +77,12 @@ namespace Sailor::RHI
 			}
 
 			const bool bSameBatch =
-				m_materialVersion == rhs.m_materialVersion &&
-				bindings->GetCompatibilityHashCode() == rhsBindings->GetCompatibilityHashCode() &&
+				bindings->IsCompatibleWith(*rhsBindings) &&
 				m_material->GetVertexShader() == rhs.m_material->GetVertexShader() &&
 				m_material->GetFragmentShader() == rhs.m_material->GetFragmentShader() &&
 				m_material->GetRenderState() == rhs.m_material->GetRenderState() &&
+				m_material->GetVertexDescription() == rhs.m_material->GetVertexDescription() &&
+				m_material->GetTopology() == rhs.m_material->GetTopology() &&
 				m_mesh->m_vertexBuffer->GetCompatibilityHashCode() == rhs.m_mesh->m_vertexBuffer->GetCompatibilityHashCode() &&
 				m_mesh->m_indexBuffer->GetCompatibilityHashCode() == rhs.m_mesh->m_indexBuffer->GetCompatibilityHashCode() &&
 				m_textureBindings == rhs.m_textureBindings;
@@ -94,10 +95,15 @@ namespace Sailor::RHI
 			const auto* bindings = GetMaterialBindingsRaw();
 			size_t hash = bindings ? bindings->GetCompatibilityHashCode() : 0u;
 
-			HashCombine(hash, m_materialVersion);
+			if (!bindings || !m_mesh || !m_mesh->m_vertexBuffer || !m_mesh->m_indexBuffer)
+			{
+				HashCombine(hash, m_materialVersion);
+			}
 			if (m_material)
 			{
-				HashCombine(hash, Sailor::GetHash(m_material->GetRenderState()));
+				HashCombine(hash, Sailor::GetHash(m_material->GetRenderState()),
+					m_material->GetVertexShader(), m_material->GetFragmentShader(),
+					m_material->GetVertexDescription(), m_material->GetTopology());
 			}
 			if (m_mesh && m_mesh->m_vertexBuffer && m_mesh->m_indexBuffer)
 			{
