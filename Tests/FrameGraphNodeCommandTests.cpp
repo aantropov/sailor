@@ -2091,6 +2091,42 @@ frame:
 		return result;
 	}
 
+	void TestMaterialBindingCompatibility()
+	{
+		auto& driver = Renderer::GetDriver();
+		for (uint32_t mode = 0u; mode < 3u; ++mode)
+		{
+			std::array<RHIShaderBindingSetPtr, 2u> sets;
+			std::array<VkBuffer, 2u> buffers{};
+			std::array<VkDeviceSize, 2u> offsets{};
+			for (uint32_t index = 0u; index < sets.size(); ++index)
+			{
+				sets[index] = driver->CreateShaderBindings();
+				const auto binding = mode == 0u ?
+					driver->AddBufferToShaderBindings(sets[index], "batchCompatibility"_h,
+						64u, 0u, EShaderBindingType::UniformBuffer) :
+					driver->AddSsboToShaderBindings(sets[index], "batchCompatibility"_h,
+						64u, 1u, 0u, mode == 2u);
+				Require(binding && sets[index]->m_vulkan.m_descriptorSet,
+					"batch compatibility fixtures must have real allocated descriptors");
+				VkWriteDescriptorSet write{};
+				sets[index]->m_vulkan.m_descriptorSet->m_descriptors[0]->Apply(write);
+				buffers[index] = write.pBufferInfo->buffer;
+				offsets[index] = write.pBufferInfo->offset;
+			}
+			const bool sameDescriptor = buffers[0] == buffers[1] && offsets[0] == offsets[1];
+			Require(sets[0]->IsCompatibleWith(*sets[1]) == sameDescriptor,
+				"material compatibility must match native UBO and SSBO buffer offsets exactly");
+			Require(!sameDescriptor || sets[0]->GetCompatibilityHashCode() == sets[1]->GetCompatibilityHashCode(),
+				"different allocations sharing a full-buffer descriptor must hash equally");
+			if (mode != 1u)
+			{
+				Require(!sameDescriptor, "offset-bound allocations must remain separate batches");
+			}
+		}
+		std::cout << "Material batching: native uniform, indexed storage and offset storage compatibility passed\n";
+	}
+
 	void TestIndexedStorageBindings(ShaderSetPtr shader, size_t elementSize, bool suballocated)
 	{
 		auto& driver = Renderer::GetDriver();
@@ -8168,6 +8204,7 @@ namespace Sailor::Tests
 
 	void RunFrameGraphNodeCommandTests(const std::filesystem::path& workspace)
 	{
+		TestMaterialBindingCompatibility();
 		RunShaderInterfaceCommandTests();
 		RunPostProcessingCommandTests();
 		RunGIResolveCommandTests();

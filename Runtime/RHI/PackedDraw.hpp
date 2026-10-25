@@ -153,6 +153,9 @@ namespace Sailor::RHI
 	{
 		TVector<TPerInstanceData> m_instances{};
 		TVector<PackedDrawGroup> m_groups{};
+		// Instancing can combine distinct allocations in the same material SSBO.
+		// Retain every allocation even when only one descriptor set is bound.
+		TSet<RHIMaterialVersionPtr> m_materialVersions{};
 		TVector<TPackedDrawArenaPagePtr<TPerInstanceData>> m_arenaPages{};
 		TSharedPtr<const PackedDrawArenaRangeIndices> m_arenaRangeIndices{};
 		TVector<TSharedPtr<const PackedDrawArenaRangePage>> m_arenaRangePages{};
@@ -725,6 +728,7 @@ namespace Sailor::RHI
 				segment.m_sharedPayload.Clear();
 				segment.m_localPayload.m_instances.Clear(false);
 				segment.m_localPayload.m_groups.Clear(false);
+				segment.m_localPayload.m_materialVersions.Clear();
 			}
 			m_groups.Clear(false);
 			m_instanceIndices.Clear(false);
@@ -795,6 +799,7 @@ namespace Sailor::RHI
 			segment.m_items.Clear(false);
 			segment.m_localPayload.m_instances.Clear(false);
 			segment.m_localPayload.m_groups.Clear(false);
+			segment.m_localPayload.m_materialVersions.Clear();
 			segment.m_sharedPayload = std::move(payload);
 			m_metrics.m_bSharedImmutablePayload = HasSharedImmutablePayload();
 		}
@@ -822,6 +827,10 @@ namespace Sailor::RHI
 			const uint32_t instanceIndex =
 				static_cast<uint32_t>(segment.m_localPayload.m_instances.Num());
 			segment.m_localPayload.m_instances.Emplace(std::move(instanceData));
+			if (batch.m_materialVersion)
+			{
+				segment.m_localPayload.m_materialVersions.Insert(batch.m_materialVersion);
+			}
 			segment.m_items.Emplace(
 				PackedDrawItem{
 				std::move(batch),
@@ -910,6 +919,7 @@ namespace Sailor::RHI
 				}
 
 				groups.Reserve(segment.m_items.Num());
+				const PackedDrawItem* previousItem = nullptr;
 				for (uint32_t itemIndex = 0u; itemIndex < segment.m_items.Num(); ++itemIndex)
 				{
 					const auto& item = segment.m_items[bPreserveInstanceOrder ?
@@ -918,7 +928,7 @@ namespace Sailor::RHI
 						!groups.IsEmpty() &&
 						groups.Last()->m_numInstances < RHIBatch::MaxInstancesPerBatch &&
 						groups.Last()->m_mesh == item.m_mesh &&
-						groups.Last()->m_batch == item.m_batch;
+						previousItem->m_batch == item.m_batch;
 					if (!bAppendToGroup)
 					{
 						PackedDrawGroup group;
@@ -933,6 +943,7 @@ namespace Sailor::RHI
 					{
 						segment.m_viewInstanceIndices.Add(item.m_instanceIndex);
 					}
+					previousItem = &item;
 				}
 
 				// The packed arrays replace the duplicate per-item payload. Retain the

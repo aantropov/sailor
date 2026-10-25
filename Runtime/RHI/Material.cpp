@@ -131,8 +131,34 @@ void RHIShaderBindingSet::RecalculateCompatibility()
 
 	for (auto& shaderBinding : m_shaderBindings)
 	{
-		HashCombine(m_compatibilityHashCode, shaderBinding.Second()->GetCompatibilityHash());
+		size_t bindingHash = shaderBinding.First().GetHash();
+		HashCombine(bindingHash, shaderBinding.Second()->GetCompatibilityHash());
+		m_compatibilityHashCode ^= bindingHash;
 	}
+}
+
+bool RHIShaderBindingSet::IsCompatibleWith(const RHIShaderBindingSet& rhs) const
+{
+	if (this == &rhs)
+	{
+		return true;
+	}
+	if (m_compatibilityHashCode != rhs.m_compatibilityHashCode ||
+		m_shaderBindings.Num() != rhs.m_shaderBindings.Num())
+	{
+		return false;
+	}
+	for (const auto& entry : m_shaderBindings)
+	{
+		const RHIShaderBindingPtr* other = nullptr;
+		if (!rhs.m_shaderBindings.Find(entry.First(), other) || !other ||
+			(entry.Second() != *other &&
+				(!entry.Second() || !*other || !entry.Second()->IsCompatibleWith(**other))))
+		{
+			return false;
+		}
+	}
+	return true;
 }
 
 RHI::RHIShaderBindingPtr& RHIShaderBindingSet::GetOrAddShaderBinding(StringHash binding)

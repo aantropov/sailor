@@ -930,7 +930,8 @@ void RHISceneViewSnapshot::PrepareLods(const glm::mat4& viewMatrix, const glm::m
 		{
 			LodOffsets offsets;
 			const auto* source = proxy.GetSource();
-			if (!source->m_lodPolicy.m_bEnabled || !proxy.m_resource->m_bHasLods)
+			if (!source->m_lodPolicy.m_bEnabled || source->m_lodPolicy.m_maxLod == 0u ||
+				!proxy.m_resource->m_bHasLods)
 			{
 				return offsets;
 			}
@@ -1289,10 +1290,95 @@ void RHISceneView::TraceShadowCasters(
 
 }
 
+void RHISceneView::PrepareVisibleProxies(uint32_t cameraIndex,
+	TVector<RHIVisibleSceneProxy>& outVisibleProxies)
+{
+	SAILOR_PROFILE_FUNCTION();
+	const auto& camera = m_cameras[cameraIndex];
+	const glm::mat4 cameraMatrix = m_cameraTransforms[cameraIndex].Matrix();
+	const glm::vec3 cameraPosition = glm::vec3(m_cameraTransforms[cameraIndex].m_position);
+	const glm::vec4 projectionParameters(camera.GetAspect(), camera.GetFov(), camera.GetZNear(), camera.GetZFar());
+	auto& cache = m_visibilityCache[cameraIndex];
+	bool bReuse = cache.m_bValid && cache.m_cameraMatrix == cameraMatrix &&
+		cache.m_cameraPosition == cameraPosition &&
+		cache.m_projectionParameters == projectionParameters &&
+		cache.m_sceneVersions.Num() == m_sceneVersions.Num();
+	for (size_t i = 0u; bReuse && i < m_sceneVersions.Num(); ++i)
+	{
+		// Compare control-block identities as well as addresses, including expired
+		// versions. The current strong owners keep every reused record alive.
+		bReuse = cache.m_sceneVersions[i] == TWeakPtr<const RHISpatialSceneVersion>(m_sceneVersions[i]);
+	}
+	if (!bReuse)
+	{
+		Math::Frustum frustum;
+		frustum.ExtractFrustumPlanes(cameraMatrix, camera.GetAspect(), camera.GetFov(), camera.GetZNear(), camera.GetZFar());
+		TraceScene(frustum, cache.m_proxies);
+		size_t visibleProxyWriteIndex = 0u;
+		for (size_t visibleProxyReadIndex = 0u;
+			visibleProxyReadIndex < cache.m_proxies.Num();
+			++visibleProxyReadIndex)
+		{
+			auto& proxy = cache.m_proxies[visibleProxyReadIndex];
+			const auto* source = proxy.GetSource();
+			const glm::vec3 closest = glm::clamp(cameraPosition, proxy.GetWorldBounds().m_min, proxy.GetWorldBounds().m_max);
+			if (std::isfinite(source->m_lodPolicy.m_maxCameraDistance) &&
+				glm::distance(cameraPosition, closest) > source->m_lodPolicy.m_maxCameraDistance)
+			{
+				continue;
+			}
+			if (visibleProxyWriteIndex != visibleProxyReadIndex)
+			{
+				cache.m_proxies[visibleProxyWriteIndex] = std::move(proxy);
+			}
+			++visibleProxyWriteIndex;
+		}
+		cache.m_proxies.RemoveAt(visibleProxyWriteIndex, cache.m_proxies.Num() - visibleProxyWriteIndex);
+		cache.m_proxies.Sort([](const RHIVisibleSceneProxy& lhs, const RHIVisibleSceneProxy& rhs)
+			{
+				if (lhs.m_handle.IsValid() != rhs.m_handle.IsValid())
+				{
+					return lhs.m_handle.IsValid();
+				}
+				if (lhs.m_handle.IsValid())
+				{
+					if (lhs.m_handle.m_slot != rhs.m_handle.m_slot)
+					{
+						return lhs.m_handle.m_slot < rhs.m_handle.m_slot;
+					}
+					if (lhs.m_handle.m_generation != rhs.m_handle.m_generation)
+					{
+						return lhs.m_handle.m_generation < rhs.m_handle.m_generation;
+					}
+				}
+				const uint64_t lhsProducer = lhs.m_record->m_producerKey;
+				const uint64_t rhsProducer = rhs.m_record->m_producerKey;
+				if (lhsProducer != rhsProducer)
+				{
+					return lhsProducer < rhsProducer;
+				}
+				return reinterpret_cast<uintptr_t>(lhs.m_resource) <
+					reinterpret_cast<uintptr_t>(rhs.m_resource);
+			});
+		cache.m_sceneVersions.Resize(m_sceneVersions.Num());
+		for (size_t i = 0u; i < m_sceneVersions.Num(); ++i)
+		{
+			cache.m_sceneVersions[i] = m_sceneVersions[i];
+		}
+		cache.m_cameraMatrix = cameraMatrix;
+		cache.m_cameraPosition = cameraPosition;
+		cache.m_projectionParameters = projectionParameters;
+		cache.m_bValid = true;
+	}
+	// LOD preparation mutates offsets in the submission's copy, never the cache.
+	outVisibleProxies = cache.m_proxies;
+}
+
 void RHISceneView::PrepareSnapshots()
 {
 	SAILOR_PROFILE_FUNCTION();
 	m_snapshots.Resize(m_cameras.Num());
+	m_visibilityCache.Resize(m_cameras.Num());
 
 	for (uint32_t i = 0; i < m_cameras.Num(); i++)
 	{
@@ -1305,10 +1391,6 @@ void RHISceneView::PrepareSnapshots()
 		res.m_currentTime = m_currentTime;
 		res.m_sceneVersions = GetRetainedSceneVersions();
 		res.m_renderMode = m_renderMode;
-
-		Math::Frustum frustum;
-
-		frustum.ExtractFrustumPlanes(m_cameraTransforms[i].Matrix(), camera.GetAspect(), camera.GetFov(), camera.GetZNear(), camera.GetZFar());
 
 		res.m_deltaTime = m_deltaTime;
 		res.m_frame = m_world->GetCurrentFrame();
@@ -1339,54 +1421,7 @@ void RHISceneView::PrepareSnapshots()
 		res.m_bGlobalIlluminationEnabled =
 			m_bGlobalIlluminationEnabled;
 		res.m_globalIllumination = m_globalIllumination;
-		TraceScene(frustum, res.m_proxies);
-		const glm::vec3 cameraPosition = glm::vec3(m_cameraTransforms[i].m_position);
-		size_t visibleProxyWriteIndex = 0u;
-		for (size_t visibleProxyReadIndex = 0u;
-			visibleProxyReadIndex < res.m_proxies.Num();
-			++visibleProxyReadIndex)
-		{
-			auto& proxy = res.m_proxies[visibleProxyReadIndex];
-			const auto* source = proxy.GetSource();
-			const glm::vec3 closest = glm::clamp(cameraPosition, proxy.GetWorldBounds().m_min, proxy.GetWorldBounds().m_max);
-			if (std::isfinite(source->m_lodPolicy.m_maxCameraDistance) &&
-				glm::distance(cameraPosition, closest) > source->m_lodPolicy.m_maxCameraDistance)
-			{
-				continue;
-			}
-			if (visibleProxyWriteIndex != visibleProxyReadIndex)
-			{
-				res.m_proxies[visibleProxyWriteIndex] = std::move(proxy);
-			}
-			++visibleProxyWriteIndex;
-		}
-		res.m_proxies.RemoveAt(visibleProxyWriteIndex, res.m_proxies.Num() - visibleProxyWriteIndex);
-		res.m_proxies.Sort([](const RHIVisibleSceneProxy& lhs, const RHIVisibleSceneProxy& rhs)
-			{
-				if (lhs.m_handle.IsValid() != rhs.m_handle.IsValid())
-				{
-					return lhs.m_handle.IsValid();
-				}
-				if (lhs.m_handle.IsValid())
-				{
-					if (lhs.m_handle.m_slot != rhs.m_handle.m_slot)
-					{
-						return lhs.m_handle.m_slot < rhs.m_handle.m_slot;
-					}
-					if (lhs.m_handle.m_generation != rhs.m_handle.m_generation)
-					{
-						return lhs.m_handle.m_generation < rhs.m_handle.m_generation;
-					}
-				}
-				const uint64_t lhsProducer = lhs.m_record->m_producerKey;
-				const uint64_t rhsProducer = rhs.m_record->m_producerKey;
-				if (lhsProducer != rhsProducer)
-				{
-					return lhsProducer < rhsProducer;
-				}
-				return reinterpret_cast<uintptr_t>(lhs.m_resource) <
-					reinterpret_cast<uintptr_t>(rhs.m_resource);
-			});
+		PrepareVisibleProxies(i, res.m_proxies);
 		if (i < m_debugDraw.Num())
 		{
 			res.m_debugDrawSecondaryCmdList = m_debugDraw[i];

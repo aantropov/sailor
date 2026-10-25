@@ -38,6 +38,7 @@ namespace Sailor::RHI
 		SAILOR_API uint32_t GetStorageInstanceIndex(StringHash binding) const;
 
 		SAILOR_API size_t GetCompatibilityHashCode() const { return m_compatibilityHashCode; }
+		SAILOR_API bool IsCompatibleWith(const RHIShaderBindingSet& rhs) const;
 		SAILOR_API void RecalculateCompatibility();
 		SAILOR_API uint64_t GetDescriptorRevision() const { return m_descriptorRevision.load(std::memory_order_acquire); }
 		SAILOR_API void AdvanceDescriptorRevision() { m_descriptorRevision.fetch_add(1, std::memory_order_release); }
@@ -100,10 +101,13 @@ namespace Sailor::RHI
 
 		} m_vulkan{};
 #endif
-		SAILOR_API RHIMaterial(RenderState renderState, RHIShaderPtr vertexShader, RHIShaderPtr fragmentShader) :
+		SAILOR_API RHIMaterial(RenderState renderState, RHIShaderPtr vertexShader, RHIShaderPtr fragmentShader,
+			RHIVertexDescriptionPtr vertexDescription = {}, EPrimitiveTopology topology = EPrimitiveTopology::TriangleList) :
 			m_renderState(std::move(renderState)),
 			m_vertexShader(vertexShader),
-			m_fragmentShader(fragmentShader)
+			m_fragmentShader(fragmentShader),
+			m_vertexDescription(std::move(vertexDescription)),
+			m_topology(topology)
 		{}
 
 		SAILOR_API bool IsReady() const;
@@ -112,6 +116,8 @@ namespace Sailor::RHI
 
 		SAILOR_API RHIShaderPtr GetVertexShader() const { return m_vertexShader; }
 		SAILOR_API RHIShaderPtr GetFragmentShader() const { return m_fragmentShader; }
+		const RHIVertexDescriptionPtr& GetVertexDescription() const { return m_vertexDescription; }
+		EPrimitiveTopology GetTopology() const { return m_topology; }
 
 		SAILOR_API RHIShaderBindingSetPtr GetBindings() const;
 		SAILOR_API RHIMaterialVersionPtr GetVersion() const;
@@ -135,6 +141,8 @@ namespace Sailor::RHI
 
 		RHIShaderPtr m_vertexShader;
 		RHIShaderPtr m_fragmentShader;
+		RHIVertexDescriptionPtr m_vertexDescription;
+		EPrimitiveTopology m_topology;
 
 		mutable SpinLock m_versionLock;
 		RHIMaterialVersionPtr m_version{};

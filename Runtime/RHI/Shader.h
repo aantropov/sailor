@@ -29,6 +29,7 @@ namespace Sailor::RHI
 		SAILOR_API bool IsBind() const;
 
 		SAILOR_API size_t GetCompatibilityHash() const;
+		SAILOR_API bool IsCompatibleWith(const RHIShaderBinding& rhs) const;
 		SAILOR_API RHITexturePtr GetTextureBinding(uint32_t index = 0) const { return m_textureBinding.Num() > index ? m_textureBinding[index] : nullptr; }
 		SAILOR_API const TVector<RHITexturePtr>& GetTextureBindings() const { return m_textureBinding; }
 		SAILOR_API const ShaderLayoutBinding& GetLayout() const { return m_bindingLayout; }

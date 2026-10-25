@@ -4,6 +4,11 @@
 #include "Containers/Vector.h"
 #include "RHI/Types.h"
 
+namespace Sailor::RHI
+{
+	struct PackedDrawGroup;
+}
+
 namespace Sailor::Framegraph
 {
 	struct TextureBindingCacheKey
@@ -62,6 +67,18 @@ namespace Sailor::Framegraph
 	};
 
 	using TextureBindingCache = TMap<TextureBindingCacheKey, TextureBindingCacheEntry>;
+
+	struct TextureBindingGroups
+	{
+		TVector<TVector<uint32_t>> m_textures;
+		TVector<uint32_t> m_requestGroups;
+	};
+
+	struct TextureBindingGroupingCache
+	{
+		TVector<RHI::RHIShaderBindingSetPtr> m_sources;
+		TextureBindingGroups m_plan;
+	};
 }
 
 namespace Sailor::Framegraph::Details
@@ -85,6 +102,15 @@ namespace Sailor::Framegraph::Details
 
 	SAILOR_API void EvictTextureBindingCache(
 		TextureBindingCache& cache,
+		uint64_t frame);
+
+	SAILOR_API TextureBindingGroups BuildTextureBindingGroups(
+		const TVector<TVector<uint32_t>>& requests);
+
+	SAILOR_API void ApplyTextureBindingGroups(
+		TextureBindingCache& cache,
+		TextureBindingGroupingCache& groupingCache,
+		TVector<RHI::PackedDrawGroup>& draws,
 		uint64_t frame);
 
 	SAILOR_API TVector<uint32_t> BuildDenseTextureRemap(

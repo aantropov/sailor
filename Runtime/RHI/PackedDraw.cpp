@@ -49,14 +49,6 @@ void Sailor::RHI::SortPackedDrawItems(TVector<PackedDrawItem>& items, TVector<ui
 		{
 			return lhsBatchHash < rhsBatchHash;
 		}
-		const auto lhsMaterialVersion = reinterpret_cast<uintptr_t>(
-			lhs.m_batch.m_materialVersion.GetRawPtr());
-		const auto rhsMaterialVersion = reinterpret_cast<uintptr_t>(
-			rhs.m_batch.m_materialVersion.GetRawPtr());
-		if (lhsMaterialVersion != rhsMaterialVersion)
-		{
-			return lhsMaterialVersion < rhsMaterialVersion;
-		}
 		const auto lhsMesh = reinterpret_cast<uintptr_t>(lhs.m_mesh.GetRawPtr());
 		const auto rhsMesh = reinterpret_cast<uintptr_t>(rhs.m_mesh.GetRawPtr());
 		if (lhsMesh != rhsMesh)
@@ -70,6 +62,14 @@ void Sailor::RHI::SortPackedDrawItems(TVector<PackedDrawItem>& items, TVector<ui
 		if (lhsTextures != rhsTextures)
 		{
 			return lhsTextures < rhsTextures;
+		}
+		// Keep material data coherent inside a shared draw, after grouping meshes
+		// and texture sets so compatible materials can still instance together.
+		const auto lhsMaterialVersion = reinterpret_cast<uintptr_t>(lhs.m_batch.m_materialVersion.GetRawPtr());
+		const auto rhsMaterialVersion = reinterpret_cast<uintptr_t>(rhs.m_batch.m_materialVersion.GetRawPtr());
+		if (lhsMaterialVersion != rhsMaterialVersion)
+		{
+			return lhsMaterialVersion < rhsMaterialVersion;
 		}
 		return lhs.m_stableSortKey < rhs.m_stableSortKey;
 	});

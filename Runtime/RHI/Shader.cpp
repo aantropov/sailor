@@ -19,35 +19,53 @@ bool RHIShaderBinding::IsBind() const
 
 size_t RHIShaderBinding::GetCompatibilityHash() const
 {
-	static std::hash<RHIResourcePtr> p;
-	static std::hash<size_t> pSize;
-
 	size_t hash = 0;
+	HashCombine(hash, m_bindingLayout.m_type, m_bindingLayout.m_binding,
+		m_bindingLayout.m_set, m_bindingLayout.m_arrayCount);
 	if (m_textureBinding.Num() > 0)
 	{
-		// For arrays of textures we handle only the first texture and the size of array
-		// TODO: Should we handle 4-12 textures instead? 
-		// That should cover all VFX programmer's needs
-		HashCombine(hash, p(m_textureBinding[0]), pSize(m_textureBinding.Num()));
-
-		/*for (const auto& binding : m_textureBinding)
+		for (const auto& binding : m_textureBinding)
 		{
-			HashCombine(hash, p(binding));
-		}*/
+			HashCombine(hash, binding);
+		}
 	}
 	else if (m_vulkan.m_valueBinding)
 	{
-		if ((m_vulkan.m_valueBinding->Get().m_ptr.m_buffer->m_usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) && !m_vulkan.m_bBindSsboWithOffset)
+		const auto allocation = *m_vulkan.m_valueBinding->Get();
+		HashCombine(hash, allocation.m_buffer);
+		const bool withoutOffset = m_bindingLayout.m_type == EShaderBindingType::StorageBuffer &&
+			!m_vulkan.m_bBindSsboWithOffset;
+		HashCombine(hash, withoutOffset ? size_t(0u) : allocation.m_offset);
+		if (m_bindingLayout.m_type != EShaderBindingType::StorageBuffer)
 		{
-			HashCombine(hash, p(m_vulkan.m_valueBinding->Get().m_ptr.m_buffer));
-		}
-		else
-		{
-			HashCombine(hash, p(m_vulkan.m_valueBinding->Get().m_ptr.m_buffer), m_vulkan.m_valueBinding->Get().m_offset);
+			HashCombine(hash, allocation.m_size);
 		}
 	}
 
 	return hash;
+}
+
+bool RHIShaderBinding::IsCompatibleWith(const RHIShaderBinding& rhs) const
+{
+	if (!(m_bindingLayout == rhs.m_bindingLayout) || m_textureBinding != rhs.m_textureBinding)
+	{
+		return false;
+	}
+	if (!m_textureBinding.IsEmpty())
+	{
+		return true;
+	}
+	if (!m_vulkan.m_valueBinding || !rhs.m_vulkan.m_valueBinding)
+	{
+		return m_vulkan.m_valueBinding == rhs.m_vulkan.m_valueBinding;
+	}
+	const auto lhsAllocation = *m_vulkan.m_valueBinding->Get();
+	const auto rhsAllocation = *rhs.m_vulkan.m_valueBinding->Get();
+	const bool storage = m_bindingLayout.m_type == EShaderBindingType::StorageBuffer;
+	const size_t lhsOffset = storage && !m_vulkan.m_bBindSsboWithOffset ? 0u : lhsAllocation.m_offset;
+	const size_t rhsOffset = storage && !rhs.m_vulkan.m_bBindSsboWithOffset ? 0u : rhsAllocation.m_offset;
+	return lhsAllocation.m_buffer == rhsAllocation.m_buffer && lhsOffset == rhsOffset &&
+		(storage || lhsAllocation.m_size == rhsAllocation.m_size);
 }
 
 bool RHIShaderBinding::FindVariableInUniformBuffer(StringHash variable, ShaderLayoutBindingMember& outVariable) const

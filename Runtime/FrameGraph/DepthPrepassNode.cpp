@@ -511,8 +511,9 @@ void DepthPrepassNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 
 			const bool bRequiredCustomDepth =
 				sourceMaterial->GetRenderState().IsRequiredCustomDepthShader();
+			const auto& preparedDepthMaterial = preparedMaterials.Get(depthMaterial);
 			const bool bIsDepthMaterialReady = depthMaterial &&
-				preparedMaterials.Get(depthMaterial).m_bHasGraphicsShaders &&
+				preparedDepthMaterial.m_bHasGraphicsShaders &&
 				depthMaterial->GetRenderState().IsEnabledZWrite();
 
 			if (!bIsDepthMaterialReady)
@@ -520,15 +521,7 @@ void DepthPrepassNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 				resources.m_bAreMaterialsReady = false;
 				continue;
 			}
-			RHIBatch batch = preparedMaterials.MakeBatch(depthMaterial, mesh);
-
-			const auto materialData = GetDepthMaterialData(sourceMaterial->GetRenderState(),
-				bRequiredCustomDepth ? preparedMaterials.Get(depthMaterial).m_materialInstance : 0u,
-				i < source->m_baseColorSamplers.Num() ? source->m_baseColorSamplers[i] : 0u,
-				i < source->m_baseColorFactors.Num() ? source->m_baseColorFactors[i].a : 1.0f,
-				i < source->m_alphaCutoffs.Num() ? source->m_alphaCutoffs[i] : 0.5f);
-			auto data = MakeInstanceData(proxy.ResolveMeshWorldMatrix(i), *mesh,
-				bSkinned ? proxy.GetSkeletonOffset() : (std::numeric_limits<uint32_t>::max)(), materialData);
+			RHIBatch batch = preparedMaterials.MakeBatch(preparedDepthMaterial, mesh);
 
 			if (bRequiredCustomDepth || bMaskedQueue)
 			{
@@ -576,6 +569,14 @@ void DepthPrepassNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 				}
 				continue;
 			}
+
+			const auto materialData = GetDepthMaterialData(sourceMaterial->GetRenderState(),
+				bRequiredCustomDepth ? preparedDepthMaterial.m_materialInstance : 0u,
+				i < source->m_baseColorSamplers.Num() ? source->m_baseColorSamplers[i] : 0u,
+				i < source->m_baseColorFactors.Num() ? source->m_baseColorFactors[i].a : 1.0f,
+				i < source->m_alphaCutoffs.Num() ? source->m_alphaCutoffs[i] : 0.5f);
+			auto data = MakeInstanceData(proxy.ResolveMeshWorldMatrix(i), *mesh,
+				bSkinned ? proxy.GetSkeletonOffset() : (std::numeric_limits<uint32_t>::max)(), materialData);
 
 			if (bRequiredCustomDepth)
 			{

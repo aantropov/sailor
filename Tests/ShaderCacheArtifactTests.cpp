@@ -1982,13 +1982,17 @@ void main() { result.value = params.value; }
 			}
 		}
 
-		constexpr std::array<const char*, 5> shaderPaths =
+		constexpr struct
 		{
-			"Shaders/Standard.shader",
-			"Shaders/Standard_glTF.shader",
-			"Shaders/Landscape.shader",
-			"Shaders/Unlit.shader",
-			"Shaders/Simple.shader"
+			const char* m_path;
+			bool m_bGltfMaterial;
+			bool m_bLighting;
+		} shaders[] =
+		{
+			{ "Shaders/Standard_glTF.shader", true, true },
+			{ "Shaders/Landscape.shader", false, true },
+			{ "Shaders/Unlit.shader", false, false },
+			{ "Shaders/Simple.shader", false, false }
 		};
 
 		auto compileRuntimeFragment = [](
@@ -2031,16 +2035,16 @@ void main() { result.value = params.value; }
 			fogModule.push_constant_block_count == 0 && fogModule.output_variable_count == 1;
 		Require(fogLayoutValid, "Fog shader must match the CPU medium/lighting snapshots and one colour output");
 
-		for (size_t shaderIndex = 0u;
-			shaderIndex < shaderPaths.size();
-			++shaderIndex)
+		for (const auto& shader : shaders)
 		{
-			const auto* path = shaderPaths[shaderIndex];
+			const auto* path = shader.m_path;
 			const ReflectedShader fragment(compileRuntimeFragment(path, {}));
-			if (shaderIndex == 1u)
+			if (shader.m_bGltfMaterial)
+			{
 				RequireGltfMaterialLayout(fragment,
 					compileRuntimeFragment(path, {}, true), 132u, 144u);
-			if (shaderIndex < 3u)
+			}
+			if (shader.m_bLighting)
 			{
 				RequireLocalReflectionUniformLayout(fragment);
 				RequireSpirvCombinedImageSamplerBinding(fragment, 1u, 21u);
@@ -2117,9 +2121,6 @@ void main() { result.value = params.value; }
 				Require(hasMotionOutput == motions, "MOTIONS must control the second MRT output without a separate geometry pass");
 			}
 		}
-		compileRuntimeFragment(
-			"Shaders/Standard.shader",
-			{ "ALPHA_CUTOUT" });
 		compileRuntimeFragment(
 			"Shaders/Standard_glTF.shader",
 			{ "ALPHA_CUTOUT" });

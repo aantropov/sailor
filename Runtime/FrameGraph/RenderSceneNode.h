@@ -118,6 +118,7 @@ namespace Sailor::Framegraph
 
 		// Shared cache across platforms; macOS relies on it most because of descriptor pressure.
 		TextureBindingCache m_textureBindingCache;
+		TextureBindingGroupingCache m_textureBindingGroupingCache;
 		RHI::TPackedDrawPagedArenaCache<PerInstanceData> m_pagedArenaCache;
 		RHI::RHIPackedDrawSceneChanges m_arenaChanges;
 	};

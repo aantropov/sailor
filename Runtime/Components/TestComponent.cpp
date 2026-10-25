@@ -32,7 +32,7 @@ void TestComponent::BeginPlay()
 	//m_mainModel->GetTransformComponent().SetRotation(glm::quat(vec3(0, 0.5f * Math::Pi, 0)));
 
 	//auto meshRenderer = m_mainModel->AddComponent<MeshRendererComponent>();
-	//meshRenderer->LoadModel("Models/Sponza/sponza.obj");
+	//meshRenderer->LoadModel("Models/Box/Box.gltf");
 	//m_model = meshRenderer->GetModel();
 
 	//m_meshRenderer = meshRenderer;
@@ -72,7 +72,7 @@ void TestComponent::BeginPlay()
 	//			gameObject2->GetTransformComponent().SetScale(vec4(1, 1, 1, 0));
 
 	//			auto meshRenderer = gameObject2->AddComponent<MeshRendererComponent>();
-	//			meshRenderer->LoadModel("Models/Sponza/sponza.obj");
+	//			meshRenderer->LoadModel("Models/Box/Box.gltf");
 
 	//			m_objects.Add(gameObject2);
 	//		}

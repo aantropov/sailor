@@ -2311,7 +2311,7 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 	auto vertex = bIsDebug ? shader->GetDebugVertexShaderRHI() : shader->GetVertexShaderRHI();
 	auto fragment = bIsDebug ? shader->GetDebugFragmentShaderRHI() : shader->GetFragmentShaderRHI();
 
-	RHI::RHIMaterialPtr res = RHI::RHIMaterialPtr::Make(renderState, vertex, fragment);
+	RHI::RHIMaterialPtr res = RHI::RHIMaterialPtr::Make(renderState, vertex, fragment, vertexDescription, topology);
 
 	const GraphicsPipelineLayoutKey layoutKey{
 		{ vulkanShaders[0], vulkanShaders[1], vertex->m_vulkan.m_shader, fragment->m_vulkan.m_shader },

@@ -18,6 +18,7 @@
 #include <cmath>
 #include <cstring>
 #include <format>
+#include <limits>
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -28,6 +29,13 @@ namespace
 	constexpr uint32_t StoragePrefix = 3u;
 	constexpr uint32_t OutputStart = 7u;
 	constexpr uint32_t CandidateStart = OutputStart + NumInstances + 11u;
+	// Exercise skinned retention outside the frustum, behind depth, and in the final one-instance batch.
+	constexpr std::array SkinnedInstances{ 3u, 8u, NumInstances - 1u };
+
+	bool IsSkinnedInstance(uint32_t instance)
+	{
+		return std::find(SkinnedInstances.begin(), SkinnedInstances.end(), instance) != SkinnedInstances.end();
+	}
 
 	std::string ValidateBufferUploads()
 	{
@@ -258,6 +266,10 @@ namespace
 
 	bool ExpectedVisible(uint32_t instance, uint32_t pattern, bool occlusion, bool cameraBack)
 	{
+		if (IsSkinnedInstance(instance))
+		{
+			return true;
+		}
 		const uint32_t kind = instance % 8u;
 		if (kind == 3u) return false;
 		if (!occlusion || pattern == 0u) return true;
@@ -493,6 +505,7 @@ namespace
 			{
 				instance.model = glm::mat4(1.0f);
 				instance.sphereBounds = glm::vec4(0.0f, 0.0f, 0.0f, 0.5f);
+				instance.skeletonOffset = (std::numeric_limits<uint32_t>::max)();
 			}
 			const glm::vec3 positions[] = {
 				{ 6.0f, 0.0f, -20.0f }, { 0.0f, 0.0f, -5.0f },
@@ -504,6 +517,11 @@ namespace
 				auto& instance = instances[StoragePrefix + i];
 				const uint32_t kind = i % 8u;
 				instance.model = glm::translate(glm::mat4(1.0f), positions[kind]);
+				if (IsSkinnedInstance(i))
+				{
+					// Bind-pose bounds cannot reject skinned instances, even outside the frustum or behind depth.
+					instance.skeletonOffset = 0u;
+				}
 				if (kind == 6u)
 				{
 					instance.model[0][0] = 8.0f;
@@ -569,8 +587,12 @@ namespace
 				{
 					const uint32_t instance = batch * 256u + local;
 					if (!ExpectedVisible(instance, pattern, occlusion, cameraBack)) continue;
-					if (actualIndices[draws[batch].m_firstInstance + visible] != StoragePrefix + instance)
-						return std::format("scenario {} batch {}: compacted visible index {} is incorrect", scenario, batch, visible);
+					const uint32_t actual = actualIndices[draws[batch].m_firstInstance + visible];
+					if (actual != StoragePrefix + instance)
+					{
+						return std::format("scenario {} batch {}: compacted visible index {} expected {}, got {}",
+							scenario, batch, visible, StoragePrefix + instance, actual);
+					}
 					++visible;
 				}
 				if (actualDraws[batch].m_instanceCount != visible ||
@@ -598,7 +620,7 @@ void GpuOcclusionTestCaseComponent::Tick(float)
 		const auto& result = m_validation->GetResult();
 		if (!result.m_error.empty()) { MarkFailed(result.m_error); return; }
 		AddJournalEvent("GpuOcclusionEvidence",
-			std::format("16 culling scenarios and {} raster scenarios passed at {}x; real DepthHighZ, numeric mips and attachment reuse; {}",
+			std::format("16 culling scenarios with rigid rejection and skinned retention, and {} raster scenarios passed at {}x; real DepthHighZ, numeric mips and attachment reuse; {}",
 				result.m_samples > 1u ? 10u : 4u, result.m_samples,
 				result.m_samples > 1u ? "all-sample MIN and raw source selection verified" : "single-sample path only, multisample coverage not exercised"),
 			Utils::GetCurrentTimeMs() - m_gpuStartTimeMs);
