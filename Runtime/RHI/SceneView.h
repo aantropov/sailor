@@ -527,7 +527,7 @@ namespace Sailor::RHI
 		float m_currentTime{};
 
 	public:
-		void Clear();
+		SAILOR_API void Clear();
 
 	private:
 		struct VisibilityCache
