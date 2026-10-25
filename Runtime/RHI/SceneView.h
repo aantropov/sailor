@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include "Core/Defines.h"
 #include "Memory/Memory.h"
+#include "Memory/WeakPtr.hpp"
 #include "Containers/Octree.h"
 #include "Engine/Types.h"
 #include "RHI/Mesh.h"
@@ -527,6 +528,23 @@ namespace Sailor::RHI
 
 	public:
 		void Clear();
+
+	private:
+		struct VisibilityCache
+		{
+			glm::mat4 m_cameraMatrix{};
+			glm::vec4 m_projectionParameters{};
+			glm::vec3 m_cameraPosition{};
+			// Keep only identities across pooled-view reuse. Retaining scene roots
+			// here would delay retirement and move their destruction off the worker.
+			TVector<TWeakPtr<const RHISpatialSceneVersion>> m_sceneVersions;
+			TVector<RHIVisibleSceneProxy> m_proxies;
+			bool m_bValid = false;
+		};
+
+		void PrepareVisibleProxies(uint32_t cameraIndex,
+			TVector<RHIVisibleSceneProxy>& outVisibleProxies);
+		TVector<VisibilityCache> m_visibilityCache;
 	};
 
 	using RHISceneViewPtr = TSharedPtr<RHISceneView>;

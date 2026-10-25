@@ -736,6 +736,212 @@ namespace
 			"CPU path-traced Lit composition must yield to every Scene View debug visualization");
 	}
 
+	RHISceneInstanceRecord MakeVisibleRecord(uint64_t producerKey, const glm::vec3& position,
+		float maxDistance = (std::numeric_limits<float>::max)())
+	{
+		auto record = MakeRecord(producerKey, EMobilityType::Static);
+		record.m_worldMatrix = glm::translate(glm::mat4(1.0f), position);
+		record.m_worldBounds = Math::AABB(position, glm::vec3(0.5f));
+		RHISceneViewProxy proxy;
+		proxy.m_lodPolicy.m_maxCameraDistance = maxDistance;
+		record.m_topology = RHISceneProxyResourcePtr::Make(std::move(proxy));
+		return record;
+	}
+
+	RHISpatialSceneVersionPtr PublishVisibleScene(RHIScenePtr& scene)
+	{
+		auto spatial = TSharedPtr<RHISpatialSceneVersion>::Make();
+		spatial->m_scene = scene;
+		spatial->m_sceneVersion = scene->PublishVersion();
+		spatial->m_revision = spatial->m_sceneVersion->m_sceneRevision;
+		for (const auto mobility : { EMobilityType::Static, EMobilityType::Stationary, EMobilityType::Dynamic })
+		{
+			auto index = TSharedPtr<RHISceneSpatialIndex>::Make(glm::ivec3(0), 512u, 1u);
+			index->UpdatePartition(*spatial->m_sceneVersion->m_recordsRoot, nullptr, mobility, 0u);
+			if (mobility == EMobilityType::Static)
+			{
+				spatial->m_staticOctree = std::move(index);
+			}
+			else if (mobility == EMobilityType::Stationary)
+			{
+				spatial->m_stationaryOctree = std::move(index);
+			}
+			else
+			{
+				spatial->m_dynamicOctree = std::move(index);
+			}
+		}
+		return spatial;
+	}
+
+	void PrepareVisibleView(RHISceneView& view, TestWorld& world,
+		const TVector<RHISpatialSceneVersionPtr>& versions, const CameraData& camera,
+		const TVector<Math::Transform>& transforms = { Math::Transform{} })
+	{
+		view.Clear();
+		view.m_world = &world;
+		for (const auto& version : versions)
+		{
+			view.AddSceneVersion(version);
+		}
+		for (const auto& transform : transforms)
+		{
+			view.m_cameras.Add(camera);
+			view.m_cameraTransforms.Add(transform);
+		}
+		view.m_shadowMapsToUpdate.Resize(transforms.Num());
+		view.m_shadowMapsToBlit.Resize(transforms.Num());
+		view.m_shadowIndices.Resize(transforms.Num());
+		view.m_shadowAtlasTiles.Resize(transforms.Num());
+		view.m_shadowMatrices.Resize(transforms.Num());
+		view.PrepareSnapshots();
+	}
+
+	void TestVisibilityAcrossCameraChanges()
+	{
+		TestWorld world;
+		RHISceneView view;
+		auto scene = RHIScenePtr::Make(2u);
+		const auto center = scene->AddInstance(MakeVisibleRecord(1ull, { 0, 0, -10 }));
+		const auto side = scene->AddInstance(MakeVisibleRecord(2ull, { 10, 0, -10 }));
+		const auto behind = scene->AddInstance(MakeVisibleRecord(3ull, { 0, 0, 10 }));
+		const auto spatial = PublishVisibleScene(scene);
+		CameraData camera;
+		camera.SetAspect(1.0f);
+		camera.SetFov(60.0f);
+		camera.SetZFar(100.0f);
+		PrepareVisibleView(view, world, { spatial }, camera);
+		Require(view.m_snapshots[0].m_proxies.Num() == 1u && view.m_snapshots[0].m_proxies[0].m_handle == center,
+			"the initial camera must see only the center object");
+		const auto* record = view.m_snapshots[0].m_proxies[0].m_record;
+		view.m_snapshots[0].m_proxies[0].m_meshLodOffset = 17u;
+		view.m_snapshots[0].m_proxies[0].m_instancedLodOffset = 23u;
+		PrepareVisibleView(view, world, { spatial }, camera);
+		Require(view.m_snapshots[0].m_proxies.Num() == 1u && view.m_snapshots[0].m_proxies[0].m_record == record &&
+			view.m_snapshots[0].m_proxies[0].m_meshLodOffset == RHIVisibleSceneProxy::InvalidIndex &&
+			view.m_snapshots[0].m_proxies[0].m_instancedLodOffset == RHIVisibleSceneProxy::InvalidIndex,
+			"reusing a pooled view must preserve visibility without carrying submission-local LOD offsets");
+
+		camera.SetAspect(3.0f);
+		PrepareVisibleView(view, world, { spatial }, camera);
+		Require(view.m_snapshots[0].m_proxies.Num() == 2u && view.m_snapshots[0].m_proxies[0].m_handle == center &&
+			view.m_snapshots[0].m_proxies[1].m_handle == side,
+			"aspect changes must reveal side objects in stable handle order");
+		camera.SetAspect(1.0f);
+		PrepareVisibleView(view, world, { spatial }, camera);
+		camera.SetFov(120.0f);
+		PrepareVisibleView(view, world, { spatial }, camera);
+		Require(view.m_snapshots[0].m_proxies.Num() == 2u, "FOV changes must rebuild visibility");
+		camera.SetFov(60.0f);
+		PrepareVisibleView(view, world, { spatial }, camera);
+		camera.SetZFar(5.0f);
+		PrepareVisibleView(view, world, { spatial }, camera);
+		Require(view.m_snapshots[0].m_proxies.IsEmpty(), "far-plane changes must cull previously visible objects");
+		camera.SetZFar(100.0f);
+		PrepareVisibleView(view, world, { spatial }, camera);
+		camera.SetZNear(15.0f);
+		PrepareVisibleView(view, world, { spatial }, camera);
+		Require(view.m_snapshots[0].m_proxies.IsEmpty(), "near-plane changes must rebuild visibility");
+		camera.SetZNear(0.1f);
+		PrepareVisibleView(view, world, { spatial }, camera);
+		Math::Transform rotated;
+		rotated.SetRotation(glm::angleAxis(glm::radians(180.0f), glm::vec3(0, 1, 0)));
+		PrepareVisibleView(view, world, { spatial }, camera, { rotated });
+		Require(view.m_snapshots[0].m_proxies.Num() == 1u && view.m_snapshots[0].m_proxies[0].m_handle == behind,
+			"rotating the camera must replace the visible set");
+		Math::Transform shifted;
+		shifted.m_position.x = 10.0f;
+		for (uint32_t reuse = 0u; reuse < 2u; ++reuse)
+		{
+			PrepareVisibleView(view, world, { spatial }, camera, { Math::Transform{}, shifted });
+			Require(view.m_snapshots.Num() == 2u && view.m_snapshots[0].m_proxies.Num() == 1u &&
+				view.m_snapshots[1].m_proxies.Num() == 1u && view.m_snapshots[0].m_proxies[0].m_handle == center &&
+				view.m_snapshots[1].m_proxies[0].m_handle == side,
+				"multiple cameras must retain independent visible sets across pooled-view reuse");
+		}
+		PrepareVisibleView(view, world, { spatial }, camera, { shifted });
+		Require(view.m_snapshots.Num() == 1u && view.m_snapshots[0].m_proxies[0].m_handle == side,
+			"removing or reordering cameras must not reuse another camera's visibility");
+	}
+
+	void TestVisibilityAcrossScenePublication()
+	{
+		TestWorld world;
+		RHISceneView view;
+		CameraData camera;
+		camera.SetAspect(1.0f);
+		camera.SetFov(60.0f);
+		auto scene = RHIScenePtr::Make(2u);
+		const auto handle = scene->AddInstance(MakeVisibleRecord(1ull, { 0, 0, -10 }, 5.0f));
+		auto spatial = PublishVisibleScene(scene);
+		PrepareVisibleView(view, world, { spatial }, camera);
+		Require(view.m_snapshots[0].m_proxies.IsEmpty(), "distance policy must exclude a far object inside the frustum");
+		Math::Transform close;
+		close.m_position.z = -7.0f;
+		PrepareVisibleView(view, world, { spatial }, camera, { close });
+		Require(view.m_snapshots[0].m_proxies.Num() == 1u, "camera translation must reevaluate distance limits");
+		PrepareVisibleView(view, world, { spatial }, camera);
+		scene->UpdateInstance(handle, MakeVisibleRecord(1ull, { 0, 0, -10 }), ToMask(ESceneChangeBit::MeshOrLodTopology));
+		spatial = PublishVisibleScene(scene);
+		PrepareVisibleView(view, world, { spatial }, camera);
+		Require(view.m_snapshots[0].m_proxies.Num() == 1u, "published topology and distance-policy changes must invalidate visibility");
+		auto oldRetained = view.m_snapshots[0].m_sceneVersions;
+		const auto* oldRecord = view.m_snapshots[0].m_proxies[0].m_record;
+		auto moved = MakeVisibleRecord(1ull, { 0, 0, 10 });
+		moved.m_mobility = EMobilityType::Dynamic;
+		scene->UpdateInstance(handle, moved, ToMask(ESceneChangeBit::Transform) |
+			ToMask(ESceneChangeBit::Bounds) | ToMask(ESceneChangeBit::Mobility));
+		spatial = PublishVisibleScene(scene);
+		PrepareVisibleView(view, world, { spatial }, camera);
+		Require(view.m_snapshots[0].m_proxies.IsEmpty() && oldRecord->m_worldMatrix[3].z == -10.0f,
+			"a new spatial publication must cull a moved object without changing an older retained record");
+		moved.m_worldMatrix[3].z = -10.0f;
+		moved.m_worldBounds = Math::AABB(glm::vec3(0, 0, -10), glm::vec3(0.5f));
+		scene->UpdateInstance(handle, moved, ToMask(ESceneChangeBit::Transform) | ToMask(ESceneChangeBit::Bounds));
+		spatial = PublishVisibleScene(scene);
+		PrepareVisibleView(view, world, { spatial }, camera);
+		Require(view.m_snapshots[0].m_proxies.Num() == 1u && view.m_snapshots[0].m_proxies[0].m_record != oldRecord &&
+			view.m_snapshots[0].m_proxies[0].GetMobility() == EMobilityType::Dynamic,
+			"dynamic publication must restore the object using its current immutable record");
+		scene->RemoveInstance(handle);
+		spatial = PublishVisibleScene(scene);
+		PrepareVisibleView(view, world, { spatial }, camera);
+		Require(view.m_snapshots[0].m_proxies.IsEmpty(), "removed handles must disappear from reused views");
+
+		auto replacementScene = RHIScenePtr::Make(2u);
+		replacementScene->AddInstance(MakeVisibleRecord(99ull, { 0, 0, -10 }));
+		auto replacement = PublishVisibleScene(replacementScene);
+		PrepareVisibleView(view, world, { replacement }, camera);
+		Require(view.m_snapshots[0].m_proxies.Num() == 1u && view.m_snapshots[0].m_proxies[0].m_record->m_producerKey == 99ull,
+			"replacing a scene must replace the visible records");
+		auto otherScene = RHIScenePtr::Make(2u);
+		otherScene->AddInstance(MakeVisibleRecord(100ull, { 0, 0, -10 }));
+		const auto other = PublishVisibleScene(otherScene);
+		Require(other->m_revision == replacement->m_revision, "independent scene revisions may coincide");
+		PrepareVisibleView(view, world, { other }, camera);
+		Require(view.m_snapshots[0].m_proxies.Num() == 1u && view.m_snapshots[0].m_proxies[0].m_record->m_producerKey == 100ull,
+			"coincident handles and revisions must not alias independent scene publications");
+		PrepareVisibleView(view, world, { other, replacement }, camera);
+		Require(view.m_snapshots[0].m_proxies.Num() == 2u && view.m_snapshots[0].m_proxies[0].m_record->m_producerKey == 99ull &&
+			view.m_snapshots[0].m_proxies[1].m_record->m_producerKey == 100ull,
+			"adding a producer must rebuild the combined stable visible order");
+		PrepareVisibleView(view, world, { replacement }, camera);
+		TWeakPtr<const RHISpatialSceneVersion> weakSpatial = replacement;
+		auto retainedVersion = replacement->m_sceneVersion;
+		view.Clear();
+		replacement.Clear();
+		replacementScene.Clear();
+		Require(!weakSpatial.TryLock() && retainedVersion.NumRefs() == 1u,
+			"a pooled visibility cache must not retain expired scenes or their record pages");
+		PrepareVisibleView(view, world, { other }, camera);
+		Require(view.m_snapshots[0].m_proxies.Num() == 1u && view.m_snapshots[0].m_proxies[0].m_record->m_producerKey == 100ull,
+			"an expired producer must never validate another producer's cached raw pointers");
+		PrepareVisibleView(view, world, {}, camera);
+		Require(view.m_snapshots[0].m_proxies.IsEmpty(), "clearing all producers must discard expired cached records");
+		PrepareVisibleView(view, world, { spatial }, camera);
+		Require(view.m_snapshots[0].m_proxies.IsEmpty(), "returning to an empty producer must keep the view empty");
+	}
+
 	void TestMotionHistoryContinuity()
 	{
 		RHIMotionHistoryFrame previous;
@@ -928,6 +1134,8 @@ int main()
 		TestLocalizedShadowVersionDiff();
 		TestSubmissionCompletionToken();
 		TestSubmissionContextSurvivesSnapshotPreparation();
+		TestVisibilityAcrossCameraChanges();
+		TestVisibilityAcrossScenePublication();
 		TestBlitFormatConversionPath();
 		TestMotionHistoryContinuity();
 		TestObjectMotionUsesRenderedVersions();

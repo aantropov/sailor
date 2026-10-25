@@ -767,7 +767,6 @@ void RenderSceneNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 				break;
 			}
 
-			const auto& mesh = sceneView.ResolveMesh(proxy, i);
 			const auto& material = source->GetMaterials()[i];
 
 			const bool bRelevantMaterial = material &&
@@ -776,6 +775,7 @@ void RenderSceneNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 			{
 				continue;
 			}
+			const auto& mesh = sceneView.ResolveMesh(proxy, i);
 			RHIBatch batch;
 			if (!TryPrepareBatch(material, mesh, preparedMaterials, batch))
 			{
