@@ -638,7 +638,8 @@ bool Renderer::AcquireSubmission(FrameSubmission& submission)
 	const bool bAcquired =
 		m_driverInstance->BeginRenderSubmission(
 			flightSlot,
-			submission.m_bHasSwapchainImage);
+			submission.m_bHasSwapchainImage,
+			!App::HasEditor());
 	if (auto readback = Framegraph::EditorReadbackNode::Find(*rhiFrameGraph))
 	{
 		QueueEditorReadback(readback->TakeCompletedFrame());
@@ -860,7 +861,7 @@ void Renderer::RecordAndSubmitFrame(FrameSubmission& submission, const Sailor::F
 	if (bFrameGraphProcessed && frameSubmission.m_bSubmitted)
 	{
 		PublishGpuTimings(gpuTimingResult);
-		if (m_timings.RecordFrame(RendererTimings::Clock::now(), frameSubmission))
+		if (m_timings.RecordFrame(RendererTimings::Clock::now(), frameSubmission, m_driverInstance->GetPresentedFrameCount()))
 		{
 			m_stats.m_renderFps.store(m_timings.GetRenderFps(), std::memory_order_relaxed);
 			m_stats.m_presentFps.store(m_timings.GetPresentFps(), std::memory_order_relaxed);
@@ -883,8 +884,7 @@ void Renderer::RecordAndSubmitFrame(FrameSubmission& submission, const Sailor::F
 		InvalidateGpuTimings();
 	}
 
-	const bool bFrameCompleted = bHasSwapchainImage ?
-		frameSubmission.m_bPresented : frameSubmission.m_bSubmitted;
+	const bool bFrameCompleted = frameSubmission.m_bSubmitted;
 	if (bFrameCompleted)
 	{
 		submission.m_bResourcesSucceeded = bFrameGraphProcessed;

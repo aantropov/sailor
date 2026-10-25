@@ -149,6 +149,7 @@ VulkanGraphicsDriver::~VulkanGraphicsDriver()
 		scheduler->WaitIdle(
 			{
 				EThreadType::Render,
+				EThreadType::Present,
 				EThreadType::RHI,
 				EThreadType::Main,
 				EThreadType::Worker
@@ -874,6 +875,12 @@ TVector<uint32_t> VulkanGraphicsDriver::CollectPublishedVariableDescriptorCounts
 	return res;
 }
 
+uint64_t VulkanGraphicsDriver::GetPresentedFrameCount() const
+{
+	return m_vkInstance && m_vkInstance->GetMainDevice() ?
+		m_vkInstance->GetMainDevice()->GetPresentedFrameCount() : 0;
+}
+
 RHI::RHIRenderTargetPtr VulkanGraphicsDriver::GetBackBuffer() const
 {
 	return m_backBuffer;
@@ -896,6 +903,8 @@ void VulkanGraphicsDriver::RefreshSwapchainTargets()
 	{
 		m_backBuffer->m_vulkan.m_imageView = backBufferView;
 		m_backBuffer->m_vulkan.m_image = backBufferView->m_image;
+		m_backBuffer->ForceSetDefaultLayout(
+			static_cast<RHI::EImageLayout>(backBufferView->GetImage()->m_defaultLayout));
 	}
 
 	auto depthBufferView = m_vkInstance->GetMainDevice()->GetDepthBuffer();
@@ -948,7 +957,8 @@ bool VulkanGraphicsDriver::AcquireNextImage()
 	return BeginRenderSubmission(flightSlot, hasSwapchainImage) && hasSwapchainImage;
 }
 
-bool VulkanGraphicsDriver::BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSwapchainImage)
+bool VulkanGraphicsDriver::BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSwapchainImage,
+	bool bDeferPresentation)
 {
 	SAILOR_PROFILE_FUNCTION();
 	outFlightSlot = 0u;
@@ -960,7 +970,8 @@ bool VulkanGraphicsDriver::BeginRenderSubmission(uint32_t& outFlightSlot, bool& 
 
 	const bool bResult = m_vkInstance->GetMainDevice()->BeginRenderSubmission(
 		outFlightSlot,
-		outHasSwapchainImage);
+		outHasSwapchainImage,
+		bDeferPresentation);
 	if (bResult)
 	{
 		// The native wait completed this flight. Latch its observers before the
@@ -1028,7 +1039,7 @@ RHI::FrameSubmissionResult VulkanGraphicsDriver::PresentFrame(const class FrameS
 			CancelGpuFrameTimeQuery();
 		}
 	}
-	return { bSubmitted, bPresented };
+	return { bSubmitted, bPresented && m_vkInstance->GetMainDevice()->WasLastFramePresented() };
 }
 
 RHI::FrameSubmissionResult VulkanGraphicsDriver::SubmitFrameWithoutPresent(

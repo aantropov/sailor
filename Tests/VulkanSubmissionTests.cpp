@@ -181,6 +181,16 @@ namespace Sailor::GraphicsDriver::Vulkan
 		static VulkanSemaphorePtr PresentSemaphore(const VulkanDevice& device) { return device.m_renderFinishedSemaphores[device.m_currentSwapchainImageIndex]; }
 		static VulkanQueuePtr ComputeQueue(const VulkanDevice& device) { return device.m_computeQueue; }
 		static uint32_t ImageIndex(const VulkanDevice& device) { return device.m_currentSwapchainImageIndex; }
+		static VulkanQueuePtr PresentationCopyQueue(const VulkanDevice& device) { return device.m_presentationCopyQueue; }
+		static size_t PendingPresents(const VulkanDevice& device)
+		{
+			size_t count = 0;
+			for (const auto& task : device.m_presentationTasks)
+			{
+				count += task && !task->IsFinished();
+			}
+			return count;
+		}
 		static VulkanQueuePtr UploadQueue(VulkanDevice& device, bool transfer = false)
 		{
 			const auto family = transfer ? device.m_queueFamilies.m_transferFamily : device.m_queueFamilies.m_graphicsFamily;
@@ -7240,6 +7250,127 @@ frame: []
 		return result;
 	}
 
+	std::atomic<bool> presentEntered{ false }, releasePresent{ false };
+	std::atomic<VkResult> presentSubmitError{ VK_SUCCESS };
+	std::atomic<uint32_t> presentSubmitCalls{ 0 };
+	EThreadType presentCaller = EThreadType::Main;
+	PFN_vkQueueSubmit forwardPresentSubmit = nullptr;
+	VKAPI_ATTR VkResult VKAPI_CALL ObservePresentSubmit(VkQueue queue, uint32_t count, const VkSubmitInfo* submits, VkFence fence)
+	{
+		presentCaller = App::GetSubmodule<Tasks::Scheduler>()->GetCurrentThreadType();
+		presentEntered.store(true, std::memory_order_release);
+		releasePresent.wait(false);
+		++presentSubmitCalls;
+		const VkResult error = presentSubmitError.load();
+		return error == VK_SUCCESS ? forwardPresentSubmit(queue, count, submits, fence) : error;
+	}
+
+	void TestIndependentScenePresentation()
+	{
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		auto& driver = *Renderer::GetDriver();
+		Require(device->WaitIdle() == VK_SUCCESS, "scene presentation fixture must start idle");
+		auto queue = VulkanSubmissionTestAccess::PresentationCopyQueue(*device);
+		Require(queue != device->GetGraphicsQueue(), "this GPU fixture requires an independent presentation queue");
+		presentEntered = releasePresent = false;
+		presentSubmitError = VK_SUCCESS;
+		presentSubmitCalls = 0;
+		forwardPresentSubmit = VulkanSubmissionTestAccess::ExchangeSubmit(*queue, ObservePresentSubmit);
+		Tests::ScopeExit restorePresent([&]()
+			{
+				releasePresent = true;
+				releasePresent.notify_all();
+				device->WaitIdle();
+				VulkanSubmissionTestAccess::ExchangeSubmit(*queue, forwardPresentSubmit);
+			});
+		const auto presentedBefore = device->GetPresentedFrameCount();
+		const uint32_t flights = device->GetMaxFramesInFlight();
+		std::vector<VulkanImagePtr> retained;
+		std::vector<std::vector<uint32_t>> retainedPixels;
+		uint32_t flight = 0;
+		bool hasOutput = false;
+		for (uint32_t i = 0; i < 4u * flights; ++i)
+		{
+			Require(driver.BeginRenderSubmission(flight, hasOutput, true) && hasOutput,
+				"render flights must recycle while presentation holds its queue lock");
+			const auto output = driver.GetBackBuffer();
+			for (const auto& swapchainImage : device->GetSwapchain()->GetImageViews())
+			{
+				Require(output->m_vulkan.m_imageView != swapchainImage,
+					"FrameGraph must render into an owned output, never a pending drawable");
+			}
+			for (const auto& image : retained)
+			{
+				Require(output->m_vulkan.m_image != image,
+					"a queued frame must not be overwritten by subsequent render flights");
+			}
+			auto clear = driver.CreateCommandList(false, ECommandListQueue::Graphics);
+			auto commands = Renderer::GetDriverCommands();
+			commands->BeginCommandList(clear, true);
+			commands->ClearImage(clear, output, glm::vec4(0.125f * i, 0.5f, 0.75f, 1.0f));
+			commands->EndCommandList(clear);
+			auto frame = RecordFrame(5000u + i);
+			const auto completion = device->GetCurrentFrameFence();
+			const auto submitted = driver.PresentFrame({}, { clear, frame.command }, {});
+			Require(submitted.m_bSubmitted && !submitted.m_bPresented,
+				"scene acceptance must not imply that an asynchronous present completed");
+			Require(completion->Wait(5000000000ull) == VK_SUCCESS,
+				"real scene GPU work must complete while the presentation queue is blocked");
+			CheckReadback(frame, true);
+			if (i == 0)
+			{
+				const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+				while (!presentEntered.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline)
+				{
+					std::this_thread::yield();
+				}
+				Require(presentEntered.load(std::memory_order_acquire) && presentCaller == EThreadType::Present,
+					"the full presentation submission must execute on the scheduler's Present thread");
+			}
+			Require(VulkanSubmissionTestAccess::PendingPresents(*device) == std::min(i + 1u, flights),
+				"presentation must admit one task per flight and keep rendering when that limit is reached");
+			if (i < flights)
+			{
+				retained.push_back(output->m_vulkan.m_image);
+				retainedPixels.push_back(ReadImage(driver, output->m_vulkan.m_image));
+			}
+		}
+		for (size_t i = 0; i < retained.size(); ++i)
+		{
+			Require(!retainedPixels[i].empty() && ReadImage(driver, retained[i]) == retainedPixels[i],
+				"every queued display frame must preserve its actual pixels across render-flight reuse");
+		}
+		Require(VulkanSubmissionTestAccess::PendingPresents(*device) == flights && device->GetPresentedFrameCount() == presentedBefore,
+			"a stalled display must retain one frame per flight and count no successful presents");
+		releasePresent = true;
+		releasePresent.notify_all();
+		// Deliberately submit no further scene. A drawable becoming available must
+		// finish the queued presents without another Render callback.
+		Require(device->WaitIdle() == VK_SUCCESS && device->GetPresentedFrameCount() == presentedBefore + flights,
+			"queued frames must present independently when the display resumes");
+		for (VkResult error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
+		{
+			presentSubmitError = error;
+			const auto callsBefore = presentSubmitCalls.load();
+			Require(driver.BeginRenderSubmission(flight, hasOutput, true) && hasOutput,
+				"presentation refusal fixture must acquire a scene flight");
+			auto accepted = RecordFrame(7000u);
+			const auto completion = device->GetCurrentFrameFence();
+			Require(driver.PresentFrame({}, { accepted.command }, {}).m_bSubmitted,
+				"a refused asynchronous copy must preserve scene submission");
+			Require(device->WaitIdle() == VK_SUCCESS && completion->Wait(5000000000ull) == VK_SUCCESS,
+				"presentation failure must leave the scene completion fence usable");
+			CheckReadback(accepted, true);
+			Require(device->IsSwapChainOutdated() && presentSubmitCalls == callsBefore + 1,
+				"the fixture must reach exactly one actual presentation-copy refusal");
+			presentSubmitError = VK_SUCCESS;
+			Require(device->FixLostDevice(App::GetMainWindow().GetRawPtr()),
+				"recovery must drain tasks before replacing presentation resources");
+		}
+		std::cout << "Independent scene presentation: " << flights
+			<< " flights, " << retained.size() << " retained frames; Present task, bounded queue and recovery passed\n";
+	}
+
 	int RunGpu(int argc, const char** argv, bool present, bool lost, bool upload = false, bool accepted = false)
 	{
 #if defined(__APPLE__)
@@ -7265,6 +7396,7 @@ frame: []
 #endif
 			if (present && !lost)
 			{
+				OnRender([]() { TestIndependentScenePresentation(); });
 				OnRender([]() { TestDelayedPresentation(); });
 				OnRender([]() { TestPresentationErrors(); });
 			}
