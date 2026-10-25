@@ -1,8 +1,0 @@
-assetInfoType: Sailor::TextureAssetInfo
-fileId: "{6EC37316-EEEB-4673-A488-66591D79BA83}"
-filename: Sponza_Arch_diffuse.png
-bShouldGenerateMips: true
-bShouldSupportStorageBinding: false
-clamping: Repeat
-filtration: Linear
-format: R8G8B8A8_SRGB

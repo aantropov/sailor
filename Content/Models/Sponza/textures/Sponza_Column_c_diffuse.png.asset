@@ -1,8 +1,0 @@
-assetInfoType: Sailor::TextureAssetInfo
-fileId: "{695CBC42-2604-455A-AB01-B11D4B01DA9D}"
-filename: Sponza_Column_c_diffuse.png
-bShouldGenerateMips: true
-bShouldSupportStorageBinding: false
-clamping: Repeat
-filtration: Linear
-format: R8G8B8A8_SRGB

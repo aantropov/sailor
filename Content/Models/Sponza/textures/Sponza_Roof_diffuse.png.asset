@@ -1,8 +1,0 @@
-assetInfoType: Sailor::TextureAssetInfo
-fileId: "{B8771893-0C2D-4327-9067-9DACF3AC6169}"
-filename: Sponza_Roof_diffuse.png
-bShouldGenerateMips: true
-bShouldSupportStorageBinding: false
-clamping: Repeat
-filtration: Linear
-format: R8G8B8A8_SRGB

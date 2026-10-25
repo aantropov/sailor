@@ -1,8 +1,0 @@
-assetInfoType: Sailor::TextureAssetInfo
-fileId: "{473ED793-13B9-4407-B81A-91F5A3BF7DAE}"
-filename: Metallic_metallic.png
-bShouldGenerateMips: true
-bShouldSupportStorageBinding: false
-clamping: Repeat
-filtration: Linear
-format: R8G8B8A8_UNORM

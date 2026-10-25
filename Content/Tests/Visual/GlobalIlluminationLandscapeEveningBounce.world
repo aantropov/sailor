@@ -102,11 +102,7 @@ prefabs:
             - {x: 23, z: -9, radius: 21, strength: 8, operation: Raise}
             - {x: -5, z: 26, radius: 27, strength: 6, operation: Raise}
             - {x: 4, z: -28, radius: 22, strength: 5, operation: Raise}
-          layerTextures:
-            - B4320C76-1CCD-4B31-A1F3-8BDBC69126F8
-            - 3BED67FC-52C7-4960-9BF0-3ED4C77C7F5B
-            - 5707252A-D797-4525-B1AB-208835A97169
-            - B8771893-0C2D-4327-9067-9DACF3AC6169
+          layerTextures: []
           textureTiling: 0.0900000036
           regenerate: false
           heightmapTexture: ""

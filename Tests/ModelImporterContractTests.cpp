@@ -2209,7 +2209,7 @@ uniformsFloat:
   material.metallic: 0.15
 )");
 		for (const auto* shader : { "1A4BA353-FDA4-4F65-941F-D9FFEE4630A0",
-			"E42B1499-8C0C-47E3-9584-E7BB6CD821FC", "22222222-2222-4222-8222-222222222222" })
+			"22222222-2222-4222-8222-222222222222" })
 		{
 			source["shaderUid"] = shader;
 			MaterialAsset asset;

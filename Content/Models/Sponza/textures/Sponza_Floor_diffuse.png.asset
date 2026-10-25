@@ -1,8 +1,0 @@
-assetInfoType: Sailor::TextureAssetInfo
-fileId: "{B4320C76-1CCD-4B31-A1F3-8BDBC69126F8}"
-filename: Sponza_Floor_diffuse.png
-bShouldGenerateMips: true
-bShouldSupportStorageBinding: false
-clamping: Repeat
-filtration: Linear
-format: R8G8B8A8_SRGB

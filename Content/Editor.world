@@ -36,36 +36,6 @@ prefabs:
           fileId: NullFileId
           instanceId: 00000000000000000000000000000001_15011215773109224062
   - gameObjects:
-      - name: Sponza
-        mobilityType: Stationary
-        position:
-          - 0
-          - 0
-          - 0
-          - 0
-        rotation:
-          - 0
-          - 0
-          - 0
-          - 0
-        scale:
-          - 1
-          - 1
-          - 1
-          - 1
-        parentIndex: 4294967295
-        instanceId: 12501075873428063186
-        components:
-          - 0
-    components:
-      - typename: Sailor::MeshRendererComponent
-        overrideProperties:
-          model:
-            fileId: "{B07E0332-E277-4AA2-B4C2-2FD958047A61}"
-            instanceId: NullInstanceId
-          fileId: NullFileId
-          instanceId: BAD35A5BC8EC4853849E3F6D535C4704_12501075873428063186
-  - gameObjects:
       - name: Box
         mobilityType: Stationary
         position:

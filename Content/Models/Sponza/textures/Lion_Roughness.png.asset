@@ -1,8 +1,0 @@
-assetInfoType: Sailor::TextureAssetInfo
-fileId: "{2733FC62-55FC-4A1B-8A4C-89D16B90EA44}"
-filename: Lion_Roughness.png
-bShouldGenerateMips: true
-bShouldSupportStorageBinding: false
-clamping: Repeat
-filtration: Linear
-format: R8G8B8A8_UNORM
