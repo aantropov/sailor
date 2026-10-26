@@ -456,8 +456,10 @@ void StaticMeshRendererECS::Tick(float deltaTime)
 			}
 
 			auto& data = m_components[componentIndex];
-			ObjectPtr ownerObject = data.GetOwner();
-			GameObjectPtr owner = ownerObject.StaticCast<GameObject>();
+			// Component owners cannot be removed until the preparation workers join.
+			// Borrow the owner to avoid contending on the shared world allocator's
+			// reference counter for every dirty mesh.
+			auto* owner = data.m_owner ? static_cast<GameObject*>(data.m_owner.GetRawPtr()) : nullptr;
 			if (!owner || !data.GetModel())
 			{
 				return result;
@@ -562,7 +564,6 @@ void StaticMeshRendererECS::Tick(float deltaTime)
 					worldBounds.Apply(ownerWorldMatrix);
 					if (previousResource && worldBounds.IsValid())
 					{
-						result.m_shadowCaster = data.m_shadowCaster;
 						result.m_state = owner->GetMobilityType() == EMobilityType::Static ?
 							EPreparedProxyState::Static : EPreparedProxyState::Stationary;
 						result.m_sceneUpdate.m_handle = *renderHandle;
@@ -735,7 +736,7 @@ void StaticMeshRendererECS::Tick(float deltaTime)
 				}
 				if (update.m_state == EPreparedProxyState::MaterialVersionOnly)
 				{
-					const auto owner = data.m_owner.StaticCast<GameObject>();
+					const auto* owner = static_cast<GameObject*>(data.m_owner.GetRawPtr());
 					bGIMaterialsChanged |= IsGlobalIlluminationBakeContributor(owner->GetMobilityType());
 					cacheMaterialRevisions();
 					continue;
@@ -873,15 +874,14 @@ void StaticMeshRendererECS::Tick(float deltaTime)
 					cacheMaterialRevisions();
 				}
 
-				ObjectPtr ownerObject = data.GetOwner();
-				GameObjectPtr owner = ownerObject.StaticCast<GameObject>();
+				auto* owner = data.m_owner ? static_cast<GameObject*>(data.m_owner.GetRawPtr()) : nullptr;
 				if (owner)
 				{
 					data.m_frameLastChange = owner->GetTransformComponent().GetFrameLastChange();
 					if ((update.m_state == EPreparedProxyState::Static && data.m_frameLastChange == 0) ||
 						data.m_frameLastChange != owner->GetFrameLastChange())
 					{
-						UpdateGameObject(owner, currentFrame);
+						UpdateGameObject(data.m_owner.StaticCast<GameObject>(), currentFrame);
 					}
 				}
 				data.m_bIsDirty = false;
