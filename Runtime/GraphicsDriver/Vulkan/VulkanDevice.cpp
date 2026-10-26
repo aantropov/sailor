@@ -1402,13 +1402,15 @@ bool VulkanDevice::PresentScene(uint32_t output)
 	}
 	m_numSubmittedCommandBuffersAcc.fetch_add(1u, std::memory_order_relaxed);
 	m_swapchainImagesInitialized[image] = true;
-	const bool presented = QueuePresent(image);
+	// Wait for the copy on Present before enqueueing WSI. On MoltenVK, presenting
+	// first can delay this fence to display cadence and stall scene submissions
+	// despite separate queues. Render waits solely for its own flight fence.
 	result = copyFence->Wait();
 	if (result != VK_SUCCESS)
 	{
 		return fail(result);
 	}
-	return presented;
+	return QueuePresent(image);
 }
 
 bool VulkanDevice::QueuePresent(uint32_t image)
