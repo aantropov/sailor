@@ -149,9 +149,21 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 			auto& packet = submissionResources->m_packet;
 			auto& customPacket = submissionResources->m_customPacket;
 
+			const uint32_t cacheOptions = bVirtualizeInstancePayloads ? 1u : 0u;
+			auto* textureImporter = App::GetSubmodule<TextureImporter>();
+			const auto textures = textureImporter ? textureImporter->GetTextureSamplersBindingSet() : RHIShaderBindingSetPtr{};
+			const uint64_t textureRevision = textures ? textures->GetDescriptorRevision() : 0ull;
+			if (submissionResources->m_preparedDrawCache.Matches(
+				sceneViewSnapshot, QueueTagHash, cacheOptions, textures, textureRevision))
+			{
+				packet.m_metrics = {};
+				customPacket.m_metrics = {};
+				return;
+			}
 			packet.Reset();
 			customPacket.Reset();
 			submissionResources->m_bAreMaterialsReady = true;
+			submissionResources->m_bPacketComplete = true;
 			syncSharedResources.Lock();
 			if (bVirtualizeInstancePayloads)
 			{
@@ -165,6 +177,9 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 
 			packet.Finalize(false);
 			customPacket.Finalize(false);
+			submissionResources->m_preparedDrawCache.Capture(sceneViewSnapshot, QueueTagHash,
+				cacheOptions, textures, textureRevision,
+				submissionResources->m_bPacketComplete && submissionResources->m_bAreMaterialsReady);
 		}, EThreadType::RHI);
 
 	return res;
@@ -445,6 +460,7 @@ void DepthPrepassNode::BuildStableArenas(const RHISceneViewSnapshot& sceneView,
 		m_arenaChanges.Clear();
 		m_customArenaChanges.Clear();
 
+		resources.m_bPacketComplete &= bPacketPayloadComplete && bCustomPayloadComplete;
 		if (bBuildPacketPayload)
 		{
 			auto packetPayload = m_pagedArenaCache.EndUpdate(bPacketPayloadComplete);
@@ -500,6 +516,7 @@ void DepthPrepassNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 			const auto& mesh = sceneView.ResolveMesh(proxy, i);
 			if (!mesh)
 			{
+				resources.m_bPacketComplete = false;
 				continue;
 			}
 
@@ -538,12 +555,14 @@ void DepthPrepassNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 					sceneView.m_frame,
 					supportedMeshesPerBatch,
 					bCurrentTextureBindings);
+				resources.m_bPacketComplete &= bCurrentTextureBindings;
 #else
 				batch.m_textureBindings = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
 #endif
 				batch.m_supportedMeshesPerBatch = supportedMeshesPerBatch;
 				if (!batch.m_textureBindings)
 				{
+					resources.m_bPacketComplete = false;
 					continue;
 				}
 			}
@@ -559,12 +578,12 @@ void DepthPrepassNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 					proxy.m_handle, proxy.m_record->m_producerKey, proxy.m_resource);
 				if (bRequiredCustomDepth)
 				{
-					customPacket.AddArenaView(
+					resources.m_bPacketComplete &= customPacket.AddArenaView(
 						std::move(batch), mesh, rangeKey, stableKey, payloadMobility);
 				}
 				else
 				{
-					packet.AddArenaView(
+					resources.m_bPacketComplete &= packet.AddArenaView(
 						std::move(batch), mesh, rangeKey, stableKey, payloadMobility);
 				}
 				continue;
@@ -620,6 +639,7 @@ void DepthPrepassNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 				const auto& sourceMesh = group.m_meshes[meshIndex];
 				if (!sourceMesh)
 				{
+					resources.m_bPacketComplete = false;
 					continue;
 				}
 
@@ -662,12 +682,14 @@ void DepthPrepassNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 						sceneView.m_frame,
 						supportedMeshesPerBatch,
 						bCurrentTextureBindings);
+					resources.m_bPacketComplete &= bCurrentTextureBindings;
 #else
 					batchTemplate.m_textureBindings = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
 #endif
 					batchTemplate.m_supportedMeshesPerBatch = supportedMeshesPerBatch;
 					if (!batchTemplate.m_textureBindings)
 					{
+						resources.m_bPacketComplete = false;
 						continue;
 					}
 				}
@@ -688,6 +710,7 @@ void DepthPrepassNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 						proxy, groupIndex, instanceIndex, meshIndex);
 					if (!mesh)
 					{
+						resources.m_bPacketComplete = false;
 						continue;
 					}
 					const uint64_t stableKey = BuildPackedDrawStableKey(
@@ -704,12 +727,12 @@ void DepthPrepassNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 							proxy.m_handle, proxy.m_record->m_producerKey, proxy.m_resource);
 						if (bRequiredCustomDepth)
 						{
-							customPacket.AddArenaView(
+							resources.m_bPacketComplete &= customPacket.AddArenaView(
 								std::move(batch), mesh, rangeKey, stableKey, payloadMobility);
 						}
 						else
 						{
-							packet.AddArenaView(
+							resources.m_bPacketComplete &= packet.AddArenaView(
 								std::move(batch), mesh, rangeKey, stableKey, payloadMobility);
 						}
 						continue;

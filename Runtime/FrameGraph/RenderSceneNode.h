@@ -9,6 +9,7 @@
 #include "FrameGraph/RenderSceneTextureCache.h"
 #include "RHI/PackedDraw.hpp"
 #include "RHI/MotionHistory.h"
+#include "RHI/PreparedDrawCache.h"
 
 namespace Sailor::RHI
 {
@@ -85,9 +86,12 @@ namespace Sailor::Framegraph
 			{
 				ResetForSubmission();
 				m_packet.InvalidateUploadedState();
+				m_preparedDrawCache.Invalidate();
 			}
 
 			RHI::TPackedDrawPacket<PerInstanceData> m_packet;
+			RHI::RHIPreparedDrawCache m_preparedDrawCache;
+			bool m_bPacketComplete = true;
 			TVector<OrderedDrawItem> m_orderedDrawItems;
 			TVector<RHI::RHIBufferPtr> m_indirectBuffers;
 			RHI::RHIShaderBindingSetPtr m_perInstanceData{};

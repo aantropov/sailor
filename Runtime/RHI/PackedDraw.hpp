@@ -926,7 +926,7 @@ namespace Sailor::RHI
 						itemIndex : segment.m_sortedItemIndices[itemIndex]];
 					const bool bAppendToGroup = !bPreserveInstanceOrder &&
 						!groups.IsEmpty() &&
-						groups.Last()->m_numInstances < RHIBatch::MaxInstancesPerBatch &&
+						groups.Last()->m_numInstances < RHIBatch::MaxInstancesPerDraw &&
 						groups.Last()->m_mesh == item.m_mesh &&
 						previousItem->m_batch == item.m_batch;
 					if (!bAppendToGroup)

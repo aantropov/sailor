@@ -58,6 +58,13 @@ namespace
 	{
 	public:
 		using TextureBindingCacheKeyProbe = TextureBindingCacheKey;
+		using Resources = SubmissionResources;
+	};
+
+	class DepthPrepassNodeProbe : public DepthPrepassNode
+	{
+	public:
+		using Resources = SubmissionResources;
 	};
 
 	class ShadowPrepassNodeProbe : public ShadowPrepassNode
@@ -518,6 +525,7 @@ renderTargets:
 			uint32_t m_value = 0u;
 		};
 		constexpr uint32_t limit = RHI::RHIBatch::MaxInstancesPerBatch;
+		constexpr uint32_t drawLimit = RHI::RHIBatch::MaxInstancesPerDraw;
 #if defined(_WIN32)
 		Require(limit == 2048u, "Windows draw batches must be limited to 2048 instances");
 #endif
@@ -529,7 +537,7 @@ renderTargets:
 			uint32_t firstInstance = 0u;
 			for (const auto& group : groups)
 			{
-				Require(group.m_numInstances > 0u && group.m_numInstances <= limit &&
+				Require(group.m_numInstances > 0u && group.m_numInstances <= drawLimit &&
 					group.m_firstInstance == firstInstance,
 					"indirect commands must cover contiguous, bounded instance ranges");
 				firstInstance += group.m_numInstances;
@@ -549,7 +557,7 @@ renderTargets:
 			}
 		};
 
-		for (uint32_t count : { 0u, 1u, 2047u, 2048u, 2049u, 4096u, 4097u, 40001u })
+		for (uint32_t count : { 0u, 1u, 1023u, 1024u, 1025u, 2047u, 2048u, 2049u, 4096u, 4097u, 40001u })
 		{
 			RHI::TPackedDrawPacket<TestInstance> packet;
 			for (uint32_t index = count; index > 0u; --index)
@@ -558,8 +566,13 @@ renderTargets:
 			}
 			packet.Finalize(false);
 			validate(packet, count);
-			Require(packet.GetGroups().Num() == count / limit + (count % limit != 0u),
-				"identical instances must split only at the platform batch limit");
+			Require(packet.GetGroups().Num() == count / drawLimit + (count % drawLimit != 0u),
+				"identical instances must split only at the platform draw limit");
+			if (count > 0u && count <= limit && packet.GetGroups().Num() <= 128u)
+			{
+				Require(RHI::GetPackedDrawRunEnd(packet.GetGroups(), 0u) == packet.GetGroups().Num(),
+					"smaller instanced commands must retain one compatible indirect submission");
+			}
 			for (uint32_t index = 0u; index < count; ++index)
 			{
 				Require(packet.GetPayload(EMobilityType::Static).m_instances[index].m_value == index &&
@@ -1057,6 +1070,122 @@ renderTargets:
 			"spike capacity must remain reachable and reusable without changing retained generations");
 		arena.Clear();
 		Require(first->FindRange(0u) && afterSpike->FindRange(3000u), "cache release must not invalidate retained range tables");
+	}
+
+	void TestPreparedDrawReuse()
+	{
+		auto scene = RHI::RHIScenePtr::Make();
+		auto mesh = RHI::RHIMeshPtr::Make();
+		auto material = RHI::RHIMaterialPtr::Make(
+			RHI::RenderState{}, RHI::RHIShaderPtr{}, RHI::RHIShaderPtr{});
+		material->SetBindings(RHI::RHIShaderBindingSetPtr::Make());
+		RHI::RHISceneViewProxy topology;
+		topology.m_meshes.Add(mesh);
+		topology.m_overrideMaterials.Add(material);
+		auto resource = RHI::RHISceneProxyResourcePtr::Make(std::move(topology));
+		RHI::RHISceneInstanceRecord record;
+		record.m_topology = resource;
+		record.m_mobility = EMobilityType::Static;
+		record.m_worldMatrix = glm::mat4(1.0f);
+		const auto handle = scene->AddInstance(record);
+		RHI::RHISceneViewSnapshot view;
+		view.m_camera = TUniquePtr<CameraData>::Make();
+		view.m_submissionContext = RHI::RHIRenderSubmissionContextPtr::Make();
+		view.m_submissionContext->BeginSubmission(1u, 0u, 10u);
+		auto publish = [&]()
+		{
+			auto versions = TSharedPtr<TVector<RHI::RHISceneVersionPtr>>::Make();
+			versions->Add(scene->PublishVersion());
+			const RHI::RHISceneInstanceRecord* published = nullptr;
+			Require((*versions)[0]->Resolve(handle, published), "the draw fixture must remain published");
+			view.m_sceneVersions = std::move(versions);
+			view.m_proxies.Clear(false);
+			view.m_proxies.Emplace(handle, *published, *resource);
+		};
+		publish();
+		auto textures = RHI::RHIShaderBindingSetPtr::Make();
+		RenderSceneNodeProbe::Resources main;
+		DepthPrepassNodeProbe::Resources depth;
+		auto& cache = main.m_preparedDrawCache;
+		auto matches = [&]() { return cache.Matches(view, "Opaque"_h.GetHash(), 1u,
+			textures, textures->GetDescriptorRevision()); };
+		auto capture = [&](bool complete = true)
+		{
+			cache.Capture(view, "Opaque"_h.GetHash(), 1u, textures, textures->GetDescriptorRevision(), complete);
+		};
+		Framegraph::RenderSceneNode::PerInstanceData data;
+		data.model = record.m_worldMatrix;
+		main.m_packet.Add(RHI::RHIBatch(material, mesh), mesh, data, 1u, EMobilityType::Static);
+		main.m_packet.Finalize(false);
+		capture();
+		depth.m_preparedDrawCache.Capture(view, "Opaque"_h.GetHash(), 1u, textures, 0u, true);
+		++view.m_frame;
+		view.m_currentTime += 1.0f;
+		view.m_submissionContext->BeginSubmission(3u, 0u, 10u);
+		publish(); // A new wrapper retaining the same immutable scene publication.
+		main.ResetForSubmission();
+		depth.ResetForSubmission();
+		Require(matches() && main.m_packet.GetNumDrawInstances() == 1u &&
+			main.m_packet.GetPayload(EMobilityType::Static).m_instances[0].model == record.m_worldMatrix,
+			"a new flight submission must reuse the complete draw list without freezing frame time");
+		Require(depth.m_preparedDrawCache.Matches(view, "Opaque"_h.GetHash(), 1u, textures, 0u),
+			"depth draw lists must survive normal flight reset too");
+
+		record.m_worldMatrix[3].x = 5.0f;
+		Require(scene->UpdateInstance(handle, record, static_cast<RHI::SceneChangeMask>(RHI::ESceneChangeBit::Transform)), "the static transform edit must publish");
+		publish();
+		Require(!matches() && main.m_packet.GetPayload(EMobilityType::Static).m_instances[0].model[3].x == 0.0f,
+			"editing a static object must invalidate the next list and preserve the retained old flight");
+		capture();
+		view.m_cameraTransform.m_position.x += 1.0f;
+		Require(!matches(), "camera motion must invalidate distance culling and sorting");
+		capture();
+		view.m_camera->SetProjectionMatrix(glm::mat4(2.0f));
+		Require(!matches(), "projection changes must invalidate camera-dependent preparation");
+		capture();
+		view.m_lodMeshes.Add(RHI::RHIMeshPtr::Make());
+		Require(!matches(), "newly available LOD meshes must invalidate an unchanged camera and scene");
+		capture();
+		view.m_proxies[0].m_meshLodOffset = 0u;
+		Require(!matches(), "per-object LOD selections must invalidate the list");
+		capture();
+		view.m_instancedLodOffsets.Add(0u);
+		Require(!matches(), "instanced LOD remapping must invalidate the list");
+		capture();
+		view.m_proxies.Clear(false);
+		Require(!matches(), "visibility changes must not replay previously visible draws");
+		publish();
+		capture();
+		view.m_submissionContext->BeginSubmission(4u, 0u, 11u);
+		Require(!matches(), "material publication must invalidate cached bindings and instance offsets");
+		capture();
+		textures->AdvanceDescriptorRevision();
+		Require(!matches(), "texture reload must invalidate local texture sets");
+		capture();
+		auto replacement = RHI::RHIShaderBindingSetPtr::Make();
+		replacement->AdvanceDescriptorRevision();
+		textures = std::move(replacement);
+		Require(!matches(), "replacement texture sets must invalidate even at the same revision");
+		capture();
+		auto previous = TSharedPtr<RHI::RHIMotionHistoryFrame>::Make();
+		previous->m_sceneVersions = view.m_sceneVersions;
+		view.m_previousMotionFrame = previous;
+		Require(!matches(), "starting motion history must update per-instance validity");
+		capture();
+		view.m_previousMotionFrame.Clear();
+		Require(!matches(), "camera cuts must invalidate retained motion history");
+		capture();
+		Require(!cache.Matches(view, "Masked"_h.GetHash(), 1u, textures, 1u) &&
+			!cache.Matches(view, "Opaque"_h.GetHash(), 0u, textures, 1u),
+			"pass configuration changes must rebuild the draw representation");
+		capture(false);
+		Require(!matches(), "missing shaders, arena ranges or current texture sets must retry next frame");
+		capture();
+		depth.m_preparedDrawCache.Capture(view, "Opaque"_h.GetHash(), 1u, textures, 1u, true);
+		main.InvalidateSubmission();
+		depth.InvalidateSubmission();
+		Require(!matches() && !depth.m_preparedDrawCache.Matches(view, "Opaque"_h.GetHash(), 1u, textures, 1u),
+			"failed submissions must invalidate both prepared and uploaded state");
 	}
 
 	void TestPackedDrawSceneChanges()
@@ -2734,6 +2863,7 @@ int main(int argc, char** argv)
 		{ "ConcurrentArenaPublications", TestConcurrentArenaPublications },
 		{ "PagedArenaMetadataPublication", TestPagedArenaMetadataPublication },
 		{ "PackedDrawSceneChanges", TestPackedDrawSceneChanges },
+		{ "PreparedDrawReuse", TestPreparedDrawReuse },
 		{ "MaterialVersionsSurviveConcurrentWorldUpdates", TestMaterialVersionsSurviveConcurrentWorldUpdates },
 		{ "PackedDrawEqualKeysPreserveBindingOrder", TestPackedDrawEqualKeysPreserveBindingOrder },
 		{ "DynamicSpatialRootIsolation", TestDynamicSpatialRootIsolation },
