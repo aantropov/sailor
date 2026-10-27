@@ -131,6 +131,12 @@ public sealed class NativeSceneViewportHandler :
         panel.Focus(FocusState.Programmatic);
     }
 
+    public void ReleaseInputFocus()
+    {
+        PlatformView?.ReleasePointerCaptures();
+        ReleaseViewportFocus();
+    }
+
     void OnLoaded(object sender, RoutedEventArgs args)
     {
         if (sender is not SwapChainPanel panel)
@@ -312,7 +318,7 @@ public sealed class NativeSceneViewportHandler :
         var point = args.GetCurrentPoint(panel);
         var (button, modifier) = ResolveChangedButton(point.Properties.PointerUpdateKind);
         activePointerButtons |= modifier;
-        SetViewportFocused(true);
+        SetViewportFocused(true, isPointerFocus: true);
         panel.Focus(FocusState.Pointer);
         panel.CapturePointer(args.Pointer);
         PublishPointer(
@@ -431,15 +437,15 @@ public sealed class NativeSceneViewportHandler :
         ReleaseViewportFocus();
     }
 
-    void SetViewportFocused(bool focused)
+    void SetViewportFocused(bool focused, bool isPointerFocus = false)
     {
-        if (viewportFocused == focused)
+        if (viewportFocused == focused && !isPointerFocus)
         {
             return;
         }
 
         viewportFocused = focused;
-        PublishFocus(focused);
+        PublishFocus(focused, isPointerFocus);
     }
 
     void ReleaseViewportFocus()
@@ -457,11 +463,12 @@ public sealed class NativeSceneViewportHandler :
         }
     }
 
-    void PublishFocus(bool focused)
+    void PublishFocus(bool focused, bool isPointerFocus = false)
     {
         VirtualView?.PublishInput(new NativeSceneViewportInputEvent(
             NativeSceneViewportInputKind.Focus,
-            Focused: focused));
+            Focused: focused,
+            IsPointerFocus: isPointerFocus));
     }
 
     void OnRootKeyDown(object sender, KeyRoutedEventArgs args)

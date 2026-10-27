@@ -30,6 +30,7 @@
             <local:GameObjectTemplate x:Key="GameObjectTemplate" />
 
             <local:InspectorTemplateSelector x:Key="InspectorTemplateSelector"
+                                          ComponentTemplate="{StaticResource ComponentTemplate}"
                                           AssetFileTemplate="{StaticResource AssetFileTemplate}"
                                           TextureFileTemplate="{StaticResource TextureFileTemplate}"
                                           ShaderFileTemplate="{StaticResource ShaderFileTemplate}"                                          
@@ -45,16 +46,18 @@
     </ContentView.Resources>
 
     <Border Style="{StaticResource DockPanelBorder}" Padding="8">
-        <Grid RowSpacing="0" ColumnSpacing="0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-
-            <Grid.RowDefinitions>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
-
-            <ScrollView Grid.Row="0" Grid.Column="0" HorizontalOptions="Fill" Orientation="Vertical">
+        <Grid RowDefinitions="Auto,Auto,*" RowSpacing="8" ColumnSpacing="0">
+            <views:ControlPanelView x:Name="InspectorHeader"
+                                    AutomationId="InspectorHeader"
+                                    Grid.Row="0"
+                                    IsVisible="False" />
+            <ContentView x:Name="InspectorPreviewHost"
+                         AutomationId="InspectorPreviewHost"
+                         Grid.Row="1"
+                         HorizontalOptions="Fill" />
+            <ScrollView x:Name="InspectorPropertiesScroll"
+                        AutomationId="InspectorPropertiesScroll"
+                        Grid.Row="2" HorizontalOptions="Fill" Orientation="Vertical">
                 <VerticalStackLayout
                     Spacing="8"
                     Padding="0,4,0,0"

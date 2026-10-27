@@ -94,7 +94,6 @@ sealed class AnimationControllerEditorPanel : VerticalStackLayout
                 return;
             }
 
-            Children.Add(new Views.ControlPanelView { BindingContext = controller });
             Children.Add(SectionLabel("State Machine"));
 
             var graphToolbar = new HorizontalStackLayout { Spacing = 6 };
@@ -841,7 +840,6 @@ sealed class AnimationSetEditorPanel : VerticalStackLayout
         {
             return;
         }
-        Children.Add(new Views.ControlPanelView { BindingContext = set });
         Children.Add(new Label { Text = "Clip Slots", FontAttributes = FontAttributes.Bold });
         var add = new Button { Text = "Add Slot" };
         add.Clicked += (_, _) =>

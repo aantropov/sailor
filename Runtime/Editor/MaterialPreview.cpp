@@ -2,6 +2,7 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
 #include "ECS/CameraECS.h"
 #include "FrameGraph/ClearNode.h"
 #include "FrameGraph/LightCullingNode.h"
@@ -21,6 +22,7 @@
 #include <stb_image_write.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -28,6 +30,7 @@
 #include <mutex>
 #include <optional>
 #include <thread>
+#include <unordered_map>
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -37,11 +40,16 @@ using namespace Sailor::EditorRuntime;
 namespace
 {
 	std::mutex g_previewMutex;
-	MaterialPreviewResult g_previewResult;
-	std::optional<MaterialPreviewRequest> g_pendingPreview;
 	std::deque<uint64_t> g_closedPreviewSessions;
 	bool g_previewWorkerRunning = false;
+	uint64_t g_inFlightSession = 0;
+	uint64_t g_lastUse = 0;
 	std::atomic<uint64_t> g_previewRenderCount{};
+	std::atomic<uint64_t> g_previewInitializationCount{};
+	std::atomic<uint64_t> g_previewRenderDispatchCount{};
+	std::atomic<uint32_t> g_previewLiveJobs{};
+	constexpr size_t MaxPreviewSessions = 16;
+	constexpr size_t MaxPreviewJobs = 4;
 
 	void RememberClosedSession(uint64_t sessionId)
 	{
@@ -50,18 +58,11 @@ namespace
 		if (g_closedPreviewSessions.size() > 128) g_closedPreviewSessions.pop_front();
 	}
 
-	bool IsCurrent(const MaterialPreviewRequest& request)
-	{
-		const std::lock_guard lock(g_previewMutex);
-		return g_previewResult.m_sessionId == request.m_sessionId &&
-			g_previewResult.m_revision == request.m_revision &&
-			g_previewResult.m_state == EMaterialPreviewState::Pending;
-	}
-
 	bool OnRender(std::function<bool()> operation)
 	{
 		auto task = Tasks::CreateTask<bool>("Render material preview"_h, [operation = std::move(operation)]()
 		{
+			++g_previewRenderDispatchCount;
 			try { return operation(); }
 			catch (...) { return false; }
 		}, EThreadType::Render);
@@ -136,10 +137,14 @@ namespace
 
 	struct PreviewJob final : RHIResource
 	{
+		PreviewJob() { ++g_previewLiveJobs; }
 		~PreviewJob()
 		{
 			if (m_material) m_material.DestroyObject(m_allocator);
+			--g_previewLiveJobs;
 		}
+		MaterialPreviewRequest m_key;
+		bool m_reusable = false;
 		Memory::ObjectAllocatorPtr m_allocator = Memory::ObjectAllocatorPtr::Make();
 		MaterialPtr m_material;
 		RHIFrameGraphPtr m_graph = RHIFrameGraphPtr::Make();
@@ -149,7 +154,95 @@ namespace
 		TRefPtr<RHISceneProxyResource> m_proxy;
 		RHIMeshPtr m_mesh;
 		TSharedPtr<ReadbackFrame> m_readback;
+		std::array<ShaderSetPtr, 4> m_shaders;
+		std::array<std::array<RHIShaderPtr, 6>, 4> m_shaderStages;
+		std::vector<std::pair<TexturePtr, RHITexturePtr>> m_textures;
 	};
+
+	struct PreviewSession
+	{
+		MaterialPreviewResult m_result;
+		std::optional<MaterialPreviewRequest> m_pending;
+		TRefPtr<PreviewJob> m_job;
+		uint64_t m_lastUse = 0;
+	};
+	std::unordered_map<uint64_t, PreviewSession> g_previewSessions;
+	std::deque<uint64_t> g_previewQueue;
+
+	bool IsCurrent(const MaterialPreviewRequest& request)
+	{
+		const std::lock_guard lock(g_previewMutex);
+		const auto session = g_previewSessions.find(request.m_sessionId);
+		return session != g_previewSessions.end() && session->second.m_result.m_revision == request.m_revision &&
+			session->second.m_result.m_state == EMaterialPreviewState::Pending;
+	}
+
+	void EvictIdleJobs(size_t maximum)
+	{
+		for (;;)
+		{
+			size_t count = 0;
+			auto oldest = g_previewSessions.end();
+			for (auto it = g_previewSessions.begin(); it != g_previewSessions.end(); ++it)
+			{
+				if (!it->second.m_job) continue;
+				++count;
+				if (oldest == g_previewSessions.end() || it->second.m_lastUse < oldest->second.m_lastUse) oldest = it;
+			}
+			if (count <= maximum) return;
+			oldest->second.m_job.Clear();
+		}
+	}
+
+	std::array<RHIShaderPtr, 6> ShaderStages(ShaderSetPtr shader)
+	{
+		return { shader->GetVertexShaderRHI(), shader->GetFragmentShaderRHI(), shader->GetComputeShaderRHI(),
+			shader->GetDebugVertexShaderRHI(), shader->GetDebugFragmentShaderRHI(), shader->GetDebugComputeShaderRHI() };
+	}
+
+	// Shader and texture replacement is serialized on Render. Keep the old resources
+	// alive so pointer identity cannot alias a newer publication.
+	void CaptureDependencies(TRefPtr<PreviewJob> job)
+	{
+		for (size_t i = 0; i < job->m_shaders.size(); ++i) job->m_shaderStages[i] = ShaderStages(job->m_shaders[i]);
+		for (const auto& sampler : job->m_material->GetSamplers())
+		{
+			auto texture = sampler.m_second;
+			job->m_textures.emplace_back(texture, texture->GetRHI());
+		}
+	}
+
+	bool DependenciesCurrent(TRefPtr<PreviewJob> job)
+	{
+		for (size_t i = 0; i < job->m_shaders.size(); ++i)
+			if (ShaderStages(job->m_shaders[i]) != job->m_shaderStages[i]) return false;
+		for (const auto& [texture, resource] : job->m_textures)
+			if (texture->GetRHI() != resource) return false;
+		return true;
+	}
+
+	bool Matches(TRefPtr<PreviewJob> job, const MaterialPreviewRequest& request)
+	{
+		return job && job->m_reusable && job->m_key.m_materialYaml == request.m_materialYaml &&
+			job->m_key.m_primitive == request.m_primitive && job->m_key.m_width == request.m_width && job->m_key.m_height == request.m_height;
+	}
+
+	void BeginPreviewFrame(TRefPtr<PreviewJob> job, const MaterialPreviewRequest& request)
+	{
+		auto& view = job->m_view->m_snapshots[0];
+		view.m_submissionContext->BeginSubmission(request.m_revision, 0, job->m_material->GetContentRevision(), request.m_sessionId);
+		view.m_submissionCompletionToken->Reset();
+		view.m_frame = request.m_revision;
+		const glm::vec3 position(request.m_distance * std::cos(request.m_pitch) * std::sin(request.m_yaw),
+			request.m_distance * std::sin(request.m_pitch), request.m_distance * std::cos(request.m_pitch) * std::cos(request.m_yaw));
+		view.m_cameraTransform.m_position = glm::vec4(position, 1);
+		view.m_camera->SetFov(45);
+		view.m_camera->SetAspect(float(request.m_width) / request.m_height);
+		view.m_camera->SetZNear(0.05f);
+		view.m_camera->SetZFar(50);
+		view.m_camera->SetViewMatrix(glm::lookAtRH(position, glm::vec3(0), glm::vec3(0, 1, 0)));
+		view.m_camera->SetProjectionMatrix(Math::PerspectiveRH(glm::radians(45.0f), view.m_camera->GetAspect(), 0.05f, 50));
+	}
 
 	bool LoadPreviewShader(const char* path, ShaderSetPtr& shader, const TVector<std::string>& defines = {})
 	{
@@ -271,20 +364,10 @@ namespace
 		job->m_view->m_snapshots.Resize(1);
 		auto& view = job->m_view->m_snapshots[0];
 		view.m_submissionContext = RHIRenderSubmissionContextPtr::Make();
-		view.m_submissionContext->BeginSubmission(request.m_revision, 0, Material::GetGlobalContentRevision(), request.m_sessionId);
 		view.m_submissionCompletionToken = RHISubmissionCompletionTokenPtr::Make();
 		view.m_proxies.Emplace(RenderInstanceHandle{ 0, 1 }, job->m_record, *job->m_proxy);
 		view.m_bGlobalIlluminationEnabled = false;
 		view.m_camera = TUniquePtr<CameraData>::Make();
-		const glm::vec3 position(request.m_distance * std::cos(request.m_pitch) * std::sin(request.m_yaw),
-			request.m_distance * std::sin(request.m_pitch), request.m_distance * std::cos(request.m_pitch) * std::cos(request.m_yaw));
-		view.m_cameraTransform.m_position = glm::vec4(position, 1);
-		view.m_camera->SetFov(45);
-		view.m_camera->SetAspect(float(request.m_width) / request.m_height);
-		view.m_camera->SetZNear(0.05f);
-		view.m_camera->SetZFar(50);
-		view.m_camera->SetViewMatrix(glm::lookAtRH(position, glm::vec3(0), glm::vec3(0, 1, 0)));
-		view.m_camera->SetProjectionMatrix(Math::PerspectiveRH(glm::radians(45.0f), view.m_camera->GetAspect(), 0.05f, 50));
 		auto lights = TSharedPtr<TVector<RHILightShaderData>>::Make();
 		for (const auto direction : { glm::vec3(-0.5f, -0.7f, -0.8f), glm::vec3(0.8f, -0.2f, -0.4f), glm::vec3(-0.2f, -0.3f, 1.0f) })
 		{
@@ -303,6 +386,7 @@ namespace
 		job->m_readback->m_bytesPerRow = request.m_width * 8;
 		job->m_readback->m_buffer = driver->CreateBuffer(size_t(request.m_width) * request.m_height * 8,
 			EBufferUsageBit::BufferTransferDst_Bit, EMemoryPropertyBit::HostCoherent | EMemoryPropertyBit::HostVisible);
+		CaptureDependencies(job);
 		return job->m_readback->m_buffer.IsValid();
 	}
 
@@ -343,7 +427,23 @@ namespace
 		return success;
 	}
 
-	MaterialPreviewResult RenderPreview(const MaterialPreviewRequest& request)
+	bool PrepareAndSubmitPreview(TRefPtr<PreviewJob> job, const MaterialPreviewRequest& request, RHIFencePtr& completion)
+	{
+		if (!IsCurrent(request)) return false;
+		// Prior GPU work has retired before the job enters the cache. This private
+		// graph prepares one primitive and returns only unqueued, independent tasks.
+		job->m_reusable = false;
+		BeginPreviewFrame(job, request);
+		for (const auto& task : job->m_graph->Prepare(job->m_view))
+		{
+			if (task->IsInQueue() || !task->IsReadyToStart()) return false;
+			task->Execute();
+		}
+		if (!IsCurrent(request)) { job->m_reusable = true; return false; }
+		return SubmitPreview(job, completion);
+	}
+
+	MaterialPreviewResult RenderPreview(const MaterialPreviewRequest& request, TRefPtr<PreviewJob>& job)
 	{
 		MaterialPreviewResult result;
 		result.m_sessionId = request.m_sessionId;
@@ -351,60 +451,74 @@ namespace
 		result.m_width = request.m_width;
 		result.m_height = request.m_height;
 		result.m_state = EMaterialPreviewState::Error;
-		YAML::Node document;
-		auto asset = TSharedPtr<MaterialAsset>::Make();
-		if (!External::TryLoadYaml(request.m_materialYaml, document, result.m_diagnostic) ||
-			!External::GuardYamlExceptions([&]() { asset->Deserialize(document); }, result.m_diagnostic)) return result;
-		if (!asset->GetShader() || (asset->GetRenderQueue() != "Opaque" && asset->GetRenderQueue() != "Masked" && asset->GetRenderQueue() != "Transparent"))
-		{
-			result.m_diagnostic = "Preview requires a surface shader and an Opaque, Masked or Transparent render queue.";
-			return result;
-		}
-		auto shaderAsset = App::GetSubmodule<ShaderCompiler>()->LoadShaderAsset(asset->GetShader());
-		if (!shaderAsset || shaderAsset->GetGlslVertexCode().empty() || shaderAsset->GetGlslFragmentCode().empty())
-		{
-			result.m_diagnostic = "The selected shader does not provide a surface vertex and fragment program.";
-			return result;
-		}
-		auto job = TRefPtr<PreviewJob>::Make();
-		auto materialTask = App::GetSubmodule<MaterialImporter>()->CreateTransientMaterial(asset, job->m_allocator, job->m_material);
-		if (materialTask) materialTask->Wait();
-		if (!materialTask || !materialTask->GetResult())
-		{
-			result.m_diagnostic = "The material shader or one of its textures could not be loaded.";
-			return result;
-		}
-		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
-		while (!job->m_material->IsReady() && IsCurrent(request) && std::chrono::steady_clock::now() < deadline)
-		{
-			Renderer::GetDriver()->TrackResources_ThreadSafe();
-			std::this_thread::sleep_for(std::chrono::milliseconds(2));
-		}
-		if (!IsCurrent(request)) return result;
-		if (!job->m_material->IsReady())
-		{
-			result.m_diagnostic = "Material GPU initialization did not complete.";
-			return result;
-		}
-		ShaderSetPtr brdf, lightCulling, tonemap;
-		if (!LoadPreviewShader("Shaders/ComputeBrdfLut.shader", brdf) || !LoadPreviewShader("Shaders/ComputeLightCulling.shader", lightCulling) ||
-			!LoadPreviewShader("Shaders/Tonemapping.shader", tonemap, { "ACES" }))
-		{
-			result.m_diagnostic = "Preview lighting shaders are unavailable.";
-			return result;
-		}
-		RHIFencePtr initialized;
-		const bool initializedOk = OnRender([&]() { return InitializePreview(job, request, brdf, initialized); });
-		const bool initializedComplete = initialized ? WaitForGpu(initialized) : false;
-		if (!initializedOk || !initializedComplete)
-		{
-			result.m_diagnostic = "Preview GPU resources could not be initialized.";
-			return result;
-		}
-		if (!IsCurrent(request)) return result;
-		for (const auto& task : job->m_graph->Prepare(job->m_view)) { task->Run(); task->Wait(); }
+		bool reused = Matches(job, request);
+		bool submitted = false;
 		RHIFencePtr completed;
-		const bool submitted = OnRender([&]() { return SubmitPreview(job, completed); });
+		if (reused) submitted = OnRender([&]()
+		{
+			if (!DependenciesCurrent(job)) { reused = false; return false; }
+			return PrepareAndSubmitPreview(job, request, completed);
+		});
+		if (!reused) job.Clear();
+		if (!job)
+		{
+			YAML::Node document;
+			auto asset = TSharedPtr<MaterialAsset>::Make();
+			if (!External::TryLoadYaml(request.m_materialYaml, document, result.m_diagnostic) ||
+				!External::GuardYamlExceptions([&]() { asset->Deserialize(document); }, result.m_diagnostic)) return result;
+			if (!asset->GetShader() || (asset->GetRenderQueue() != "Opaque" && asset->GetRenderQueue() != "Masked" && asset->GetRenderQueue() != "Transparent"))
+			{
+				result.m_diagnostic = "Preview requires a surface shader and an Opaque, Masked or Transparent render queue.";
+				return result;
+			}
+			auto shaderAsset = App::GetSubmodule<ShaderCompiler>()->LoadShaderAsset(asset->GetShader());
+			if (!shaderAsset || shaderAsset->GetGlslVertexCode().empty() || shaderAsset->GetGlslFragmentCode().empty())
+			{
+				result.m_diagnostic = "The selected shader does not provide a surface vertex and fragment program.";
+				return result;
+			}
+			job = TRefPtr<PreviewJob>::Make();
+			job->m_key = request;
+			auto materialTask = App::GetSubmodule<MaterialImporter>()->CreateTransientMaterial(asset, job->m_allocator, job->m_material);
+			if (materialTask) materialTask->Wait();
+			if (!materialTask || !materialTask->GetResult())
+			{
+				result.m_diagnostic = "The material shader or one of its textures could not be loaded.";
+				return result;
+			}
+			const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+			while (!job->m_material->IsReady() && IsCurrent(request) && std::chrono::steady_clock::now() < deadline)
+			{
+				Renderer::GetDriver()->TrackResources_ThreadSafe();
+				std::this_thread::sleep_for(std::chrono::milliseconds(2));
+			}
+			if (!IsCurrent(request)) return result;
+			if (!job->m_material->IsReady())
+			{
+				result.m_diagnostic = "Material GPU initialization did not complete.";
+				return result;
+			}
+			ShaderSetPtr brdf, lightCulling, tonemap;
+			if (!LoadPreviewShader("Shaders/ComputeBrdfLut.shader", brdf) || !LoadPreviewShader("Shaders/ComputeLightCulling.shader", lightCulling) ||
+				!LoadPreviewShader("Shaders/Tonemapping.shader", tonemap, { "ACES" }))
+			{
+				result.m_diagnostic = "Preview lighting shaders are unavailable.";
+				return result;
+			}
+			job->m_shaders = { job->m_material->GetShader(), brdf, lightCulling, tonemap };
+			RHIFencePtr initialized;
+			const bool initializedOk = OnRender([&]() { return InitializePreview(job, request, brdf, initialized); });
+			const bool initializedComplete = initialized ? WaitForGpu(initialized) : false;
+			if (!initializedOk || !initializedComplete)
+			{
+				result.m_diagnostic = "Preview GPU resources could not be initialized.";
+				return result;
+			}
+			job->m_reusable = true;
+			++g_previewInitializationCount;
+			if (!IsCurrent(request)) return result;
+			submitted = OnRender([&]() { return PrepareAndSubmitPreview(job, request, completed); });
+		}
 		const bool finished = completed ? WaitForGpu(completed) : false;
 		if (!submitted || !finished)
 		{
@@ -412,6 +526,7 @@ namespace
 				"The material shader could not draw the preview primitive." : "Preview GPU rendering or readback failed.";
 			return result;
 		}
+		job->m_reusable = true;
 		if (!IsCurrent(request)) return result;
 		TVector<glm::u8vec4> pixels;
 		if (!job->m_readback->CopySrgbPixels(pixels))
@@ -437,26 +552,45 @@ namespace
 
 	void RunPreviewWorker()
 	{
-		for (;;)
+		MaterialPreviewRequest request;
+		TRefPtr<PreviewJob> job;
 		{
-			MaterialPreviewRequest request;
-			{
-				const std::lock_guard lock(g_previewMutex);
-				if (!g_pendingPreview) { g_previewWorkerRunning = false; return; }
-				request = std::move(*g_pendingPreview);
-				g_pendingPreview.reset();
-			}
-			MaterialPreviewResult result;
-			result.m_sessionId = request.m_sessionId;
-			result.m_revision = request.m_revision;
-			result.m_state = EMaterialPreviewState::Error;
-			try { result = RenderPreview(request); }
-			catch (const std::exception& error) { result.m_diagnostic = error.what(); }
-			catch (...) { result.m_diagnostic = "Unexpected material preview failure."; }
-			if (result.m_diagnostic.size() > 8192) result.m_diagnostic.resize(8192);
 			const std::lock_guard lock(g_previewMutex);
-			if (g_previewResult.m_sessionId == request.m_sessionId && g_previewResult.m_revision == request.m_revision &&
-				g_previewResult.m_state == EMaterialPreviewState::Pending) g_previewResult = std::move(result);
+			if (g_previewQueue.empty()) { g_previewWorkerRunning = false; return; }
+			const auto id = g_previewQueue.front();
+			g_previewQueue.pop_front();
+			auto& session = g_previewSessions.at(id);
+			request = std::move(*session.m_pending);
+			session.m_pending.reset();
+			job = std::move(session.m_job);
+			g_inFlightSession = id;
+			// The active job owns one slot, even during its cold initialization.
+			EvictIdleJobs(MaxPreviewJobs - 1);
+		}
+		MaterialPreviewResult result;
+		result.m_sessionId = request.m_sessionId;
+		result.m_revision = request.m_revision;
+		result.m_state = EMaterialPreviewState::Error;
+		try { result = RenderPreview(request, job); }
+		catch (const std::exception& error) { result.m_diagnostic = error.what(); }
+		catch (...) { result.m_diagnostic = "Unexpected material preview failure."; }
+		if (result.m_diagnostic.size() > 8192) result.m_diagnostic.resize(8192);
+		{
+			const std::lock_guard lock(g_previewMutex);
+			auto session = g_previewSessions.find(request.m_sessionId);
+			if (session != g_previewSessions.end())
+			{
+				auto& state = session->second;
+				if (job && job->m_reusable) state.m_job = std::move(job);
+				state.m_lastUse = ++g_lastUse;
+				if (state.m_result.m_revision == request.m_revision && state.m_result.m_state == EMaterialPreviewState::Pending)
+					state.m_result = std::move(result);
+			}
+			g_inFlightSession = 0;
+			// Yield between sessions so model fingerprints and other Background work
+			// can run. Each session occupies at most one FIFO position.
+			if (g_previewQueue.empty()) g_previewWorkerRunning = false;
+			else Tasks::CreateTask("Material preview worker"_h, RunPreviewWorker, EThreadType::Background)->Run();
 		}
 	}
 }
@@ -493,21 +627,32 @@ bool Sailor::EditorRuntime::UpdateMaterialPreview(MaterialPreviewRequest request
 		result.m_revision = request.m_revision;
 		return true;
 	}
-	if (g_previewResult.m_sessionId == request.m_sessionId && g_previewResult.m_revision >= request.m_revision)
+	auto session = g_previewSessions.find(request.m_sessionId);
+	if (session == g_previewSessions.end())
 	{
-		result = g_previewResult;
+		if (g_previewSessions.size() >= MaxPreviewSessions)
+		{
+			diagnostic = "The material preview session limit has been reached. Close an unused preview before opening another.";
+			return false;
+		}
+		session = g_previewSessions.try_emplace(request.m_sessionId).first;
+	}
+	auto& state = session->second;
+	if (state.m_result.m_revision >= request.m_revision)
+	{
+		result = state.m_result;
 		result.m_png.clear();
 		return true;
 	}
-	if (g_previewResult.m_sessionId != request.m_sessionId) RememberClosedSession(g_previewResult.m_sessionId);
-	g_previewResult = {};
-	g_previewResult.m_sessionId = request.m_sessionId;
-	g_previewResult.m_revision = request.m_revision;
-	g_previewResult.m_state = EMaterialPreviewState::Pending;
-	g_previewResult.m_width = request.m_width;
-	g_previewResult.m_height = request.m_height;
-	g_pendingPreview = std::move(request);
-	result = g_previewResult;
+	state.m_result = {};
+	state.m_result.m_sessionId = request.m_sessionId;
+	state.m_result.m_revision = request.m_revision;
+	state.m_result.m_state = EMaterialPreviewState::Pending;
+	state.m_result.m_width = request.m_width;
+	state.m_result.m_height = request.m_height;
+	if (!state.m_pending) g_previewQueue.push_back(request.m_sessionId);
+	state.m_pending = std::move(request);
+	result = state.m_result;
 	if (!g_previewWorkerRunning)
 	{
 		g_previewWorkerRunning = true;
@@ -519,13 +664,14 @@ bool Sailor::EditorRuntime::UpdateMaterialPreview(MaterialPreviewRequest request
 MaterialPreviewResult Sailor::EditorRuntime::GetMaterialPreview(uint64_t sessionId, uint64_t afterRevision)
 {
 	const std::lock_guard lock(g_previewMutex);
-	if (sessionId != g_previewResult.m_sessionId)
+	const auto session = g_previewSessions.find(sessionId);
+	if (session == g_previewSessions.end())
 	{
 		MaterialPreviewResult result;
 		result.m_sessionId = sessionId;
 		return result;
 	}
-	auto result = g_previewResult;
+	auto result = session->second.m_result;
 	if (result.m_revision <= afterRevision) result.m_png.clear();
 	return result;
 }
@@ -536,11 +682,12 @@ MaterialPreviewResult Sailor::EditorRuntime::CloseMaterialPreview(uint64_t sessi
 	MaterialPreviewResult result;
 	result.m_sessionId = sessionId;
 	RememberClosedSession(sessionId);
-	if (sessionId == g_previewResult.m_sessionId)
+	const auto session = g_previewSessions.find(sessionId);
+	if (session != g_previewSessions.end())
 	{
-		g_pendingPreview.reset();
-		result.m_revision = g_previewResult.m_revision;
-		g_previewResult = result;
+		result.m_revision = session->second.m_result.m_revision;
+		g_previewQueue.erase(std::remove(g_previewQueue.begin(), g_previewQueue.end(), sessionId), g_previewQueue.end());
+		g_previewSessions.erase(session);
 	}
 	return result;
 }
@@ -548,10 +695,20 @@ MaterialPreviewResult Sailor::EditorRuntime::CloseMaterialPreview(uint64_t sessi
 void Sailor::EditorRuntime::ResetMaterialPreviewForAppLifecycle()
 {
 	const std::lock_guard lock(g_previewMutex);
-	g_pendingPreview.reset();
+	g_previewQueue.clear();
+	g_previewSessions.clear();
 	g_closedPreviewSessions.clear();
-	g_previewResult = {};
 	g_previewWorkerRunning = false;
+	g_inFlightSession = 0;
+	g_lastUse = 0;
 }
 
 uint64_t Sailor::EditorRuntime::GetMaterialPreviewRenderCount() { return g_previewRenderCount.load(); }
+
+MaterialPreviewStatistics Sailor::EditorRuntime::GetMaterialPreviewStatistics()
+{
+	const std::lock_guard lock(g_previewMutex);
+	return { g_previewRenderCount.load(), g_previewInitializationCount.load(), g_previewLiveJobs.load(),
+		static_cast<uint32_t>(g_previewSessions.size()), static_cast<uint32_t>(g_previewQueue.size()), g_inFlightSession != 0,
+		g_previewRenderDispatchCount.load() };
+}

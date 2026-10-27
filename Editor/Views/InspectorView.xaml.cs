@@ -19,6 +19,7 @@ namespace SailorEditor.Views
         Task<InspectorRefreshCommitOutcome>? inspectorCommitTask;
         long inspectorCommitResetGeneration;
         bool lifecycleSubscribed;
+        long displayedResetGeneration = -1;
 
         public InspectorView()
         {
@@ -133,25 +134,37 @@ namespace SailorEditor.Views
 
         void ApplyInspectorRefresh()
         {
-            if (inspectorProjection.SelectedItem == null)
+            var selectedItem = inspectorProjection.SelectedItem;
+            var sameWorkspace = displayedResetGeneration == inspectorProjection.ResetGeneration;
+            displayedResetGeneration = inspectorProjection.ResetGeneration;
+            if (selectedItem == null)
             {
+                InspectorHeader.BindingContext = null;
+                InspectorHeader.IsVisible = false;
+                InspectorPreviewHost.Content = null;
                 InspectedItemHost.Content = null;
                 return;
             }
 
-            if (InspectedItemHost.Content is View existingView && AreEquivalentSelection(existingView.BindingContext, inspectorProjection.SelectedItem))
+            InspectorHeader.BindingContext = selectedItem;
+            InspectorHeader.IsVisible = true;
+            if (sameWorkspace && InspectedItemHost.Content is View existingView &&
+                AreEquivalentSelection(existingView.BindingContext, selectedItem))
             {
-                existingView.BindingContext = inspectorProjection.SelectedItem;
+                existingView.BindingContext = selectedItem;
                 return;
             }
 
+            InspectorPreviewHost.Content = selectedItem is MaterialFile
+                ? new MaterialPreviewView { BindingContext = selectedItem }
+                : null;
             var selector = (DataTemplateSelector)Resources["InspectorTemplateSelector"];
-            var template = selector.SelectTemplate(inspectorProjection.SelectedItem, InspectedItemHost);
+            var template = selector.SelectTemplate(selectedItem, InspectedItemHost);
             var content = template.CreateContent();
             if (content is View view)
             {
-                view.BindingContext = inspectorProjection.SelectedItem;
-                view.IsEnabled = inspectorProjection.SelectedItem is MaterialFile or not AssetFile { IsReadOnly: true };
+                view.BindingContext = selectedItem;
+                view.IsEnabled = selectedItem is not AssetFile { IsReadOnly: true };
                 InspectedItemHost.Content = view;
             }
         }
@@ -289,14 +302,14 @@ namespace SailorEditor.Views
 
         static bool AreEquivalentSelection(object? current, object? next)
         {
-            if (current is AssetFile || next is AssetFile)
-            {
-                return false;
-            }
-
             if (ReferenceEquals(current, next))
             {
                 return true;
+            }
+
+            if (current is AssetFile || next is AssetFile)
+            {
+                return false;
             }
 
             return InspectorSelectionIdentity.AreEquivalent(

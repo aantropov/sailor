@@ -145,6 +145,87 @@ public sealed class SceneViewportLifecycleTests
     }
 
     [Fact]
+    public void RenderViews_TransferExclusiveOwnership_AndIgnoreLateNativeFocus()
+    {
+        var shell = new ShellState();
+        var scene = new SceneShellFocusCoordinator(shell, "scene:1");
+        var preview = new RenderViewFocusCoordinator(shell, "material-preview:1");
+        var observedOwners = new List<string?>();
+        shell.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(ShellState.Focus))
+                observedOwners.Add(shell.Focus.FocusedViewportId);
+        };
+
+        scene.SetViewportFocus(true);
+        preview.SetViewportFocus(true);
+        Assert.True(preview.IsFocused);
+        Assert.False(scene.IsFocused);
+        Assert.False(scene.CanAcceptNativeFocus());
+        Assert.True(scene.CanAcceptNativeFocus(isPointerFocus: true));
+        Assert.Equal("material-preview:1", shell.Focus.KeyboardInputOwner);
+
+        scene.SetViewportFocus(false);
+        scene.ReleaseIfOwned();
+        Assert.True(preview.IsFocused);
+        scene.SetViewportFocus(true);
+        Assert.True(scene.IsFocused);
+        Assert.False(preview.IsFocused);
+        preview.ReleaseIfOwned();
+        Assert.True(scene.IsFocused);
+        scene.ReleaseIfOwned();
+        Assert.Null(shell.Focus.FocusedViewportId);
+        Assert.Null(shell.Focus.KeyboardInputOwner);
+        Assert.Equal(new string?[] { "scene:1", "material-preview:1", "scene:1", null }, observedOwners);
+    }
+
+    [Fact]
+    public void SceneFocusClaim_PublishesPanelAndViewportTogether_WithoutReentrantFocusLoss()
+    {
+        var shell = new ShellState();
+        var inspectorPanel = new PanelId("inspector");
+        var scenePanel = new PanelId("scene");
+        shell.FocusPanel(inspectorPanel, "right");
+        var preview = new RenderViewFocusCoordinator(shell, "material-preview:1");
+        preview.SetViewportFocus(true);
+        var scene = new SceneShellFocusCoordinator(shell, "scene:1",
+            () => new SceneShellFocusTarget(scenePanel, "center", scenePanel));
+        var localSceneFocus = false;
+        var releasedNativeInput = 0;
+        var observed = new List<ShellFocusState>();
+        shell.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName != nameof(ShellState.Focus))
+                return;
+            observed.Add(shell.Focus);
+            if (localSceneFocus && !scene.IsFocused)
+            {
+                localSceneFocus = false;
+                scene.SetViewportFocus(false);
+                ++releasedNativeInput;
+            }
+        };
+
+        // SceneView updates its local flag before claiming shell ownership.
+        localSceneFocus = true;
+        scene.SetViewportFocus(true);
+
+        Assert.True(localSceneFocus);
+        Assert.Equal(0, releasedNativeInput);
+        var claimed = Assert.Single(observed);
+        Assert.Equal(scenePanel, claimed.FocusedPanelId);
+        Assert.Equal(scenePanel, claimed.ActiveDocumentPanelId);
+        Assert.Equal("center", claimed.ActiveTabGroupId);
+        Assert.Equal("scene:1", claimed.FocusedViewportId);
+        Assert.Equal("scene:1", claimed.KeyboardInputOwner);
+
+        preview.SetViewportFocus(true);
+        Assert.False(localSceneFocus);
+        Assert.Equal(1, releasedNativeInput);
+        Assert.True(preview.IsFocused);
+    }
+
+    [Fact]
     public void FocusCoordinator_ClaimsAndReleasesViewportOwnership()
     {
         var shellState = new ShellState();

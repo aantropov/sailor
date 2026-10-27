@@ -1,6 +1,8 @@
 #include "Editor/MaterialPreview.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
+#include "AssetRegistry/Shader/ShaderCompiler.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
 #include "Editor/EditorRuntimeBridge.h"
 #include "RHI/Renderer.h"
 #include "Submodules/Editor.h"
@@ -110,7 +112,7 @@ void RunMaterialPreviewCommandTests(const std::filesystem::path& workspace)
 	const auto materialId = importer->CreateMaterialAsset(path.string(), data);
 	MaterialPtr savedMaterial;
 	Require(importer->LoadMaterial_Immediate(materialId, savedMaterial), "saved material fixture must load");
-	const auto savedRevision = savedMaterial->GetContentRevision();
+	auto savedRevision = savedMaterial->GetContentRevision();
 	std::string source;
 	Require(AssetRegistry::ReadAllTextFile(path.string(), source), "source material fixture must exist");
 	MaterialPreviewRequest request;
@@ -148,8 +150,26 @@ void RunMaterialPreviewCommandTests(const std::filesystem::path& workspace)
 	request.m_revision++;
 	request.m_yaw += 1.0f;
 	request.m_distance = 3.5f;
+	const auto beforeOrbit = GetMaterialPreviewStatistics().m_initializationCount;
 	const auto orbit = render("box-orbit-zoom");
 	Require(orbit.m_png != blue.m_png, "orbit and zoom must change the private camera image");
+	Require(GetMaterialPreviewStatistics().m_initializationCount == beforeOrbit,
+		"camera-only changes must reuse the private material, geometry, lighting, targets and graph");
+	const auto warmStart = std::chrono::steady_clock::now();
+	const auto beforeWarmDispatches = GetMaterialPreviewStatistics().m_renderDispatchCount;
+	for (int i = 0; i < 8; ++i)
+	{
+		++request.m_revision;
+		request.m_yaw += 0.1f;
+		Require(UpdateMaterialPreview(request, accepted, diagnostic), diagnostic);
+		Require(WaitForPreview(request.m_sessionId, request.m_revision).m_state == EMaterialPreviewState::Ready,
+			"consecutive camera updates must complete using a retired private submission context");
+	}
+	Require(GetMaterialPreviewStatistics().m_initializationCount == beforeOrbit, "warm orbit must not rebuild GPU resources");
+	Require(GetMaterialPreviewStatistics().m_renderDispatchCount == beforeWarmDispatches + 8,
+		"each warm camera update must prepare and submit in a single Render dispatch");
+	std::cout << "Material preview warm orbit: " <<
+		std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - warmStart).count() / 8.0 << " ms/update\n";
 	request.m_primitive = EMaterialPreviewPrimitive::Sphere;
 	request.m_distance = 3;
 	request.m_yaw = 0.45f;
@@ -184,6 +204,36 @@ void RunMaterialPreviewCommandTests(const std::filesystem::path& workspace)
 	const auto textureSum = Inspect(textured, "sphere-texture-green");
 	Require(textureSum.g > textureSum.r * 2 && textureSum.g > textureSum.b * 2,
 		"unsaved texture references must reach the shader's actual texture binding table");
+	const auto beforeTextureReload = GetMaterialPreviewStatistics().m_initializationCount;
+	textureBytes[19] = 0;
+	textureBytes[20] = 255;
+	std::ofstream redTextureFile(texturePath, std::ios::binary | std::ios::trunc);
+	redTextureFile.write(reinterpret_cast<const char*>(textureBytes.data()), textureBytes.size());
+	redTextureFile.close();
+	auto* textureImporter = App::GetSubmodule<TextureImporter>();
+	textureImporter->OnUpdateAssetInfo(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(textureId), true);
+	auto reloadTexture = textureImporter->GetLoadPromise(textureId);
+	Require(static_cast<bool>(reloadTexture), "texture reload must be scheduled");
+	reloadTexture->Wait();
+	Require(static_cast<bool>(reloadTexture->GetResult()), "texture reload must publish successfully");
+	++request.m_revision;
+	const auto reloadedTexture = render("sphere-texture-reloaded-red");
+	const auto reloadedSum = Inspect(reloadedTexture, "sphere-texture-reloaded-red");
+	Require(reloadedSum.r > reloadedSum.g * 2 && GetMaterialPreviewStatistics().m_initializationCount == beforeTextureReload + 1,
+		"a texture publication must invalidate the warm cache even with identical material YAML");
+	Require(savedMaterial->GetContentRevision() == savedRevision, "preview reuse and texture reload must preserve unrelated saved materials");
+	auto* compiler = App::GetSubmodule<ShaderCompiler>();
+	const auto beforeShaderReload = GetMaterialPreviewStatistics().m_initializationCount;
+	auto reloadShader = ShaderCompilerTestAccess::ReloadShaderResources(*compiler, data.m_shader);
+	reloadShader->Wait();
+	Require(reloadShader->GetResult(), "surface shader reload must publish successfully");
+	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Render, EThreadType::Worker, EThreadType::RHI });
+	// The explicit shader reload also refreshes the registered fixture material.
+	savedRevision = savedMaterial->GetContentRevision();
+	++request.m_revision;
+	render("sphere-shader-reloaded");
+	Require(GetMaterialPreviewStatistics().m_initializationCount == beforeShaderReload + 1,
+		"a surface shader publication must invalidate the warm cache with unchanged YAML");
 	request.m_revision++;
 	request.m_materialYaml = "shaderUid: [broken";
 	Require(UpdateMaterialPreview(request, accepted, diagnostic), diagnostic);
@@ -243,6 +293,108 @@ void RunMaterialPreviewCommandTests(const std::filesystem::path& workspace)
 		"rapid queued edits must render only the latest pending revision");
 	CloseMaterialPreview(217);
 
+	std::promise<void> queueEntered, releaseQueue;
+	ScopeExit releaseQueueOnFailure([&]() { releaseQueue.set_value(); });
+	auto queueGate = releaseQueue.get_future().share();
+	auto queueBlocker = Tasks::CreateTask("Hold independent preview sessions"_h,
+		[&]() { queueEntered.set_value(); queueGate.wait(); }, EThreadType::Background);
+	queueBlocker->Run();
+	queueEntered.get_future().wait();
+	request.m_sessionId = 220;
+	request.m_revision = 1;
+	Require(UpdateMaterialPreview(request, accepted, diagnostic), diagnostic);
+	auto thumbnail = request;
+	thumbnail.m_sessionId = 221;
+	thumbnail.m_primitive = EMaterialPreviewPrimitive::Box;
+	Require(UpdateMaterialPreview(thumbnail, accepted, diagnostic), diagnostic);
+	for (uint64_t revision = 2; revision <= 8; ++revision)
+	{
+		request.m_revision = revision;
+		Require(UpdateMaterialPreview(request, accepted, diagnostic), diagnostic);
+	}
+	const auto queued = GetMaterialPreviewStatistics();
+	Require(queued.m_sessions == 2 && queued.m_pendingRequests == 2,
+		"independent sessions must retain only one pending request each");
+	auto queueObserver = Tasks::CreateTask<bool>("Observe preview FIFO and Background yield"_h, []()
+	{
+		const auto interactive = GetMaterialPreview(220);
+		return interactive.m_revision == 8 && interactive.m_state == EMaterialPreviewState::Ready &&
+			GetMaterialPreview(221).m_state == EMaterialPreviewState::Pending;
+	}, EThreadType::Background);
+	queueObserver->Run();
+	releaseQueueOnFailure.Run();
+	queueObserver->Wait();
+	Require(queueObserver->GetResult(), "preview FIFO must preserve fairness and yield to unrelated Background tasks between requests");
+	Inspect(WaitForPreview(221, 1), "independent-thumbnail");
+	const auto beforeInterleavedOrbit = GetMaterialPreviewStatistics().m_initializationCount;
+	++request.m_revision;
+	request.m_yaw += 0.4f;
+	render("interleaved-orbit");
+	Require(GetMaterialPreviewStatistics().m_initializationCount == beforeInterleavedOrbit &&
+		GetMaterialPreview(221, 0).m_state == EMaterialPreviewState::Ready,
+		"another transient material must neither invalidate the warm interactive job nor close its session");
+	CloseMaterialPreview(221);
+	Require(GetMaterialPreview(220).m_state == EMaterialPreviewState::Ready,
+		"closing a thumbnail must leave the interactive session available");
+	for (uint64_t id = 222; id <= 226; ++id)
+	{
+		thumbnail.m_sessionId = id;
+		Require(UpdateMaterialPreview(thumbnail, accepted, diagnostic), diagnostic);
+		Require(WaitForPreview(id, 1).m_state == EMaterialPreviewState::Ready, "bounded thumbnail fixture must render");
+		Require(GetMaterialPreviewStatistics().m_liveJobs <= 4, "retained private GPU jobs must stay bounded to four");
+	}
+	Require(GetMaterialPreview(220).m_state == EMaterialPreviewState::Ready,
+		"LRU GPU eviction must retain the session's completed image and status");
+	const auto beforeEvictedOrbit = GetMaterialPreviewStatistics().m_initializationCount;
+	++request.m_revision;
+	render("rebuilt-after-lru");
+	Require(GetMaterialPreviewStatistics().m_initializationCount == beforeEvictedOrbit + 1,
+		"an evicted session must rebuild its private resources when requested again");
+	for (uint64_t id = 222; id <= 226; ++id) CloseMaterialPreview(id);
+
+	std::promise<void> renderEntered, releaseRender;
+	ScopeExit releaseRenderOnFailure([&]() { releaseRender.set_value(); });
+	auto renderGate = releaseRender.get_future().share();
+	auto renderBlocker = Tasks::CreateTask("Hold Render before preview reuse"_h,
+		[&]() { renderEntered.set_value(); renderGate.wait(); }, EThreadType::Render);
+	renderBlocker->Run();
+	renderEntered.get_future().wait();
+	const auto beforeInFlightClose = GetMaterialPreviewRenderCount();
+	++request.m_revision;
+	Require(UpdateMaterialPreview(request, accepted, diagnostic), diagnostic);
+	const auto startDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+	while (!GetMaterialPreviewStatistics().m_inFlight && std::chrono::steady_clock::now() < startDeadline)
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	Require(GetMaterialPreviewStatistics().m_inFlight, "close test must reach an active native request");
+	CloseMaterialPreview(220);
+	releaseRenderOnFailure.Run();
+	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Background, EThreadType::Render, EThreadType::Worker, EThreadType::RHI });
+	Require(GetMaterialPreview(220).m_state == EMaterialPreviewState::Closed &&
+		GetMaterialPreviewRenderCount() == beforeInFlightClose && GetMaterialPreviewStatistics().m_liveJobs == 0,
+		"closing active reuse must discard publication and release resources after retirement");
+
+	std::promise<void> capacityEntered, releaseCapacity;
+	ScopeExit releaseCapacityOnFailure([&]() { releaseCapacity.set_value(); });
+	auto capacityGate = releaseCapacity.get_future().share();
+	auto capacityBlocker = Tasks::CreateTask("Hold preview session capacity"_h,
+		[&]() { capacityEntered.set_value(); capacityGate.wait(); }, EThreadType::Background);
+	capacityBlocker->Run();
+	capacityEntered.get_future().wait();
+	for (uint64_t id = 300; id < 316; ++id)
+	{
+		thumbnail.m_sessionId = id;
+		Require(UpdateMaterialPreview(thumbnail, accepted, diagnostic), diagnostic);
+	}
+	thumbnail.m_sessionId = 316;
+	Require(!UpdateMaterialPreview(thumbnail, accepted, diagnostic) && diagnostic.find("limit") != std::string::npos &&
+		GetMaterialPreviewStatistics().m_sessions == 16 && GetMaterialPreviewStatistics().m_pendingRequests == 16,
+		"session admission must be bounded and must not evict another caller's active session");
+	for (uint64_t id = 300; id < 316; ++id) CloseMaterialPreview(id);
+	releaseCapacityOnFailure.Run();
+	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle({ EThreadType::Background, EThreadType::Render, EThreadType::Worker, EThreadType::RHI });
+	Require(GetMaterialPreviewStatistics().m_sessions == 0 && GetMaterialPreviewStatistics().m_liveJobs == 0 &&
+		GetMaterialPreviewRenderCount() == beforeInFlightClose, "closed queued sessions must leave no GPU work or cached resources");
+
 	std::string after;
 	Require(AssetRegistry::ReadAllTextFile(path.string(), after) && after == source &&
 		savedMaterial->GetContentRevision() == savedRevision, "unsaved previews must preserve the source file and loaded material");
@@ -252,6 +404,6 @@ void RunMaterialPreviewCommandTests(const std::filesystem::path& workspace)
 		"private preview must preserve the active scene graph, extent, MSAA, mode, readback and world");
 	Require(!editor || !world || YAML::Dump(editor->SerializeWorld()) == serializedScene,
 		"private preview must not edit the scene serialization");
-	std::cout << "Material preview GPU: primitives, unsaved uniforms/textures, roughness, orbit/zoom, errors, close, coalescing and scene/asset isolation passed\n";
+	std::cout << "Material preview GPU: primitives, unsaved uniforms/textures, roughness, warm orbit, dependency reload, independent sessions, FIFO, bounded LRU, errors, close and isolation passed\n";
 }
 }

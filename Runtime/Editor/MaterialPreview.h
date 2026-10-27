@@ -34,6 +34,17 @@ namespace Sailor::EditorRuntime
 		std::string m_diagnostic;
 	};
 
+	struct MaterialPreviewStatistics
+	{
+		uint64_t m_renderCount = 0;
+		uint64_t m_initializationCount = 0;
+		uint32_t m_liveJobs = 0;
+		uint32_t m_sessions = 0;
+		uint32_t m_pendingRequests = 0;
+		bool m_inFlight = false;
+		uint64_t m_renderDispatchCount = 0;
+	};
+
 	SAILOR_API bool UpdateMaterialPreview(MaterialPreviewRequest request, MaterialPreviewResult& result,
 		std::string& diagnostic);
 	SAILOR_API MaterialPreviewResult GetMaterialPreview(uint64_t sessionId, uint64_t afterRevision = 0);
@@ -41,4 +52,5 @@ namespace Sailor::EditorRuntime
 	// Called after the scheduler drains, before destroying the graphics driver.
 	SAILOR_API void ResetMaterialPreviewForAppLifecycle();
 	SAILOR_API uint64_t GetMaterialPreviewRenderCount();
+	SAILOR_API MaterialPreviewStatistics GetMaterialPreviewStatistics();
 }

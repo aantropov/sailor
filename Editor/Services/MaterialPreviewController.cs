@@ -88,7 +88,7 @@ internal sealed class MaterialPreviewController : IAsyncDisposable
     {
         this.transport = transport;
         this.debounce = debounce ?? TimeSpan.FromMilliseconds(100);
-        this.pollInterval = pollInterval ?? TimeSpan.FromMilliseconds(100);
+        this.pollInterval = pollInterval ?? TimeSpan.FromMilliseconds(16);
         this.requestTimeout = requestTimeout ?? TimeSpan.FromSeconds(30);
     }
 
@@ -126,7 +126,8 @@ internal sealed class MaterialPreviewController : IAsyncDisposable
         {
             if (disposed || session is null || desired?.Request.Snapshot == snapshot)
                 return;
-            activeOperation?.Cancel();
+            if (desired is not null && !HasSameContent(desired.Request.Snapshot, snapshot))
+                activeOperation?.Cancel();
             desired = new Work(session, new MaterialPreviewRequest(session.Id, ++session.NextRevision, snapshot));
             presentation = presentation with
             {
@@ -179,10 +180,12 @@ internal sealed class MaterialPreviewController : IAsyncDisposable
         {
             Session? toClose;
             Work? work;
+            Work? previous;
             lock (gate)
             {
                 toClose = closing.Count > 0 ? closing.Dequeue() : null;
                 work = desired;
+                previous = handled;
                 if (toClose is null && (work is null || ReferenceEquals(work, handled)))
                 {
                     processingActive = false;
@@ -211,13 +214,15 @@ internal sealed class MaterialPreviewController : IAsyncDisposable
             CancellationTokenSource? operation = null;
             try
             {
-                await Task.Delay(debounce, work!.Session.Cancellation.Token).ConfigureAwait(false);
+                var delay = previous is not null && HasSameContent(previous.Request.Snapshot, work!.Request.Snapshot)
+                    ? TimeSpan.Zero
+                    : debounce;
+                await Task.Delay(delay, work!.Session.Cancellation.Token).ConfigureAwait(false);
                 ulong afterRevision;
                 lock (gate)
                 {
                     if (desired is null || !ReferenceEquals(session, work.Session))
                         continue;
-                    // A bounded debounce window also keeps orbit dragging responsive.
                     work = desired;
                     handled = work;
                     operation = CancellationTokenSource.CreateLinkedTokenSource(work.Session.Cancellation.Token);
@@ -273,8 +278,13 @@ internal sealed class MaterialPreviewController : IAsyncDisposable
     bool IsCurrent(Work work)
     {
         lock (gate)
-            return !disposed && ReferenceEquals(session, work.Session) && ReferenceEquals(desired, work);
+            return !disposed && ReferenceEquals(session, work.Session) && desired is not null &&
+                HasSameContent(desired.Request.Snapshot, work.Request.Snapshot);
     }
+
+    static bool HasSameContent(MaterialPreviewSnapshot left, MaterialPreviewSnapshot right) =>
+        left.MaterialYaml == right.MaterialYaml && left.Primitive == right.Primitive &&
+        left.Width == right.Width && left.Height == right.Height;
 
     void Publish(Work work, byte[]? png, string diagnostic)
     {
@@ -286,7 +296,7 @@ internal sealed class MaterialPreviewController : IAsyncDisposable
             {
                 Png = png ?? presentation.Png,
                 ImageRevision = png is null ? presentation.ImageRevision : work.Request.Revision,
-                IsLoading = false,
+                IsLoading = !ReferenceEquals(desired, work),
                 Diagnostic = diagnostic
             };
         }

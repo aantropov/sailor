@@ -1,5 +1,8 @@
 using System.ComponentModel;
+using SailorEditor.Controls;
+using SailorEditor.Scene;
 using SailorEditor.Services;
+using SailorEditor.State;
 using SailorEditor.ViewModels;
 
 namespace SailorEditor.Views;
@@ -11,12 +14,15 @@ public sealed class MaterialPreviewView : ContentView
     readonly Border previewBorder;
     readonly VerticalStackLayout previewContent;
     readonly Picker primitive;
-    readonly Slider zoom;
     readonly Button toggle;
     readonly List<VisualElement> visibilityAncestors = [];
     EngineService? engine;
     MaterialFile? material;
     MaterialPreviewController? controller;
+    ShellState? shellState;
+    RenderViewFocusCoordinator? focusCoordinator;
+    readonly string viewportId = $"material-preview:{Guid.NewGuid():N}";
+    string? materialYaml;
     byte[]? displayedPng;
     bool loaded;
     bool expanded = true;
@@ -25,6 +31,8 @@ public sealed class MaterialPreviewView : ContentView
     float pitch = 0.25f;
     float dragYaw;
     float dragPitch;
+    float distance = 3;
+    internal int ReceivedWheelEvents { get; private set; }
 
     public MaterialPreviewView()
     {
@@ -36,7 +44,7 @@ public sealed class MaterialPreviewView : ContentView
             HeightRequest = 224,
             HorizontalOptions = LayoutOptions.Fill
         };
-        SemanticProperties.SetDescription(previewImage, "Rendered material preview. Drag to orbit.");
+        SemanticProperties.SetDescription(previewImage, "Rendered material preview. Drag to orbit, scroll to zoom.");
         previewBorder = new Border
         {
             Content = previewImage,
@@ -50,6 +58,7 @@ public sealed class MaterialPreviewView : ContentView
         var pan = new PanGestureRecognizer();
         pan.PanUpdated += OnPanUpdated;
         previewBorder.GestureRecognizers.Add(pan);
+        previewBorder.Behaviors.Add(new PreviewWheelBehavior(OnPreviewWheel));
 
         primitive = new Picker
         {
@@ -70,23 +79,6 @@ public sealed class MaterialPreviewView : ContentView
         shapeControls.Add(primitive, 0, 0);
         shapeControls.Add(focus, 1, 0);
 
-        zoom = new Slider
-        {
-            AutomationId = "MaterialPreviewZoom",
-            Minimum = 1.5,
-            Maximum = 12,
-            Value = 3,
-            HorizontalOptions = LayoutOptions.Fill
-        };
-        SemanticProperties.SetDescription(zoom, "Preview camera distance");
-        zoom.ValueChanged += (_, _) => QueueSnapshot();
-        var zoomControls = new Grid
-        {
-            ColumnDefinitions = [new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Star)],
-            ColumnSpacing = 6
-        };
-        zoomControls.Add(new Label { Text = "Distance", VerticalOptions = LayoutOptions.Center }, 0, 0);
-        zoomControls.Add(zoom, 1, 0);
         status = new Label
         {
             AutomationId = "MaterialPreviewStatus",
@@ -97,7 +89,7 @@ public sealed class MaterialPreviewView : ContentView
         previewContent = new VerticalStackLayout
         {
             Spacing = 4,
-            Children = { previewBorder, shapeControls, zoomControls, status }
+            Children = { previewBorder, shapeControls, status }
         };
         toggle = new Button { AutomationId = "MaterialPreviewToggle", Text = "Hide", Padding = new Thickness(8, 3) };
         toggle.Clicked += (_, _) =>
@@ -125,6 +117,9 @@ public sealed class MaterialPreviewView : ContentView
         if (loaded)
             return;
         loaded = true;
+        shellState = MauiProgram.GetService<ShellState>();
+        focusCoordinator = new RenderViewFocusCoordinator(shellState, viewportId);
+        shellState.PropertyChanged += OnShellFocusChanged;
         engine = MauiProgram.GetService<EngineService>();
         engine.OnLifecycleStateChanged += OnEngineStateChanged;
         controller = new MaterialPreviewController(engine);
@@ -136,10 +131,17 @@ public sealed class MaterialPreviewView : ContentView
     void OnUnloaded(object? sender, EventArgs args)
     {
         loaded = false;
+        focusCoordinator?.ReleaseIfOwned();
+        if (shellState is not null)
+            shellState.PropertyChanged -= OnShellFocusChanged;
+        focusCoordinator = null;
+        shellState = null;
+        UpdateFocusVisual();
         snapshotQueued = false;
         if (material is not null)
             material.PropertyChanged -= OnMaterialChanged;
         material = null;
+        materialYaml = null;
         if (engine is not null)
             engine.OnLifecycleStateChanged -= OnEngineStateChanged;
         StopObservingVisibility();
@@ -158,6 +160,7 @@ public sealed class MaterialPreviewView : ContentView
         if (material is not null)
             material.PropertyChanged -= OnMaterialChanged;
         material = loaded ? BindingContext as MaterialFile : null;
+        materialYaml = null;
         if (material is not null)
             material.PropertyChanged += OnMaterialChanged;
         SyncContext();
@@ -202,6 +205,8 @@ public sealed class MaterialPreviewView : ContentView
         if (controller is null || engine is null)
             return;
         var active = CanPreview();
+        if (!active)
+            focusCoordinator?.ReleaseIfOwned();
         var changed = controller.SetContext(material, engine.Generation, active);
         if (active && changed)
             QueueSnapshot();
@@ -211,7 +216,11 @@ public sealed class MaterialPreviewView : ContentView
 
     void OnEngineStateChanged(EngineLifecycleState state) => SyncContext();
 
-    void OnMaterialChanged(object? sender, PropertyChangedEventArgs args) => Dispatcher.Dispatch(QueueSnapshot);
+    void OnMaterialChanged(object? sender, PropertyChangedEventArgs args) => Dispatcher.Dispatch(() =>
+    {
+        materialYaml = null;
+        QueueSnapshot();
+    });
 
     void QueueSnapshot()
     {
@@ -226,9 +235,9 @@ public sealed class MaterialPreviewView : ContentView
             try
             {
                 controller.Update(new MaterialPreviewSnapshot(
-                    material.CreatePreviewSnapshot(),
+                    materialYaml ??= material.CreatePreviewSnapshot(),
                     (PreviewPrimitive)(Math.Max(primitive.SelectedIndex, 0) + 1),
-                    yaw, pitch, (float)zoom.Value));
+                    yaw, pitch, distance));
             }
             catch (Exception exception)
             {
@@ -255,16 +264,39 @@ public sealed class MaterialPreviewView : ContentView
             }
             status.Text = state.IsLoading ? "Rendering…" :
                 !string.IsNullOrEmpty(state.Diagnostic) ? state.Diagnostic :
-                state.Png is not null ? "Drag to orbit. Focus resets the camera." :
+                state.Png is not null ? "Drag to orbit. Scroll to zoom. Focus resets the camera." :
                 "Start the engine to preview this material.";
         });
     }
 
     void SelectPreview()
     {
-        previewBorder.Stroke = new SolidColorBrush(Color.FromArgb("#3E8EED"));
-        previewBorder.StrokeThickness = 2;
+        focusCoordinator?.SetViewportFocus(true);
+        UpdateFocusVisual();
         Focus();
+    }
+
+    void OnShellFocusChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName == nameof(ShellState.Focus))
+            UpdateFocusVisual();
+    }
+
+    void UpdateFocusVisual()
+    {
+        var focused = focusCoordinator?.IsFocused == true;
+        previewBorder.Stroke = new SolidColorBrush(Color.FromArgb(focused ? "#3E8EED" : "#606060"));
+        previewBorder.StrokeThickness = focused ? 2 : 1;
+    }
+
+    void OnPreviewWheel(double delta)
+    {
+        if (!CanPreview() || !double.IsFinite(delta) || delta == 0)
+            return;
+        ++ReceivedWheelEvents;
+        SelectPreview();
+        distance = Math.Clamp(distance * (float)Math.Exp(-delta * 0.12), 1.5f, 12f);
+        QueueSnapshot();
     }
 
     void ResetCamera()
@@ -272,7 +304,7 @@ public sealed class MaterialPreviewView : ContentView
         SelectPreview();
         yaw = 0.45f;
         pitch = 0.25f;
-        zoom.Value = 3;
+        distance = 3;
         QueueSnapshot();
     }
 
@@ -284,11 +316,13 @@ public sealed class MaterialPreviewView : ContentView
             dragYaw = yaw;
             dragPitch = pitch;
         }
-        else if (args.StatusType is GestureStatus.Running or GestureStatus.Completed)
+        else if (args.StatusType == GestureStatus.Running)
         {
             yaw = (float)Math.IEEERemainder(dragYaw - args.TotalX * 0.012, Math.PI * 2);
             pitch = Math.Clamp(dragPitch + (float)args.TotalY * 0.012f, -1.4f, 1.4f);
             QueueSnapshot();
         }
+        else if (args.StatusType == GestureStatus.Completed)
+            QueueSnapshot();
     }
 }

@@ -12,7 +12,6 @@
             <controls:FloatValueConverter x:Key="FloatValueConverter" />
         </VerticalStackLayout.Resources>
 
-        <views:ControlPanelView />
 
         <Label Text="Frame Pipeline" FontAttributes="Bold" FontSize="16" />
         <HorizontalStackLayout Spacing="6">

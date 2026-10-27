@@ -39,7 +39,6 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <views:ControlPanelView Grid.Row="0" Grid.ColumnSpan="2" />
 
         <Grid Grid.Row="1"
               Grid.ColumnSpan="2"
@@ -122,6 +121,13 @@
                     <HorizontalStackLayout>
                         <Button Text="-" Command="{Binding Path=BindingContext.RemoveMaterialCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
                         <Button Text="Clear" WidthRequest ="60" Command="{Binding Path=BindingContext.ClearMaterialCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}"/>
+                        <controls:AssetPreviewImage FileId="{Binding Value}"
+                                                    WidthRequest="36" HeightRequest="36"
+                                                    VerticalOptions="Center">
+                            <controls:AssetPreviewImage.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnMaterialPreviewTapped" />
+                            </controls:AssetPreviewImage.GestureRecognizers>
+                        </controls:AssetPreviewImage>
                         <Label Text="{Binding Value, Converter={StaticResource FileIdToFilenameConverter}}" WidthRequest="200" VerticalOptions="Center">
                             <Label.Behaviors>
                                 <controls:FileIdDragAndDropBehaviour BoundProperty="{Binding Value}" SupportedType="{x:Type vm:MaterialFile}"/>

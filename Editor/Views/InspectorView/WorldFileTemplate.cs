@@ -4,6 +4,6 @@ public sealed class WorldFileTemplate : DataTemplate
 {
     public WorldFileTemplate()
     {
-        LoadTemplate = static () => new Views.ControlPanelView();
+        LoadTemplate = static () => new ContentView();
     }
 }

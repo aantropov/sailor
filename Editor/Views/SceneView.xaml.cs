@@ -49,6 +49,7 @@ namespace SailorEditor.Views
         readonly IAlreadyAppliedTransformTarget viewportTransformTarget;
         readonly SceneViewportLifecycleAdapter viewportAdapter;
         readonly SceneShellFocusCoordinator focusCoordinator;
+        readonly State.ShellState shellState;
         readonly SceneViewportSelectionRouter selectionRouter = new(NullSceneViewportSelectionPicker.Instance);
         readonly EditorViewportEventRevisionGate viewportEventRevisionGate = new();
         readonly UnifiedSettingsStore settingsStore;
@@ -91,7 +92,7 @@ namespace SailorEditor.Views
             viewportTransformTarget = new EditorViewportTransformTarget(engineService, worldService);
             viewportAdapter = new SceneViewportLifecycleAdapter(new EngineSceneViewportBackend(engineService), EngineService.SceneViewportId);
             UpdateRestartEngineButton(engineService.State);
-            var shellState = MauiProgram.GetService<State.ShellState>();
+            shellState = MauiProgram.GetService<State.ShellState>();
             focusCoordinator = new SceneShellFocusCoordinator(shellState, $"scene:{EngineService.SceneViewportId}", () => ResolveFocusTarget(shellState));
             QualityPicker.ItemsSource = QualityOptions
                 .Select(option => option.DisplayName)
@@ -171,6 +172,8 @@ namespace SailorEditor.Views
             Loaded += (sender, args) =>
             {
                 isRunning = true;
+                shellState.PropertyChanged -= OnShellFocusChanged;
+                shellState.PropertyChanged += OnShellFocusChanged;
                 var loadGeneration = ++viewportLoadGeneration;
                 SubscribeToEngineLifecycle();
                 _ = RefreshViewportToolStateAsync();
@@ -219,6 +222,7 @@ namespace SailorEditor.Views
             Unloaded += (sender, args) =>
             {
                 isRunning = false;
+                shellState.PropertyChanged -= OnShellFocusChanged;
                 ResetNativeViewportInputQueue();
                 UnsubscribeFromEngineLifecycle();
                 focusCoordinator.ReleaseIfOwned();
@@ -248,6 +252,16 @@ namespace SailorEditor.Views
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (input.Kind == NativeSceneViewportInputKind.Focus && input.Focused &&
+                !focusCoordinator.CanAcceptNativeFocus(input.IsPointerFocus))
+            {
+                nativeViewportHost?.ReleaseInputFocus();
+                return NativeViewportInputDispatchResult.Forwarded;
+            }
+            if (!focusCoordinator.IsFocused &&
+                (input.Kind is NativeSceneViewportInputKind.Key or NativeSceneViewportInputKind.Text or NativeSceneViewportInputKind.Capture ||
+                 input.Kind == NativeSceneViewportInputKind.PointerButton && !input.Pressed))
+                return NativeViewportInputDispatchResult.Forwarded;
             var captured = input.Captured || isInputCaptured;
 
             if (input.Kind == NativeSceneViewportInputKind.Key &&
@@ -302,10 +316,6 @@ namespace SailorEditor.Views
                 }
                 isInputCaptured = input.Captured;
                 captured = input.Captured;
-            }
-            else if (input.Kind == NativeSceneViewportInputKind.Key)
-            {
-                SetSceneFocus(true, sendRemoteFocus: !isFocused);
             }
             else if (!isFocused && !isInputCaptured)
             {
@@ -920,7 +930,8 @@ namespace SailorEditor.Views
         async Task ApplyViewportToolShortcutAsync(
             EditorViewportToolShortcutEvent viewportEvent)
         {
-            SetSceneFocus(true, sendRemoteFocus: !isFocused);
+            if (!focusCoordinator.IsFocused)
+                return;
             if (!SceneViewportToolShortcuts.TryApply(
                     viewportEvent.KeyCode,
                     isPressed: true,
@@ -1310,6 +1321,15 @@ namespace SailorEditor.Views
                 viewportAdapter.SendInput(RemoteViewportInputKind.Focus, focused: focused);
             UpdateFocusVisual();
             UpdateViewportIntegration();
+        }
+
+        void OnShellFocusChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+        {
+            if (args.PropertyName != nameof(State.ShellState.Focus) || focusCoordinator.IsFocused || !isFocused)
+                return;
+            ResetNativeViewportInputQueue();
+            SetSceneFocus(false, sendRemoteFocus: true);
+            nativeViewportHost?.ReleaseInputFocus();
         }
 
         void UpdateFocusVisual()

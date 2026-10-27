@@ -155,19 +155,21 @@ public readonly record struct SceneShellFocusTarget(
     string? GroupId = null,
     PanelId? ActiveDocumentPanelId = null);
 
-public sealed class SceneShellFocusCoordinator(ShellState shellState, string viewportId, Func<SceneShellFocusTarget>? focusTargetProvider = null)
+public class RenderViewFocusCoordinator(ShellState shellState, string viewportId, Func<SceneShellFocusTarget>? focusTargetProvider = null)
 {
+    public bool IsFocused => shellState.Focus.FocusedViewportId == viewportId;
+
+    public bool CanAcceptNativeFocus(bool isPointerFocus = false) =>
+        isPointerFocus || shellState.Focus.FocusedViewportId is null || IsFocused;
+
     public void SetViewportFocus(bool isFocused)
     {
         if (isFocused)
         {
             var focusTarget = focusTargetProvider?.Invoke();
-            if (focusTarget?.PanelId is { } panelId)
-            {
-                shellState.FocusPanel(panelId, focusTarget.Value.GroupId, focusTarget.Value.ActiveDocumentPanelId ?? panelId);
-            }
-
-            shellState.FocusViewport(viewportId, selectionOwner: viewportId, keyboardInputOwner: viewportId);
+            shellState.FocusViewport(viewportId, selectionOwner: viewportId, keyboardInputOwner: viewportId,
+                panelId: focusTarget?.PanelId, groupId: focusTarget?.GroupId,
+                activeDocument: focusTarget?.ActiveDocumentPanelId ?? focusTarget?.PanelId);
             return;
         }
 
@@ -181,3 +183,6 @@ public sealed class SceneShellFocusCoordinator(ShellState shellState, string vie
             shellState.FocusViewport(null, selectionOwner: null, keyboardInputOwner: null);
     }
 }
+
+public sealed class SceneShellFocusCoordinator(ShellState shellState, string viewportId, Func<SceneShellFocusTarget>? focusTargetProvider = null)
+    : RenderViewFocusCoordinator(shellState, viewportId, focusTargetProvider);

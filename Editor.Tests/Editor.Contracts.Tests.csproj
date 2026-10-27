@@ -114,8 +114,10 @@
     <Compile Include="EditorEngineProtocolTests.cs" />
     <Compile Include="EngineProtocolClientTests.cs" />
     <Compile Include="MaterialPreviewControllerTests.cs" />
+    <Compile Include="MaterialThumbnailCacheTests.cs" />
     <Compile Include="MaterialPreviewProtocolTests.cs" />
     <Compile Include="..\Editor\Services\MaterialPreviewController.cs" Link="Services\MaterialPreviewController.cs" />
+    <Compile Include="..\Editor\Services\MaterialThumbnailCache.cs" Link="Services\MaterialThumbnailCache.cs" />
     <Compile Include="LocalEngineProtocolTransportTests.cs" />
     <Compile Include="AssetReimportIntegrationTests.cs" />
     <Compile Include="UnsupportedExportIntegrationTests.cs" />

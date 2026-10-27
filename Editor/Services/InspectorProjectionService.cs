@@ -29,7 +29,7 @@ public sealed partial class InspectorProjectionService : ObservableObject
 
         _selectionService.PropertyChanged += (_, args) =>
         {
-            if (args.PropertyName == nameof(SelectionService.SelectedItem) || args.PropertyName == nameof(SelectionService.SelectedInstanceId))
+            if (args.PropertyName == nameof(SelectionService.InspectedItem))
                 Refresh();
         };
         _worldService.OnUpdateWorldAction += _ => Refresh();
@@ -97,7 +97,13 @@ public sealed partial class InspectorProjectionService : ObservableObject
 
     object? ResolveSelectedItem()
     {
-        var selectedInstanceId = _selectionService.SelectedInstanceId;
+        var inspectedItem = _selectionService.InspectedItem;
+        var selectedInstanceId = inspectedItem switch
+        {
+            GameObject gameObject => gameObject.InstanceId,
+            Component component => component.InstanceId,
+            _ => null
+        };
         if (selectedInstanceId is not null && !selectedInstanceId.IsEmpty())
         {
             if (_worldService.TryGetGameObject(selectedInstanceId, out var gameObject))
@@ -106,10 +112,11 @@ public sealed partial class InspectorProjectionService : ObservableObject
             if (_worldService.TryGetComponent(selectedInstanceId, out var component))
                 return component;
 
+            _selectionService.InspectedItem = null;
             return null;
         }
 
-        return _selectionService.SelectedItem;
+        return inspectedItem;
     }
 
     GameObject? ResolveOwner(Component component) => _worldService.FindOwner(component);

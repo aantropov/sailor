@@ -4,53 +4,56 @@
              xmlns:views="clr-namespace:SailorEditor.Views"
              xmlns:models="clr-namespace:SailorEditor.ViewModels"
              xmlns:controls="clr-namespace:SailorEditor.Controls"
-             x:DataType="models:AssetFile"
+             x:DataType="{x:Null}"
              x:Class="SailorEditor.Views.ControlPanelView">
 
     <ContentView.Resources>
         <controls:StringNotEmptyConverter x:Key="StringNotEmptyConverter" />
     </ContentView.Resources>
 
-    <VerticalStackLayout Spacing="5" Padding="10">
-        <!-- Display Name Label -->
-        <Label Text="{Binding DisplayName}" 
-               VerticalOptions="Center" 
-               HorizontalTextAlignment="Start" 
-               FontAttributes="Bold">
-            <Label.Behaviors>
-                <views:DisplayNameBehavior />
-            </Label.Behaviors>
-        </Label>
+    <VerticalStackLayout Spacing="5" Padding="4">
+        <Label x:Name="TitleLabel"
+               AutomationId="InspectorTitle"
+               VerticalOptions="Center"
+               HorizontalTextAlignment="Start"
+               FontAttributes="Bold" />
 
-        <Label Text="{Binding LoadError}"
-               IsVisible="{Binding LoadError, Converter={StaticResource StringNotEmptyConverter}}"
-               TextColor="IndianRed"
-               FontSize="12"
-               LineBreakMode="WordWrap"
-               MaxLines="3" />
+        <VerticalStackLayout x:Name="AssetActions" Spacing="5" x:DataType="models:AssetFile">
+            <Label Text="{Binding LoadError}"
+                   IsVisible="{Binding LoadError, Converter={StaticResource StringNotEmptyConverter}}"
+                   TextColor="IndianRed"
+                   FontSize="12"
+                   LineBreakMode="WordWrap"
+                   MaxLines="3" />
 
-        <Label Text="{Binding LoadWarning}"
-               IsVisible="{Binding LoadWarning, Converter={StaticResource StringNotEmptyConverter}}"
-               TextColor="Goldenrod"
-               FontSize="12"
-               LineBreakMode="WordWrap"
-               MaxLines="3" />
+            <Label Text="{Binding LoadWarning}"
+                   IsVisible="{Binding LoadWarning, Converter={StaticResource StringNotEmptyConverter}}"
+                   TextColor="Goldenrod"
+                   FontSize="12"
+                   LineBreakMode="WordWrap"
+                   MaxLines="3" />
 
-        <!-- Buttons -->
-        <HorizontalStackLayout Spacing="10"
-                               HorizontalOptions="Start"
-                               VerticalOptions="Start">
-            <Button Text="Open Externally" HeightRequest="30" WidthRequest="130"
-                    IsVisible="{Binding CanOpenAssetFile}"
-                    Clicked="OnOpenButtonClicked" />
+            <!-- Buttons -->
+            <HorizontalStackLayout Spacing="10"
+                                   HorizontalOptions="Start"
+                                   VerticalOptions="Start">
+                <Button Text="Open Externally" HeightRequest="30" WidthRequest="130"
+                        IsVisible="{Binding CanOpenAssetFile}"
+                        Clicked="OnOpenButtonClicked" />
 
-            <Button Text="Save" HeightRequest="30" WidthRequest="80" 
-                    IsVisible="{Binding IsDirty}"
-                    Clicked="OnSaveButtonClicked" />
+                <Button Text="Save" AutomationId="InspectorSave" HeightRequest="30" WidthRequest="80"
+                        IsVisible="{Binding IsDirty}"
+                        Clicked="OnSaveButtonClicked" />
 
-            <Button Text="Revert" HeightRequest="30" WidthRequest="80" 
-                    IsVisible="{Binding IsDirty}"
-                    Clicked="OnRevertButtonClicked" />
+                <Button Text="Revert" AutomationId="InspectorRevert" HeightRequest="30" WidthRequest="80"
+                        IsVisible="{Binding IsDirty}"
+                        Clicked="OnRevertButtonClicked" />
+            </HorizontalStackLayout>
+        </VerticalStackLayout>
+
+        <HorizontalStackLayout x:Name="PrefabActions" Spacing="8" IsVisible="False">
+            <Button Text="Apply prefab" Clicked="OnApplyPrefabClicked" />
+            <Button Text="Select Prefab" Clicked="OnSelectPrefabClicked" />
         </HorizontalStackLayout>
     </VerticalStackLayout>
 </ContentView>

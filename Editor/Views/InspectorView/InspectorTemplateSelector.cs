@@ -3,6 +3,7 @@
 namespace SailorEditor;
 public class InspectorTemplateSelector : DataTemplateSelector
 {
+    public DataTemplate ComponentTemplate { get; set; }
     public DataTemplate TextureFileTemplate { get; set; }
     public DataTemplate AssetFileTemplate { get; set; }
     public DataTemplate ModelFileTemplate { get; set; }
@@ -31,6 +32,7 @@ public class InspectorTemplateSelector : DataTemplateSelector
             PrefabFile => AssetFileTemplate,
             WorldFile => WorldFileTemplate,
             GameObject => GameObjectTemplate,
+            Component => ComponentTemplate,
             _ => AssetFileTemplate
         };
 

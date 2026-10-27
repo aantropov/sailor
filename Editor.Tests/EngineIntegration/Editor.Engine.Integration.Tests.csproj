@@ -25,6 +25,7 @@
     <Compile Include="GlobalUsings.cs" />
     <Compile Include="HeadlessUi.cs" />
     <Compile Include="AssetRefreshTests.cs" />
+    <Compile Include="InspectorSelectionTests.cs" />
     <Compile Include="EngineModuleReloadTests.cs" />
     <Compile Include="../AssetReimportIntegrationTests.cs" Link="AssetReimportIntegrationTests.cs" />
     <Compile Include="../Support/NativeEditorHost.cs" Link="Support/NativeEditorHost.cs" />
@@ -32,6 +33,7 @@
     <Compile Include="../../Editor/Services/MaterialPreviewController.cs" Link="Services/MaterialPreviewController.cs" />
     <Compile Include="../../Editor/Services/AssetsService.cs" Link="Services/AssetsService.cs" />
     <Compile Include="../../Editor/Services/SelectionService.cs" Link="Services/SelectionService.cs" />
+    <Compile Include="../../Editor/Services/InspectorProjectionService.cs" Link="Services/InspectorProjectionService.cs" />
     <Compile Include="../../Editor/Services/AssetCacheIndexStore.cs" Link="Services/AssetCacheIndexStore.cs" />
     <Compile Include="../../Editor/ViewModels/AssetFile.cs" Link="ViewModels/AssetFile.cs" />
     <Compile Include="../../Editor/ViewModels/AssetFolder.cs" Link="ViewModels/AssetFolder.cs" />

@@ -8,14 +8,6 @@
               x:DataType="vm:MaterialFile"
               x:Class="SailorEditor.MaterialFileTemplate">
     <VerticalStackLayout>
-        <views:ControlPanelView>
-            <views:ControlPanelView.Triggers>
-                <DataTrigger TargetType="views:ControlPanelView" Binding="{Binding IsReadOnly}" Value="True">
-                    <Setter Property="IsEnabled" Value="False" />
-                </DataTrigger>
-            </views:ControlPanelView.Triggers>
-        </views:ControlPanelView>
-        <views:MaterialPreviewView />
         <Grid>
             <Grid.Triggers>
                 <DataTrigger TargetType="Grid" Binding="{Binding IsReadOnly}" Value="True">

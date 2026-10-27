@@ -38,6 +38,82 @@ public sealed class MaterialPreviewControllerTests
         Assert.Single(transport.Updates);
     }
 
+    [Fact]
+    public async Task CameraChanges_CompleteAndDisplayIssuedFrame_ThenRenderLatestCamera()
+    {
+        var first = new TaskCompletionSource<MaterialPreviewResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var second = new TaskCompletionSource<MaterialPreviewResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken firstCancellation = default;
+        var transport = new PreviewTransport
+        {
+            OnUpdate = (request, cancellation) =>
+            {
+                if (request.Revision == 1)
+                {
+                    firstCancellation = cancellation;
+                    return first.Task;
+                }
+                return second.Task;
+            }
+        };
+        await using var controller = Create(transport);
+        controller.SetContext(new object(), 1, true);
+        controller.Update(new("material", Yaw: 0));
+        await Until(() => transport.Updates.Count == 1);
+        for (var i = 1; i <= 30; ++i)
+            controller.Update(new("material", Yaw: i * 0.02f));
+
+        Assert.False(firstCancellation.IsCancellationRequested);
+        first.SetResult(Ready(transport.Updates.First().Request, [1]));
+        await Until(() => transport.Updates.Count == 2);
+        Assert.Equal(1ul, controller.Presentation.ImageRevision);
+        Assert.Equal(new byte[] { 1 }, controller.Presentation.Png);
+        Assert.True(controller.Presentation.IsLoading);
+        Assert.Equal(31ul, transport.Updates.Last().Request.Revision);
+
+        second.SetResult(Ready(transport.Updates.Last().Request, [31]));
+        await Until(() => controller.Presentation.ImageRevision == 31);
+        Assert.False(controller.Presentation.IsLoading);
+        Assert.Equal(2, transport.Updates.Count);
+    }
+
+    [Fact]
+    public async Task ContinuousOrbit_PublishesImagesBeforeInputStops_WithoutConcurrentRequests()
+    {
+        var inFlight = 0;
+        var maximumInFlight = 0;
+        var transport = new PreviewTransport
+        {
+            OnUpdate = async (request, cancellation) =>
+            {
+                var active = Interlocked.Increment(ref inFlight);
+                maximumInFlight = Math.Max(maximumInFlight, active);
+                try
+                {
+                    await Task.Delay(20, cancellation);
+                    return Ready(request, [(byte)request.Revision]);
+                }
+                finally { Interlocked.Decrement(ref inFlight); }
+            }
+        };
+        await using var controller = Create(transport);
+        controller.SetContext(new object(), 1, true);
+        var imagesDuringInput = new HashSet<ulong>();
+        for (var i = 0; i < 40; ++i)
+        {
+            controller.Update(new("material", Yaw: i * 0.01f));
+            await Task.Delay(5);
+            if (controller.Presentation.ImageRevision > 0)
+                imagesDuringInput.Add(controller.Presentation.ImageRevision);
+        }
+
+        Assert.True(imagesDuringInput.Count >= 3, "Orbit must display completed frames while input continues.");
+        await Until(() => controller.Presentation.ImageRevision == 40);
+        Assert.Equal(1, maximumInFlight);
+        Assert.False(controller.Presentation.IsLoading);
+        Assert.InRange(transport.Updates.Count, 3, 39);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
