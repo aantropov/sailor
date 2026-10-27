@@ -7671,7 +7671,7 @@ frame:
 		}
 	};
 
-	void TestLightCulling(LightCullingInput inputMode, bool surfaceInput, bool sameFlight)
+	void TestLightCulling(LightCullingInput inputMode, bool surfaceInput, bool sameFlight, bool directionalOnly = false)
 	{
 		auto& driver = Renderer::GetDriver();
 		auto commands = Renderer::GetDriverCommands();
@@ -7741,6 +7741,17 @@ frame:
 					light.m_worldPosition = glm::vec3(ndc.x * aspect * depth, -ndc.y * depth, -depth);
 					light.m_bounds.x = 0.001f;
 				}
+			}
+			const bool uniformLights = round == 6 || (directionalOnly && round != 4);
+			const uint32_t firstDirectional = round == 2 ? 1u : 0u;
+			if (directionalOnly && round != 4)
+			{
+				for (auto& light : *lights)
+				{
+					light.m_type = RHILightShaderData::InvalidType;
+				}
+				(*lights)[firstDirectional].m_type = 0u;
+				lights->Last()->m_type = 0u;
 			}
 			if (round == 5) node->Clear();
 			for (uint32_t i = 0; i < recordings.size(); ++i)
@@ -7824,12 +7835,20 @@ frame:
 				const auto gpuIndices = static_cast<const uint32_t*>(indexReadback->GetPointer());
 				for (uint32_t tile = 0; tile < tileCount; ++tile)
 				{
-					if (gpuGrid[tile] != glm::uvec2(tile * 128, round == 6 ? 0 : 3))
+					const uint32_t expectedOffset = uniformLights ? 0u : tile * 128u;
+					const uint32_t expectedCount = round == 6 ? 0u : (uniformLights ? 2u : 3u);
+					if (gpuGrid[tile] != glm::uvec2(expectedOffset, expectedCount))
 						throw std::runtime_error("LightCulling GPU grid mismatch: input=" + std::to_string(static_cast<uint32_t>(inputMode)) +
 							", surface=" + std::to_string(surfaceInput) + ", sameFlight=" + std::to_string(sameFlight) +
 							", round=" + std::to_string(round) + ", view=" + std::to_string(i) + ", tile=" + std::to_string(tile) +
 							", count=" + std::to_string(gpuGrid[tile].y) + ", offset=" + std::to_string(gpuGrid[tile].x));
 					if (round == 6) continue;
+					if (uniformLights)
+					{
+						Require(gpuIndices[0] == firstDirectional && gpuIndices[1] == lights->Num() - 1u,
+							"every directional-only tile must share the current light membership after edits and local-light fallback");
+						continue;
+					}
 					std::array actual{ gpuIndices[tile * 128], gpuIndices[tile * 128 + 1], gpuIndices[tile * 128 + 2] };
 					std::sort(actual.begin(), actual.end());
 					Require(actual == std::array<uint32_t, 3>{ 0, 1, 2 + tile * 2 + i }, "GPU tile must contain only the directional, enclosing and matching-depth light");
@@ -7859,7 +7878,7 @@ frame:
 			Require(recordings[0].indices != recordings[1].indices && recordings[0].grid != recordings[1].grid,
 				"pending cameras/flights must own separate culling output ranges");
 		}
-		std::cout << "LightCulling input=" << static_cast<uint32_t>(inputMode) << " surface=" << surfaceInput << " sameFlight=" << sameFlight <<
+		std::cout << "LightCulling input=" << static_cast<uint32_t>(inputMode) << " surface=" << surfaceInput << " sameFlight=" << sameFlight << " directionalOnly=" << directionalOnly <<
 			": ten frames, two pending views, reused descriptors and exact GPU tile lists passed\n";
 	}
 
@@ -8461,6 +8480,7 @@ namespace Sailor::Tests
 						LightCullingInput::Default, LightCullingInput::NamedWithoutDefault })
 						for (bool surfaceInput : { false, true })
 							for (bool sameFlight : { false, true }) TestLightCulling(inputMode, surfaceInput, sameFlight);
+					for (bool sameFlight : { false, true }) TestLightCulling(LightCullingInput::Default, false, sameFlight, true);
 					for (auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT }) TestDepthSurfaceFactory(depthReadback, format);
 					for (bool namedInput : { false, true })
 						for (bool namedOutput : { false, true })

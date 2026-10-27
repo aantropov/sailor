@@ -57,6 +57,7 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 			sizeof(uint32_t) * numTiles * 2u, 1u, 1u, true);
 		resources->m_tileCapacity = numTiles;
 		resources->m_publishedIndices.Clear();
+		resources->m_uniformTileCount = 0u;
 	}
 	auto& bindings = resources->m_bindings;
 	auto lightsBindings = sceneView.m_rhiLightsData;
@@ -75,6 +76,58 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 	}
 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+	std::array<uint32_t, LightsPerTile> uniformLightIndices{};
+	uint32_t uniformLightCount = 0u;
+	bool bUniformLights = sceneView.m_totalNumLights == 0u ||
+		(sceneView.m_cpuLightsData && sceneView.m_cpuLightsData->Num() >= sceneView.m_totalNumLights);
+	for (uint32_t index = 0u; bUniformLights && index < sceneView.m_totalNumLights; ++index)
+	{
+		const auto type = (*sceneView.m_cpuLightsData)[index].m_type;
+		if (type == RHILightShaderData::InvalidType)
+		{
+			continue;
+		}
+		if (type != static_cast<uint32_t>(ELightType::Directional) || uniformLightCount == LightsPerTile)
+		{
+			bUniformLights = false;
+			break;
+		}
+		uniformLightIndices[uniformLightCount++] = index;
+	}
+	if (bUniformLights)
+	{
+		if (resources->m_uniformTileCount < numTiles ||
+			resources->m_uniformLightCount != uniformLightCount ||
+			resources->m_uniformLightIndices != uniformLightIndices)
+		{
+			// Every tile can reference the same immutable list. Upload only when its
+			// membership changes or the completed flight's output storage grows.
+			TVector<glm::uvec2> grid;
+			grid.Resize(numTiles);
+			for (auto& tile : grid)
+			{
+				tile = glm::uvec2(0u, uniformLightCount);
+			}
+			commands->UpdateShaderBinding(transferCommandList,
+				bindings->GetOrAddShaderBinding("lightsGrid"_h),
+				grid.GetData(), grid.Num() * sizeof(glm::uvec2));
+			if (uniformLightCount > 0u)
+			{
+				commands->UpdateShaderBinding(transferCommandList,
+					bindings->GetOrAddShaderBinding("culledLights"_h),
+					uniformLightIndices.data(), uniformLightCount * sizeof(uint32_t));
+			}
+			commands->MemoryBarrier(transferCommandList,
+				static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+				static_cast<EAccessFlags>(EAccessBit::ShaderRead_Bit));
+			resources->m_uniformLightIndices = uniformLightIndices;
+			resources->m_uniformLightCount = uniformLightCount;
+			resources->m_uniformTileCount = numTiles;
+		}
+		return;
+	}
+	// Local or overflowing lights overwrite the shared-list layout on the GPU.
+	resources->m_uniformTileCount = 0u;
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdCompute);
 
 #ifdef _DEBUG

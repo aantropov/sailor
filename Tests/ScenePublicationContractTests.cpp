@@ -10,6 +10,7 @@
 #include "Settings/GraphicsSettings.h"
 #include "Support/EcsTestFixtures.h"
 #include "Support/ScopeExit.h"
+#include "Support/TaskTestApp.h"
 
 #include <functional>
 #include <iostream>
@@ -546,6 +547,76 @@ namespace
 		Require(meshes->GetRHIScene()->GetCurrentVersion() == moved,
 			"reused batch scratch must not replay old changes when the scene is unchanged");
 		meshes->EndPlay();
+	}
+
+	void TestWorkerMeshTransformsPublishWithoutFrameLag()
+	{
+		TaskTestApp app;
+		app.GetScheduler().Initialize();
+		PrefabTestWorld world;
+		auto model = TObjectPtr<PublishedMeshTestModel>::Make(world.GetAllocator());
+		model->m_ready = true;
+		auto material = TObjectPtr<PublishedMeshTestMaterial>::Make(world.GetAllocator(), true);
+		ScopeExit cleanup([&]()
+			{
+				world.Clear();
+				material.DestroyObject(world.GetAllocator());
+				model.DestroyObject(world.GetAllocator());
+			});
+		auto* transforms = world.GetECS<TransformECS>();
+		auto* meshes = world.GetECS<StaticMeshRendererECS>();
+		TVector<GameObjectPtr> owners;
+		TVector<size_t> slots;
+		for (size_t i = 0; i < 1031; ++i)
+		{
+			auto owner = world.Instantiate("Moving mesh");
+			owner->SetMobilityType(EMobilityType::Dynamic);
+			auto mesh = owner->AddComponent<MeshRendererComponent>();
+			mesh->SetModel(model);
+			mesh->GetMaterials().Add(material);
+			slots.Add(mesh->GetComponentIndex());
+			owners.Add(std::move(owner));
+		}
+		transforms->Tick(0.0f);
+		transforms->PostTick();
+		meshes->BeginPlay();
+		meshes->Tick(0.0f);
+		const auto initial = meshes->GetRHIScene()->GetCurrentVersion();
+		Require(initial->m_dynamicHandles->Num() == owners.Num(), "all worker partitions must publish their owners");
+		for (size_t frame = 1; frame <= 4; ++frame)
+		{
+			world.AdvanceFrame();
+			for (size_t i = 0; i < owners.Num(); ++i)
+			{
+				auto& transform = owners[i]->GetTransformComponent();
+				transform.SetPosition(glm::vec3(static_cast<float>(i), static_cast<float>(frame), -5.0f));
+				transform.SetRotation(glm::angleAxis(0.1f * static_cast<float>(frame + i), glm::vec3(0, 1, 0)));
+			}
+			transforms->Tick(0.016f);
+			transforms->PostTick();
+			meshes->Tick(0.016f);
+			const auto current = meshes->GetRHIScene()->GetCurrentVersion();
+			for (size_t i = 0; i < owners.Num(); ++i)
+			{
+				const auto handle = (*initial->m_dynamicHandles)[i];
+				const RHI::RHISceneInstanceRecord* before = nullptr;
+				const RHI::RHISceneInstanceRecord* after = nullptr;
+				Require(initial->Resolve(handle, before) && current->Resolve(handle, after),
+					"old and current snapshots must resolve the same live handles");
+				const auto& matrix = owners[i]->GetTransformComponent().GetCachedWorldMatrix();
+				auto bounds = model->GetBoundsAABB();
+				bounds.Apply(matrix);
+				Require(after->m_producerKey == slots[i] && AreMatricesNear(after->m_worldMatrix, matrix) &&
+					after->m_worldBounds == bounds && after->m_topology == before->m_topology,
+					"each worker result must carry this frame's transform and bounds with stable topology");
+				Require(before->m_worldMatrix == glm::mat4(1.0f) &&
+					owners[i]->GetFrameLastChange() == world.GetCurrentFrame(),
+					"publication must retain old matrices and finish owner bookkeeping before returning");
+			}
+			meshes->Tick(0.0f);
+			Require(meshes->GetRHIScene()->GetCurrentVersion() == current,
+				"joined worker scratch must not replay updates on a second tick");
+		}
 	}
 
 	void TestClearingMeshModelAlsoClearsMaterials()
@@ -1395,6 +1466,13 @@ int main()
 		{ "OctreeRelocationPreservesElementCount", TestOctreeRelocationPreservesElementCount },
 		{ "ClearingMeshModelAlsoClearsMaterials", TestClearingMeshModelAlsoClearsMaterials },
 		{ "MeshBatchesWithSharedOwnerAndRegistrationHoles", TestMeshBatchesWithSharedOwnerAndRegistrationHoles },
+		{ "WorkerMeshBatchesWithSharedOwnerAndRegistrationHoles", []()
+			{
+				TaskTestApp app;
+				app.GetScheduler().Initialize();
+				TestMeshBatchesWithSharedOwnerAndRegistrationHoles();
+			} },
+		{ "WorkerMeshTransformsPublishWithoutFrameLag", TestWorkerMeshTransformsPublishWithoutFrameLag },
 		{ "FrameZeroMeshPublicationStaysStable", TestFrameZeroMeshPublicationStaysStable },
 		{ "LocalMeshTopologySurvivesSingularOwnerTransforms", TestLocalMeshTopologySurvivesSingularOwnerTransforms },
 		{ "StaticMeshLodSelectionUsesScreenCoverage", TestStaticMeshLodSelectionUsesScreenCoverage },

@@ -69,9 +69,12 @@ namespace Sailor
 				ResetForSubmission();
 				m_packet.InvalidateUploadedState();
 				m_customPacket.InvalidateUploadedState();
+				m_preparedDrawCache.Invalidate();
 			}
 
 			RHI::TPackedDrawPacket<PerInstanceData> m_packet;
+			RHI::RHIPreparedDrawCache m_preparedDrawCache;
+			bool m_bPacketComplete = true;
 			bool m_bAreMaterialsReady = true;
 			RHI::RHIShaderBindingSetPtr m_perInstanceData{};
 			size_t m_sizePerInstanceData = 0u;

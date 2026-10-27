@@ -529,9 +529,20 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 			auto& packet = submissionResources->m_packet;
 			auto& orderedDrawItems = submissionResources->m_orderedDrawItems;
 
+			const bool bUsesPagedArenas = bVirtualizeInstancePayloads && !bBackToFront;
+			const uint32_t cacheOptions = (bUsesPagedArenas ? 1u : 0u) | (bBackToFront ? 2u : 0u);
+			auto* textureImporter = App::GetSubmodule<TextureImporter>();
+			const auto textures = textureImporter ? textureImporter->GetTextureSamplersBindingSet() : RHIShaderBindingSetPtr{};
+			const uint64_t textureRevision = textures ? textures->GetDescriptorRevision() : 0ull;
+			if (submissionResources->m_preparedDrawCache.Matches(
+				sceneViewSnapshot, QueueTagHash, cacheOptions, textures, textureRevision))
+			{
+				packet.m_metrics = {};
+				return;
+			}
 			packet.Reset();
 			orderedDrawItems.Clear(false);
-			const bool bUsesPagedArenas = bVirtualizeInstancePayloads && !bBackToFront;
+			submissionResources->m_bPacketComplete = true;
 			syncSharedResources.Lock();
 			if (bUsesPagedArenas)
 			{
@@ -574,6 +585,8 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 				packet.m_groups, sceneViewSnapshot.m_frame);
 			syncSharedResources.Unlock();
 			orderedDrawItems.Clear(false);
+			submissionResources->m_preparedDrawCache.Capture(sceneViewSnapshot, QueueTagHash,
+				cacheOptions, textures, textureRevision, submissionResources->m_bPacketComplete);
 		}, EThreadType::RHI);
 
 	return res;
@@ -737,6 +750,7 @@ void RenderSceneNode::BuildStableArenas(const RHISceneViewSnapshot& sceneView,
 		m_arenaChanges.Clear();
 
 		auto arenaPayload = m_pagedArenaCache.EndUpdate(bPayloadComplete);
+		resources.m_bPacketComplete &= bPayloadComplete;
 		packet.UseSharedArenaPayload(mobility, std::move(arenaPayload));
 		rangeInstances.Clear(false);
 		rangeStableKeys.Clear(false);
@@ -779,6 +793,7 @@ void RenderSceneNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 			RHIBatch batch;
 			if (!TryPrepareBatch(material, mesh, preparedMaterials, batch))
 			{
+				resources.m_bPacketComplete = false;
 				continue;
 			}
 
@@ -795,12 +810,14 @@ void RenderSceneNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 				sceneView.m_frame,
 				supportedMeshesPerBatch,
 				bCurrentTextureBindings);
+			resources.m_bPacketComplete &= bCurrentTextureBindings;
 #else
 			batch.m_textureBindings = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
 #endif
 			batch.m_supportedMeshesPerBatch = supportedMeshesPerBatch;
 			if (!batch.m_textureBindings)
 			{
+				resources.m_bPacketComplete = false;
 				continue;
 			}
 			const uint64_t stableKey = BuildPackedDrawStableKey(
@@ -811,7 +828,7 @@ void RenderSceneNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 				0u);
 			if (bArenaView)
 			{
-				packet.AddArenaView(
+				resources.m_bPacketComplete &= packet.AddArenaView(
 					std::move(batch),
 					mesh,
 					BuildPackedDrawRangeKey(
@@ -878,6 +895,7 @@ void RenderSceneNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 				RHIBatch batchTemplate;
 				if (!TryPrepareBatch(material, sourceMesh, preparedMaterials, batchTemplate))
 				{
+					resources.m_bPacketComplete = false;
 					continue;
 				}
 
@@ -896,12 +914,14 @@ void RenderSceneNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 					sceneView.m_frame,
 					supportedMeshesPerBatch,
 					bCurrentTextureBindings);
+				resources.m_bPacketComplete &= bCurrentTextureBindings;
 #else
 				batchTemplate.m_textureBindings = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
 #endif
 				batchTemplate.m_supportedMeshesPerBatch = supportedMeshesPerBatch;
 				if (!batchTemplate.m_textureBindings)
 				{
+					resources.m_bPacketComplete = false;
 					continue;
 				}
 
@@ -921,6 +941,7 @@ void RenderSceneNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 						proxy, groupIndex, instanceIndex, meshIndex);
 					if (!mesh)
 					{
+						resources.m_bPacketComplete = false;
 						continue;
 					}
 					const uint64_t stableKey = BuildPackedDrawStableKey(
@@ -933,7 +954,7 @@ void RenderSceneNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView,
 					batch.m_mesh = mesh;
 					if (bArenaView)
 					{
-						packet.AddArenaView(
+						resources.m_bPacketComplete &= packet.AddArenaView(
 							std::move(batch),
 							mesh,
 							BuildPackedDrawRangeKey(

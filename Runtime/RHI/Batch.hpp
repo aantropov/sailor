@@ -19,6 +19,14 @@ namespace Sailor::RHI
 		static constexpr uint32_t MaxInstancesPerBatch = (std::numeric_limits<uint32_t>::max)();
 #endif
 
+		// Metal loses throughput on a single large instanced draw. Smaller commands
+		// can still share one indirect API call and the same material bindings.
+#if defined(__APPLE__)
+		static constexpr uint32_t MaxInstancesPerDraw = 1024u;
+#else
+		static constexpr uint32_t MaxInstancesPerDraw = MaxInstancesPerBatch;
+#endif
+
 		RHIMaterialPtr m_material;
 		RHIMaterialVersionPtr m_materialVersion;
 

@@ -6,6 +6,7 @@
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
 #include "RHI/RenderSubmission.h"
+#include <array>
 
 namespace Sailor::Framegraph
 {
@@ -27,10 +28,15 @@ namespace Sailor::Framegraph
 		{
 		public:
 			void ResetForSubmission() override {}
+			void InvalidateSubmission() override { m_uniformTileCount = 0u; }
 
 			RHI::RHIShaderBindingSetPtr m_bindings{};
 			RHI::RHIShaderBindingPtr m_publishedIndices{};
 			size_t m_tileCapacity = 0;
+			// Directional lights cover every tile, independent of camera and depth.
+			std::array<uint32_t, LightsPerTile> m_uniformLightIndices{};
+			uint32_t m_uniformLightCount = 0u;
+			size_t m_uniformTileCount = 0u;
 		};
 
 		struct PushConstants
