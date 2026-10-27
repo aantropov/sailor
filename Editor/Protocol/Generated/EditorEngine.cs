@@ -25,7 +25,7 @@ namespace SailorEditor.Protocol.Generated {
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
             "ChNlZGl0b3JfZW5naW5lLnByb3RvEhBzYWlsb3IuZWRpdG9yLnYxIgcKBUVt",
-            "cHR5IuonCg9Qcm90b2NvbFJlcXVlc3QSGAoQcHJvdG9jb2xfdmVyc2lvbhgB",
+            "cHR5IqAnCg9Qcm90b2NvbFJlcXVlc3QSGAoQcHJvdG9jb2xfdmVyc2lvbhgB",
             "IAEoDRISCgpyZXF1ZXN0X2lkGAIgASgEEjkKCmluaXRpYWxpemUYCiABKAsy",
             "Iy5zYWlsb3IuZWRpdG9yLnYxLkluaXRpYWxpemVSZXF1ZXN0SAASKAoFc3Rh",
             "cnQYCyABKAsyFy5zYWlsb3IuZWRpdG9yLnYxLkVtcHR5SAASJwoEc3RvcBgM",
@@ -127,320 +127,311 @@ namespace SailorEditor.Protocol.Generated {
             "c19wcmV2aWV3X2J1ZGdldBhMIAEoCzI1LnNhaWxvci5lZGl0b3IudjEuUnVu",
             "dGltZUdJUHJvYmVzUHJldmlld0J1ZGdldFJlcXVlc3RIABJVCiZjYXB0dXJl",
             "X3JlbW90ZV92aWV3cG9ydF9mcmFtZV9ldmlkZW5jZRhNIAEoCzIjLnNhaWxv",
-            "ci5lZGl0b3IudjEuVmlld3BvcnRJZFJlcXVlc3RIABJEChlyZXF1ZXN0X21v",
-            "ZGVsX2ZpbmdlcnByaW50GGQgASgLMh8uc2FpbG9yLmVkaXRvci52MS5GaWxl",
-            "SWRSZXF1ZXN0SAASRwocZ2V0X21vZGVsX2ZpbmdlcnByaW50X3N0YXR1cxhl",
-            "IAEoCzIfLnNhaWxvci5lZGl0b3IudjEuRmlsZUlkUmVxdWVzdEgAElEKF3Vw",
-            "ZGF0ZV9tYXRlcmlhbF9wcmV2aWV3GGYgASgLMi4uc2FpbG9yLmVkaXRvci52",
-            "MS5VcGRhdGVNYXRlcmlhbFByZXZpZXdSZXF1ZXN0SAASTwoUZ2V0X21hdGVy",
-            "aWFsX3ByZXZpZXcYZyABKAsyLy5zYWlsb3IuZWRpdG9yLnYxLk1hdGVyaWFs",
-            "UHJldmlld1Nlc3Npb25SZXF1ZXN0SAASUQoWY2xvc2VfbWF0ZXJpYWxfcHJl",
-            "dmlldxhoIAEoCzIvLnNhaWxvci5lZGl0b3IudjEuTWF0ZXJpYWxQcmV2aWV3",
-            "U2Vzc2lvblJlcXVlc3RIAEIJCgdjb21tYW5kSgQIAxAKSgQIHhAfSgQIMhAz",
-            "SgQIThBkUhhjcmVhdGVfbW9kZWxfZ2FtZV9vYmplY3RSHnJlc29sdmVfdmll",
-            "d3BvcnRfZHJvcF9wb3NpdGlvbiKFCwoQUHJvdG9jb2xSZXNwb25zZRIYChBw",
-            "cm90b2NvbF92ZXJzaW9uGAEgASgNEhIKCnJlcXVlc3RfaWQYAiABKAQSDwoH",
-            "c3VjY2VzcxgDIAEoCBINCgVlcnJvchgEIAEoCRIkChxzdXBwb3J0c19zdHJp",
-            "Y3RfaW5zdGFuY2VfaWRzGAUgASgIEi8KDGVtcHR5X3Jlc3VsdBgKIAEoCzIX",
-            "LnNhaWxvci5lZGl0b3IudjEuRW1wdHlIABIzCgtib29sX3Jlc3VsdBgLIAEo",
-            "CzIcLnNhaWxvci5lZGl0b3IudjEuQm9vbFJlc3VsdEgAEjUKDGludDMyX3Jl",
-            "c3VsdBgMIAEoCzIdLnNhaWxvci5lZGl0b3IudjEuSW50MzJSZXN1bHRIABI3",
-            "Cg11aW50MzJfcmVzdWx0GA0gASgLMh4uc2FpbG9yLmVkaXRvci52MS5VSW50",
-            "MzJSZXN1bHRIABI3Cg11aW50NjRfcmVzdWx0GA4gASgLMh4uc2FpbG9yLmVk",
-            "aXRvci52MS5VSW50NjRSZXN1bHRIABI3Cg1zdHJpbmdfcmVzdWx0GA8gASgL",
-            "Mh4uc2FpbG9yLmVkaXRvci52MS5TdHJpbmdSZXN1bHRIABJAChJzdHJpbmdf",
-            "bGlzdF9yZXN1bHQYECABKAsyIi5zYWlsb3IuZWRpdG9yLnYxLlN0cmluZ0xp",
-            "c3RSZXN1bHRIABJNChlhc3NldF9yZWxvYWRfc3RhdGVfcmVzdWx0GBEgASgL",
-            "Miguc2FpbG9yLmVkaXRvci52MS5Bc3NldFJlbG9hZFN0YXRlUmVzdWx0SAAS",
-            "QAoSaW5zdGFuY2VfaWRfcmVzdWx0GBIgASgLMiIuc2FpbG9yLmVkaXRvci52",
-            "MS5JbnN0YW5jZUlkUmVzdWx0SAASUQobdmlld3BvcnRfZXZlbnRfYmF0Y2hf",
-            "cmVzdWx0GBMgASgLMiouc2FpbG9yLmVkaXRvci52MS5WaWV3cG9ydEV2ZW50",
-            "QmF0Y2hSZXN1bHRIABI5Cg52ZWN0b3I0X3Jlc3VsdBgUIAEoCzIfLnNhaWxv",
-            "ci5lZGl0b3IudjEuVmVjdG9yNFJlc3VsdEgAEk8KGnZpZXdwb3J0X3Rvb2xf",
-            "c3RhdGVfcmVzdWx0GBUgASgLMikuc2FpbG9yLmVkaXRvci52MS5WaWV3cG9y",
-            "dFRvb2xTdGF0ZVJlc3VsdEgAEkYKFWFuaW1hdG9yX3N0YXRlX3Jlc3VsdBgW",
-            "IAEoCzIlLnNhaWxvci5lZGl0b3IudjEuQW5pbWF0b3JTdGF0ZVJlc3VsdEgA",
-            "Ek0KGWVkaXRvcl9yZW5kZXJfbW9kZV9yZXN1bHQYFyABKAsyKC5zYWlsb3Iu",
-            "ZWRpdG9yLnYxLkVkaXRvclJlbmRlck1vZGVSZXN1bHRIABJSChxnaV9wcm9i",
-            "ZXNfYmFrZV9zdGF0dXNfcmVzdWx0GBggASgLMiouc2FpbG9yLmVkaXRvci52",
-            "MS5HSVByb2Jlc0Jha2VTdGF0dXNSZXN1bHRIABJbCiBnbG9iYWxfaWxsdW1p",
-            "bmF0aW9uX3N0YXRlX3Jlc3VsdBgZIAEoCzIvLnNhaWxvci5lZGl0b3IudjEu",
-            "R2xvYmFsSWxsdW1pbmF0aW9uU3RhdGVSZXN1bHRIABJZCh9tb2RlbF9maW5n",
-            "ZXJwcmludF9zdGF0dXNfcmVzdWx0GGQgASgLMi4uc2FpbG9yLmVkaXRvci52",
-            "MS5Nb2RlbEZpbmdlcnByaW50U3RhdHVzUmVzdWx0SAASSgoXbWF0ZXJpYWxf",
-            "cHJldmlld19yZXN1bHQYZSABKAsyJy5zYWlsb3IuZWRpdG9yLnYxLk1hdGVy",
-            "aWFsUHJldmlld1Jlc3VsdEgAQggKBnJlc3VsdEoECAYQCkoECBoQZCImChFJ",
-            "bml0aWFsaXplUmVxdWVzdBIRCglhcmd1bWVudHMYASADKAkiIQoMQ291bnRS",
-            "ZXF1ZXN0EhEKCW1heF9jb3VudBgBIAEoDSIgCg1GaWxlSWRSZXF1ZXN0Eg8K",
-            "B2ZpbGVfaWQYASABKAkiNwoSVXBkYXRlQXNzZXRSZXF1ZXN0Eg8KB2ZpbGVf",
-            "aWQYASABKAkSEAoIcmVpbXBvcnQYAiABKAgi5wEKGkNyZWF0ZU1vZGVsSW5z",
-            "dGFuY2VSZXF1ZXN0EhUKDW1vZGVsX2ZpbGVfaWQYASABKAkSDAoEbmFtZRgC",
-            "IAEoCRIaChJwYXJlbnRfaW5zdGFuY2VfaWQYAyABKAkSGAoQY3JlYXRlX2hp",
-            "ZXJhcmNoeRgEIAEoCBIcChRhcHBseV93b3JsZF9wb3NpdGlvbhgFIAEoCBIx",
-            "Cg53b3JsZF9wb3NpdGlvbhgGIAEoCzIZLnNhaWxvci5lZGl0b3IudjEuVmVj",
-            "dG9yNBIdChVwcmVmZXJyZWRfaW5zdGFuY2VfaWQYByABKAkiKAoRSW5zdGFu",
-            "Y2VJZFJlcXVlc3QSEwoLaW5zdGFuY2VfaWQYASABKAkiKAoRVmlld3BvcnRJ",
-            "ZFJlcXVlc3QSEwoLdmlld3BvcnRfaWQYASABKAQiYAoTVmlld3BvcnRSZWN0",
-            "UmVxdWVzdBIUCgx3aW5kb3dfcG9zX3gYASABKA0SFAoMd2luZG93X3Bvc195",
-            "GAIgASgNEg0KBXdpZHRoGAMgASgNEg4KBmhlaWdodBgEIAEoDSIsCgtTaXpl",
-            "UmVxdWVzdBINCgV3aWR0aBgBIAEoDRIOCgZoZWlnaHQYAiABKA0iKgoXRWRp",
-            "dG9yU2ltdWxhdGlvblJlcXVlc3QSDwoHZW5hYmxlZBgBIAEoCCJJChZFZGl0",
-            "b3JTdGF0c01vZGVSZXF1ZXN0Ei8KBG1vZGUYASABKA4yIS5zYWlsb3IuZWRp",
-            "dG9yLnYxLkVkaXRvclN0YXRzTW9kZSJLChdFZGl0b3JSZW5kZXJNb2RlUmVx",
-            "dWVzdBIwCgRtb2RlGAEgASgOMiIuc2FpbG9yLmVkaXRvci52MS5FZGl0b3JS",
-            "ZW5kZXJNb2RlIkoKFkVkaXRvclJlbmRlck1vZGVSZXN1bHQSMAoEbW9kZRgB",
-            "IAEoDjIiLnNhaWxvci5lZGl0b3IudjEuRWRpdG9yUmVuZGVyTW9kZSKrAgoU",
-            "R0lQcm9iZXNCYWtlU2V0dGluZ3MSFgoOcmF5c19wZXJfcHJvYmUYASABKA0S",
-            "FAoMYm91bmNlX2NvdW50GAIgASgNEhMKC3JhbmRvbV9zZWVkGAMgASgNEh0K",
-            "FW1heF9zdWJkaXZpc2lvbl9sZXZlbBgEIAEoDRIZChFtaW5fcHJvYmVfc3Bh",
-            "Y2luZxgFIAEoAhITCgtub3JtYWxfYmlhcxgGIAEoAhIRCgl2aWV3X2JpYXMY",
-            "ByABKAISGAoQbWF4X3JheV9kaXN0YW5jZRgIIAEoAhITCgtpbmNsdWRlX3Nr",
-            "eRgJIAEoCBIYChBpbmNsdWRlX2VtaXNzaXZlGAogASgIEh8KF2luY2x1ZGVf",
-            "ZGlyZWN0X2xpZ2h0aW5nGAsgASgISgQIDBANIrMCChhTdGFydEdJUHJvYmVz",
-            "QmFrZVJlcXVlc3QSFQoNd29ybGRfZmlsZV9pZBgBIAEoCRIbChNvdXRwdXRf",
-            "dmlydHVhbF9wYXRoGAIgASgJEhIKCnN0YXRlX25hbWUYAyABKAkSHQoVbGF5",
-            "b3V0X3NvdXJjZV9maWxlX2lkGAQgASgJEjgKCHNldHRpbmdzGAUgASgLMiYu",
-            "c2FpbG9yLmVkaXRvci52MS5HSVByb2Jlc0Jha2VTZXR0aW5ncxI3ChRmYWxs",
-            "YmFja19lbnZpcm9ubWVudBgGIAEoCzIZLnNhaWxvci5lZGl0b3IudjEuVmVj",
-            "dG9yNBIRCglvdmVyd3JpdGUYByABKAgSGQoMdGhyZWFkX2NvdW50GAggASgN",
-            "SACIAQFCDwoNX3RocmVhZF9jb3VudCLXAgoYR0lQcm9iZXNCYWtlU3RhdHVz",
-            "UmVzdWx0EjIKBXN0YXRlGAEgASgOMiMuc2FpbG9yLmVkaXRvci52MS5HSVBy",
-            "b2Jlc0Jha2VTdGF0ZRIQCghwcm9ncmVzcxgCIAEoAhIYChBjb21wbGV0ZWRf",
-            "cHJvYmVzGAMgASgNEhQKDHRvdGFsX3Byb2JlcxgEIAEoDRITCgticmlja19j",
-            "b3VudBgFIAEoDRITCgtwcm9iZV9jb3VudBgGIAEoDRIXCg9lbGFwc2VkX3Nl",
-            "Y29uZHMYByABKAISEwoLbGF5b3V0X2hhc2gYCCABKAQSFgoOdHJhbnNwb3J0",
-            "X2hhc2gYCSABKAQSFQoNbGlnaHRpbmdfaGFzaBgKIAEoBBINCgVzdGFnZRgL",
-            "IAEoCRIbChNvdXRwdXRfdmlydHVhbF9wYXRoGAwgASgJEhIKCmRpYWdub3N0",
-            "aWMYDSABKAkiqwEKHkdsb2JhbElsbHVtaW5hdGlvblByb2JlQmluZGluZxIM",
-            "CgRuYW1lGAEgASgJEhUKDWFzc2V0X2ZpbGVfaWQYAiABKAkSOwoEbW9kZRgD",
-            "IAEoDjItLnNhaWxvci5lZGl0b3IudjEuR2xvYmFsSWxsdW1pbmF0aW9uUHJv",
-            "YmVNb2RlEhYKDmluaXRpYWxfd2VpZ2h0GAQgASgCEg8KB3ByZWxvYWQYBSAB",
-            "KAgi4QEKFFNldEdJU2V0dGluZ3NSZXF1ZXN0EkAKBnByb2JlcxgBIAMoCzIw",
-            "LnNhaWxvci5lZGl0b3IudjEuR2xvYmFsSWxsdW1pbmF0aW9uUHJvYmVCaW5k",
-            "aW5nEjsKBG1vZGUYAiABKA4yKC5zYWlsb3IuZWRpdG9yLnYxLkdsb2JhbEls",
-            "bHVtaW5hdGlvbk1vZGVIAIgBARJBCg5ydW50aW1lX3Byb2JlcxgDIAEoCzIp",
-            "LnNhaWxvci5lZGl0b3IudjEuUnVudGltZUdJUHJvYmVzU2V0dGluZ3NCBwoF",
-            "X21vZGUigwIKHEdsb2JhbElsbHVtaW5hdGlvblByb2JlU3RhdGUSDAoEbmFt",
-            "ZRgBIAEoCRIVCg1hc3NldF9maWxlX2lkGAIgASgJEjsKBG1vZGUYAyABKA4y",
-            "LS5zYWlsb3IuZWRpdG9yLnYxLkdsb2JhbElsbHVtaW5hdGlvblByb2JlTW9k",
-            "ZRIOCgZ3ZWlnaHQYBCABKAISRQoJcmVzaWRlbmN5GAUgASgOMjIuc2FpbG9y",
-            "LmVkaXRvci52MS5HbG9iYWxJbGx1bWluYXRpb25Qcm9iZVJlc2lkZW5jeRIW",
-            "Cg5hc3NldF9yZXZpc2lvbhgGIAEoBBISCgpkaWFnbm9zdGljGAcgASgJIqQD",
-            "Ch1HbG9iYWxJbGx1bWluYXRpb25TdGF0ZVJlc3VsdBIlCh1tYXhfcHJvYmVf",
-            "c3RhdGVzX3Blcl9zbmFwc2hvdBgBIAEoDRI+CgZwcm9iZXMYAiADKAsyLi5z",
-            "YWlsb3IuZWRpdG9yLnYxLkdsb2JhbElsbHVtaW5hdGlvblByb2JlU3RhdGUS",
-            "EgoKZGlhZ25vc3RpYxgDIAEoCRIZChFjb21wb3NpdGlvbl9jb3VudBgEIAEo",
-            "BBIiChpyZWplY3RlZF9jb21wb3NpdGlvbl9jb3VudBgFIAEoBBI2CgRtb2Rl",
-            "GAYgASgOMiguc2FpbG9yLmVkaXRvci52MS5HbG9iYWxJbGx1bWluYXRpb25N",
-            "b2RlEg8KB2VuYWJsZWQYByABKAgSQQoOcnVudGltZV9wcm9iZXMYCCABKAsy",
-            "KS5zYWlsb3IuZWRpdG9yLnYxLlJ1bnRpbWVHSVByb2Jlc1NldHRpbmdzEj0K",
-            "DXJ1bnRpbWVfc3RhdGUYCSABKAsyJi5zYWlsb3IuZWRpdG9yLnYxLlJ1bnRp",
-            "bWVHSVByb2Jlc1N0YXRlIpkBChVSZW1vdGVWaWV3cG9ydFJlcXVlc3QSEwoL",
-            "dmlld3BvcnRfaWQYASABKAQSFAoMd2luZG93X3Bvc194GAIgASgNEhQKDHdp",
-            "bmRvd19wb3NfeRgDIAEoDRINCgV3aWR0aBgEIAEoDRIOCgZoZWlnaHQYBSAB",
-            "KA0SDwoHdmlzaWJsZRgGIAEoCBIPCgdmb2N1c2VkGAcgASgIIooCChpSZW1v",
-            "dGVWaWV3cG9ydElucHV0UmVxdWVzdBITCgt2aWV3cG9ydF9pZBgBIAEoBBIM",
-            "CgRraW5kGAIgASgNEhEKCXBvaW50ZXJfeBgDIAEoAhIRCglwb2ludGVyX3kY",
-            "BCABKAISFQoNd2hlZWxfZGVsdGFfeBgFIAEoAhIVCg13aGVlbF9kZWx0YV95",
-            "GAYgASgCEhAKCGtleV9jb2RlGAcgASgNEg4KBmJ1dHRvbhgIIAEoDRIRCglt",
-            "b2RpZmllcnMYCSABKA0SDwoHcHJlc3NlZBgKIAEoCBIPCgdmb2N1c2VkGAsg",
-            "ASgIEhAKCGNhcHR1cmVkGAwgASgIEgwKBHRleHQYDSABKAkiQwoeTWFuYWdl",
-            "ZE11dGF0aW9uUmV2aXNpb25SZXF1ZXN0EgwKBGtpbmQYASABKA0SEwoLaW5z",
-            "dGFuY2VfaWQYAiABKAkiQAoTVXBkYXRlT2JqZWN0UmVxdWVzdBITCgtpbnN0",
-            "YW5jZV9pZBgBIAEoCRIUCgx5YW1sX2NoYW5nZXMYAiABKAkiZgoVUmVwYXJl",
-            "bnRPYmplY3RSZXF1ZXN0EhMKC2luc3RhbmNlX2lkGAEgASgJEhoKEnBhcmVu",
-            "dF9pbnN0YW5jZV9pZBgCIAEoCRIcChRrZWVwX3dvcmxkX3RyYW5zZm9ybRgD",
-            "IAEoCCJUChdDcmVhdGVHYW1lT2JqZWN0UmVxdWVzdBIaChJwYXJlbnRfaW5z",
-            "dGFuY2VfaWQYASABKAkSHQoVcHJlZmVycmVkX2luc3RhbmNlX2lkGAIgASgJ",
-            "ImYKE0FkZENvbXBvbmVudFJlcXVlc3QSEwoLaW5zdGFuY2VfaWQYASABKAkS",
-            "GwoTY29tcG9uZW50X3R5cGVfbmFtZRgCIAEoCRIdChVwcmVmZXJyZWRfaW5z",
-            "dGFuY2VfaWQYAyABKAki5gEKGEFuaW1hdG9yUGFyYW1ldGVyUmVxdWVzdBIT",
-            "CgtpbnN0YW5jZV9pZBgBIAEoCRIMCgRuYW1lGAIgASgJEhUKC2Zsb2F0X3Zh",
-            "bHVlGAMgASgCSAASEwoJaW50X3ZhbHVlGAQgASgRSAASFAoKYm9vbF92YWx1",
-            "ZRgFIAEoCEgAEioKB3RyaWdnZXIYBiABKAsyFy5zYWlsb3IuZWRpdG9yLnYx",
-            "LkVtcHR5SAASMAoNcmVzZXRfdHJpZ2dlchgHIAEoCzIXLnNhaWxvci5lZGl0",
-            "b3IudjEuRW1wdHlIAEIHCgV2YWx1ZSJHChhJbnN0YW50aWF0ZVByZWZhYlJl",
-            "cXVlc3QSDwoHZmlsZV9pZBgBIAEoCRIaChJwYXJlbnRfaW5zdGFuY2VfaWQY",
-            "AiABKAkicAogSW5zdGFudGlhdGVQcmVmYWJGcm9tWWFtbFJlcXVlc3QSEwoL",
-            "cHJlZmFiX3lhbWwYASABKAkSGgoScGFyZW50X2luc3RhbmNlX2lkGAIgASgJ",
-            "EhsKE3N0cmljdF9pbnN0YW5jZV9pZHMYAyABKAgiVQoSVmlld3BvcnRSYXlS",
-            "ZXF1ZXN0EhMKC3ZpZXdwb3J0X2lkGAEgASgEEhQKDG5vcm1hbGl6ZWRfeBgC",
-            "IAEoAhIUCgxub3JtYWxpemVkX3kYAyABKAIioAEKIEluc3RhbnRpYXRlUHJl",
-            "ZmFiSW5zdGFuY2VSZXF1ZXN0Eg8KB2ZpbGVfaWQYASABKAkSGgoScGFyZW50",
-            "X2luc3RhbmNlX2lkGAIgASgJEhwKFGFwcGx5X3dvcmxkX3Bvc2l0aW9uGAMg",
-            "ASgIEjEKDndvcmxkX3Bvc2l0aW9uGAQgASgLMhkuc2FpbG9yLmVkaXRvci52",
-            "MS5WZWN0b3I0IkEKFVZpZXdwb3J0T2JqZWN0UmVxdWVzdBITCgt2aWV3cG9y",
-            "dF9pZBgBIAEoBBITCgtpbnN0YW5jZV9pZBgCIAEoCSI5ChFQcmVmYWJMaW5r",
-            "UmVxdWVzdBITCgtpbnN0YW5jZV9pZBgBIAEoCRIPCgdmaWxlX2lkGAIgASgJ",
-            "IqkBChhWaWV3cG9ydFRvb2xTdGF0ZVJlcXVlc3QSEwoLdmlld3BvcnRfaWQY",
-            "ASABKAQSPwoJb3BlcmF0aW9uGAIgASgOMiwuc2FpbG9yLmVkaXRvci52MS5W",
-            "aWV3cG9ydFRyYW5zZm9ybU9wZXJhdGlvbhI3CgVzcGFjZRgDIAEoDjIoLnNh",
-            "aWxvci5lZGl0b3IudjEuVmlld3BvcnRUcmFuc2Zvcm1TcGFjZSIoChBTZWxl",
-            "Y3Rpb25SZXF1ZXN0EhQKDGluc3RhbmNlX2lkcxgBIAMoCSIlChVTaG93TWFp",
-            "bldpbmRvd1JlcXVlc3QSDAoEc2hvdxgBIAEoCCKIAQocUmVuZGVyUGF0aFRy",
-            "YWNlZEltYWdlUmVxdWVzdBITCgtvdXRwdXRfcGF0aBgBIAEoCRITCgtpbnN0",
-            "YW5jZV9pZBgCIAEoCRIOCgZoZWlnaHQYAyABKA0SGQoRc2FtcGxlc19wZXJf",
-            "cGl4ZWwYBCABKA0SEwoLbWF4X2JvdW5jZXMYBSABKA0iGwoKQm9vbFJlc3Vs",
-            "dBINCgV2YWx1ZRgBIAEoCCIcCgtJbnQzMlJlc3VsdBINCgV2YWx1ZRgBIAEo",
-            "BSIdCgxVSW50MzJSZXN1bHQSDQoFdmFsdWUYASABKA0iHQoMVUludDY0UmVz",
-            "dWx0Eg0KBXZhbHVlGAEgASgEIjAKDFN0cmluZ1Jlc3VsdBIRCgloYXNfdmFs",
-            "dWUYASABKAgSDQoFdmFsdWUYAiABKAkiIgoQU3RyaW5nTGlzdFJlc3VsdBIO",
-            "CgZ2YWx1ZXMYASADKAkihAEKFkFzc2V0UmVsb2FkU3RhdGVSZXN1bHQSEQoJ",
-            "YXZhaWxhYmxlGAEgASgIEhoKEnJlcXVlc3RfZ2VuZXJhdGlvbhgCIAEoBBIc",
-            "ChRjb21wbGV0ZWRfZ2VuZXJhdGlvbhgDIAEoBBIdChVzdWNjZXNzZnVsX2dl",
-            "bmVyYXRpb24YBCABKAQiOgoQSW5zdGFuY2VJZFJlc3VsdBIRCglzdWNjZWVk",
-            "ZWQYASABKAgSEwoLaW5zdGFuY2VfaWQYAiABKAkiOQoNVmVjdG9yNFJlc3Vs",
-            "dBIoCgV2YWx1ZRgBIAEoCzIZLnNhaWxvci5lZGl0b3IudjEuVmVjdG9yNCKT",
-            "AQoXVmlld3BvcnRUb29sU3RhdGVSZXN1bHQSPwoJb3BlcmF0aW9uGAEgASgO",
-            "Miwuc2FpbG9yLmVkaXRvci52MS5WaWV3cG9ydFRyYW5zZm9ybU9wZXJhdGlv",
-            "bhI3CgVzcGFjZRgCIAEoDjIoLnNhaWxvci5lZGl0b3IudjEuVmlld3BvcnRU",
-            "cmFuc2Zvcm1TcGFjZSKoAgoTQW5pbWF0b3JTdGF0ZVJlc3VsdBIWCg5oYXNf",
-            "Y29udHJvbGxlchgBIAEoCBIbChNjb250cm9sbGVyX3JldmlzaW9uGAIgASgE",
-            "EhcKD2FjdGl2ZV9zdGF0ZV9pZBgDIAEoBBIZChFhY3RpdmVfc3RhdGVfbmFt",
-            "ZRgEIAEoCRIZChFhY3RpdmVfc3RhdGVfdGltZRgFIAEoAhIVCg10cmFuc2l0",
-            "aW9uaW5nGAYgASgIEhwKFGRlc3RpbmF0aW9uX3N0YXRlX2lkGAcgASgEEh4K",
-            "FmRlc3RpbmF0aW9uX3N0YXRlX25hbWUYCCABKAkSHgoWZGVzdGluYXRpb25f",
-            "c3RhdGVfdGltZRgJIAEoAhIYChB0cmFuc2l0aW9uX2FscGhhGAogASgCIjUK",
-            "B1ZlY3RvcjQSCQoBeBgBIAEoAhIJCgF5GAIgASgCEgkKAXoYAyABKAISCQoB",
-            "dxgEIAEoAiI2ChZWaWV3cG9ydFNlbGVjdGlvbkV2ZW50EhwKFHNlbGVjdGVk",
-            "X2luc3RhbmNlX2lkGAEgASgJItYDChZWaWV3cG9ydFRyYW5zZm9ybUV2ZW50",
-            "EhMKC2luc3RhbmNlX2lkGAEgASgJEj8KCW9wZXJhdGlvbhgCIAEoDjIsLnNh",
-            "aWxvci5lZGl0b3IudjEuVmlld3BvcnRUcmFuc2Zvcm1PcGVyYXRpb24SNwoF",
-            "c3BhY2UYAyABKA4yKC5zYWlsb3IuZWRpdG9yLnYxLlZpZXdwb3J0VHJhbnNm",
-            "b3JtU3BhY2USMgoPYmVmb3JlX3Bvc2l0aW9uGAQgASgLMhkuc2FpbG9yLmVk",
-            "aXRvci52MS5WZWN0b3I0EjIKD2JlZm9yZV9yb3RhdGlvbhgFIAEoCzIZLnNh",
-            "aWxvci5lZGl0b3IudjEuVmVjdG9yNBIvCgxiZWZvcmVfc2NhbGUYBiABKAsy",
-            "GS5zYWlsb3IuZWRpdG9yLnYxLlZlY3RvcjQSMQoOYWZ0ZXJfcG9zaXRpb24Y",
-            "ByABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZlY3RvcjQSMQoOYWZ0ZXJfcm90",
-            "YXRpb24YCCABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZlY3RvcjQSLgoLYWZ0",
-            "ZXJfc2NhbGUYCSABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZlY3RvcjQiVQoW",
-            "Vmlld3BvcnRBc3NldERyb3BFdmVudBIPCgdmaWxlX2lkGAEgASgJEhQKDG5v",
-            "cm1hbGl6ZWRfeBgCIAEoAhIUCgxub3JtYWxpemVkX3kYAyABKAIiLQoZVmll",
-            "d3BvcnRUb29sU2hvcnRjdXRFdmVudBIQCghrZXlfY29kZRgBIAEoDSLZAgoN",
-            "Vmlld3BvcnRFdmVudBIQCghyZXZpc2lvbhgBIAEoBBIhChltYW5hZ2VkX211",
-            "dGF0aW9uX3JldmlzaW9uGAIgASgEEj0KCXNlbGVjdGlvbhgKIAEoCzIoLnNh",
-            "aWxvci5lZGl0b3IudjEuVmlld3BvcnRTZWxlY3Rpb25FdmVudEgAEj0KCXRy",
-            "YW5zZm9ybRgLIAEoCzIoLnNhaWxvci5lZGl0b3IudjEuVmlld3BvcnRUcmFu",
-            "c2Zvcm1FdmVudEgAEj4KCmFzc2V0X2Ryb3AYDCABKAsyKC5zYWlsb3IuZWRp",
-            "dG9yLnYxLlZpZXdwb3J0QXNzZXREcm9wRXZlbnRIABJECg10b29sX3Nob3J0",
-            "Y3V0GA0gASgLMisuc2FpbG9yLmVkaXRvci52MS5WaWV3cG9ydFRvb2xTaG9y",
-            "dGN1dEV2ZW50SABCCQoHcGF5bG9hZEoECAMQCiJLChhWaWV3cG9ydEV2ZW50",
-            "QmF0Y2hSZXN1bHQSLwoGZXZlbnRzGAEgAygLMh8uc2FpbG9yLmVkaXRvci52",
-            "MS5WaWV3cG9ydEV2ZW50IpICChdSdW50aW1lR0lQcm9iZXNTZXR0aW5ncxIP",
-            "Cgd2ZXJzaW9uGAEgASgNEhMKC2luY2x1ZGVfc2t5GAIgASgIEhgKEGluY2x1",
-            "ZGVfZW1pc3NpdmUYAyABKAgSHwoXaW5jbHVkZV9kaXJlY3RfbGlnaHRpbmcY",
-            "BCABKAgSFAoMYm91bmNlX2NvdW50GAUgASgNEhkKEW1pbl9wcm9iZV9zcGFj",
-            "aW5nGAYgASgCEhMKC25vcm1hbF9iaWFzGAcgASgCEhEKCXZpZXdfYmlhcxgI",
-            "IAEoAhIYChBtYXhfcmF5X2Rpc3RhbmNlGAkgASgCEiMKG3N1bl9hbmdsZV90",
-            "aHJlc2hvbGRfZGVncmVlcxgKIAEoAiIwCh1SdW50aW1lR0lQcm9iZXNQcmV2",
-            "aWV3UmVxdWVzdBIPCgdlbmFibGVkGAEgASgIIi0KG1J1bnRpbWVHSVByb2Jl",
-            "c1BhdXNlUmVxdWVzdBIOCgZwYXVzZWQYASABKAgi3AMKFFJ1bnRpbWVHSVBy",
-            "b2Jlc1N0YXRlEj0KCWxpZmVjeWNsZRgBIAEoDjIqLnNhaWxvci5lZGl0b3Iu",
-            "djEuUnVudGltZUdJUHJvYmVzTGlmZWN5Y2xlEg8KB2VuYWJsZWQYAiABKAgS",
-            "DgoGcGF1c2VkGAMgASgIEhcKD3ByZXZpZXdfZW5hYmxlZBgEIAEoCBIYChBz",
-            "Y2VuZV9nZW5lcmF0aW9uGAUgASgEEhsKE2xpZ2h0aW5nX2dlbmVyYXRpb24Y",
-            "BiABKAQSGgoScHVibGlzaGVkX3JldmlzaW9uGAcgASgEEhAKCGNhcGFjaXR5",
-            "GAggASgNEhoKEmFjdGl2ZV9wcm9iZV9jb3VudBgJIAEoDRIZChFyZWFkeV9w",
-            "cm9iZV9jb3VudBgKIAEoDRIUCgx3b3JrZXJfY291bnQYCyABKA0SFwoPcHVi",
-            "bGlzaGVkX2J5dGVzGAwgASgEEhAKCGNvdmVyYWdlGA0gASgCEhIKCnJlZmlu",
-            "ZW1lbnQYDiABKAISEgoKZGlhZ25vc3RpYxgPIAEoCRJGCg5wcmV2aWV3X2J1",
-            "ZGdldBgQIAEoDjIuLnNhaWxvci5lZGl0b3IudjEuUnVudGltZUdJUHJvYmVz",
-            "UHJldmlld0J1ZGdldCJlCiNSdW50aW1lR0lQcm9iZXNQcmV2aWV3QnVkZ2V0",
-            "UmVxdWVzdBI+CgZidWRnZXQYASABKA4yLi5zYWlsb3IuZWRpdG9yLnYxLlJ1",
-            "bnRpbWVHSVByb2Jlc1ByZXZpZXdCdWRnZXQiWAocTW9kZWxGaW5nZXJwcmlu",
-            "dFN0YXR1c1Jlc3VsdBI4CgZzdGF0dXMYASABKA4yKC5zYWlsb3IuZWRpdG9y",
-            "LnYxLk1vZGVsRmluZ2VycHJpbnRTdGF0dXMi5wEKHFVwZGF0ZU1hdGVyaWFs",
-            "UHJldmlld1JlcXVlc3QSEgoKc2Vzc2lvbl9pZBgBIAEoBBIQCghyZXZpc2lv",
-            "bhgCIAEoBBIVCg1tYXRlcmlhbF95YW1sGAMgASgJEj0KCXByaW1pdGl2ZRgE",
-            "IAEoDjIqLnNhaWxvci5lZGl0b3IudjEuTWF0ZXJpYWxQcmV2aWV3UHJpbWl0",
-            "aXZlEgsKA3lhdxgFIAEoAhINCgVwaXRjaBgGIAEoAhIQCghkaXN0YW5jZRgH",
-            "IAEoAhINCgV3aWR0aBgIIAEoDRIOCgZoZWlnaHQYCSABKA0iSwodTWF0ZXJp",
-            "YWxQcmV2aWV3U2Vzc2lvblJlcXVlc3QSEgoKc2Vzc2lvbl9pZBgBIAEoBBIW",
-            "Cg5hZnRlcl9yZXZpc2lvbhgCIAEoBCK0AQoVTWF0ZXJpYWxQcmV2aWV3UmVz",
-            "dWx0EhIKCnNlc3Npb25faWQYASABKAQSEAoIcmV2aXNpb24YAiABKAQSNQoF",
-            "c3RhdGUYAyABKA4yJi5zYWlsb3IuZWRpdG9yLnYxLk1hdGVyaWFsUHJldmll",
-            "d1N0YXRlEg0KBXdpZHRoGAQgASgNEg4KBmhlaWdodBgFIAEoDRILCgNwbmcY",
-            "BiABKAwSEgoKZGlhZ25vc3RpYxgHIAEoCSrwAQoaVmlld3BvcnRUcmFuc2Zv",
-            "cm1PcGVyYXRpb24SLAooVklFV1BPUlRfVFJBTlNGT1JNX09QRVJBVElPTl9V",
-            "TlNQRUNJRklFRBAAEicKI1ZJRVdQT1JUX1RSQU5TRk9STV9PUEVSQVRJT05f",
-            "U0VMRUNUEAESKgomVklFV1BPUlRfVFJBTlNGT1JNX09QRVJBVElPTl9UUkFO",
-            "U0xBVEUQAhInCiNWSUVXUE9SVF9UUkFOU0ZPUk1fT1BFUkFUSU9OX1JPVEFU",
-            "RRADEiYKIlZJRVdQT1JUX1RSQU5TRk9STV9PUEVSQVRJT05fU0NBTEUQBCqK",
-            "AQoWVmlld3BvcnRUcmFuc2Zvcm1TcGFjZRIoCiRWSUVXUE9SVF9UUkFOU0ZP",
-            "Uk1fU1BBQ0VfVU5TUEVDSUZJRUQQABIiCh5WSUVXUE9SVF9UUkFOU0ZPUk1f",
-            "U1BBQ0VfV09STEQQARIiCh5WSUVXUE9SVF9UUkFOU0ZPUk1fU1BBQ0VfTE9D",
-            "QUwQAiqkAQoPRWRpdG9yU3RhdHNNb2RlEiEKHUVESVRPUl9TVEFUU19NT0RF",
-            "X1VOU1BFQ0lGSUVEEAASGgoWRURJVE9SX1NUQVRTX01PREVfTk9ORRABEiIK",
-            "HkVESVRPUl9TVEFUU19NT0RFX1JFTkRFUl9TVEFUUxACEi4KKkVESVRPUl9T",
-            "VEFUU19NT0RFX1JFTkRFUl9TVEFUU19BTkRfUVVFUklFUxADKqMFChBFZGl0",
-            "b3JSZW5kZXJNb2RlEiIKHkVESVRPUl9SRU5ERVJfTU9ERV9VTlNQRUNJRklF",
-            "RBAAEhoKFkVESVRPUl9SRU5ERVJfTU9ERV9MSVQQARIoCiRFRElUT1JfUkVO",
-            "REVSX01PREVfQU1CSUVOVF9PQ0NMVVNJT04QAhIfChtFRElUT1JfUkVOREVS",
-            "X01PREVfQ0FTQ0FERVMQAxIiCh5FRElUT1JfUkVOREVSX01PREVfTElHSFRf",
-            "VElMRVMQBBIvCitFRElUT1JfUkVOREVSX01PREVfR0xPQkFMX0lMTFVNSU5B",
-            "VElPTl9PTkxZEAUSMQotRURJVE9SX1JFTkRFUl9NT0RFX0dMT0JBTF9JTExV",
-            "TUlOQVRJT05fUFJPQkVTEAYSMQotRURJVE9SX1JFTkRFUl9NT0RFX0dMT0JB",
-            "TF9JTExVTUlOQVRJT05fQlJJQ0tTEAcSMwovRURJVE9SX1JFTkRFUl9NT0RF",
-            "X0dMT0JBTF9JTExVTUlOQVRJT05fVkFMSURJVFkQCBI1CjFFRElUT1JfUkVO",
-            "REVSX01PREVfR0xPQkFMX0lMTFVNSU5BVElPTl9WSVNJQklMSVRZEAkSNAow",
-            "RURJVE9SX1JFTkRFUl9NT0RFX0dMT0JBTF9JTExVTUlOQVRJT05fUkVTSURF",
-            "TkNZEAoSOQo1RURJVE9SX1JFTkRFUl9NT0RFX0dMT0JBTF9JTExVTUlOQVRJ",
-            "T05fQVNTRVRfSURFTlRJVFkQCxIzCi9FRElUT1JfUkVOREVSX01PREVfR0xP",
-            "QkFMX0lMTFVNSU5BVElPTl9GQUxMQkFDSxAMEjcKM0VESVRPUl9SRU5ERVJf",
-            "TU9ERV9HTE9CQUxfSUxMVU1JTkFUSU9OX1NVQkRJVklTSU9OUxANKqcCChFH",
-            "SVByb2Jlc0Jha2VTdGF0ZRIkCiBHSV9QUk9CRVNfQkFLRV9TVEFURV9VTlNQ",
-            "RUNJRklFRBAAEh0KGUdJX1BST0JFU19CQUtFX1NUQVRFX0lETEUQARIiCh5H",
-            "SV9QUk9CRVNfQkFLRV9TVEFURV9QUkVQQVJJTkcQAhIfChtHSV9QUk9CRVNf",
-            "QkFLRV9TVEFURV9CQUtJTkcQAxIfChtHSV9QUk9CRVNfQkFLRV9TVEFURV9T",
-            "QVZJTkcQBBIiCh5HSV9QUk9CRVNfQkFLRV9TVEFURV9TVUNDRUVERUQQBRIf",
-            "ChtHSV9QUk9CRVNfQkFLRV9TVEFURV9GQUlMRUQQBhIiCh5HSV9QUk9CRVNf",
-            "QkFLRV9TVEFURV9DQU5DRUxMRUQQByqkAQobR2xvYmFsSWxsdW1pbmF0aW9u",
-            "UHJvYmVNb2RlEi4KKkdMT0JBTF9JTExVTUlOQVRJT05fUFJPQkVfTU9ERV9V",
-            "TlNQRUNJRklFRBAAEigKJEdMT0JBTF9JTExVTUlOQVRJT05fUFJPQkVfTU9E",
-            "RV9CTEVORBABEisKJ0dMT0JBTF9JTExVTUlOQVRJT05fUFJPQkVfTU9ERV9B",
-            "RERJVElWRRACKrABChZHbG9iYWxJbGx1bWluYXRpb25Nb2RlEigKJEdMT0JB",
-            "TF9JTExVTUlOQVRJT05fTU9ERV9VTlNQRUNJRklFRBAAEiIKHkdMT0JBTF9J",
-            "TExVTUlOQVRJT05fTU9ERV9OT19HSRABEiQKIEdMT0JBTF9JTExVTUlOQVRJ",
-            "T05fTU9ERV9SVU5USU1FEAISIgoeR0xPQkFMX0lMTFVNSU5BVElPTl9NT0RF",
-            "X0JBS0VEEAMq7QIKGFJ1bnRpbWVHSVByb2Jlc0xpZmVjeWNsZRIrCidSVU5U",
-            "SU1FX0dJX1BST0JFU19MSUZFQ1lDTEVfVU5TUEVDSUZJRUQQABIoCiRSVU5U",
-            "SU1FX0dJX1BST0JFU19MSUZFQ1lDTEVfRElTQUJMRUQQARIvCitSVU5USU1F",
-            "X0dJX1BST0JFU19MSUZFQ1lDTEVfUFJFUEFSSU5HX1NDRU5FEAISJwojUlVO",
-            "VElNRV9HSV9QUk9CRVNfTElGRUNZQ0xFX1RSQUNJTkcQAxIlCiFSVU5USU1F",
-            "X0dJX1BST0JFU19MSUZFQ1lDTEVfUkVBRFkQBBImCiJSVU5USU1FX0dJX1BS",
-            "T0JFU19MSUZFQ1lDTEVfUEFVU0VEEAUSKQolUlVOVElNRV9HSV9QUk9CRVNf",
-            "TElGRUNZQ0xFX1RIUk9UVExFRBAGEiYKIlJVTlRJTUVfR0lfUFJPQkVTX0xJ",
-            "RkVDWUNMRV9GQUlMRUQQByqpAQocUnVudGltZUdJUHJvYmVzUHJldmlld0J1",
-            "ZGdldBIwCixSVU5USU1FX0dJX1BST0JFU19QUkVWSUVXX0JVREdFVF9VTlNQ",
-            "RUNJRklFRBAAEigKJFJVTlRJTUVfR0lfUFJPQkVTX1BSRVZJRVdfQlVER0VU",
-            "X0VDTxABEi0KKVJVTlRJTUVfR0lfUFJPQkVTX1BSRVZJRVdfQlVER0VUX0JB",
-            "TEFOQ0VEEAIqnAIKIEdsb2JhbElsbHVtaW5hdGlvblByb2JlUmVzaWRlbmN5",
-            "EjMKL0dMT0JBTF9JTExVTUlOQVRJT05fUFJPQkVfUkVTSURFTkNZX1VOU1BF",
-            "Q0lGSUVEEAASMAosR0xPQkFMX0lMTFVNSU5BVElPTl9QUk9CRV9SRVNJREVO",
-            "Q1lfVU5MT0FERUQQARIvCitHTE9CQUxfSUxMVU1JTkFUSU9OX1BST0JFX1JF",
-            "U0lERU5DWV9MT0FESU5HEAISMAosR0xPQkFMX0lMTFVNSU5BVElPTl9QUk9C",
-            "RV9SRVNJREVOQ1lfUkVTSURFTlQQAxIuCipHTE9CQUxfSUxMVU1JTkFUSU9O",
-            "X1BST0JFX1JFU0lERU5DWV9GQUlMRUQQBCqxAQoWTW9kZWxGaW5nZXJwcmlu",
-            "dFN0YXR1cxIoCiRNT0RFTF9GSU5HRVJQUklOVF9TVEFUVVNfVU5BVkFJTEFC",
-            "TEUQABIkCiBNT0RFTF9GSU5HRVJQUklOVF9TVEFUVVNfUEVORElORxABEiIK",
-            "Hk1PREVMX0ZJTkdFUlBSSU5UX1NUQVRVU19SRUFEWRACEiMKH01PREVMX0ZJ",
-            "TkdFUlBSSU5UX1NUQVRVU19GQUlMRUQQAyq3AQoYTWF0ZXJpYWxQcmV2aWV3",
-            "UHJpbWl0aXZlEioKJk1BVEVSSUFMX1BSRVZJRVdfUFJJTUlUSVZFX1VOU1BF",
-            "Q0lGSUVEEAASJQohTUFURVJJQUxfUFJFVklFV19QUklNSVRJVkVfU1BIRVJF",
-            "EAESJAogTUFURVJJQUxfUFJFVklFV19QUklNSVRJVkVfUExBTkUQAhIiCh5N",
-            "QVRFUklBTF9QUkVWSUVXX1BSSU1JVElWRV9CT1gQAyrJAQoUTWF0ZXJpYWxQ",
-            "cmV2aWV3U3RhdGUSJgoiTUFURVJJQUxfUFJFVklFV19TVEFURV9VTlNQRUNJ",
-            "RklFRBAAEiIKHk1BVEVSSUFMX1BSRVZJRVdfU1RBVEVfUEVORElORxABEiAK",
-            "HE1BVEVSSUFMX1BSRVZJRVdfU1RBVEVfUkVBRFkQAhIgChxNQVRFUklBTF9Q",
-            "UkVWSUVXX1NUQVRFX0VSUk9SEAMSIQodTUFURVJJQUxfUFJFVklFV19TVEFU",
-            "RV9DTE9TRUQQBEIiqgIfU2FpbG9yRWRpdG9yLlByb3RvY29sLkdlbmVyYXRl",
-            "ZGIGcHJvdG8z"));
+            "ci5lZGl0b3IudjEuVmlld3BvcnRJZFJlcXVlc3RIABJRChd1cGRhdGVfbWF0",
+            "ZXJpYWxfcHJldmlldxhmIAEoCzIuLnNhaWxvci5lZGl0b3IudjEuVXBkYXRl",
+            "TWF0ZXJpYWxQcmV2aWV3UmVxdWVzdEgAEk8KFGdldF9tYXRlcmlhbF9wcmV2",
+            "aWV3GGcgASgLMi8uc2FpbG9yLmVkaXRvci52MS5NYXRlcmlhbFByZXZpZXdT",
+            "ZXNzaW9uUmVxdWVzdEgAElEKFmNsb3NlX21hdGVyaWFsX3ByZXZpZXcYaCAB",
+            "KAsyLy5zYWlsb3IuZWRpdG9yLnYxLk1hdGVyaWFsUHJldmlld1Nlc3Npb25S",
+            "ZXF1ZXN0SABCCQoHY29tbWFuZEoECAMQCkoECB4QH0oECDIQM0oECE4QZEoE",
+            "CGQQZUoECGUQZlIYY3JlYXRlX21vZGVsX2dhbWVfb2JqZWN0Uh5yZXNvbHZl",
+            "X3ZpZXdwb3J0X2Ryb3BfcG9zaXRpb25SGXJlcXVlc3RfbW9kZWxfZmluZ2Vy",
+            "cHJpbnRSHGdldF9tb2RlbF9maW5nZXJwcmludF9zdGF0dXMi0QoKEFByb3Rv",
+            "Y29sUmVzcG9uc2USGAoQcHJvdG9jb2xfdmVyc2lvbhgBIAEoDRISCgpyZXF1",
+            "ZXN0X2lkGAIgASgEEg8KB3N1Y2Nlc3MYAyABKAgSDQoFZXJyb3IYBCABKAkS",
+            "JAocc3VwcG9ydHNfc3RyaWN0X2luc3RhbmNlX2lkcxgFIAEoCBIvCgxlbXB0",
+            "eV9yZXN1bHQYCiABKAsyFy5zYWlsb3IuZWRpdG9yLnYxLkVtcHR5SAASMwoL",
+            "Ym9vbF9yZXN1bHQYCyABKAsyHC5zYWlsb3IuZWRpdG9yLnYxLkJvb2xSZXN1",
+            "bHRIABI1CgxpbnQzMl9yZXN1bHQYDCABKAsyHS5zYWlsb3IuZWRpdG9yLnYx",
+            "LkludDMyUmVzdWx0SAASNwoNdWludDMyX3Jlc3VsdBgNIAEoCzIeLnNhaWxv",
+            "ci5lZGl0b3IudjEuVUludDMyUmVzdWx0SAASNwoNdWludDY0X3Jlc3VsdBgO",
+            "IAEoCzIeLnNhaWxvci5lZGl0b3IudjEuVUludDY0UmVzdWx0SAASNwoNc3Ry",
+            "aW5nX3Jlc3VsdBgPIAEoCzIeLnNhaWxvci5lZGl0b3IudjEuU3RyaW5nUmVz",
+            "dWx0SAASQAoSc3RyaW5nX2xpc3RfcmVzdWx0GBAgASgLMiIuc2FpbG9yLmVk",
+            "aXRvci52MS5TdHJpbmdMaXN0UmVzdWx0SAASTQoZYXNzZXRfcmVsb2FkX3N0",
+            "YXRlX3Jlc3VsdBgRIAEoCzIoLnNhaWxvci5lZGl0b3IudjEuQXNzZXRSZWxv",
+            "YWRTdGF0ZVJlc3VsdEgAEkAKEmluc3RhbmNlX2lkX3Jlc3VsdBgSIAEoCzIi",
+            "LnNhaWxvci5lZGl0b3IudjEuSW5zdGFuY2VJZFJlc3VsdEgAElEKG3ZpZXdw",
+            "b3J0X2V2ZW50X2JhdGNoX3Jlc3VsdBgTIAEoCzIqLnNhaWxvci5lZGl0b3Iu",
+            "djEuVmlld3BvcnRFdmVudEJhdGNoUmVzdWx0SAASOQoOdmVjdG9yNF9yZXN1",
+            "bHQYFCABKAsyHy5zYWlsb3IuZWRpdG9yLnYxLlZlY3RvcjRSZXN1bHRIABJP",
+            "Chp2aWV3cG9ydF90b29sX3N0YXRlX3Jlc3VsdBgVIAEoCzIpLnNhaWxvci5l",
+            "ZGl0b3IudjEuVmlld3BvcnRUb29sU3RhdGVSZXN1bHRIABJGChVhbmltYXRv",
+            "cl9zdGF0ZV9yZXN1bHQYFiABKAsyJS5zYWlsb3IuZWRpdG9yLnYxLkFuaW1h",
+            "dG9yU3RhdGVSZXN1bHRIABJNChllZGl0b3JfcmVuZGVyX21vZGVfcmVzdWx0",
+            "GBcgASgLMiguc2FpbG9yLmVkaXRvci52MS5FZGl0b3JSZW5kZXJNb2RlUmVz",
+            "dWx0SAASUgocZ2lfcHJvYmVzX2Jha2Vfc3RhdHVzX3Jlc3VsdBgYIAEoCzIq",
+            "LnNhaWxvci5lZGl0b3IudjEuR0lQcm9iZXNCYWtlU3RhdHVzUmVzdWx0SAAS",
+            "WwogZ2xvYmFsX2lsbHVtaW5hdGlvbl9zdGF0ZV9yZXN1bHQYGSABKAsyLy5z",
+            "YWlsb3IuZWRpdG9yLnYxLkdsb2JhbElsbHVtaW5hdGlvblN0YXRlUmVzdWx0",
+            "SAASSgoXbWF0ZXJpYWxfcHJldmlld19yZXN1bHQYZSABKAsyJy5zYWlsb3Iu",
+            "ZWRpdG9yLnYxLk1hdGVyaWFsUHJldmlld1Jlc3VsdEgAQggKBnJlc3VsdEoE",
+            "CAYQCkoECBoQZEoECGQQZVIfbW9kZWxfZmluZ2VycHJpbnRfc3RhdHVzX3Jl",
+            "c3VsdCImChFJbml0aWFsaXplUmVxdWVzdBIRCglhcmd1bWVudHMYASADKAki",
+            "IQoMQ291bnRSZXF1ZXN0EhEKCW1heF9jb3VudBgBIAEoDSIgCg1GaWxlSWRS",
+            "ZXF1ZXN0Eg8KB2ZpbGVfaWQYASABKAkiNwoSVXBkYXRlQXNzZXRSZXF1ZXN0",
+            "Eg8KB2ZpbGVfaWQYASABKAkSEAoIcmVpbXBvcnQYAiABKAgi5wEKGkNyZWF0",
+            "ZU1vZGVsSW5zdGFuY2VSZXF1ZXN0EhUKDW1vZGVsX2ZpbGVfaWQYASABKAkS",
+            "DAoEbmFtZRgCIAEoCRIaChJwYXJlbnRfaW5zdGFuY2VfaWQYAyABKAkSGAoQ",
+            "Y3JlYXRlX2hpZXJhcmNoeRgEIAEoCBIcChRhcHBseV93b3JsZF9wb3NpdGlv",
+            "bhgFIAEoCBIxCg53b3JsZF9wb3NpdGlvbhgGIAEoCzIZLnNhaWxvci5lZGl0",
+            "b3IudjEuVmVjdG9yNBIdChVwcmVmZXJyZWRfaW5zdGFuY2VfaWQYByABKAki",
+            "KAoRSW5zdGFuY2VJZFJlcXVlc3QSEwoLaW5zdGFuY2VfaWQYASABKAkiKAoR",
+            "Vmlld3BvcnRJZFJlcXVlc3QSEwoLdmlld3BvcnRfaWQYASABKAQiYAoTVmll",
+            "d3BvcnRSZWN0UmVxdWVzdBIUCgx3aW5kb3dfcG9zX3gYASABKA0SFAoMd2lu",
+            "ZG93X3Bvc195GAIgASgNEg0KBXdpZHRoGAMgASgNEg4KBmhlaWdodBgEIAEo",
+            "DSIsCgtTaXplUmVxdWVzdBINCgV3aWR0aBgBIAEoDRIOCgZoZWlnaHQYAiAB",
+            "KA0iKgoXRWRpdG9yU2ltdWxhdGlvblJlcXVlc3QSDwoHZW5hYmxlZBgBIAEo",
+            "CCJJChZFZGl0b3JTdGF0c01vZGVSZXF1ZXN0Ei8KBG1vZGUYASABKA4yIS5z",
+            "YWlsb3IuZWRpdG9yLnYxLkVkaXRvclN0YXRzTW9kZSJLChdFZGl0b3JSZW5k",
+            "ZXJNb2RlUmVxdWVzdBIwCgRtb2RlGAEgASgOMiIuc2FpbG9yLmVkaXRvci52",
+            "MS5FZGl0b3JSZW5kZXJNb2RlIkoKFkVkaXRvclJlbmRlck1vZGVSZXN1bHQS",
+            "MAoEbW9kZRgBIAEoDjIiLnNhaWxvci5lZGl0b3IudjEuRWRpdG9yUmVuZGVy",
+            "TW9kZSKrAgoUR0lQcm9iZXNCYWtlU2V0dGluZ3MSFgoOcmF5c19wZXJfcHJv",
+            "YmUYASABKA0SFAoMYm91bmNlX2NvdW50GAIgASgNEhMKC3JhbmRvbV9zZWVk",
+            "GAMgASgNEh0KFW1heF9zdWJkaXZpc2lvbl9sZXZlbBgEIAEoDRIZChFtaW5f",
+            "cHJvYmVfc3BhY2luZxgFIAEoAhITCgtub3JtYWxfYmlhcxgGIAEoAhIRCgl2",
+            "aWV3X2JpYXMYByABKAISGAoQbWF4X3JheV9kaXN0YW5jZRgIIAEoAhITCgtp",
+            "bmNsdWRlX3NreRgJIAEoCBIYChBpbmNsdWRlX2VtaXNzaXZlGAogASgIEh8K",
+            "F2luY2x1ZGVfZGlyZWN0X2xpZ2h0aW5nGAsgASgISgQIDBANIrMCChhTdGFy",
+            "dEdJUHJvYmVzQmFrZVJlcXVlc3QSFQoNd29ybGRfZmlsZV9pZBgBIAEoCRIb",
+            "ChNvdXRwdXRfdmlydHVhbF9wYXRoGAIgASgJEhIKCnN0YXRlX25hbWUYAyAB",
+            "KAkSHQoVbGF5b3V0X3NvdXJjZV9maWxlX2lkGAQgASgJEjgKCHNldHRpbmdz",
+            "GAUgASgLMiYuc2FpbG9yLmVkaXRvci52MS5HSVByb2Jlc0Jha2VTZXR0aW5n",
+            "cxI3ChRmYWxsYmFja19lbnZpcm9ubWVudBgGIAEoCzIZLnNhaWxvci5lZGl0",
+            "b3IudjEuVmVjdG9yNBIRCglvdmVyd3JpdGUYByABKAgSGQoMdGhyZWFkX2Nv",
+            "dW50GAggASgNSACIAQFCDwoNX3RocmVhZF9jb3VudCLXAgoYR0lQcm9iZXNC",
+            "YWtlU3RhdHVzUmVzdWx0EjIKBXN0YXRlGAEgASgOMiMuc2FpbG9yLmVkaXRv",
+            "ci52MS5HSVByb2Jlc0Jha2VTdGF0ZRIQCghwcm9ncmVzcxgCIAEoAhIYChBj",
+            "b21wbGV0ZWRfcHJvYmVzGAMgASgNEhQKDHRvdGFsX3Byb2JlcxgEIAEoDRIT",
+            "Cgticmlja19jb3VudBgFIAEoDRITCgtwcm9iZV9jb3VudBgGIAEoDRIXCg9l",
+            "bGFwc2VkX3NlY29uZHMYByABKAISEwoLbGF5b3V0X2hhc2gYCCABKAQSFgoO",
+            "dHJhbnNwb3J0X2hhc2gYCSABKAQSFQoNbGlnaHRpbmdfaGFzaBgKIAEoBBIN",
+            "CgVzdGFnZRgLIAEoCRIbChNvdXRwdXRfdmlydHVhbF9wYXRoGAwgASgJEhIK",
+            "CmRpYWdub3N0aWMYDSABKAkiqwEKHkdsb2JhbElsbHVtaW5hdGlvblByb2Jl",
+            "QmluZGluZxIMCgRuYW1lGAEgASgJEhUKDWFzc2V0X2ZpbGVfaWQYAiABKAkS",
+            "OwoEbW9kZRgDIAEoDjItLnNhaWxvci5lZGl0b3IudjEuR2xvYmFsSWxsdW1p",
+            "bmF0aW9uUHJvYmVNb2RlEhYKDmluaXRpYWxfd2VpZ2h0GAQgASgCEg8KB3By",
+            "ZWxvYWQYBSABKAgi4QEKFFNldEdJU2V0dGluZ3NSZXF1ZXN0EkAKBnByb2Jl",
+            "cxgBIAMoCzIwLnNhaWxvci5lZGl0b3IudjEuR2xvYmFsSWxsdW1pbmF0aW9u",
+            "UHJvYmVCaW5kaW5nEjsKBG1vZGUYAiABKA4yKC5zYWlsb3IuZWRpdG9yLnYx",
+            "Lkdsb2JhbElsbHVtaW5hdGlvbk1vZGVIAIgBARJBCg5ydW50aW1lX3Byb2Jl",
+            "cxgDIAEoCzIpLnNhaWxvci5lZGl0b3IudjEuUnVudGltZUdJUHJvYmVzU2V0",
+            "dGluZ3NCBwoFX21vZGUigwIKHEdsb2JhbElsbHVtaW5hdGlvblByb2JlU3Rh",
+            "dGUSDAoEbmFtZRgBIAEoCRIVCg1hc3NldF9maWxlX2lkGAIgASgJEjsKBG1v",
+            "ZGUYAyABKA4yLS5zYWlsb3IuZWRpdG9yLnYxLkdsb2JhbElsbHVtaW5hdGlv",
+            "blByb2JlTW9kZRIOCgZ3ZWlnaHQYBCABKAISRQoJcmVzaWRlbmN5GAUgASgO",
+            "MjIuc2FpbG9yLmVkaXRvci52MS5HbG9iYWxJbGx1bWluYXRpb25Qcm9iZVJl",
+            "c2lkZW5jeRIWCg5hc3NldF9yZXZpc2lvbhgGIAEoBBISCgpkaWFnbm9zdGlj",
+            "GAcgASgJIqQDCh1HbG9iYWxJbGx1bWluYXRpb25TdGF0ZVJlc3VsdBIlCh1t",
+            "YXhfcHJvYmVfc3RhdGVzX3Blcl9zbmFwc2hvdBgBIAEoDRI+CgZwcm9iZXMY",
+            "AiADKAsyLi5zYWlsb3IuZWRpdG9yLnYxLkdsb2JhbElsbHVtaW5hdGlvblBy",
+            "b2JlU3RhdGUSEgoKZGlhZ25vc3RpYxgDIAEoCRIZChFjb21wb3NpdGlvbl9j",
+            "b3VudBgEIAEoBBIiChpyZWplY3RlZF9jb21wb3NpdGlvbl9jb3VudBgFIAEo",
+            "BBI2CgRtb2RlGAYgASgOMiguc2FpbG9yLmVkaXRvci52MS5HbG9iYWxJbGx1",
+            "bWluYXRpb25Nb2RlEg8KB2VuYWJsZWQYByABKAgSQQoOcnVudGltZV9wcm9i",
+            "ZXMYCCABKAsyKS5zYWlsb3IuZWRpdG9yLnYxLlJ1bnRpbWVHSVByb2Jlc1Nl",
+            "dHRpbmdzEj0KDXJ1bnRpbWVfc3RhdGUYCSABKAsyJi5zYWlsb3IuZWRpdG9y",
+            "LnYxLlJ1bnRpbWVHSVByb2Jlc1N0YXRlIpkBChVSZW1vdGVWaWV3cG9ydFJl",
+            "cXVlc3QSEwoLdmlld3BvcnRfaWQYASABKAQSFAoMd2luZG93X3Bvc194GAIg",
+            "ASgNEhQKDHdpbmRvd19wb3NfeRgDIAEoDRINCgV3aWR0aBgEIAEoDRIOCgZo",
+            "ZWlnaHQYBSABKA0SDwoHdmlzaWJsZRgGIAEoCBIPCgdmb2N1c2VkGAcgASgI",
+            "IooCChpSZW1vdGVWaWV3cG9ydElucHV0UmVxdWVzdBITCgt2aWV3cG9ydF9p",
+            "ZBgBIAEoBBIMCgRraW5kGAIgASgNEhEKCXBvaW50ZXJfeBgDIAEoAhIRCglw",
+            "b2ludGVyX3kYBCABKAISFQoNd2hlZWxfZGVsdGFfeBgFIAEoAhIVCg13aGVl",
+            "bF9kZWx0YV95GAYgASgCEhAKCGtleV9jb2RlGAcgASgNEg4KBmJ1dHRvbhgI",
+            "IAEoDRIRCgltb2RpZmllcnMYCSABKA0SDwoHcHJlc3NlZBgKIAEoCBIPCgdm",
+            "b2N1c2VkGAsgASgIEhAKCGNhcHR1cmVkGAwgASgIEgwKBHRleHQYDSABKAki",
+            "QwoeTWFuYWdlZE11dGF0aW9uUmV2aXNpb25SZXF1ZXN0EgwKBGtpbmQYASAB",
+            "KA0SEwoLaW5zdGFuY2VfaWQYAiABKAkiQAoTVXBkYXRlT2JqZWN0UmVxdWVz",
+            "dBITCgtpbnN0YW5jZV9pZBgBIAEoCRIUCgx5YW1sX2NoYW5nZXMYAiABKAki",
+            "ZgoVUmVwYXJlbnRPYmplY3RSZXF1ZXN0EhMKC2luc3RhbmNlX2lkGAEgASgJ",
+            "EhoKEnBhcmVudF9pbnN0YW5jZV9pZBgCIAEoCRIcChRrZWVwX3dvcmxkX3Ry",
+            "YW5zZm9ybRgDIAEoCCJUChdDcmVhdGVHYW1lT2JqZWN0UmVxdWVzdBIaChJw",
+            "YXJlbnRfaW5zdGFuY2VfaWQYASABKAkSHQoVcHJlZmVycmVkX2luc3RhbmNl",
+            "X2lkGAIgASgJImYKE0FkZENvbXBvbmVudFJlcXVlc3QSEwoLaW5zdGFuY2Vf",
+            "aWQYASABKAkSGwoTY29tcG9uZW50X3R5cGVfbmFtZRgCIAEoCRIdChVwcmVm",
+            "ZXJyZWRfaW5zdGFuY2VfaWQYAyABKAki5gEKGEFuaW1hdG9yUGFyYW1ldGVy",
+            "UmVxdWVzdBITCgtpbnN0YW5jZV9pZBgBIAEoCRIMCgRuYW1lGAIgASgJEhUK",
+            "C2Zsb2F0X3ZhbHVlGAMgASgCSAASEwoJaW50X3ZhbHVlGAQgASgRSAASFAoK",
+            "Ym9vbF92YWx1ZRgFIAEoCEgAEioKB3RyaWdnZXIYBiABKAsyFy5zYWlsb3Iu",
+            "ZWRpdG9yLnYxLkVtcHR5SAASMAoNcmVzZXRfdHJpZ2dlchgHIAEoCzIXLnNh",
+            "aWxvci5lZGl0b3IudjEuRW1wdHlIAEIHCgV2YWx1ZSJHChhJbnN0YW50aWF0",
+            "ZVByZWZhYlJlcXVlc3QSDwoHZmlsZV9pZBgBIAEoCRIaChJwYXJlbnRfaW5z",
+            "dGFuY2VfaWQYAiABKAkicAogSW5zdGFudGlhdGVQcmVmYWJGcm9tWWFtbFJl",
+            "cXVlc3QSEwoLcHJlZmFiX3lhbWwYASABKAkSGgoScGFyZW50X2luc3RhbmNl",
+            "X2lkGAIgASgJEhsKE3N0cmljdF9pbnN0YW5jZV9pZHMYAyABKAgiVQoSVmll",
+            "d3BvcnRSYXlSZXF1ZXN0EhMKC3ZpZXdwb3J0X2lkGAEgASgEEhQKDG5vcm1h",
+            "bGl6ZWRfeBgCIAEoAhIUCgxub3JtYWxpemVkX3kYAyABKAIioAEKIEluc3Rh",
+            "bnRpYXRlUHJlZmFiSW5zdGFuY2VSZXF1ZXN0Eg8KB2ZpbGVfaWQYASABKAkS",
+            "GgoScGFyZW50X2luc3RhbmNlX2lkGAIgASgJEhwKFGFwcGx5X3dvcmxkX3Bv",
+            "c2l0aW9uGAMgASgIEjEKDndvcmxkX3Bvc2l0aW9uGAQgASgLMhkuc2FpbG9y",
+            "LmVkaXRvci52MS5WZWN0b3I0IkEKFVZpZXdwb3J0T2JqZWN0UmVxdWVzdBIT",
+            "Cgt2aWV3cG9ydF9pZBgBIAEoBBITCgtpbnN0YW5jZV9pZBgCIAEoCSI5ChFQ",
+            "cmVmYWJMaW5rUmVxdWVzdBITCgtpbnN0YW5jZV9pZBgBIAEoCRIPCgdmaWxl",
+            "X2lkGAIgASgJIqkBChhWaWV3cG9ydFRvb2xTdGF0ZVJlcXVlc3QSEwoLdmll",
+            "d3BvcnRfaWQYASABKAQSPwoJb3BlcmF0aW9uGAIgASgOMiwuc2FpbG9yLmVk",
+            "aXRvci52MS5WaWV3cG9ydFRyYW5zZm9ybU9wZXJhdGlvbhI3CgVzcGFjZRgD",
+            "IAEoDjIoLnNhaWxvci5lZGl0b3IudjEuVmlld3BvcnRUcmFuc2Zvcm1TcGFj",
+            "ZSIoChBTZWxlY3Rpb25SZXF1ZXN0EhQKDGluc3RhbmNlX2lkcxgBIAMoCSIl",
+            "ChVTaG93TWFpbldpbmRvd1JlcXVlc3QSDAoEc2hvdxgBIAEoCCKIAQocUmVu",
+            "ZGVyUGF0aFRyYWNlZEltYWdlUmVxdWVzdBITCgtvdXRwdXRfcGF0aBgBIAEo",
+            "CRITCgtpbnN0YW5jZV9pZBgCIAEoCRIOCgZoZWlnaHQYAyABKA0SGQoRc2Ft",
+            "cGxlc19wZXJfcGl4ZWwYBCABKA0SEwoLbWF4X2JvdW5jZXMYBSABKA0iGwoK",
+            "Qm9vbFJlc3VsdBINCgV2YWx1ZRgBIAEoCCIcCgtJbnQzMlJlc3VsdBINCgV2",
+            "YWx1ZRgBIAEoBSIdCgxVSW50MzJSZXN1bHQSDQoFdmFsdWUYASABKA0iHQoM",
+            "VUludDY0UmVzdWx0Eg0KBXZhbHVlGAEgASgEIjAKDFN0cmluZ1Jlc3VsdBIR",
+            "CgloYXNfdmFsdWUYASABKAgSDQoFdmFsdWUYAiABKAkiIgoQU3RyaW5nTGlz",
+            "dFJlc3VsdBIOCgZ2YWx1ZXMYASADKAkihAEKFkFzc2V0UmVsb2FkU3RhdGVS",
+            "ZXN1bHQSEQoJYXZhaWxhYmxlGAEgASgIEhoKEnJlcXVlc3RfZ2VuZXJhdGlv",
+            "bhgCIAEoBBIcChRjb21wbGV0ZWRfZ2VuZXJhdGlvbhgDIAEoBBIdChVzdWNj",
+            "ZXNzZnVsX2dlbmVyYXRpb24YBCABKAQiOgoQSW5zdGFuY2VJZFJlc3VsdBIR",
+            "CglzdWNjZWVkZWQYASABKAgSEwoLaW5zdGFuY2VfaWQYAiABKAkiOQoNVmVj",
+            "dG9yNFJlc3VsdBIoCgV2YWx1ZRgBIAEoCzIZLnNhaWxvci5lZGl0b3IudjEu",
+            "VmVjdG9yNCKTAQoXVmlld3BvcnRUb29sU3RhdGVSZXN1bHQSPwoJb3BlcmF0",
+            "aW9uGAEgASgOMiwuc2FpbG9yLmVkaXRvci52MS5WaWV3cG9ydFRyYW5zZm9y",
+            "bU9wZXJhdGlvbhI3CgVzcGFjZRgCIAEoDjIoLnNhaWxvci5lZGl0b3IudjEu",
+            "Vmlld3BvcnRUcmFuc2Zvcm1TcGFjZSKoAgoTQW5pbWF0b3JTdGF0ZVJlc3Vs",
+            "dBIWCg5oYXNfY29udHJvbGxlchgBIAEoCBIbChNjb250cm9sbGVyX3Jldmlz",
+            "aW9uGAIgASgEEhcKD2FjdGl2ZV9zdGF0ZV9pZBgDIAEoBBIZChFhY3RpdmVf",
+            "c3RhdGVfbmFtZRgEIAEoCRIZChFhY3RpdmVfc3RhdGVfdGltZRgFIAEoAhIV",
+            "Cg10cmFuc2l0aW9uaW5nGAYgASgIEhwKFGRlc3RpbmF0aW9uX3N0YXRlX2lk",
+            "GAcgASgEEh4KFmRlc3RpbmF0aW9uX3N0YXRlX25hbWUYCCABKAkSHgoWZGVz",
+            "dGluYXRpb25fc3RhdGVfdGltZRgJIAEoAhIYChB0cmFuc2l0aW9uX2FscGhh",
+            "GAogASgCIjUKB1ZlY3RvcjQSCQoBeBgBIAEoAhIJCgF5GAIgASgCEgkKAXoY",
+            "AyABKAISCQoBdxgEIAEoAiI2ChZWaWV3cG9ydFNlbGVjdGlvbkV2ZW50EhwK",
+            "FHNlbGVjdGVkX2luc3RhbmNlX2lkGAEgASgJItYDChZWaWV3cG9ydFRyYW5z",
+            "Zm9ybUV2ZW50EhMKC2luc3RhbmNlX2lkGAEgASgJEj8KCW9wZXJhdGlvbhgC",
+            "IAEoDjIsLnNhaWxvci5lZGl0b3IudjEuVmlld3BvcnRUcmFuc2Zvcm1PcGVy",
+            "YXRpb24SNwoFc3BhY2UYAyABKA4yKC5zYWlsb3IuZWRpdG9yLnYxLlZpZXdw",
+            "b3J0VHJhbnNmb3JtU3BhY2USMgoPYmVmb3JlX3Bvc2l0aW9uGAQgASgLMhku",
+            "c2FpbG9yLmVkaXRvci52MS5WZWN0b3I0EjIKD2JlZm9yZV9yb3RhdGlvbhgF",
+            "IAEoCzIZLnNhaWxvci5lZGl0b3IudjEuVmVjdG9yNBIvCgxiZWZvcmVfc2Nh",
+            "bGUYBiABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZlY3RvcjQSMQoOYWZ0ZXJf",
+            "cG9zaXRpb24YByABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZlY3RvcjQSMQoO",
+            "YWZ0ZXJfcm90YXRpb24YCCABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZlY3Rv",
+            "cjQSLgoLYWZ0ZXJfc2NhbGUYCSABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZl",
+            "Y3RvcjQiVQoWVmlld3BvcnRBc3NldERyb3BFdmVudBIPCgdmaWxlX2lkGAEg",
+            "ASgJEhQKDG5vcm1hbGl6ZWRfeBgCIAEoAhIUCgxub3JtYWxpemVkX3kYAyAB",
+            "KAIiLQoZVmlld3BvcnRUb29sU2hvcnRjdXRFdmVudBIQCghrZXlfY29kZRgB",
+            "IAEoDSLZAgoNVmlld3BvcnRFdmVudBIQCghyZXZpc2lvbhgBIAEoBBIhChlt",
+            "YW5hZ2VkX211dGF0aW9uX3JldmlzaW9uGAIgASgEEj0KCXNlbGVjdGlvbhgK",
+            "IAEoCzIoLnNhaWxvci5lZGl0b3IudjEuVmlld3BvcnRTZWxlY3Rpb25FdmVu",
+            "dEgAEj0KCXRyYW5zZm9ybRgLIAEoCzIoLnNhaWxvci5lZGl0b3IudjEuVmll",
+            "d3BvcnRUcmFuc2Zvcm1FdmVudEgAEj4KCmFzc2V0X2Ryb3AYDCABKAsyKC5z",
+            "YWlsb3IuZWRpdG9yLnYxLlZpZXdwb3J0QXNzZXREcm9wRXZlbnRIABJECg10",
+            "b29sX3Nob3J0Y3V0GA0gASgLMisuc2FpbG9yLmVkaXRvci52MS5WaWV3cG9y",
+            "dFRvb2xTaG9ydGN1dEV2ZW50SABCCQoHcGF5bG9hZEoECAMQCiJLChhWaWV3",
+            "cG9ydEV2ZW50QmF0Y2hSZXN1bHQSLwoGZXZlbnRzGAEgAygLMh8uc2FpbG9y",
+            "LmVkaXRvci52MS5WaWV3cG9ydEV2ZW50IpICChdSdW50aW1lR0lQcm9iZXNT",
+            "ZXR0aW5ncxIPCgd2ZXJzaW9uGAEgASgNEhMKC2luY2x1ZGVfc2t5GAIgASgI",
+            "EhgKEGluY2x1ZGVfZW1pc3NpdmUYAyABKAgSHwoXaW5jbHVkZV9kaXJlY3Rf",
+            "bGlnaHRpbmcYBCABKAgSFAoMYm91bmNlX2NvdW50GAUgASgNEhkKEW1pbl9w",
+            "cm9iZV9zcGFjaW5nGAYgASgCEhMKC25vcm1hbF9iaWFzGAcgASgCEhEKCXZp",
+            "ZXdfYmlhcxgIIAEoAhIYChBtYXhfcmF5X2Rpc3RhbmNlGAkgASgCEiMKG3N1",
+            "bl9hbmdsZV90aHJlc2hvbGRfZGVncmVlcxgKIAEoAiIwCh1SdW50aW1lR0lQ",
+            "cm9iZXNQcmV2aWV3UmVxdWVzdBIPCgdlbmFibGVkGAEgASgIIi0KG1J1bnRp",
+            "bWVHSVByb2Jlc1BhdXNlUmVxdWVzdBIOCgZwYXVzZWQYASABKAgi3AMKFFJ1",
+            "bnRpbWVHSVByb2Jlc1N0YXRlEj0KCWxpZmVjeWNsZRgBIAEoDjIqLnNhaWxv",
+            "ci5lZGl0b3IudjEuUnVudGltZUdJUHJvYmVzTGlmZWN5Y2xlEg8KB2VuYWJs",
+            "ZWQYAiABKAgSDgoGcGF1c2VkGAMgASgIEhcKD3ByZXZpZXdfZW5hYmxlZBgE",
+            "IAEoCBIYChBzY2VuZV9nZW5lcmF0aW9uGAUgASgEEhsKE2xpZ2h0aW5nX2dl",
+            "bmVyYXRpb24YBiABKAQSGgoScHVibGlzaGVkX3JldmlzaW9uGAcgASgEEhAK",
+            "CGNhcGFjaXR5GAggASgNEhoKEmFjdGl2ZV9wcm9iZV9jb3VudBgJIAEoDRIZ",
+            "ChFyZWFkeV9wcm9iZV9jb3VudBgKIAEoDRIUCgx3b3JrZXJfY291bnQYCyAB",
+            "KA0SFwoPcHVibGlzaGVkX2J5dGVzGAwgASgEEhAKCGNvdmVyYWdlGA0gASgC",
+            "EhIKCnJlZmluZW1lbnQYDiABKAISEgoKZGlhZ25vc3RpYxgPIAEoCRJGCg5w",
+            "cmV2aWV3X2J1ZGdldBgQIAEoDjIuLnNhaWxvci5lZGl0b3IudjEuUnVudGlt",
+            "ZUdJUHJvYmVzUHJldmlld0J1ZGdldCJlCiNSdW50aW1lR0lQcm9iZXNQcmV2",
+            "aWV3QnVkZ2V0UmVxdWVzdBI+CgZidWRnZXQYASABKA4yLi5zYWlsb3IuZWRp",
+            "dG9yLnYxLlJ1bnRpbWVHSVByb2Jlc1ByZXZpZXdCdWRnZXQi/gEKHFVwZGF0",
+            "ZU1hdGVyaWFsUHJldmlld1JlcXVlc3QSEgoKc2Vzc2lvbl9pZBgBIAEoBBIQ",
+            "CghyZXZpc2lvbhgCIAEoBBIVCg1tYXRlcmlhbF95YW1sGAMgASgJEj0KCXBy",
+            "aW1pdGl2ZRgEIAEoDjIqLnNhaWxvci5lZGl0b3IudjEuTWF0ZXJpYWxQcmV2",
+            "aWV3UHJpbWl0aXZlEgsKA3lhdxgFIAEoAhINCgVwaXRjaBgGIAEoAhIQCghk",
+            "aXN0YW5jZRgHIAEoAhINCgV3aWR0aBgIIAEoDRIOCgZoZWlnaHQYCSABKA0S",
+            "FQoNbW9kZWxfZmlsZV9pZBgKIAEoCSJLCh1NYXRlcmlhbFByZXZpZXdTZXNz",
+            "aW9uUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgEEhYKDmFmdGVyX3Jldmlz",
+            "aW9uGAIgASgEIrQBChVNYXRlcmlhbFByZXZpZXdSZXN1bHQSEgoKc2Vzc2lv",
+            "bl9pZBgBIAEoBBIQCghyZXZpc2lvbhgCIAEoBBI1CgVzdGF0ZRgDIAEoDjIm",
+            "LnNhaWxvci5lZGl0b3IudjEuTWF0ZXJpYWxQcmV2aWV3U3RhdGUSDQoFd2lk",
+            "dGgYBCABKA0SDgoGaGVpZ2h0GAUgASgNEgsKA3BuZxgGIAEoDBISCgpkaWFn",
+            "bm9zdGljGAcgASgJKvABChpWaWV3cG9ydFRyYW5zZm9ybU9wZXJhdGlvbhIs",
+            "CihWSUVXUE9SVF9UUkFOU0ZPUk1fT1BFUkFUSU9OX1VOU1BFQ0lGSUVEEAAS",
+            "JwojVklFV1BPUlRfVFJBTlNGT1JNX09QRVJBVElPTl9TRUxFQ1QQARIqCiZW",
+            "SUVXUE9SVF9UUkFOU0ZPUk1fT1BFUkFUSU9OX1RSQU5TTEFURRACEicKI1ZJ",
+            "RVdQT1JUX1RSQU5TRk9STV9PUEVSQVRJT05fUk9UQVRFEAMSJgoiVklFV1BP",
+            "UlRfVFJBTlNGT1JNX09QRVJBVElPTl9TQ0FMRRAEKooBChZWaWV3cG9ydFRy",
+            "YW5zZm9ybVNwYWNlEigKJFZJRVdQT1JUX1RSQU5TRk9STV9TUEFDRV9VTlNQ",
+            "RUNJRklFRBAAEiIKHlZJRVdQT1JUX1RSQU5TRk9STV9TUEFDRV9XT1JMRBAB",
+            "EiIKHlZJRVdQT1JUX1RSQU5TRk9STV9TUEFDRV9MT0NBTBACKqQBCg9FZGl0",
+            "b3JTdGF0c01vZGUSIQodRURJVE9SX1NUQVRTX01PREVfVU5TUEVDSUZJRUQQ",
+            "ABIaChZFRElUT1JfU1RBVFNfTU9ERV9OT05FEAESIgoeRURJVE9SX1NUQVRT",
+            "X01PREVfUkVOREVSX1NUQVRTEAISLgoqRURJVE9SX1NUQVRTX01PREVfUkVO",
+            "REVSX1NUQVRTX0FORF9RVUVSSUVTEAMqowUKEEVkaXRvclJlbmRlck1vZGUS",
+            "IgoeRURJVE9SX1JFTkRFUl9NT0RFX1VOU1BFQ0lGSUVEEAASGgoWRURJVE9S",
+            "X1JFTkRFUl9NT0RFX0xJVBABEigKJEVESVRPUl9SRU5ERVJfTU9ERV9BTUJJ",
+            "RU5UX09DQ0xVU0lPThACEh8KG0VESVRPUl9SRU5ERVJfTU9ERV9DQVNDQURF",
+            "UxADEiIKHkVESVRPUl9SRU5ERVJfTU9ERV9MSUdIVF9USUxFUxAEEi8KK0VE",
+            "SVRPUl9SRU5ERVJfTU9ERV9HTE9CQUxfSUxMVU1JTkFUSU9OX09OTFkQBRIx",
+            "Ci1FRElUT1JfUkVOREVSX01PREVfR0xPQkFMX0lMTFVNSU5BVElPTl9QUk9C",
+            "RVMQBhIxCi1FRElUT1JfUkVOREVSX01PREVfR0xPQkFMX0lMTFVNSU5BVElP",
+            "Tl9CUklDS1MQBxIzCi9FRElUT1JfUkVOREVSX01PREVfR0xPQkFMX0lMTFVN",
+            "SU5BVElPTl9WQUxJRElUWRAIEjUKMUVESVRPUl9SRU5ERVJfTU9ERV9HTE9C",
+            "QUxfSUxMVU1JTkFUSU9OX1ZJU0lCSUxJVFkQCRI0CjBFRElUT1JfUkVOREVS",
+            "X01PREVfR0xPQkFMX0lMTFVNSU5BVElPTl9SRVNJREVOQ1kQChI5CjVFRElU",
+            "T1JfUkVOREVSX01PREVfR0xPQkFMX0lMTFVNSU5BVElPTl9BU1NFVF9JREVO",
+            "VElUWRALEjMKL0VESVRPUl9SRU5ERVJfTU9ERV9HTE9CQUxfSUxMVU1JTkFU",
+            "SU9OX0ZBTExCQUNLEAwSNwozRURJVE9SX1JFTkRFUl9NT0RFX0dMT0JBTF9J",
+            "TExVTUlOQVRJT05fU1VCRElWSVNJT05TEA0qpwIKEUdJUHJvYmVzQmFrZVN0",
+            "YXRlEiQKIEdJX1BST0JFU19CQUtFX1NUQVRFX1VOU1BFQ0lGSUVEEAASHQoZ",
+            "R0lfUFJPQkVTX0JBS0VfU1RBVEVfSURMRRABEiIKHkdJX1BST0JFU19CQUtF",
+            "X1NUQVRFX1BSRVBBUklORxACEh8KG0dJX1BST0JFU19CQUtFX1NUQVRFX0JB",
+            "S0lORxADEh8KG0dJX1BST0JFU19CQUtFX1NUQVRFX1NBVklORxAEEiIKHkdJ",
+            "X1BST0JFU19CQUtFX1NUQVRFX1NVQ0NFRURFRBAFEh8KG0dJX1BST0JFU19C",
+            "QUtFX1NUQVRFX0ZBSUxFRBAGEiIKHkdJX1BST0JFU19CQUtFX1NUQVRFX0NB",
+            "TkNFTExFRBAHKqQBChtHbG9iYWxJbGx1bWluYXRpb25Qcm9iZU1vZGUSLgoq",
+            "R0xPQkFMX0lMTFVNSU5BVElPTl9QUk9CRV9NT0RFX1VOU1BFQ0lGSUVEEAAS",
+            "KAokR0xPQkFMX0lMTFVNSU5BVElPTl9QUk9CRV9NT0RFX0JMRU5EEAESKwon",
+            "R0xPQkFMX0lMTFVNSU5BVElPTl9QUk9CRV9NT0RFX0FERElUSVZFEAIqsAEK",
+            "Fkdsb2JhbElsbHVtaW5hdGlvbk1vZGUSKAokR0xPQkFMX0lMTFVNSU5BVElP",
+            "Tl9NT0RFX1VOU1BFQ0lGSUVEEAASIgoeR0xPQkFMX0lMTFVNSU5BVElPTl9N",
+            "T0RFX05PX0dJEAESJAogR0xPQkFMX0lMTFVNSU5BVElPTl9NT0RFX1JVTlRJ",
+            "TUUQAhIiCh5HTE9CQUxfSUxMVU1JTkFUSU9OX01PREVfQkFLRUQQAyrtAgoY",
+            "UnVudGltZUdJUHJvYmVzTGlmZWN5Y2xlEisKJ1JVTlRJTUVfR0lfUFJPQkVT",
+            "X0xJRkVDWUNMRV9VTlNQRUNJRklFRBAAEigKJFJVTlRJTUVfR0lfUFJPQkVT",
+            "X0xJRkVDWUNMRV9ESVNBQkxFRBABEi8KK1JVTlRJTUVfR0lfUFJPQkVTX0xJ",
+            "RkVDWUNMRV9QUkVQQVJJTkdfU0NFTkUQAhInCiNSVU5USU1FX0dJX1BST0JF",
+            "U19MSUZFQ1lDTEVfVFJBQ0lORxADEiUKIVJVTlRJTUVfR0lfUFJPQkVTX0xJ",
+            "RkVDWUNMRV9SRUFEWRAEEiYKIlJVTlRJTUVfR0lfUFJPQkVTX0xJRkVDWUNM",
+            "RV9QQVVTRUQQBRIpCiVSVU5USU1FX0dJX1BST0JFU19MSUZFQ1lDTEVfVEhS",
+            "T1RUTEVEEAYSJgoiUlVOVElNRV9HSV9QUk9CRVNfTElGRUNZQ0xFX0ZBSUxF",
+            "RBAHKqkBChxSdW50aW1lR0lQcm9iZXNQcmV2aWV3QnVkZ2V0EjAKLFJVTlRJ",
+            "TUVfR0lfUFJPQkVTX1BSRVZJRVdfQlVER0VUX1VOU1BFQ0lGSUVEEAASKAok",
+            "UlVOVElNRV9HSV9QUk9CRVNfUFJFVklFV19CVURHRVRfRUNPEAESLQopUlVO",
+            "VElNRV9HSV9QUk9CRVNfUFJFVklFV19CVURHRVRfQkFMQU5DRUQQAiqcAgog",
+            "R2xvYmFsSWxsdW1pbmF0aW9uUHJvYmVSZXNpZGVuY3kSMwovR0xPQkFMX0lM",
+            "TFVNSU5BVElPTl9QUk9CRV9SRVNJREVOQ1lfVU5TUEVDSUZJRUQQABIwCixH",
+            "TE9CQUxfSUxMVU1JTkFUSU9OX1BST0JFX1JFU0lERU5DWV9VTkxPQURFRBAB",
+            "Ei8KK0dMT0JBTF9JTExVTUlOQVRJT05fUFJPQkVfUkVTSURFTkNZX0xPQURJ",
+            "TkcQAhIwCixHTE9CQUxfSUxMVU1JTkFUSU9OX1BST0JFX1JFU0lERU5DWV9S",
+            "RVNJREVOVBADEi4KKkdMT0JBTF9JTExVTUlOQVRJT05fUFJPQkVfUkVTSURF",
+            "TkNZX0ZBSUxFRBAEKrcBChhNYXRlcmlhbFByZXZpZXdQcmltaXRpdmUSKgom",
+            "TUFURVJJQUxfUFJFVklFV19QUklNSVRJVkVfVU5TUEVDSUZJRUQQABIlCiFN",
+            "QVRFUklBTF9QUkVWSUVXX1BSSU1JVElWRV9TUEhFUkUQARIkCiBNQVRFUklB",
+            "TF9QUkVWSUVXX1BSSU1JVElWRV9QTEFORRACEiIKHk1BVEVSSUFMX1BSRVZJ",
+            "RVdfUFJJTUlUSVZFX0JPWBADKskBChRNYXRlcmlhbFByZXZpZXdTdGF0ZRIm",
+            "CiJNQVRFUklBTF9QUkVWSUVXX1NUQVRFX1VOU1BFQ0lGSUVEEAASIgoeTUFU",
+            "RVJJQUxfUFJFVklFV19TVEFURV9QRU5ESU5HEAESIAocTUFURVJJQUxfUFJF",
+            "VklFV19TVEFURV9SRUFEWRACEiAKHE1BVEVSSUFMX1BSRVZJRVdfU1RBVEVf",
+            "RVJST1IQAxIhCh1NQVRFUklBTF9QUkVWSUVXX1NUQVRFX0NMT1NFRBAEQiKq",
+            "Ah9TYWlsb3JFZGl0b3IuUHJvdG9jb2wuR2VuZXJhdGVkYgZwcm90bzM="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
-          new pbr::GeneratedClrTypeInfo(new[] {typeof(global::SailorEditor.Protocol.Generated.ViewportTransformOperation), typeof(global::SailorEditor.Protocol.Generated.ViewportTransformSpace), typeof(global::SailorEditor.Protocol.Generated.EditorStatsMode), typeof(global::SailorEditor.Protocol.Generated.EditorRenderMode), typeof(global::SailorEditor.Protocol.Generated.GIProbesBakeState), typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode), typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationMode), typeof(global::SailorEditor.Protocol.Generated.RuntimeGIProbesLifecycle), typeof(global::SailorEditor.Protocol.Generated.RuntimeGIProbesPreviewBudget), typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeResidency), typeof(global::SailorEditor.Protocol.Generated.ModelFingerprintStatus), typeof(global::SailorEditor.Protocol.Generated.MaterialPreviewPrimitive), typeof(global::SailorEditor.Protocol.Generated.MaterialPreviewState), }, null, new pbr::GeneratedClrTypeInfo[] {
+          new pbr::GeneratedClrTypeInfo(new[] {typeof(global::SailorEditor.Protocol.Generated.ViewportTransformOperation), typeof(global::SailorEditor.Protocol.Generated.ViewportTransformSpace), typeof(global::SailorEditor.Protocol.Generated.EditorStatsMode), typeof(global::SailorEditor.Protocol.Generated.EditorRenderMode), typeof(global::SailorEditor.Protocol.Generated.GIProbesBakeState), typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode), typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationMode), typeof(global::SailorEditor.Protocol.Generated.RuntimeGIProbesLifecycle), typeof(global::SailorEditor.Protocol.Generated.RuntimeGIProbesPreviewBudget), typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeResidency), typeof(global::SailorEditor.Protocol.Generated.MaterialPreviewPrimitive), typeof(global::SailorEditor.Protocol.Generated.MaterialPreviewState), }, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.Empty), global::SailorEditor.Protocol.Generated.Empty.Parser, null, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ProtocolRequest), global::SailorEditor.Protocol.Generated.ProtocolRequest.Parser, new[]{ "ProtocolVersion", "RequestId", "Initialize", "Start", "Stop", "Shutdown", "RequestAssetReload", "GetAssetReloadState", "GetExitCode", "GetMessages", "SerializeCurrentWorld", "SerializeEditorTypes", "SerializeWorkspaceCacheIdentity", "LoadEditorWorld", "CreateEditorWorld", "SetViewport", "SetEditorRenderTargetSize", "UpsertRemoteViewport", "DestroyRemoteViewport", "GetRemoteViewportState", "GetRemoteViewportDiagnostics", "RetryRemoteViewport", "SendRemoteViewportInput", "PullEditorViewportEvents", "GetEditorManagedMutationRevision", "UpdateObject", "ReparentObject", "CreateGameObject", "DestroyObject", "ResetComponentToDefaults", "AddComponent", "RemoveComponent", "InstantiatePrefab", "InstantiatePrefabFromYaml", "SetEditorSelection", "ShowMainWindow", "RenderPathTracedImage", "SerializeEngineTypes", "IsEngineMainThreadReady", "IsEngineRunning", "TraceViewportRay", "InstantiatePrefabInstance", "FocusEditorCamera", "SetPrefabLink", "BreakPrefabLink", "SetViewportToolState", "GetViewportToolState", "UpdateAsset", "CreateModelInstance", "SetAnimatorParameter", "GetAnimatorState", "SetEditorSimulation", "GetEditorSimulationState", "PreviewAudioAsset", "SetEditorStatsMode", "SetEditorRenderMode", "GetEditorRenderMode", "StartGiProbesBake", "GetGiProbesBakeStatus", "CancelGiProbesBake", "SetGiSettings", "GetGlobalIlluminationState", "SetRuntimeGiProbesPreview", "SetRuntimeGiProbesPaused", "RestartRuntimeGiProbes", "RebuildRuntimeGiProbesScene", "SetRuntimeGiProbesPreviewBudget", "CaptureRemoteViewportFrameEvidence", "RequestModelFingerprint", "GetModelFingerprintStatus", "UpdateMaterialPreview", "GetMaterialPreview", "CloseMaterialPreview" }, new[]{ "Command" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ProtocolResponse), global::SailorEditor.Protocol.Generated.ProtocolResponse.Parser, new[]{ "ProtocolVersion", "RequestId", "Success", "Error", "SupportsStrictInstanceIds", "EmptyResult", "BoolResult", "Int32Result", "Uint32Result", "Uint64Result", "StringResult", "StringListResult", "AssetReloadStateResult", "InstanceIdResult", "ViewportEventBatchResult", "Vector4Result", "ViewportToolStateResult", "AnimatorStateResult", "EditorRenderModeResult", "GiProbesBakeStatusResult", "GlobalIlluminationStateResult", "ModelFingerprintStatusResult", "MaterialPreviewResult" }, new[]{ "Result" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ProtocolRequest), global::SailorEditor.Protocol.Generated.ProtocolRequest.Parser, new[]{ "ProtocolVersion", "RequestId", "Initialize", "Start", "Stop", "Shutdown", "RequestAssetReload", "GetAssetReloadState", "GetExitCode", "GetMessages", "SerializeCurrentWorld", "SerializeEditorTypes", "SerializeWorkspaceCacheIdentity", "LoadEditorWorld", "CreateEditorWorld", "SetViewport", "SetEditorRenderTargetSize", "UpsertRemoteViewport", "DestroyRemoteViewport", "GetRemoteViewportState", "GetRemoteViewportDiagnostics", "RetryRemoteViewport", "SendRemoteViewportInput", "PullEditorViewportEvents", "GetEditorManagedMutationRevision", "UpdateObject", "ReparentObject", "CreateGameObject", "DestroyObject", "ResetComponentToDefaults", "AddComponent", "RemoveComponent", "InstantiatePrefab", "InstantiatePrefabFromYaml", "SetEditorSelection", "ShowMainWindow", "RenderPathTracedImage", "SerializeEngineTypes", "IsEngineMainThreadReady", "IsEngineRunning", "TraceViewportRay", "InstantiatePrefabInstance", "FocusEditorCamera", "SetPrefabLink", "BreakPrefabLink", "SetViewportToolState", "GetViewportToolState", "UpdateAsset", "CreateModelInstance", "SetAnimatorParameter", "GetAnimatorState", "SetEditorSimulation", "GetEditorSimulationState", "PreviewAudioAsset", "SetEditorStatsMode", "SetEditorRenderMode", "GetEditorRenderMode", "StartGiProbesBake", "GetGiProbesBakeStatus", "CancelGiProbesBake", "SetGiSettings", "GetGlobalIlluminationState", "SetRuntimeGiProbesPreview", "SetRuntimeGiProbesPaused", "RestartRuntimeGiProbes", "RebuildRuntimeGiProbesScene", "SetRuntimeGiProbesPreviewBudget", "CaptureRemoteViewportFrameEvidence", "UpdateMaterialPreview", "GetMaterialPreview", "CloseMaterialPreview" }, new[]{ "Command" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ProtocolResponse), global::SailorEditor.Protocol.Generated.ProtocolResponse.Parser, new[]{ "ProtocolVersion", "RequestId", "Success", "Error", "SupportsStrictInstanceIds", "EmptyResult", "BoolResult", "Int32Result", "Uint32Result", "Uint64Result", "StringResult", "StringListResult", "AssetReloadStateResult", "InstanceIdResult", "ViewportEventBatchResult", "Vector4Result", "ViewportToolStateResult", "AnimatorStateResult", "EditorRenderModeResult", "GiProbesBakeStatusResult", "GlobalIlluminationStateResult", "MaterialPreviewResult" }, new[]{ "Result" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.InitializeRequest), global::SailorEditor.Protocol.Generated.InitializeRequest.Parser, new[]{ "Arguments" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.CountRequest), global::SailorEditor.Protocol.Generated.CountRequest.Parser, new[]{ "MaxCount" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.FileIdRequest), global::SailorEditor.Protocol.Generated.FileIdRequest.Parser, new[]{ "FileId" }, null, null, null, null),
@@ -502,8 +493,7 @@ namespace SailorEditor.Protocol.Generated {
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.RuntimeGIProbesPauseRequest), global::SailorEditor.Protocol.Generated.RuntimeGIProbesPauseRequest.Parser, new[]{ "Paused" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.RuntimeGIProbesState), global::SailorEditor.Protocol.Generated.RuntimeGIProbesState.Parser, new[]{ "Lifecycle", "Enabled", "Paused", "PreviewEnabled", "SceneGeneration", "LightingGeneration", "PublishedRevision", "Capacity", "ActiveProbeCount", "ReadyProbeCount", "WorkerCount", "PublishedBytes", "Coverage", "Refinement", "Diagnostic", "PreviewBudget" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.RuntimeGIProbesPreviewBudgetRequest), global::SailorEditor.Protocol.Generated.RuntimeGIProbesPreviewBudgetRequest.Parser, new[]{ "Budget" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ModelFingerprintStatusResult), global::SailorEditor.Protocol.Generated.ModelFingerprintStatusResult.Parser, new[]{ "Status" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.UpdateMaterialPreviewRequest), global::SailorEditor.Protocol.Generated.UpdateMaterialPreviewRequest.Parser, new[]{ "SessionId", "Revision", "MaterialYaml", "Primitive", "Yaw", "Pitch", "Distance", "Width", "Height" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.UpdateMaterialPreviewRequest), global::SailorEditor.Protocol.Generated.UpdateMaterialPreviewRequest.Parser, new[]{ "SessionId", "Revision", "MaterialYaml", "Primitive", "Yaw", "Pitch", "Distance", "Width", "Height", "ModelFileId" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.MaterialPreviewSessionRequest), global::SailorEditor.Protocol.Generated.MaterialPreviewSessionRequest.Parser, new[]{ "SessionId", "AfterRevision" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.MaterialPreviewResult), global::SailorEditor.Protocol.Generated.MaterialPreviewResult.Parser, new[]{ "SessionId", "Revision", "State", "Width", "Height", "Png", "Diagnostic" }, null, null, null, null)
           }));
@@ -597,13 +587,6 @@ namespace SailorEditor.Protocol.Generated {
     [pbr::OriginalName("GLOBAL_ILLUMINATION_PROBE_RESIDENCY_LOADING")] Loading = 2,
     [pbr::OriginalName("GLOBAL_ILLUMINATION_PROBE_RESIDENCY_RESIDENT")] Resident = 3,
     [pbr::OriginalName("GLOBAL_ILLUMINATION_PROBE_RESIDENCY_FAILED")] Failed = 4,
-  }
-
-  public enum ModelFingerprintStatus {
-    [pbr::OriginalName("MODEL_FINGERPRINT_STATUS_UNAVAILABLE")] Unavailable = 0,
-    [pbr::OriginalName("MODEL_FINGERPRINT_STATUS_PENDING")] Pending = 1,
-    [pbr::OriginalName("MODEL_FINGERPRINT_STATUS_READY")] Ready = 2,
-    [pbr::OriginalName("MODEL_FINGERPRINT_STATUS_FAILED")] Failed = 3,
   }
 
   public enum MaterialPreviewPrimitive {
@@ -1020,12 +1003,6 @@ namespace SailorEditor.Protocol.Generated {
           break;
         case CommandOneofCase.CaptureRemoteViewportFrameEvidence:
           CaptureRemoteViewportFrameEvidence = other.CaptureRemoteViewportFrameEvidence.Clone();
-          break;
-        case CommandOneofCase.RequestModelFingerprint:
-          RequestModelFingerprint = other.RequestModelFingerprint.Clone();
-          break;
-        case CommandOneofCase.GetModelFingerprintStatus:
-          GetModelFingerprintStatus = other.GetModelFingerprintStatus.Clone();
           break;
         case CommandOneofCase.UpdateMaterialPreview:
           UpdateMaterialPreview = other.UpdateMaterialPreview.Clone();
@@ -1863,30 +1840,6 @@ namespace SailorEditor.Protocol.Generated {
       }
     }
 
-    /// <summary>Field number for the "request_model_fingerprint" field.</summary>
-    public const int RequestModelFingerprintFieldNumber = 100;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::SailorEditor.Protocol.Generated.FileIdRequest RequestModelFingerprint {
-      get { return commandCase_ == CommandOneofCase.RequestModelFingerprint ? (global::SailorEditor.Protocol.Generated.FileIdRequest) command_ : null; }
-      set {
-        command_ = value;
-        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.RequestModelFingerprint;
-      }
-    }
-
-    /// <summary>Field number for the "get_model_fingerprint_status" field.</summary>
-    public const int GetModelFingerprintStatusFieldNumber = 101;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::SailorEditor.Protocol.Generated.FileIdRequest GetModelFingerprintStatus {
-      get { return commandCase_ == CommandOneofCase.GetModelFingerprintStatus ? (global::SailorEditor.Protocol.Generated.FileIdRequest) command_ : null; }
-      set {
-        command_ = value;
-        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.GetModelFingerprintStatus;
-      }
-    }
-
     /// <summary>Field number for the "update_material_preview" field.</summary>
     public const int UpdateMaterialPreviewFieldNumber = 102;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -1993,8 +1946,6 @@ namespace SailorEditor.Protocol.Generated {
       RebuildRuntimeGiProbesScene = 75,
       SetRuntimeGiProbesPreviewBudget = 76,
       CaptureRemoteViewportFrameEvidence = 77,
-      RequestModelFingerprint = 100,
-      GetModelFingerprintStatus = 101,
       UpdateMaterialPreview = 102,
       GetMaterialPreview = 103,
       CloseMaterialPreview = 104,
@@ -2096,8 +2047,6 @@ namespace SailorEditor.Protocol.Generated {
       if (!object.Equals(RebuildRuntimeGiProbesScene, other.RebuildRuntimeGiProbesScene)) return false;
       if (!object.Equals(SetRuntimeGiProbesPreviewBudget, other.SetRuntimeGiProbesPreviewBudget)) return false;
       if (!object.Equals(CaptureRemoteViewportFrameEvidence, other.CaptureRemoteViewportFrameEvidence)) return false;
-      if (!object.Equals(RequestModelFingerprint, other.RequestModelFingerprint)) return false;
-      if (!object.Equals(GetModelFingerprintStatus, other.GetModelFingerprintStatus)) return false;
       if (!object.Equals(UpdateMaterialPreview, other.UpdateMaterialPreview)) return false;
       if (!object.Equals(GetMaterialPreview, other.GetMaterialPreview)) return false;
       if (!object.Equals(CloseMaterialPreview, other.CloseMaterialPreview)) return false;
@@ -2177,8 +2126,6 @@ namespace SailorEditor.Protocol.Generated {
       if (commandCase_ == CommandOneofCase.RebuildRuntimeGiProbesScene) hash ^= RebuildRuntimeGiProbesScene.GetHashCode();
       if (commandCase_ == CommandOneofCase.SetRuntimeGiProbesPreviewBudget) hash ^= SetRuntimeGiProbesPreviewBudget.GetHashCode();
       if (commandCase_ == CommandOneofCase.CaptureRemoteViewportFrameEvidence) hash ^= CaptureRemoteViewportFrameEvidence.GetHashCode();
-      if (commandCase_ == CommandOneofCase.RequestModelFingerprint) hash ^= RequestModelFingerprint.GetHashCode();
-      if (commandCase_ == CommandOneofCase.GetModelFingerprintStatus) hash ^= GetModelFingerprintStatus.GetHashCode();
       if (commandCase_ == CommandOneofCase.UpdateMaterialPreview) hash ^= UpdateMaterialPreview.GetHashCode();
       if (commandCase_ == CommandOneofCase.GetMaterialPreview) hash ^= GetMaterialPreview.GetHashCode();
       if (commandCase_ == CommandOneofCase.CloseMaterialPreview) hash ^= CloseMaterialPreview.GetHashCode();
@@ -2472,14 +2419,6 @@ namespace SailorEditor.Protocol.Generated {
       if (commandCase_ == CommandOneofCase.CaptureRemoteViewportFrameEvidence) {
         output.WriteRawTag(234, 4);
         output.WriteMessage(CaptureRemoteViewportFrameEvidence);
-      }
-      if (commandCase_ == CommandOneofCase.RequestModelFingerprint) {
-        output.WriteRawTag(162, 6);
-        output.WriteMessage(RequestModelFingerprint);
-      }
-      if (commandCase_ == CommandOneofCase.GetModelFingerprintStatus) {
-        output.WriteRawTag(170, 6);
-        output.WriteMessage(GetModelFingerprintStatus);
       }
       if (commandCase_ == CommandOneofCase.UpdateMaterialPreview) {
         output.WriteRawTag(178, 6);
@@ -2775,14 +2714,6 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(234, 4);
         output.WriteMessage(CaptureRemoteViewportFrameEvidence);
       }
-      if (commandCase_ == CommandOneofCase.RequestModelFingerprint) {
-        output.WriteRawTag(162, 6);
-        output.WriteMessage(RequestModelFingerprint);
-      }
-      if (commandCase_ == CommandOneofCase.GetModelFingerprintStatus) {
-        output.WriteRawTag(170, 6);
-        output.WriteMessage(GetModelFingerprintStatus);
-      }
       if (commandCase_ == CommandOneofCase.UpdateMaterialPreview) {
         output.WriteRawTag(178, 6);
         output.WriteMessage(UpdateMaterialPreview);
@@ -3008,12 +2939,6 @@ namespace SailorEditor.Protocol.Generated {
       }
       if (commandCase_ == CommandOneofCase.CaptureRemoteViewportFrameEvidence) {
         size += 2 + pb::CodedOutputStream.ComputeMessageSize(CaptureRemoteViewportFrameEvidence);
-      }
-      if (commandCase_ == CommandOneofCase.RequestModelFingerprint) {
-        size += 2 + pb::CodedOutputStream.ComputeMessageSize(RequestModelFingerprint);
-      }
-      if (commandCase_ == CommandOneofCase.GetModelFingerprintStatus) {
-        size += 2 + pb::CodedOutputStream.ComputeMessageSize(GetModelFingerprintStatus);
       }
       if (commandCase_ == CommandOneofCase.UpdateMaterialPreview) {
         size += 2 + pb::CodedOutputStream.ComputeMessageSize(UpdateMaterialPreview);
@@ -3438,18 +3363,6 @@ namespace SailorEditor.Protocol.Generated {
             CaptureRemoteViewportFrameEvidence = new global::SailorEditor.Protocol.Generated.ViewportIdRequest();
           }
           CaptureRemoteViewportFrameEvidence.MergeFrom(other.CaptureRemoteViewportFrameEvidence);
-          break;
-        case CommandOneofCase.RequestModelFingerprint:
-          if (RequestModelFingerprint == null) {
-            RequestModelFingerprint = new global::SailorEditor.Protocol.Generated.FileIdRequest();
-          }
-          RequestModelFingerprint.MergeFrom(other.RequestModelFingerprint);
-          break;
-        case CommandOneofCase.GetModelFingerprintStatus:
-          if (GetModelFingerprintStatus == null) {
-            GetModelFingerprintStatus = new global::SailorEditor.Protocol.Generated.FileIdRequest();
-          }
-          GetModelFingerprintStatus.MergeFrom(other.GetModelFingerprintStatus);
           break;
         case CommandOneofCase.UpdateMaterialPreview:
           if (UpdateMaterialPreview == null) {
@@ -4092,24 +4005,6 @@ namespace SailorEditor.Protocol.Generated {
             CaptureRemoteViewportFrameEvidence = subBuilder;
             break;
           }
-          case 802: {
-            global::SailorEditor.Protocol.Generated.FileIdRequest subBuilder = new global::SailorEditor.Protocol.Generated.FileIdRequest();
-            if (commandCase_ == CommandOneofCase.RequestModelFingerprint) {
-              subBuilder.MergeFrom(RequestModelFingerprint);
-            }
-            input.ReadMessage(subBuilder);
-            RequestModelFingerprint = subBuilder;
-            break;
-          }
-          case 810: {
-            global::SailorEditor.Protocol.Generated.FileIdRequest subBuilder = new global::SailorEditor.Protocol.Generated.FileIdRequest();
-            if (commandCase_ == CommandOneofCase.GetModelFingerprintStatus) {
-              subBuilder.MergeFrom(GetModelFingerprintStatus);
-            }
-            input.ReadMessage(subBuilder);
-            GetModelFingerprintStatus = subBuilder;
-            break;
-          }
           case 818: {
             global::SailorEditor.Protocol.Generated.UpdateMaterialPreviewRequest subBuilder = new global::SailorEditor.Protocol.Generated.UpdateMaterialPreviewRequest();
             if (commandCase_ == CommandOneofCase.UpdateMaterialPreview) {
@@ -4758,24 +4653,6 @@ namespace SailorEditor.Protocol.Generated {
             CaptureRemoteViewportFrameEvidence = subBuilder;
             break;
           }
-          case 802: {
-            global::SailorEditor.Protocol.Generated.FileIdRequest subBuilder = new global::SailorEditor.Protocol.Generated.FileIdRequest();
-            if (commandCase_ == CommandOneofCase.RequestModelFingerprint) {
-              subBuilder.MergeFrom(RequestModelFingerprint);
-            }
-            input.ReadMessage(subBuilder);
-            RequestModelFingerprint = subBuilder;
-            break;
-          }
-          case 810: {
-            global::SailorEditor.Protocol.Generated.FileIdRequest subBuilder = new global::SailorEditor.Protocol.Generated.FileIdRequest();
-            if (commandCase_ == CommandOneofCase.GetModelFingerprintStatus) {
-              subBuilder.MergeFrom(GetModelFingerprintStatus);
-            }
-            input.ReadMessage(subBuilder);
-            GetModelFingerprintStatus = subBuilder;
-            break;
-          }
           case 818: {
             global::SailorEditor.Protocol.Generated.UpdateMaterialPreviewRequest subBuilder = new global::SailorEditor.Protocol.Generated.UpdateMaterialPreviewRequest();
             if (commandCase_ == CommandOneofCase.UpdateMaterialPreview) {
@@ -4898,9 +4775,6 @@ namespace SailorEditor.Protocol.Generated {
           break;
         case ResultOneofCase.GlobalIlluminationStateResult:
           GlobalIlluminationStateResult = other.GlobalIlluminationStateResult.Clone();
-          break;
-        case ResultOneofCase.ModelFingerprintStatusResult:
-          ModelFingerprintStatusResult = other.ModelFingerprintStatusResult.Clone();
           break;
         case ResultOneofCase.MaterialPreviewResult:
           MaterialPreviewResult = other.MaterialPreviewResult.Clone();
@@ -5168,18 +5042,6 @@ namespace SailorEditor.Protocol.Generated {
       }
     }
 
-    /// <summary>Field number for the "model_fingerprint_status_result" field.</summary>
-    public const int ModelFingerprintStatusResultFieldNumber = 100;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::SailorEditor.Protocol.Generated.ModelFingerprintStatusResult ModelFingerprintStatusResult {
-      get { return resultCase_ == ResultOneofCase.ModelFingerprintStatusResult ? (global::SailorEditor.Protocol.Generated.ModelFingerprintStatusResult) result_ : null; }
-      set {
-        result_ = value;
-        resultCase_ = value == null ? ResultOneofCase.None : ResultOneofCase.ModelFingerprintStatusResult;
-      }
-    }
-
     /// <summary>Field number for the "material_preview_result" field.</summary>
     public const int MaterialPreviewResultFieldNumber = 101;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -5212,7 +5074,6 @@ namespace SailorEditor.Protocol.Generated {
       EditorRenderModeResult = 23,
       GiProbesBakeStatusResult = 24,
       GlobalIlluminationStateResult = 25,
-      ModelFingerprintStatusResult = 100,
       MaterialPreviewResult = 101,
     }
     private ResultOneofCase resultCase_ = ResultOneofCase.None;
@@ -5265,7 +5126,6 @@ namespace SailorEditor.Protocol.Generated {
       if (!object.Equals(EditorRenderModeResult, other.EditorRenderModeResult)) return false;
       if (!object.Equals(GiProbesBakeStatusResult, other.GiProbesBakeStatusResult)) return false;
       if (!object.Equals(GlobalIlluminationStateResult, other.GlobalIlluminationStateResult)) return false;
-      if (!object.Equals(ModelFingerprintStatusResult, other.ModelFingerprintStatusResult)) return false;
       if (!object.Equals(MaterialPreviewResult, other.MaterialPreviewResult)) return false;
       if (ResultCase != other.ResultCase) return false;
       return Equals(_unknownFields, other._unknownFields);
@@ -5296,7 +5156,6 @@ namespace SailorEditor.Protocol.Generated {
       if (resultCase_ == ResultOneofCase.EditorRenderModeResult) hash ^= EditorRenderModeResult.GetHashCode();
       if (resultCase_ == ResultOneofCase.GiProbesBakeStatusResult) hash ^= GiProbesBakeStatusResult.GetHashCode();
       if (resultCase_ == ResultOneofCase.GlobalIlluminationStateResult) hash ^= GlobalIlluminationStateResult.GetHashCode();
-      if (resultCase_ == ResultOneofCase.ModelFingerprintStatusResult) hash ^= ModelFingerprintStatusResult.GetHashCode();
       if (resultCase_ == ResultOneofCase.MaterialPreviewResult) hash ^= MaterialPreviewResult.GetHashCode();
       hash ^= (int) resultCase_;
       if (_unknownFields != null) {
@@ -5401,10 +5260,6 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(202, 1);
         output.WriteMessage(GlobalIlluminationStateResult);
       }
-      if (resultCase_ == ResultOneofCase.ModelFingerprintStatusResult) {
-        output.WriteRawTag(162, 6);
-        output.WriteMessage(ModelFingerprintStatusResult);
-      }
       if (resultCase_ == ResultOneofCase.MaterialPreviewResult) {
         output.WriteRawTag(170, 6);
         output.WriteMessage(MaterialPreviewResult);
@@ -5503,10 +5358,6 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(202, 1);
         output.WriteMessage(GlobalIlluminationStateResult);
       }
-      if (resultCase_ == ResultOneofCase.ModelFingerprintStatusResult) {
-        output.WriteRawTag(162, 6);
-        output.WriteMessage(ModelFingerprintStatusResult);
-      }
       if (resultCase_ == ResultOneofCase.MaterialPreviewResult) {
         output.WriteRawTag(170, 6);
         output.WriteMessage(MaterialPreviewResult);
@@ -5583,9 +5434,6 @@ namespace SailorEditor.Protocol.Generated {
       }
       if (resultCase_ == ResultOneofCase.GlobalIlluminationStateResult) {
         size += 2 + pb::CodedOutputStream.ComputeMessageSize(GlobalIlluminationStateResult);
-      }
-      if (resultCase_ == ResultOneofCase.ModelFingerprintStatusResult) {
-        size += 2 + pb::CodedOutputStream.ComputeMessageSize(ModelFingerprintStatusResult);
       }
       if (resultCase_ == ResultOneofCase.MaterialPreviewResult) {
         size += 2 + pb::CodedOutputStream.ComputeMessageSize(MaterialPreviewResult);
@@ -5713,12 +5561,6 @@ namespace SailorEditor.Protocol.Generated {
             GlobalIlluminationStateResult = new global::SailorEditor.Protocol.Generated.GlobalIlluminationStateResult();
           }
           GlobalIlluminationStateResult.MergeFrom(other.GlobalIlluminationStateResult);
-          break;
-        case ResultOneofCase.ModelFingerprintStatusResult:
-          if (ModelFingerprintStatusResult == null) {
-            ModelFingerprintStatusResult = new global::SailorEditor.Protocol.Generated.ModelFingerprintStatusResult();
-          }
-          ModelFingerprintStatusResult.MergeFrom(other.ModelFingerprintStatusResult);
           break;
         case ResultOneofCase.MaterialPreviewResult:
           if (MaterialPreviewResult == null) {
@@ -5911,15 +5753,6 @@ namespace SailorEditor.Protocol.Generated {
             GlobalIlluminationStateResult = subBuilder;
             break;
           }
-          case 802: {
-            global::SailorEditor.Protocol.Generated.ModelFingerprintStatusResult subBuilder = new global::SailorEditor.Protocol.Generated.ModelFingerprintStatusResult();
-            if (resultCase_ == ResultOneofCase.ModelFingerprintStatusResult) {
-              subBuilder.MergeFrom(ModelFingerprintStatusResult);
-            }
-            input.ReadMessage(subBuilder);
-            ModelFingerprintStatusResult = subBuilder;
-            break;
-          }
           case 810: {
             global::SailorEditor.Protocol.Generated.MaterialPreviewResult subBuilder = new global::SailorEditor.Protocol.Generated.MaterialPreviewResult();
             if (resultCase_ == ResultOneofCase.MaterialPreviewResult) {
@@ -6110,15 +5943,6 @@ namespace SailorEditor.Protocol.Generated {
             }
             input.ReadMessage(subBuilder);
             GlobalIlluminationStateResult = subBuilder;
-            break;
-          }
-          case 802: {
-            global::SailorEditor.Protocol.Generated.ModelFingerprintStatusResult subBuilder = new global::SailorEditor.Protocol.Generated.ModelFingerprintStatusResult();
-            if (resultCase_ == ResultOneofCase.ModelFingerprintStatusResult) {
-              subBuilder.MergeFrom(ModelFingerprintStatusResult);
-            }
-            input.ReadMessage(subBuilder);
-            ModelFingerprintStatusResult = subBuilder;
             break;
           }
           case 810: {
@@ -24579,204 +24403,6 @@ namespace SailorEditor.Protocol.Generated {
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  public sealed partial class ModelFingerprintStatusResult : pb::IMessage<ModelFingerprintStatusResult>
-  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-      , pb::IBufferMessage
-  #endif
-  {
-    private static readonly pb::MessageParser<ModelFingerprintStatusResult> _parser = new pb::MessageParser<ModelFingerprintStatusResult>(() => new ModelFingerprintStatusResult());
-    private pb::UnknownFieldSet _unknownFields;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public static pb::MessageParser<ModelFingerprintStatusResult> Parser { get { return _parser; } }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[64]; }
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    pbr::MessageDescriptor pb::IMessage.Descriptor {
-      get { return Descriptor; }
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public ModelFingerprintStatusResult() {
-      OnConstruction();
-    }
-
-    partial void OnConstruction();
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public ModelFingerprintStatusResult(ModelFingerprintStatusResult other) : this() {
-      status_ = other.status_;
-      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public ModelFingerprintStatusResult Clone() {
-      return new ModelFingerprintStatusResult(this);
-    }
-
-    /// <summary>Field number for the "status" field.</summary>
-    public const int StatusFieldNumber = 1;
-    private global::SailorEditor.Protocol.Generated.ModelFingerprintStatus status_ = global::SailorEditor.Protocol.Generated.ModelFingerprintStatus.Unavailable;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::SailorEditor.Protocol.Generated.ModelFingerprintStatus Status {
-      get { return status_; }
-      set {
-        status_ = value;
-      }
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public override bool Equals(object other) {
-      return Equals(other as ModelFingerprintStatusResult);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public bool Equals(ModelFingerprintStatusResult other) {
-      if (ReferenceEquals(other, null)) {
-        return false;
-      }
-      if (ReferenceEquals(other, this)) {
-        return true;
-      }
-      if (Status != other.Status) return false;
-      return Equals(_unknownFields, other._unknownFields);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public override int GetHashCode() {
-      int hash = 1;
-      if (Status != global::SailorEditor.Protocol.Generated.ModelFingerprintStatus.Unavailable) hash ^= Status.GetHashCode();
-      if (_unknownFields != null) {
-        hash ^= _unknownFields.GetHashCode();
-      }
-      return hash;
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public override string ToString() {
-      return pb::JsonFormatter.ToDiagnosticString(this);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void WriteTo(pb::CodedOutputStream output) {
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-      output.WriteRawMessage(this);
-    #else
-      if (Status != global::SailorEditor.Protocol.Generated.ModelFingerprintStatus.Unavailable) {
-        output.WriteRawTag(8);
-        output.WriteEnum((int) Status);
-      }
-      if (_unknownFields != null) {
-        _unknownFields.WriteTo(output);
-      }
-    #endif
-    }
-
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
-      if (Status != global::SailorEditor.Protocol.Generated.ModelFingerprintStatus.Unavailable) {
-        output.WriteRawTag(8);
-        output.WriteEnum((int) Status);
-      }
-      if (_unknownFields != null) {
-        _unknownFields.WriteTo(ref output);
-      }
-    }
-    #endif
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public int CalculateSize() {
-      int size = 0;
-      if (Status != global::SailorEditor.Protocol.Generated.ModelFingerprintStatus.Unavailable) {
-        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) Status);
-      }
-      if (_unknownFields != null) {
-        size += _unknownFields.CalculateSize();
-      }
-      return size;
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void MergeFrom(ModelFingerprintStatusResult other) {
-      if (other == null) {
-        return;
-      }
-      if (other.Status != global::SailorEditor.Protocol.Generated.ModelFingerprintStatus.Unavailable) {
-        Status = other.Status;
-      }
-      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void MergeFrom(pb::CodedInputStream input) {
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-      input.ReadRawMessage(this);
-    #else
-      uint tag;
-      while ((tag = input.ReadTag()) != 0) {
-      if ((tag & 7) == 4) {
-        // Abort on any end group tag.
-        return;
-      }
-      switch(tag) {
-          default:
-            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
-            break;
-          case 8: {
-            Status = (global::SailorEditor.Protocol.Generated.ModelFingerprintStatus) input.ReadEnum();
-            break;
-          }
-        }
-      }
-    #endif
-    }
-
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
-      uint tag;
-      while ((tag = input.ReadTag()) != 0) {
-      if ((tag & 7) == 4) {
-        // Abort on any end group tag.
-        return;
-      }
-      switch(tag) {
-          default:
-            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
-            break;
-          case 8: {
-            Status = (global::SailorEditor.Protocol.Generated.ModelFingerprintStatus) input.ReadEnum();
-            break;
-          }
-        }
-      }
-    }
-    #endif
-
-  }
-
-  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
   public sealed partial class UpdateMaterialPreviewRequest : pb::IMessage<UpdateMaterialPreviewRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
@@ -24791,7 +24417,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[65]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[64]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -24820,6 +24446,7 @@ namespace SailorEditor.Protocol.Generated {
       distance_ = other.distance_;
       width_ = other.width_;
       height_ = other.height_;
+      modelFileId_ = other.modelFileId_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -24937,6 +24564,18 @@ namespace SailorEditor.Protocol.Generated {
       }
     }
 
+    /// <summary>Field number for the "model_file_id" field.</summary>
+    public const int ModelFileIdFieldNumber = 10;
+    private string modelFileId_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string ModelFileId {
+      get { return modelFileId_; }
+      set {
+        modelFileId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -24961,6 +24600,7 @@ namespace SailorEditor.Protocol.Generated {
       if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(Distance, other.Distance)) return false;
       if (Width != other.Width) return false;
       if (Height != other.Height) return false;
+      if (ModelFileId != other.ModelFileId) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -24977,6 +24617,7 @@ namespace SailorEditor.Protocol.Generated {
       if (Distance != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(Distance);
       if (Width != 0) hash ^= Width.GetHashCode();
       if (Height != 0) hash ^= Height.GetHashCode();
+      if (ModelFileId.Length != 0) hash ^= ModelFileId.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -25031,6 +24672,10 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(72);
         output.WriteUInt32(Height);
       }
+      if (ModelFileId.Length != 0) {
+        output.WriteRawTag(82);
+        output.WriteString(ModelFileId);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -25077,6 +24722,10 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(72);
         output.WriteUInt32(Height);
       }
+      if (ModelFileId.Length != 0) {
+        output.WriteRawTag(82);
+        output.WriteString(ModelFileId);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -25113,6 +24762,9 @@ namespace SailorEditor.Protocol.Generated {
       }
       if (Height != 0) {
         size += 1 + pb::CodedOutputStream.ComputeUInt32Size(Height);
+      }
+      if (ModelFileId.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(ModelFileId);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -25152,6 +24804,9 @@ namespace SailorEditor.Protocol.Generated {
       }
       if (other.Height != 0) {
         Height = other.Height;
+      }
+      if (other.ModelFileId.Length != 0) {
+        ModelFileId = other.ModelFileId;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -25206,6 +24861,10 @@ namespace SailorEditor.Protocol.Generated {
           }
           case 72: {
             Height = input.ReadUInt32();
+            break;
+          }
+          case 82: {
+            ModelFileId = input.ReadString();
             break;
           }
         }
@@ -25263,6 +24922,10 @@ namespace SailorEditor.Protocol.Generated {
             Height = input.ReadUInt32();
             break;
           }
+          case 82: {
+            ModelFileId = input.ReadString();
+            break;
+          }
         }
       }
     }
@@ -25285,7 +24948,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[66]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[65]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -25520,7 +25183,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[67]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[66]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]

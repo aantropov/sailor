@@ -236,6 +236,7 @@ namespace SailorEditor.Services
 
         public event Action<EngineLifecycleState> OnLifecycleStateChanged = delegate { };
         public event Action<AssetReloadCompletion> OnAssetReloadCompleted = delegate { };
+        public event Action OnAssetUpdated = delegate { };
         public event Action<IReadOnlyList<EditorViewportEvent>> OnEditorViewportEvents = delegate { };
         public event Action<bool> OnEditorSimulationStateChanged = delegate { };
         public event Action<SceneViewRenderMode> OnEditorRenderModeChanged = delegate { };
@@ -2276,24 +2277,36 @@ namespace SailorEditor.Services
                 cancellationToken);
         }
 
-        public Task<bool> UpdateAssetAsync(
+        public async Task<bool> UpdateAssetAsync(
             FileId fileId,
             CancellationToken cancellationToken = default)
         {
             var stringId = fileId?.Value ?? string.Empty;
-            return InvokeRunningInteropAsync(
+            var generation = Generation;
+            var succeeded = await InvokeRunningInteropAsync(
                 token => protocolClient.UpdateAssetAsync(stringId, token),
-                cancellationToken: cancellationToken);
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (succeeded && IsGenerationActive(generation))
+            {
+                OnAssetUpdated();
+            }
+            return succeeded;
         }
 
-        public Task<bool> ReimportAssetAsync(
+        public async Task<bool> ReimportAssetAsync(
             FileId fileId,
             CancellationToken cancellationToken = default)
         {
             var stringId = fileId?.Value ?? string.Empty;
-            return InvokeRunningInteropAsync(
+            var generation = Generation;
+            var succeeded = await InvokeRunningInteropAsync(
                 token => protocolClient.ReimportAssetAsync(stringId, token),
-                cancellationToken: cancellationToken);
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (succeeded && IsGenerationActive(generation))
+            {
+                OnAssetUpdated();
+            }
+            return succeeded;
         }
 
         public Task<bool> PreviewAudioAssetAsync(
@@ -2304,20 +2317,6 @@ namespace SailorEditor.Services
             return InvokeRunningInteropAsync(
                 token => protocolClient.PreviewAudioAssetAsync(stringId, token),
                 cancellationToken: cancellationToken);
-        }
-
-        public async Task<bool> GenerateModelFingerprintAsync(
-            FileId fileId,
-            CancellationToken cancellationToken = default)
-        {
-            var generation = Volatile.Read(ref engineGeneration);
-            CancellationToken sessionToken;
-            lock (runLock)
-                sessionToken = activeSession?.PollCancellation.Token ?? default;
-            using var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, sessionToken);
-            return IsInteropRunning() && IsGenerationActive(generation) &&
-                await protocolClient.GenerateModelFingerprintAsync(fileId?.Value ?? string.Empty, operation.Token)
-                    .ConfigureAwait(false) && IsGenerationActive(generation);
         }
 
         public Task<MaterialPreviewResponse> UpdateMaterialPreviewAsync(

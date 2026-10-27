@@ -78,8 +78,6 @@ message ProtocolRequest {
 		Empty rebuild_runtime_gi_probes_scene = 75;
 		RuntimeGIProbesPreviewBudgetRequest set_runtime_gi_probes_preview_budget = 76;
 		ViewportIdRequest capture_remote_viewport_frame_evidence = 77;
-		FileIdRequest request_model_fingerprint = 100;
-		FileIdRequest get_model_fingerprint_status = 101;
 		UpdateMaterialPreviewRequest update_material_preview = 102;
 		MaterialPreviewSessionRequest get_material_preview = 103;
 		MaterialPreviewSessionRequest close_material_preview = 104;
@@ -91,6 +89,8 @@ message ProtocolRequest {
 	reserved "create_model_game_object";
 	reserved "resolve_viewport_drop_position";
 	reserved 78 to 99;
+	reserved 100, 101;
+	reserved "request_model_fingerprint", "get_model_fingerprint_status";
 }
 
 message ProtocolResponse {
@@ -117,12 +117,13 @@ message ProtocolResponse {
 		EditorRenderModeResult editor_render_mode_result = 23;
 		GIProbesBakeStatusResult gi_probes_bake_status_result = 24;
 		GlobalIlluminationStateResult global_illumination_state_result = 25;
-		ModelFingerprintStatusResult model_fingerprint_status_result = 100;
 		MaterialPreviewResult material_preview_result = 101;
 	}
 
 	reserved 6 to 9;
 	reserved 26 to 99;
+	reserved 100;
+	reserved "model_fingerprint_status_result";
 }
 
 message InitializeRequest {
@@ -629,17 +630,6 @@ message RuntimeGIProbesPreviewBudgetRequest {
 	RuntimeGIProbesPreviewBudget budget = 1;
 }
 
-enum ModelFingerprintStatus {
-	MODEL_FINGERPRINT_STATUS_UNAVAILABLE = 0;
-	MODEL_FINGERPRINT_STATUS_PENDING = 1;
-	MODEL_FINGERPRINT_STATUS_READY = 2;
-	MODEL_FINGERPRINT_STATUS_FAILED = 3;
-}
-
-message ModelFingerprintStatusResult {
-	ModelFingerprintStatus status = 1;
-}
-
 enum MaterialPreviewPrimitive {
 	MATERIAL_PREVIEW_PRIMITIVE_UNSPECIFIED = 0;
 	MATERIAL_PREVIEW_PRIMITIVE_SPHERE = 1;
@@ -665,6 +655,7 @@ message UpdateMaterialPreviewRequest {
 	float distance = 7;
 	uint32 width = 8;
 	uint32 height = 9;
+	string model_file_id = 10;
 }
 
 message MaterialPreviewSessionRequest {

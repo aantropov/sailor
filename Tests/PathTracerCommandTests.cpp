@@ -57,7 +57,6 @@ namespace Sailor::Tests
 	void RunLoggingCommandTests();
 	void RunLoggingShutdownTests();
 	FileId RunModelLodCommandTests(const std::filesystem::path& workspace);
-	void RunModelPreviewCommandTests(FileId modelId);
 	void RunLandscapeCommandTests(const std::filesystem::path& workspace);
 	void RunPrefabImporterCommandTests(const std::filesystem::path& workspace);
 	void RunFrameGraphNodeCommandTests(const std::filesystem::path& workspace);
@@ -1568,7 +1567,7 @@ namespace Sailor::Tests
 			RunTextureImporterCommandTests(workspace.Get());
 			RunMaterialImporterCommandTests(workspace.Get());
 			RunAudioCommandTests(workspace.Get());
-			RunModelPreviewCommandTests(RunModelLodCommandTests(workspace.Get()));
+			RunModelLodCommandTests(workspace.Get());
 			RunLandscapeCommandTests(workspace.Get());
 			RunPrefabImporterCommandTests(workspace.Get());
 			RunFrameGraphNodeCommandTests(workspace.Get());

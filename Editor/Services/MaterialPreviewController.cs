@@ -22,7 +22,8 @@ internal sealed record MaterialPreviewSnapshot(
     float Pitch = 0.25f,
     float Distance = 3.0f,
     uint Width = 384,
-    uint Height = 384);
+    uint Height = 384,
+    string ModelFileId = "");
 
 internal sealed record MaterialPreviewRequest(
     ulong SessionId,
@@ -283,7 +284,8 @@ internal sealed class MaterialPreviewController : IAsyncDisposable
     }
 
     static bool HasSameContent(MaterialPreviewSnapshot left, MaterialPreviewSnapshot right) =>
-        left.MaterialYaml == right.MaterialYaml && left.Primitive == right.Primitive &&
+        left.MaterialYaml == right.MaterialYaml && left.ModelFileId == right.ModelFileId &&
+        left.Primitive == right.Primitive &&
         left.Width == right.Width && left.Height == right.Height;
 
     void Publish(Work work, byte[]? png, string diagnostic)

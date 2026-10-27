@@ -51,34 +51,18 @@
                    Aspect="AspectFit"
                    Opacity="0.35"
                    HorizontalOptions="Center"
-                   VerticalOptions="Center">
-                <Image.Triggers>
-                    <DataTrigger TargetType="Image"
-                                 Binding="{Binding HasFingerprint}"
-                                 Value="True">
-                        <Setter Property="IsVisible" Value="False" />
-                    </DataTrigger>
-                </Image.Triggers>
-            </Image>
-            <Label Text="Fingerprint unavailable"
+                   VerticalOptions="Center" />
+            <Label Text="Preview unavailable"
                    HorizontalOptions="Center"
                    VerticalOptions="End"
-                   Margin="0,0,0,32">
-                <Label.Triggers>
-                    <DataTrigger TargetType="Label"
-                                 Binding="{Binding HasFingerprint}"
-                                 Value="True">
-                        <Setter Property="IsVisible" Value="False" />
-                    </DataTrigger>
-                </Label.Triggers>
-            </Label>
-            <Image Source="{Binding Fingerprint}"
-                   WidthRequest="256"
-                   HeightRequest="256"
-                   Aspect="AspectFit"
-                   HorizontalOptions="Start"
-                   VerticalOptions="Start"
-                   IsVisible="{Binding HasFingerprint}" />
+                   Margin="0,0,0,32" />
+            <controls:AssetPreviewImage FileId="{Binding FileId}"
+                                        PreviewSize="256"
+                                        AutomationId="ModelPreviewImage"
+                                        WidthRequest="256"
+                                        HeightRequest="256"
+                                        HorizontalOptions="Start"
+                                        VerticalOptions="Start" />
         </Grid>
 
         <!-- Properties Label -->

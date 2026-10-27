@@ -9,6 +9,7 @@
 #include "Memory/ObjectAllocator.hpp"
 #include "RHI/Renderer.h"
 #include "RHI/VertexDescription.h"
+#include "YamlExceptionBoundary.h"
 
 #include <filesystem>
 #include <limits>
@@ -240,167 +241,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 
 		ModelPtr pModel = ModelPtr::Make(m_allocator, uid);
 
-		struct Data
-		{
-			TVector<MeshContext> m_parsedMeshes;
-			bool m_bIsImported = false;
-		};
-
-		auto loadDataTask = Tasks::CreateTask<TSharedPtr<Data>>("Load model"_h,
-			[pAssetInfo, pModel
-#if defined(SAILOR_MODEL_IMPORT_TEST_HOOKS)
-			, this
-#endif
-			]() mutable
-			{
-				TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
-				tinygltf::Model gltfModel;
-				const bool bKeepCpuBuffers = pAssetInfo->ShouldKeepCpuBuffers();
-				const bool bGenerateBLAS = pAssetInfo->ShouldGenerateBLAS();
-				pData->m_bIsImported = ImportModel(pAssetInfo->GetAssetFilepath(),
-					pAssetInfo->GetUnitScale(),
-					pAssetInfo->ShouldBatchByMaterial(),
-					pAssetInfo->ShouldFlipTexcoordY(),
-					pData->m_parsedMeshes,
-					pModel->m_boundsAabb,
-					pModel->m_boundsSphere,
-					pModel->m_inverseBind,
-					&gltfModel);
-				if (!pData->m_bIsImported)
-				{
-					return pData;
-				}
-
-				ModelLodGeneration::Prepare(*pAssetInfo, pData->m_parsedMeshes);
-				TVector<GltfImporterUtils::SceneNode> sceneNodes;
-				pData->m_bIsImported = GltfImporterUtils::CollectSceneNodes(
-					gltfModel, pAssetInfo->GetUnitScale(), sceneNodes);
-				if (!pData->m_bIsImported)
-				{
-					return pData;
-				}
-
-#if defined(SAILOR_MODEL_IMPORT_TEST_HOOKS)
-				if (m_beforeCpuPreparationForTests) m_beforeCpuPreparationForTests();
-#endif
-				pModel->m_sourceMeshes.Resize(gltfModel.meshes.size());
-				for (size_t meshIndex = 0; meshIndex < gltfModel.meshes.size(); ++meshIndex)
-				{
-					const auto& name = gltfModel.meshes[meshIndex].name;
-					pModel->m_sourceMeshes[meshIndex].m_name = name.empty() ? "Mesh_" + std::to_string(meshIndex) : name;
-				}
-				if (bKeepCpuBuffers || bGenerateBLAS)
-				{
-					pModel->m_cpuMeshes.Reserve(pData->m_parsedMeshes.Num());
-				}
-
-				uint32_t renderMeshIndex = 0;
-				for (const auto& mesh : pData->m_parsedMeshes)
-				{
-					if (!mesh.HasGeometry())
-					{
-						continue;
-					}
-					if (mesh.sourceMeshIndex >= 0 && static_cast<size_t>(mesh.sourceMeshIndex) < pModel->m_sourceMeshes.Num())
-					{
-						auto& sourceMesh = pModel->m_sourceMeshes[static_cast<size_t>(mesh.sourceMeshIndex)];
-						sourceMesh.m_renderMeshIndices.Add(renderMeshIndex);
-						sourceMesh.m_bounds.Extend(mesh.bounds);
-					}
-					++renderMeshIndex;
-					if (bKeepCpuBuffers || bGenerateBLAS)
-					{
-						Model::MeshCpuData cpuMesh{};
-						cpuMesh.m_vertices = mesh.outVertices;
-						cpuMesh.m_indices = mesh.outIndices;
-						cpuMesh.m_bounds = mesh.bounds;
-						cpuMesh.m_materialIndex = static_cast<int32_t>(mesh.materialSlot);
-						pModel->m_cpuMeshes.Add(std::move(cpuMesh));
-					}
-				}
-				PopulateModelSceneHierarchy(*pModel, sceneNodes);
-				pModel->ProceedCpuMeshes(bGenerateBLAS, bKeepCpuBuffers);
-				return pData;
-			});
-
-		promise =
-			loadDataTask
-				->Then<ModelPtr>(
-					[pModel](TSharedPtr<Data> pData) mutable
-					{
-						if (pData->m_bIsImported)
-						{
-							pModel->m_meshes.Reserve(pData->m_parsedMeshes.Num());
-
-							for (size_t meshIndex = 0; meshIndex < pData->m_parsedMeshes.Num(); ++meshIndex)
-							{
-								auto& mesh = pData->m_parsedMeshes[meshIndex];
-								if (!mesh.HasGeometry())
-								{
-									continue;
-								}
-
-								RHI::RHIMeshPtr pMesh = RHI::Renderer::GetDriver()->CreateMesh();
-								pMesh->m_vertexDescription =
-									RHI::Renderer::GetDriver()
-										->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4I4W4>();
-								pMesh->m_bounds = mesh.bounds;
-								pMesh->m_materialIndex = mesh.materialSlot != (std::numeric_limits<uint32_t>::max)()
-															 ? mesh.materialSlot
-															 : static_cast<uint32_t>(meshIndex);
-								pMesh->m_bakedVolumeScale = mesh.bakedVolumeScale;
-								pMesh->m_indexCount = static_cast<uint32_t>(mesh.outIndices.Num());
-								TVector<RHI::VertexP3N3T3B3UV2C4I4W4> uploadVertices = std::move(mesh.outVertices);
-								TVector<uint32_t> uploadIndices = std::move(mesh.outIndices);
-								pMesh->m_firstIndex = 0u;
-								pMesh->m_vertexOffset = 0u;
-								pMesh->m_lods.Reserve(mesh.lods.Num());
-								for (const auto& lodGeometry : mesh.lods)
-								{
-									RHI::RHIMeshPtr lodMesh = RHI::Renderer::GetDriver()->CreateMesh();
-									lodMesh->m_vertexDescription = pMesh->m_vertexDescription;
-									lodMesh->m_bounds = pMesh->m_bounds;
-									lodMesh->m_materialIndex = pMesh->m_materialIndex;
-									lodMesh->m_bakedVolumeScale = pMesh->m_bakedVolumeScale;
-									if (lodGeometry.m_indices.IsEmpty())
-									{
-										const auto& previous = pMesh->m_lods.IsEmpty() ? pMesh : *pMesh->m_lods.Last();
-										lodMesh->m_indexCount = previous->m_indexCount;
-										lodMesh->m_firstIndex = previous->m_firstIndex;
-										lodMesh->m_vertexOffset = previous->m_vertexOffset;
-									}
-									else
-									{
-										lodMesh->m_indexCount = static_cast<uint32_t>(lodGeometry.m_indices.Num());
-										lodMesh->m_firstIndex = static_cast<uint32_t>(uploadIndices.Num());
-										lodMesh->m_vertexOffset = static_cast<uint32_t>(uploadVertices.Num());
-										uploadVertices.AddRange(lodGeometry.m_vertices);
-										uploadIndices.AddRange(lodGeometry.m_indices);
-									}
-									pMesh->m_lods.Add(std::move(lodMesh));
-								}
-								RHI::Renderer::GetDriver()->UpdateMesh(pMesh,
-									uploadVertices.GetData(),
-									sizeof(RHI::VertexP3N3T3B3UV2C4I4W4) * uploadVertices.Num(),
-									uploadIndices.GetData(),
-									sizeof(uint32_t) * uploadIndices.Num());
-								if (pMesh->HasInitializationFailed()) return ModelPtr{};
-								for (auto& lodMesh : pMesh->m_lods)
-								{
-									lodMesh->m_vertexBuffer = pMesh->m_vertexBuffer;
-									lodMesh->m_indexBuffer = pMesh->m_indexBuffer;
-								}
-
-								pModel->m_meshes.Emplace(pMesh);
-							}
-
-							pModel->Flush();
-						}
-						return pModel->IsStructurallyReady() ? pModel : ModelPtr{};
-					},
-					"Update RHI Meshes"_h,
-					EThreadType::RHI)
-				->ToTaskWithResult();
+		promise = CreateModelTask(pModel, pAssetInfo, false);
 
 		outModel = loadedModel = pModel;
 		promise->Run();
@@ -417,6 +258,214 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 	m_promises.Unlock(uid);
 
 	return Tasks::TaskPtr<ModelPtr>();
+}
+
+Tasks::TaskPtr<ModelPtr> ModelImporter::CreateTransientModel(FileId uid,
+	const ObjectAllocatorPtr& allocator, ModelPtr& outModel)
+{
+	auto* info = m_assetRegistry->GetAssetInfoPtr<ModelAssetInfoPtr>(uid);
+	if (!info || !allocator)
+	{
+		return {};
+	}
+	std::string metadata, diagnostic;
+	YAML::Node document;
+	auto settings = TSharedPtr<ModelAssetInfo>::Make();
+	if (!AssetRegistry::ReadAllTextFile(info->GetMetaFilepath(), metadata) ||
+		!External::TryLoadYaml(metadata, document, diagnostic) ||
+		!External::GuardYamlExceptions([&]() { settings->Deserialize(document); }, diagnostic) ||
+		settings->GetFileId() != uid)
+	{
+		return {};
+	}
+	outModel = ModelPtr::Make(allocator, uid);
+	auto task = CreateModelTask(outModel, info, true, settings);
+	task->Run();
+	return task;
+}
+
+Tasks::TaskPtr<ModelPtr> ModelImporter::CreateModelTask(ModelPtr pModel, ModelAssetInfoPtr pAssetInfo, bool bTransient,
+	const TSharedPtr<ModelAssetInfo>& settings)
+{
+	const auto* options = settings ? settings.GetRawPtr() : pAssetInfo;
+	struct Data
+	{
+		TVector<MeshContext> m_parsedMeshes;
+		bool m_bIsImported = false;
+	};
+
+	auto loadDataTask = Tasks::CreateTask<TSharedPtr<Data>>("Load model"_h,
+		[pAssetInfo, pModel, bTransient, sourcePath = pAssetInfo->GetAssetFilepath(),
+			unitScale = options->GetUnitScale(), batchByMaterial = options->ShouldBatchByMaterial(),
+			flipTexcoordY = options->ShouldFlipTexcoordY(),
+			bKeepCpuBuffers = !bTransient && pAssetInfo->ShouldKeepCpuBuffers(),
+			bGenerateBLAS = !bTransient && pAssetInfo->ShouldGenerateBLAS()
+#if defined(SAILOR_MODEL_IMPORT_TEST_HOOKS)
+		, this
+#endif
+		]() mutable
+		{
+			TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
+			tinygltf::Model gltfModel;
+			pData->m_bIsImported = ImportModel(sourcePath,
+				unitScale,
+				batchByMaterial,
+				flipTexcoordY,
+				pData->m_parsedMeshes,
+				pModel->m_boundsAabb,
+				pModel->m_boundsSphere,
+				pModel->m_inverseBind,
+				&gltfModel);
+			if (!pData->m_bIsImported)
+			{
+				return pData;
+			}
+
+			if (!bTransient)
+			{
+				ModelLodGeneration::Prepare(*pAssetInfo, pData->m_parsedMeshes);
+			}
+			TVector<GltfImporterUtils::SceneNode> sceneNodes;
+			pData->m_bIsImported = GltfImporterUtils::CollectSceneNodes(
+				gltfModel, unitScale, sceneNodes);
+			if (!pData->m_bIsImported)
+			{
+				return pData;
+			}
+
+#if defined(SAILOR_MODEL_IMPORT_TEST_HOOKS)
+			if (m_beforeCpuPreparationForTests)
+			{
+				m_beforeCpuPreparationForTests();
+			}
+#endif
+			pModel->m_sourceMeshes.Resize(gltfModel.meshes.size());
+			for (size_t meshIndex = 0; meshIndex < gltfModel.meshes.size(); ++meshIndex)
+			{
+				const auto& name = gltfModel.meshes[meshIndex].name;
+				pModel->m_sourceMeshes[meshIndex].m_name = name.empty() ? "Mesh_" + std::to_string(meshIndex) : name;
+			}
+			if (bKeepCpuBuffers || bGenerateBLAS)
+			{
+				pModel->m_cpuMeshes.Reserve(pData->m_parsedMeshes.Num());
+			}
+
+			uint32_t renderMeshIndex = 0;
+			for (const auto& mesh : pData->m_parsedMeshes)
+			{
+				if (!mesh.HasGeometry())
+				{
+					continue;
+				}
+				if (mesh.sourceMeshIndex >= 0 && static_cast<size_t>(mesh.sourceMeshIndex) < pModel->m_sourceMeshes.Num())
+				{
+					auto& sourceMesh = pModel->m_sourceMeshes[static_cast<size_t>(mesh.sourceMeshIndex)];
+					sourceMesh.m_renderMeshIndices.Add(renderMeshIndex);
+					sourceMesh.m_bounds.Extend(mesh.bounds);
+				}
+				++renderMeshIndex;
+				if (bKeepCpuBuffers || bGenerateBLAS)
+				{
+					Model::MeshCpuData cpuMesh{};
+					cpuMesh.m_vertices = mesh.outVertices;
+					cpuMesh.m_indices = mesh.outIndices;
+					cpuMesh.m_bounds = mesh.bounds;
+					cpuMesh.m_materialIndex = static_cast<int32_t>(mesh.materialSlot);
+					pModel->m_cpuMeshes.Add(std::move(cpuMesh));
+				}
+			}
+			PopulateModelSceneHierarchy(*pModel, sceneNodes);
+			pModel->ProceedCpuMeshes(bGenerateBLAS, bKeepCpuBuffers);
+			return pData;
+		});
+
+	return
+		loadDataTask
+			->Then<ModelPtr>(
+				[pModel, bTransient](TSharedPtr<Data> pData) mutable
+				{
+					if (pData->m_bIsImported)
+					{
+						pModel->m_meshes.Reserve(pData->m_parsedMeshes.Num());
+
+						for (size_t meshIndex = 0; meshIndex < pData->m_parsedMeshes.Num(); ++meshIndex)
+						{
+							auto& mesh = pData->m_parsedMeshes[meshIndex];
+							if (!mesh.HasGeometry())
+							{
+								continue;
+							}
+
+							RHI::RHIMeshPtr pMesh = RHI::Renderer::GetDriver()->CreateMesh();
+							pMesh->m_vertexDescription =
+								RHI::Renderer::GetDriver()
+									->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4I4W4>();
+							pMesh->m_bounds = mesh.bounds;
+							if (bTransient && mesh.materialIndex < 0)
+							{
+								pMesh->m_materialIndex = (std::numeric_limits<uint32_t>::max)();
+							}
+							else
+							{
+								pMesh->m_materialIndex = mesh.materialSlot != (std::numeric_limits<uint32_t>::max)()
+									? mesh.materialSlot : static_cast<uint32_t>(meshIndex);
+							}
+							pMesh->m_bakedVolumeScale = mesh.bakedVolumeScale;
+							pMesh->m_indexCount = static_cast<uint32_t>(mesh.outIndices.Num());
+							TVector<RHI::VertexP3N3T3B3UV2C4I4W4> uploadVertices = std::move(mesh.outVertices);
+							TVector<uint32_t> uploadIndices = std::move(mesh.outIndices);
+							pMesh->m_firstIndex = 0u;
+							pMesh->m_vertexOffset = 0u;
+							pMesh->m_lods.Reserve(mesh.lods.Num());
+							for (const auto& lodGeometry : mesh.lods)
+							{
+								RHI::RHIMeshPtr lodMesh = RHI::Renderer::GetDriver()->CreateMesh();
+								lodMesh->m_vertexDescription = pMesh->m_vertexDescription;
+								lodMesh->m_bounds = pMesh->m_bounds;
+								lodMesh->m_materialIndex = pMesh->m_materialIndex;
+								lodMesh->m_bakedVolumeScale = pMesh->m_bakedVolumeScale;
+								if (lodGeometry.m_indices.IsEmpty())
+								{
+									const auto& previous = pMesh->m_lods.IsEmpty() ? pMesh : *pMesh->m_lods.Last();
+									lodMesh->m_indexCount = previous->m_indexCount;
+									lodMesh->m_firstIndex = previous->m_firstIndex;
+									lodMesh->m_vertexOffset = previous->m_vertexOffset;
+								}
+								else
+								{
+									lodMesh->m_indexCount = static_cast<uint32_t>(lodGeometry.m_indices.Num());
+									lodMesh->m_firstIndex = static_cast<uint32_t>(uploadIndices.Num());
+									lodMesh->m_vertexOffset = static_cast<uint32_t>(uploadVertices.Num());
+									uploadVertices.AddRange(lodGeometry.m_vertices);
+									uploadIndices.AddRange(lodGeometry.m_indices);
+								}
+								pMesh->m_lods.Add(std::move(lodMesh));
+							}
+							RHI::Renderer::GetDriver()->UpdateMesh(pMesh,
+								uploadVertices.GetData(),
+								sizeof(RHI::VertexP3N3T3B3UV2C4I4W4) * uploadVertices.Num(),
+								uploadIndices.GetData(),
+								sizeof(uint32_t) * uploadIndices.Num());
+							if (pMesh->HasInitializationFailed())
+							{
+								return ModelPtr{};
+							}
+							for (auto& lodMesh : pMesh->m_lods)
+							{
+								lodMesh->m_vertexBuffer = pMesh->m_vertexBuffer;
+								lodMesh->m_indexBuffer = pMesh->m_indexBuffer;
+							}
+
+							pModel->m_meshes.Emplace(pMesh);
+						}
+
+						pModel->Flush();
+					}
+					return pModel->IsStructurallyReady() ? pModel : ModelPtr{};
+				},
+				"Update RHI Meshes"_h,
+				EThreadType::RHI)
+			->ToTaskWithResult();
 }
 
 bool ModelImporter::LoadModel_Immediate(FileId uid, ModelPtr& outModel)

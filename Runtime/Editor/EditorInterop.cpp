@@ -246,36 +246,6 @@ bool EditorRuntime::PreviewEditorAudioAsset(const char* strFileId)
 		});
 }
 
-bool EditorRuntime::RequestModelFingerprint(const char* strFileId)
-{
-	if (!strFileId || !strFileId[0])
-	{
-		return false;
-	}
-	return App::ExecuteOnEngineMainThread<bool>(false, [value = std::string(strFileId)]()
-		{
-			auto* importer = App::GetSubmodule<ModelImporter>();
-			const FileId fileId(value);
-			return importer && fileId && importer->RequestFingerprint(fileId);
-		});
-}
-
-uint32_t EditorRuntime::GetModelFingerprintStatus(const char* strFileId)
-{
-	if (!strFileId || !strFileId[0])
-	{
-		return static_cast<uint32_t>(ModelImporter::EFingerprintStatus::Unavailable);
-	}
-	return App::ExecuteOnEngineMainThread<uint32_t>(static_cast<uint32_t>(ModelImporter::EFingerprintStatus::Unavailable),
-		[value = std::string(strFileId)]()
-		{
-			auto* importer = App::GetSubmodule<ModelImporter>();
-			const FileId fileId(value);
-			return static_cast<uint32_t>(importer && fileId ? importer->GetFingerprintStatus(fileId) :
-				ModelImporter::EFingerprintStatus::Unavailable);
-		});
-}
-
 bool EditorRuntime::ReparentEditorObject(const char* strInstanceId, const char* strParentInstanceId, bool bKeepWorldTransform)
 {
 	if (!strInstanceId)

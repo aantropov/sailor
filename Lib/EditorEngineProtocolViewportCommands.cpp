@@ -293,6 +293,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			preview.m_sessionId = input.session_id();
 			preview.m_revision = input.revision();
 			preview.m_materialYaml = input.material_yaml();
+			preview.m_modelFileId = input.model_file_id();
 			preview.m_primitive = static_cast<EditorRuntime::EMaterialPreviewPrimitive>(input.primitive());
 			preview.m_yaw = input.yaw();
 			preview.m_pitch = input.pitch();
@@ -301,8 +302,14 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			preview.m_height = input.height();
 			EditorRuntime::MaterialPreviewResult result;
 			std::string diagnostic;
-			if (EditorRuntime::UpdateMaterialPreview(std::move(preview), result, diagnostic)) SetMaterialPreviewResult(response, result);
-			else SetError(response, diagnostic);
+			if (EditorRuntime::UpdateMaterialPreview(std::move(preview), result, diagnostic))
+			{
+				SetMaterialPreviewResult(response, result);
+			}
+			else
+			{
+				SetError(response, diagnostic);
+			}
 			break;
 		}
 		case ProtocolRequest::kGetMaterialPreview:

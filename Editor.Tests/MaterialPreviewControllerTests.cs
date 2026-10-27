@@ -114,6 +114,38 @@ public sealed class MaterialPreviewControllerTests
         Assert.InRange(transport.Updates.Count, 3, 39);
     }
 
+    [Fact]
+    public async Task ModelReplacement_RejectsLateImageFromPreviousModel()
+    {
+        var oldImage = new TaskCompletionSource<MaterialPreviewResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var newImage = new TaskCompletionSource<MaterialPreviewResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken oldCancellation = default;
+        var transport = new PreviewTransport
+        {
+            OnUpdate = (request, cancellation) =>
+            {
+                if (request.Snapshot.ModelFileId == "old-model")
+                {
+                    oldCancellation = cancellation;
+                    return oldImage.Task;
+                }
+                return newImage.Task;
+            }
+        };
+        await using var controller = Create(transport);
+        controller.SetContext(new object(), 1, true);
+        controller.Update(new(string.Empty, ModelFileId: "old-model"));
+        await Until(() => transport.Updates.Count == 1);
+        controller.Update(new(string.Empty, ModelFileId: "new-model"));
+        Assert.True(oldCancellation.IsCancellationRequested);
+        oldImage.SetResult(Ready(transport.Updates.First().Request, [1]));
+        await Until(() => transport.Updates.Count == 2);
+        Assert.Null(controller.Presentation.Png);
+        newImage.SetResult(Ready(transport.Updates.Last().Request, [2]));
+        await Until(() => controller.Presentation.Png is not null);
+        Assert.Equal(new byte[] { 2 }, controller.Presentation.Png);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

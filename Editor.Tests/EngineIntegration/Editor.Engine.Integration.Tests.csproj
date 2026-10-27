@@ -27,6 +27,7 @@
     <Compile Include="AssetRefreshTests.cs" />
     <Compile Include="InspectorSelectionTests.cs" />
     <Compile Include="EngineModuleReloadTests.cs" />
+    <Compile Include="EngineAssetPreviewInvalidationTests.cs" />
     <Compile Include="../AssetReimportIntegrationTests.cs" Link="AssetReimportIntegrationTests.cs" />
     <Compile Include="../Support/NativeEditorHost.cs" Link="Support/NativeEditorHost.cs" />
     <Compile Include="../../Editor/Services/EngineService.cs" Link="Services/EngineService.cs" />

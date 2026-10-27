@@ -3,20 +3,47 @@ using System.Text;
 
 namespace SailorEditor.Services;
 
-internal sealed record MaterialThumbnailKey(
+internal enum AssetThumbnailKind
+{
+    Material,
+    Model
+}
+
+internal sealed record AssetThumbnailKey(
+    AssetThumbnailKind Kind,
     string Workspace,
     long EngineGeneration,
     string AssetId,
-    string ContentHash)
+    string ContentHash,
+    uint Width,
+    uint Height,
+    long ContentGeneration = 0)
 {
-    public static MaterialThumbnailKey Create(
-        string workspace, long engineGeneration, string assetId, string materialYaml) =>
-        new(workspace, engineGeneration, assetId,
-            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(materialYaml))));
+    public static AssetThumbnailKey Create(
+        AssetThumbnailKind kind, string workspace, long engineGeneration, string assetId,
+        string sourceContent, uint width = 128, uint height = 128) =>
+        new(kind, workspace, engineGeneration, assetId,
+            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sourceContent))), width, height);
+
+    public static Task<AssetThumbnailKey> CreateModelAsync(string workspace, long engineGeneration,
+        string assetId, string sourcePath, string metadataPath, uint size, CancellationToken cancellationToken)
+        => Task.Run(() =>
+    {
+        var revision = new StringBuilder();
+        foreach (var path in new[] { sourcePath, metadataPath })
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var info = new FileInfo(path);
+            revision.Append(info.FullName).Append('\0').Append(info.Length).Append(':')
+                .Append(info.LastWriteTimeUtc.Ticks).Append('\0');
+        }
+        // Dependency changes invalidate the shared cache through asset update/reload notifications.
+        return Create(AssetThumbnailKind.Model, workspace, engineGeneration, assetId, revision.ToString(), size, size);
+    }, cancellationToken);
 }
 
 // Reference fields share a bounded cache and issue only one cold GPU request at a time.
-internal sealed class MaterialThumbnailCache(IMaterialPreviewTransport transport,
+internal sealed class AssetThumbnailCache(IMaterialPreviewTransport transport,
     int maximumEntries = 128, int maximumBytes = 8 * 1024 * 1024) : IDisposable
 {
     sealed class Entry
@@ -31,17 +58,22 @@ internal sealed class MaterialThumbnailCache(IMaterialPreviewTransport transport
 
     readonly object gate = new();
     readonly SemaphoreSlim renderQueue = new(1, 1);
-    readonly Dictionary<MaterialThumbnailKey, Entry> entries = [];
+    readonly Dictionary<AssetThumbnailKey, Entry> entries = [];
     TaskCompletionSource capacityChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
     long generation;
     long nextUse;
     int cachedBytes;
     bool disposed;
 
-    public async Task<byte[]?> GetAsync(MaterialThumbnailKey key, string materialYaml,
+    public async Task<byte[]?> GetAsync(AssetThumbnailKey key, MaterialPreviewSnapshot snapshot,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var kind = string.IsNullOrEmpty(snapshot.ModelFileId) ? AssetThumbnailKind.Material : AssetThumbnailKind.Model;
+        if (key.Kind != kind || key.Width != snapshot.Width || key.Height != snapshot.Height)
+        {
+            throw new ArgumentException("Thumbnail key must match its source kind and dimensions.", nameof(key));
+        }
         Entry entry;
         long requestGeneration;
         lock (gate)
@@ -72,7 +104,7 @@ internal sealed class MaterialThumbnailCache(IMaterialPreviewTransport transport
                     {
                         entry = new Entry();
                         entries.Add(key, entry);
-                        entry.Task = Task.Run(() => RenderAsync(key, materialYaml, entry));
+                        entry.Task = Task.Run(() => RenderAsync(key, snapshot, entry));
                     }
                 }
                 if (capacity is null)
@@ -103,7 +135,7 @@ internal sealed class MaterialThumbnailCache(IMaterialPreviewTransport transport
         }
     }
 
-    async Task<byte[]?> RenderAsync(MaterialThumbnailKey key, string yaml, Entry entry)
+    async Task<byte[]?> RenderAsync(AssetThumbnailKey key, MaterialPreviewSnapshot snapshot, Entry entry)
     {
         var token = entry.Cancellation.Token;
         try
@@ -132,7 +164,7 @@ internal sealed class MaterialThumbnailCache(IMaterialPreviewTransport transport
                     }
                 };
                 controller.SetContext(entry, key.EngineGeneration, true);
-                controller.Update(new MaterialPreviewSnapshot(yaml, Width: 128, Height: 128));
+                controller.Update(snapshot);
                 png = await ready.Task.WaitAsync(token).ConfigureAwait(false);
             }
             finally
@@ -176,7 +208,7 @@ internal sealed class MaterialThumbnailCache(IMaterialPreviewTransport transport
         }
     }
 
-    void RemoveLocked(MaterialThumbnailKey key, Entry entry)
+    void RemoveLocked(AssetThumbnailKey key, Entry entry)
     {
         if (entries.TryGetValue(key, out var current) && ReferenceEquals(current, entry))
         {

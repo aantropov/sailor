@@ -11,6 +11,7 @@ public sealed class AssetPreviewImage : Image
     CancellationTokenSource? previewCancellation;
     AssetFile? observedAsset;
     AssetsService? assetsService;
+    AssetFingerprintService? fingerprintService;
     EngineService? engineService;
     bool loaded;
     long revision;
@@ -19,6 +20,17 @@ public sealed class AssetPreviewImage : Image
         BindableProperty.Create(
             nameof(FileId), typeof(FileId), typeof(AssetPreviewImage), new FileId(),
             propertyChanged: OnFileIdChanged);
+
+    public static readonly BindableProperty PreviewSizeProperty = BindableProperty.Create(
+        nameof(PreviewSize), typeof(uint), typeof(AssetPreviewImage), 128u,
+        validateValue: (_, value) => (uint)value is >= 64 and <= 512,
+        propertyChanged: (bindable, _, _) => ((AssetPreviewImage)bindable).QueuePreviewRefresh());
+
+    public uint PreviewSize
+    {
+        get => (uint)GetValue(PreviewSizeProperty);
+        set => SetValue(PreviewSizeProperty, value);
+    }
 
     public FileId FileId
     {
@@ -42,8 +54,8 @@ public sealed class AssetPreviewImage : Image
         loaded = true;
         assetsService = MauiProgram.GetService<AssetsService>();
         engineService = MauiProgram.GetService<EngineService>();
-        assetsService.Changed += OnAssetsChanged;
-        engineService.OnLifecycleStateChanged += OnEngineStateChanged;
+        fingerprintService = MauiProgram.GetService<AssetFingerprintService>();
+        fingerprintService.PreviewInvalidated += OnAssetsChanged;
         QueuePreviewRefresh();
     }
 
@@ -52,13 +64,9 @@ public sealed class AssetPreviewImage : Image
         loaded = false;
         CancelPendingPreview();
         ObserveAsset(null);
-        if (assetsService is not null)
+        if (fingerprintService is not null)
         {
-            assetsService.Changed -= OnAssetsChanged;
-        }
-        if (engineService is not null)
-        {
-            engineService.OnLifecycleStateChanged -= OnEngineStateChanged;
+            fingerprintService.PreviewInvalidated -= OnAssetsChanged;
         }
         Source = null;
     }
@@ -73,12 +81,6 @@ public sealed class AssetPreviewImage : Image
     }
 
     void OnAssetsChanged() => Dispatcher.Dispatch(() =>
-    {
-        Source = null;
-        QueuePreviewRefresh();
-    });
-
-    void OnEngineStateChanged(EngineLifecycleState state) => Dispatcher.Dispatch(() =>
     {
         Source = null;
         QueuePreviewRefresh();
@@ -125,11 +127,11 @@ public sealed class AssetPreviewImage : Image
             previewCancellation = cancellation;
         }
         _ = RefreshPreviewAsync(FileId.Value, revision, assetsService!.WorkspaceEpoch,
-            engineService!.Generation, cancellation);
+            engineService!.Generation, fingerprintService!.PreviewGeneration, cancellation);
     }
 
     async Task RefreshPreviewAsync(string requestedFileId, long requestedRevision,
-        long workspaceEpoch, long engineGeneration, CancellationTokenSource cancellation)
+        long workspaceEpoch, long engineGeneration, long previewGeneration, CancellationTokenSource cancellation)
     {
         try
         {
@@ -143,8 +145,8 @@ public sealed class AssetPreviewImage : Image
                 }
                 ObserveAsset(asset);
             }
-            var preview = asset is null ? null : await MauiProgram.GetService<AssetFingerprintService>()
-                .LoadPreviewAsync(asset, cancellation.Token);
+            var preview = asset is null ? null : await fingerprintService!
+                .LoadPreviewAsync(asset, cancellation.Token, PreviewSize);
             if (!IsCurrent())
             {
                 return;
@@ -182,6 +184,7 @@ public sealed class AssetPreviewImage : Image
         bool IsCurrent() => loaded && !cancellation.IsCancellationRequested &&
             revision == requestedRevision && workspaceEpoch == assetsService!.WorkspaceEpoch &&
             engineGeneration == engineService!.Generation &&
+            previewGeneration == fingerprintService!.PreviewGeneration &&
             string.Equals(FileId?.Value, requestedFileId, StringComparison.Ordinal);
     }
 

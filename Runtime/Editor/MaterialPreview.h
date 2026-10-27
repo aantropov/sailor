@@ -15,6 +15,7 @@ namespace Sailor::EditorRuntime
 		uint64_t m_sessionId = 0;
 		uint64_t m_revision = 0;
 		std::string m_materialYaml;
+		std::string m_modelFileId;
 		EMaterialPreviewPrimitive m_primitive = EMaterialPreviewPrimitive::Sphere;
 		float m_yaw = 0.0f;
 		float m_pitch = 0.0f;

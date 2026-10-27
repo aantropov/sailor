@@ -143,9 +143,6 @@ extern MaterialPreviewResultDefaultTypeInternal _MaterialPreviewResult_default_i
 class MaterialPreviewSessionRequest;
 struct MaterialPreviewSessionRequestDefaultTypeInternal;
 extern MaterialPreviewSessionRequestDefaultTypeInternal _MaterialPreviewSessionRequest_default_instance_;
-class ModelFingerprintStatusResult;
-struct ModelFingerprintStatusResultDefaultTypeInternal;
-extern ModelFingerprintStatusResultDefaultTypeInternal _ModelFingerprintStatusResult_default_instance_;
 class PrefabLinkRequest;
 struct PrefabLinkRequestDefaultTypeInternal;
 extern PrefabLinkRequestDefaultTypeInternal _PrefabLinkRequest_default_instance_;
@@ -637,41 +634,6 @@ inline const std::string& GlobalIlluminationProbeResidency_Name(GlobalIlluminati
 inline bool GlobalIlluminationProbeResidency_Parse(absl::string_view name, GlobalIlluminationProbeResidency* value) {
   return ::google::protobuf::internal::ParseNamedEnum<GlobalIlluminationProbeResidency>(
       GlobalIlluminationProbeResidency_descriptor(), name, value);
-}
-enum ModelFingerprintStatus : int {
-  MODEL_FINGERPRINT_STATUS_UNAVAILABLE = 0,
-  MODEL_FINGERPRINT_STATUS_PENDING = 1,
-  MODEL_FINGERPRINT_STATUS_READY = 2,
-  MODEL_FINGERPRINT_STATUS_FAILED = 3,
-  ModelFingerprintStatus_INT_MIN_SENTINEL_DO_NOT_USE_ =
-      std::numeric_limits<::int32_t>::min(),
-  ModelFingerprintStatus_INT_MAX_SENTINEL_DO_NOT_USE_ =
-      std::numeric_limits<::int32_t>::max(),
-};
-
-bool ModelFingerprintStatus_IsValid(int value);
-extern const uint32_t ModelFingerprintStatus_internal_data_[];
-constexpr ModelFingerprintStatus ModelFingerprintStatus_MIN = static_cast<ModelFingerprintStatus>(0);
-constexpr ModelFingerprintStatus ModelFingerprintStatus_MAX = static_cast<ModelFingerprintStatus>(3);
-constexpr int ModelFingerprintStatus_ARRAYSIZE = 3 + 1;
-const ::google::protobuf::EnumDescriptor*
-ModelFingerprintStatus_descriptor();
-template <typename T>
-const std::string& ModelFingerprintStatus_Name(T value) {
-  static_assert(std::is_same<T, ModelFingerprintStatus>::value ||
-                    std::is_integral<T>::value,
-                "Incorrect type passed to ModelFingerprintStatus_Name().");
-  return ModelFingerprintStatus_Name(static_cast<ModelFingerprintStatus>(value));
-}
-template <>
-inline const std::string& ModelFingerprintStatus_Name(ModelFingerprintStatus value) {
-  return ::google::protobuf::internal::NameOfDenseEnum<ModelFingerprintStatus_descriptor,
-                                                 0, 3>(
-      static_cast<int>(value));
-}
-inline bool ModelFingerprintStatus_Parse(absl::string_view name, ModelFingerprintStatus* value) {
-  return ::google::protobuf::internal::ParseNamedEnum<ModelFingerprintStatus>(
-      ModelFingerprintStatus_descriptor(), name, value);
 }
 enum MaterialPreviewPrimitive : int {
   MATERIAL_PREVIEW_PRIMITIVE_UNSPECIFIED = 0,
@@ -3109,7 +3071,7 @@ class UpdateMaterialPreviewRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const UpdateMaterialPreviewRequest*>(
         &_UpdateMaterialPreviewRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 65;
+  static constexpr int kIndexInFileMessages = 64;
   friend void swap(UpdateMaterialPreviewRequest& a, UpdateMaterialPreviewRequest& b) { a.Swap(&b); }
   inline void Swap(UpdateMaterialPreviewRequest* other) {
     if (other == this) return;
@@ -3197,6 +3159,7 @@ class UpdateMaterialPreviewRequest final : public ::google::protobuf::Message
   // accessors -------------------------------------------------------
   enum : int {
     kMaterialYamlFieldNumber = 3,
+    kModelFileIdFieldNumber = 10,
     kSessionIdFieldNumber = 1,
     kRevisionFieldNumber = 2,
     kPrimitiveFieldNumber = 4,
@@ -3220,6 +3183,22 @@ class UpdateMaterialPreviewRequest final : public ::google::protobuf::Message
   inline PROTOBUF_ALWAYS_INLINE void _internal_set_material_yaml(
       const std::string& value);
   std::string* _internal_mutable_material_yaml();
+
+  public:
+  // string model_file_id = 10;
+  void clear_model_file_id() ;
+  const std::string& model_file_id() const;
+  template <typename Arg_ = const std::string&, typename... Args_>
+  void set_model_file_id(Arg_&& arg, Args_... args);
+  std::string* mutable_model_file_id();
+  PROTOBUF_NODISCARD std::string* release_model_file_id();
+  void set_allocated_model_file_id(std::string* value);
+
+  private:
+  const std::string& _internal_model_file_id() const;
+  inline PROTOBUF_ALWAYS_INLINE void _internal_set_model_file_id(
+      const std::string& value);
+  std::string* _internal_mutable_model_file_id();
 
   public:
   // uint64 session_id = 1;
@@ -3307,8 +3286,8 @@ class UpdateMaterialPreviewRequest final : public ::google::protobuf::Message
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      4, 9, 0,
-      75, 2>
+      4, 10, 0,
+      88, 2>
       _table_;
 
   friend class ::google::protobuf::MessageLite;
@@ -3326,6 +3305,7 @@ class UpdateMaterialPreviewRequest final : public ::google::protobuf::Message
                           ::google::protobuf::Arena* arena, const Impl_& from,
                           const UpdateMaterialPreviewRequest& from_msg);
     ::google::protobuf::internal::ArenaStringPtr material_yaml_;
+    ::google::protobuf::internal::ArenaStringPtr model_file_id_;
     ::uint64_t session_id_;
     ::uint64_t revision_;
     int primitive_;
@@ -7470,196 +7450,6 @@ class PrefabLinkRequest final : public ::google::protobuf::Message
 };
 // -------------------------------------------------------------------
 
-class ModelFingerprintStatusResult final : public ::google::protobuf::Message
-/* @@protoc_insertion_point(class_definition:sailor.editor.v1.ModelFingerprintStatusResult) */ {
- public:
-  inline ModelFingerprintStatusResult() : ModelFingerprintStatusResult(nullptr) {}
-  ~ModelFingerprintStatusResult() PROTOBUF_FINAL;
-
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-  void operator delete(ModelFingerprintStatusResult* msg, std::destroying_delete_t) {
-    SharedDtor(*msg);
-    ::google::protobuf::internal::SizedDelete(msg, sizeof(ModelFingerprintStatusResult));
-  }
-#endif
-
-  template <typename = void>
-  explicit PROTOBUF_CONSTEXPR ModelFingerprintStatusResult(
-      ::google::protobuf::internal::ConstantInitialized);
-
-  inline ModelFingerprintStatusResult(const ModelFingerprintStatusResult& from) : ModelFingerprintStatusResult(nullptr, from) {}
-  inline ModelFingerprintStatusResult(ModelFingerprintStatusResult&& from) noexcept
-      : ModelFingerprintStatusResult(nullptr, std::move(from)) {}
-  inline ModelFingerprintStatusResult& operator=(const ModelFingerprintStatusResult& from) {
-    CopyFrom(from);
-    return *this;
-  }
-  inline ModelFingerprintStatusResult& operator=(ModelFingerprintStatusResult&& from) noexcept {
-    if (this == &from) return *this;
-    if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
-      InternalSwap(&from);
-    } else {
-      CopyFrom(from);
-    }
-    return *this;
-  }
-
-  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const
-      ABSL_ATTRIBUTE_LIFETIME_BOUND {
-    return _internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance);
-  }
-  inline ::google::protobuf::UnknownFieldSet* mutable_unknown_fields()
-      ABSL_ATTRIBUTE_LIFETIME_BOUND {
-    return _internal_metadata_.mutable_unknown_fields<::google::protobuf::UnknownFieldSet>();
-  }
-
-  static const ::google::protobuf::Descriptor* descriptor() {
-    return GetDescriptor();
-  }
-  static const ::google::protobuf::Descriptor* GetDescriptor() {
-    return default_instance().GetMetadata().descriptor;
-  }
-  static const ::google::protobuf::Reflection* GetReflection() {
-    return default_instance().GetMetadata().reflection;
-  }
-  static const ModelFingerprintStatusResult& default_instance() {
-    return *internal_default_instance();
-  }
-  static inline const ModelFingerprintStatusResult* internal_default_instance() {
-    return reinterpret_cast<const ModelFingerprintStatusResult*>(
-        &_ModelFingerprintStatusResult_default_instance_);
-  }
-  static constexpr int kIndexInFileMessages = 64;
-  friend void swap(ModelFingerprintStatusResult& a, ModelFingerprintStatusResult& b) { a.Swap(&b); }
-  inline void Swap(ModelFingerprintStatusResult* other) {
-    if (other == this) return;
-    if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
-      InternalSwap(other);
-    } else {
-      ::google::protobuf::internal::GenericSwap(this, other);
-    }
-  }
-  void UnsafeArenaSwap(ModelFingerprintStatusResult* other) {
-    if (other == this) return;
-    ABSL_DCHECK(GetArena() == other->GetArena());
-    InternalSwap(other);
-  }
-
-  // implements Message ----------------------------------------------
-
-  ModelFingerprintStatusResult* New(::google::protobuf::Arena* arena = nullptr) const {
-    return ::google::protobuf::Message::DefaultConstruct<ModelFingerprintStatusResult>(arena);
-  }
-  using ::google::protobuf::Message::CopyFrom;
-  void CopyFrom(const ModelFingerprintStatusResult& from);
-  using ::google::protobuf::Message::MergeFrom;
-  void MergeFrom(const ModelFingerprintStatusResult& from) { ModelFingerprintStatusResult::MergeImpl(*this, from); }
-
-  private:
-  static void MergeImpl(
-      ::google::protobuf::MessageLite& to_msg,
-      const ::google::protobuf::MessageLite& from_msg);
-
-  public:
-  bool IsInitialized() const {
-    return true;
-  }
-  ABSL_ATTRIBUTE_REINITIALIZES void Clear() PROTOBUF_FINAL;
-  #if defined(PROTOBUF_CUSTOM_VTABLE)
-  private:
-  static ::size_t ByteSizeLong(const ::google::protobuf::MessageLite& msg);
-  static ::uint8_t* _InternalSerialize(
-      const MessageLite& msg, ::uint8_t* target,
-      ::google::protobuf::io::EpsCopyOutputStream* stream);
-
-  public:
-  ::size_t ByteSizeLong() const { return ByteSizeLong(*this); }
-  ::uint8_t* _InternalSerialize(
-      ::uint8_t* target,
-      ::google::protobuf::io::EpsCopyOutputStream* stream) const {
-    return _InternalSerialize(*this, target, stream);
-  }
-  #else   // PROTOBUF_CUSTOM_VTABLE
-  ::size_t ByteSizeLong() const final;
-  ::uint8_t* _InternalSerialize(
-      ::uint8_t* target,
-      ::google::protobuf::io::EpsCopyOutputStream* stream) const final;
-  #endif  // PROTOBUF_CUSTOM_VTABLE
-  int GetCachedSize() const { return _impl_._cached_size_.Get(); }
-
-  private:
-  void SharedCtor(::google::protobuf::Arena* arena);
-  static void SharedDtor(MessageLite& self);
-  void InternalSwap(ModelFingerprintStatusResult* other);
- private:
-  template <typename T>
-  friend ::absl::string_view(
-      ::google::protobuf::internal::GetAnyMessageName)();
-  static ::absl::string_view FullMessageName() { return "sailor.editor.v1.ModelFingerprintStatusResult"; }
-
- protected:
-  explicit ModelFingerprintStatusResult(::google::protobuf::Arena* arena);
-  ModelFingerprintStatusResult(::google::protobuf::Arena* arena, const ModelFingerprintStatusResult& from);
-  ModelFingerprintStatusResult(::google::protobuf::Arena* arena, ModelFingerprintStatusResult&& from) noexcept
-      : ModelFingerprintStatusResult(arena) {
-    *this = ::std::move(from);
-  }
-  const ::google::protobuf::internal::ClassData* GetClassData() const PROTOBUF_FINAL;
-  static void* PlacementNew_(const void*, void* mem,
-                             ::google::protobuf::Arena* arena);
-  static constexpr auto InternalNewImpl_();
-  static const ::google::protobuf::internal::ClassDataFull _class_data_;
-
- public:
-  ::google::protobuf::Metadata GetMetadata() const;
-  // nested types ----------------------------------------------------
-
-  // accessors -------------------------------------------------------
-  enum : int {
-    kStatusFieldNumber = 1,
-  };
-  // .sailor.editor.v1.ModelFingerprintStatus status = 1;
-  void clear_status() ;
-  ::sailor::editor::v1::ModelFingerprintStatus status() const;
-  void set_status(::sailor::editor::v1::ModelFingerprintStatus value);
-
-  private:
-  ::sailor::editor::v1::ModelFingerprintStatus _internal_status() const;
-  void _internal_set_status(::sailor::editor::v1::ModelFingerprintStatus value);
-
-  public:
-  // @@protoc_insertion_point(class_scope:sailor.editor.v1.ModelFingerprintStatusResult)
- private:
-  class _Internal;
-  friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<
-      0, 1, 0,
-      0, 2>
-      _table_;
-
-  friend class ::google::protobuf::MessageLite;
-  friend class ::google::protobuf::Arena;
-  template <typename T>
-  friend class ::google::protobuf::Arena::InternalHelper;
-  using InternalArenaConstructable_ = void;
-  using DestructorSkippable_ = void;
-  struct Impl_ {
-    inline explicit constexpr Impl_(
-        ::google::protobuf::internal::ConstantInitialized) noexcept;
-    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
-                          ::google::protobuf::Arena* arena);
-    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
-                          ::google::protobuf::Arena* arena, const Impl_& from,
-                          const ModelFingerprintStatusResult& from_msg);
-    int status_;
-    ::google::protobuf::internal::CachedSize _cached_size_;
-    PROTOBUF_TSAN_DECLARE_MEMBER
-  };
-  union { Impl_ _impl_; };
-  friend struct ::TableStruct_editor_5fengine_2eproto;
-};
-// -------------------------------------------------------------------
-
 class MaterialPreviewSessionRequest final : public ::google::protobuf::Message
 /* @@protoc_insertion_point(class_definition:sailor.editor.v1.MaterialPreviewSessionRequest) */ {
  public:
@@ -7719,7 +7509,7 @@ class MaterialPreviewSessionRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const MaterialPreviewSessionRequest*>(
         &_MaterialPreviewSessionRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 66;
+  static constexpr int kIndexInFileMessages = 65;
   friend void swap(MaterialPreviewSessionRequest& a, MaterialPreviewSessionRequest& b) { a.Swap(&b); }
   inline void Swap(MaterialPreviewSessionRequest* other) {
     if (other == this) return;
@@ -7921,7 +7711,7 @@ class MaterialPreviewResult final : public ::google::protobuf::Message
     return reinterpret_cast<const MaterialPreviewResult*>(
         &_MaterialPreviewResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 67;
+  static constexpr int kIndexInFileMessages = 66;
   friend void swap(MaterialPreviewResult& a, MaterialPreviewResult& b) { a.Swap(&b); }
   inline void Swap(MaterialPreviewResult* other) {
     if (other == this) return;
@@ -15883,8 +15673,6 @@ class ProtocolRequest final : public ::google::protobuf::Message
     kRebuildRuntimeGiProbesScene = 75,
     kSetRuntimeGiProbesPreviewBudget = 76,
     kCaptureRemoteViewportFrameEvidence = 77,
-    kRequestModelFingerprint = 100,
-    kGetModelFingerprintStatus = 101,
     kUpdateMaterialPreview = 102,
     kGetMaterialPreview = 103,
     kCloseMaterialPreview = 104,
@@ -16049,8 +15837,6 @@ class ProtocolRequest final : public ::google::protobuf::Message
     kRebuildRuntimeGiProbesSceneFieldNumber = 75,
     kSetRuntimeGiProbesPreviewBudgetFieldNumber = 76,
     kCaptureRemoteViewportFrameEvidenceFieldNumber = 77,
-    kRequestModelFingerprintFieldNumber = 100,
-    kGetModelFingerprintStatusFieldNumber = 101,
     kUpdateMaterialPreviewFieldNumber = 102,
     kGetMaterialPreviewFieldNumber = 103,
     kCloseMaterialPreviewFieldNumber = 104,
@@ -17329,44 +17115,6 @@ class ProtocolRequest final : public ::google::protobuf::Message
   ::sailor::editor::v1::ViewportIdRequest* _internal_mutable_capture_remote_viewport_frame_evidence();
 
   public:
-  // .sailor.editor.v1.FileIdRequest request_model_fingerprint = 100;
-  bool has_request_model_fingerprint() const;
-  private:
-  bool _internal_has_request_model_fingerprint() const;
-
-  public:
-  void clear_request_model_fingerprint() ;
-  const ::sailor::editor::v1::FileIdRequest& request_model_fingerprint() const;
-  PROTOBUF_NODISCARD ::sailor::editor::v1::FileIdRequest* release_request_model_fingerprint();
-  ::sailor::editor::v1::FileIdRequest* mutable_request_model_fingerprint();
-  void set_allocated_request_model_fingerprint(::sailor::editor::v1::FileIdRequest* value);
-  void unsafe_arena_set_allocated_request_model_fingerprint(::sailor::editor::v1::FileIdRequest* value);
-  ::sailor::editor::v1::FileIdRequest* unsafe_arena_release_request_model_fingerprint();
-
-  private:
-  const ::sailor::editor::v1::FileIdRequest& _internal_request_model_fingerprint() const;
-  ::sailor::editor::v1::FileIdRequest* _internal_mutable_request_model_fingerprint();
-
-  public:
-  // .sailor.editor.v1.FileIdRequest get_model_fingerprint_status = 101;
-  bool has_get_model_fingerprint_status() const;
-  private:
-  bool _internal_has_get_model_fingerprint_status() const;
-
-  public:
-  void clear_get_model_fingerprint_status() ;
-  const ::sailor::editor::v1::FileIdRequest& get_model_fingerprint_status() const;
-  PROTOBUF_NODISCARD ::sailor::editor::v1::FileIdRequest* release_get_model_fingerprint_status();
-  ::sailor::editor::v1::FileIdRequest* mutable_get_model_fingerprint_status();
-  void set_allocated_get_model_fingerprint_status(::sailor::editor::v1::FileIdRequest* value);
-  void unsafe_arena_set_allocated_get_model_fingerprint_status(::sailor::editor::v1::FileIdRequest* value);
-  ::sailor::editor::v1::FileIdRequest* unsafe_arena_release_get_model_fingerprint_status();
-
-  private:
-  const ::sailor::editor::v1::FileIdRequest& _internal_get_model_fingerprint_status() const;
-  ::sailor::editor::v1::FileIdRequest* _internal_mutable_get_model_fingerprint_status();
-
-  public:
   // .sailor.editor.v1.UpdateMaterialPreviewRequest update_material_preview = 102;
   bool has_update_material_preview() const;
   private:
@@ -17495,8 +17243,6 @@ class ProtocolRequest final : public ::google::protobuf::Message
   void set_has_rebuild_runtime_gi_probes_scene();
   void set_has_set_runtime_gi_probes_preview_budget();
   void set_has_capture_remote_viewport_frame_evidence();
-  void set_has_request_model_fingerprint();
-  void set_has_get_model_fingerprint_status();
   void set_has_update_material_preview();
   void set_has_get_material_preview();
   void set_has_close_material_preview();
@@ -17504,7 +17250,7 @@ class ProtocolRequest final : public ::google::protobuf::Message
   inline void clear_has_command();
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      1, 73, 71,
+      1, 71, 69,
       0, 15>
       _table_;
 
@@ -17593,8 +17339,6 @@ class ProtocolRequest final : public ::google::protobuf::Message
       ::sailor::editor::v1::Empty* rebuild_runtime_gi_probes_scene_;
       ::sailor::editor::v1::RuntimeGIProbesPreviewBudgetRequest* set_runtime_gi_probes_preview_budget_;
       ::sailor::editor::v1::ViewportIdRequest* capture_remote_viewport_frame_evidence_;
-      ::sailor::editor::v1::FileIdRequest* request_model_fingerprint_;
-      ::sailor::editor::v1::FileIdRequest* get_model_fingerprint_status_;
       ::sailor::editor::v1::UpdateMaterialPreviewRequest* update_material_preview_;
       ::sailor::editor::v1::MaterialPreviewSessionRequest* get_material_preview_;
       ::sailor::editor::v1::MaterialPreviewSessionRequest* close_material_preview_;
@@ -17877,7 +17621,6 @@ class ProtocolResponse final : public ::google::protobuf::Message
     kEditorRenderModeResult = 23,
     kGiProbesBakeStatusResult = 24,
     kGlobalIlluminationStateResult = 25,
-    kModelFingerprintStatusResult = 100,
     kMaterialPreviewResult = 101,
     RESULT_NOT_SET = 0,
   };
@@ -17993,7 +17736,6 @@ class ProtocolResponse final : public ::google::protobuf::Message
     kEditorRenderModeResultFieldNumber = 23,
     kGiProbesBakeStatusResultFieldNumber = 24,
     kGlobalIlluminationStateResultFieldNumber = 25,
-    kModelFingerprintStatusResultFieldNumber = 100,
     kMaterialPreviewResultFieldNumber = 101,
   };
   // string error = 4;
@@ -18356,25 +18098,6 @@ class ProtocolResponse final : public ::google::protobuf::Message
   ::sailor::editor::v1::GlobalIlluminationStateResult* _internal_mutable_global_illumination_state_result();
 
   public:
-  // .sailor.editor.v1.ModelFingerprintStatusResult model_fingerprint_status_result = 100;
-  bool has_model_fingerprint_status_result() const;
-  private:
-  bool _internal_has_model_fingerprint_status_result() const;
-
-  public:
-  void clear_model_fingerprint_status_result() ;
-  const ::sailor::editor::v1::ModelFingerprintStatusResult& model_fingerprint_status_result() const;
-  PROTOBUF_NODISCARD ::sailor::editor::v1::ModelFingerprintStatusResult* release_model_fingerprint_status_result();
-  ::sailor::editor::v1::ModelFingerprintStatusResult* mutable_model_fingerprint_status_result();
-  void set_allocated_model_fingerprint_status_result(::sailor::editor::v1::ModelFingerprintStatusResult* value);
-  void unsafe_arena_set_allocated_model_fingerprint_status_result(::sailor::editor::v1::ModelFingerprintStatusResult* value);
-  ::sailor::editor::v1::ModelFingerprintStatusResult* unsafe_arena_release_model_fingerprint_status_result();
-
-  private:
-  const ::sailor::editor::v1::ModelFingerprintStatusResult& _internal_model_fingerprint_status_result() const;
-  ::sailor::editor::v1::ModelFingerprintStatusResult* _internal_mutable_model_fingerprint_status_result();
-
-  public:
   // .sailor.editor.v1.MaterialPreviewResult material_preview_result = 101;
   bool has_material_preview_result() const;
   private:
@@ -18415,13 +18138,12 @@ class ProtocolResponse final : public ::google::protobuf::Message
   void set_has_editor_render_mode_result();
   void set_has_gi_probes_bake_status_result();
   void set_has_global_illumination_state_result();
-  void set_has_model_fingerprint_status_result();
   void set_has_material_preview_result();
   inline bool has_result() const;
   inline void clear_has_result();
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      3, 23, 18,
+      3, 22, 17,
       63, 7>
       _table_;
 
@@ -18463,7 +18185,6 @@ class ProtocolResponse final : public ::google::protobuf::Message
       ::sailor::editor::v1::EditorRenderModeResult* editor_render_mode_result_;
       ::sailor::editor::v1::GIProbesBakeStatusResult* gi_probes_bake_status_result_;
       ::sailor::editor::v1::GlobalIlluminationStateResult* global_illumination_state_result_;
-      ::sailor::editor::v1::ModelFingerprintStatusResult* model_fingerprint_status_result_;
       ::sailor::editor::v1::MaterialPreviewResult* material_preview_result_;
     } result_;
     ::google::protobuf::internal::CachedSize _cached_size_;
@@ -23752,164 +23473,6 @@ inline ::sailor::editor::v1::ViewportIdRequest* ProtocolRequest::mutable_capture
   return _msg;
 }
 
-// .sailor.editor.v1.FileIdRequest request_model_fingerprint = 100;
-inline bool ProtocolRequest::has_request_model_fingerprint() const {
-  return command_case() == kRequestModelFingerprint;
-}
-inline bool ProtocolRequest::_internal_has_request_model_fingerprint() const {
-  return command_case() == kRequestModelFingerprint;
-}
-inline void ProtocolRequest::set_has_request_model_fingerprint() {
-  _impl_._oneof_case_[0] = kRequestModelFingerprint;
-}
-inline void ProtocolRequest::clear_request_model_fingerprint() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (command_case() == kRequestModelFingerprint) {
-    if (GetArena() == nullptr) {
-      delete _impl_.command_.request_model_fingerprint_;
-    } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
-      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.command_.request_model_fingerprint_);
-    }
-    clear_has_command();
-  }
-}
-inline ::sailor::editor::v1::FileIdRequest* ProtocolRequest::release_request_model_fingerprint() {
-  // @@protoc_insertion_point(field_release:sailor.editor.v1.ProtocolRequest.request_model_fingerprint)
-  if (command_case() == kRequestModelFingerprint) {
-    clear_has_command();
-    auto* temp = _impl_.command_.request_model_fingerprint_;
-    if (GetArena() != nullptr) {
-      temp = ::google::protobuf::internal::DuplicateIfNonNull(temp);
-    }
-    _impl_.command_.request_model_fingerprint_ = nullptr;
-    return temp;
-  } else {
-    return nullptr;
-  }
-}
-inline const ::sailor::editor::v1::FileIdRequest& ProtocolRequest::_internal_request_model_fingerprint() const {
-  return command_case() == kRequestModelFingerprint ? *_impl_.command_.request_model_fingerprint_ : reinterpret_cast<::sailor::editor::v1::FileIdRequest&>(::sailor::editor::v1::_FileIdRequest_default_instance_);
-}
-inline const ::sailor::editor::v1::FileIdRequest& ProtocolRequest::request_model_fingerprint() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.ProtocolRequest.request_model_fingerprint)
-  return _internal_request_model_fingerprint();
-}
-inline ::sailor::editor::v1::FileIdRequest* ProtocolRequest::unsafe_arena_release_request_model_fingerprint() {
-  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.ProtocolRequest.request_model_fingerprint)
-  if (command_case() == kRequestModelFingerprint) {
-    clear_has_command();
-    auto* temp = _impl_.command_.request_model_fingerprint_;
-    _impl_.command_.request_model_fingerprint_ = nullptr;
-    return temp;
-  } else {
-    return nullptr;
-  }
-}
-inline void ProtocolRequest::unsafe_arena_set_allocated_request_model_fingerprint(::sailor::editor::v1::FileIdRequest* value) {
-  // We rely on the oneof clear method to free the earlier contents
-  // of this oneof. We can directly use the pointer we're given to
-  // set the new value.
-  clear_command();
-  if (value) {
-    set_has_request_model_fingerprint();
-    _impl_.command_.request_model_fingerprint_ = value;
-  }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ProtocolRequest.request_model_fingerprint)
-}
-inline ::sailor::editor::v1::FileIdRequest* ProtocolRequest::_internal_mutable_request_model_fingerprint() {
-  if (command_case() != kRequestModelFingerprint) {
-    clear_command();
-    set_has_request_model_fingerprint();
-    _impl_.command_.request_model_fingerprint_ =
-        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::FileIdRequest>(GetArena());
-  }
-  return _impl_.command_.request_model_fingerprint_;
-}
-inline ::sailor::editor::v1::FileIdRequest* ProtocolRequest::mutable_request_model_fingerprint() ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  ::sailor::editor::v1::FileIdRequest* _msg = _internal_mutable_request_model_fingerprint();
-  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolRequest.request_model_fingerprint)
-  return _msg;
-}
-
-// .sailor.editor.v1.FileIdRequest get_model_fingerprint_status = 101;
-inline bool ProtocolRequest::has_get_model_fingerprint_status() const {
-  return command_case() == kGetModelFingerprintStatus;
-}
-inline bool ProtocolRequest::_internal_has_get_model_fingerprint_status() const {
-  return command_case() == kGetModelFingerprintStatus;
-}
-inline void ProtocolRequest::set_has_get_model_fingerprint_status() {
-  _impl_._oneof_case_[0] = kGetModelFingerprintStatus;
-}
-inline void ProtocolRequest::clear_get_model_fingerprint_status() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (command_case() == kGetModelFingerprintStatus) {
-    if (GetArena() == nullptr) {
-      delete _impl_.command_.get_model_fingerprint_status_;
-    } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
-      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.command_.get_model_fingerprint_status_);
-    }
-    clear_has_command();
-  }
-}
-inline ::sailor::editor::v1::FileIdRequest* ProtocolRequest::release_get_model_fingerprint_status() {
-  // @@protoc_insertion_point(field_release:sailor.editor.v1.ProtocolRequest.get_model_fingerprint_status)
-  if (command_case() == kGetModelFingerprintStatus) {
-    clear_has_command();
-    auto* temp = _impl_.command_.get_model_fingerprint_status_;
-    if (GetArena() != nullptr) {
-      temp = ::google::protobuf::internal::DuplicateIfNonNull(temp);
-    }
-    _impl_.command_.get_model_fingerprint_status_ = nullptr;
-    return temp;
-  } else {
-    return nullptr;
-  }
-}
-inline const ::sailor::editor::v1::FileIdRequest& ProtocolRequest::_internal_get_model_fingerprint_status() const {
-  return command_case() == kGetModelFingerprintStatus ? *_impl_.command_.get_model_fingerprint_status_ : reinterpret_cast<::sailor::editor::v1::FileIdRequest&>(::sailor::editor::v1::_FileIdRequest_default_instance_);
-}
-inline const ::sailor::editor::v1::FileIdRequest& ProtocolRequest::get_model_fingerprint_status() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.ProtocolRequest.get_model_fingerprint_status)
-  return _internal_get_model_fingerprint_status();
-}
-inline ::sailor::editor::v1::FileIdRequest* ProtocolRequest::unsafe_arena_release_get_model_fingerprint_status() {
-  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.ProtocolRequest.get_model_fingerprint_status)
-  if (command_case() == kGetModelFingerprintStatus) {
-    clear_has_command();
-    auto* temp = _impl_.command_.get_model_fingerprint_status_;
-    _impl_.command_.get_model_fingerprint_status_ = nullptr;
-    return temp;
-  } else {
-    return nullptr;
-  }
-}
-inline void ProtocolRequest::unsafe_arena_set_allocated_get_model_fingerprint_status(::sailor::editor::v1::FileIdRequest* value) {
-  // We rely on the oneof clear method to free the earlier contents
-  // of this oneof. We can directly use the pointer we're given to
-  // set the new value.
-  clear_command();
-  if (value) {
-    set_has_get_model_fingerprint_status();
-    _impl_.command_.get_model_fingerprint_status_ = value;
-  }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ProtocolRequest.get_model_fingerprint_status)
-}
-inline ::sailor::editor::v1::FileIdRequest* ProtocolRequest::_internal_mutable_get_model_fingerprint_status() {
-  if (command_case() != kGetModelFingerprintStatus) {
-    clear_command();
-    set_has_get_model_fingerprint_status();
-    _impl_.command_.get_model_fingerprint_status_ =
-        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::FileIdRequest>(GetArena());
-  }
-  return _impl_.command_.get_model_fingerprint_status_;
-}
-inline ::sailor::editor::v1::FileIdRequest* ProtocolRequest::mutable_get_model_fingerprint_status() ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  ::sailor::editor::v1::FileIdRequest* _msg = _internal_mutable_get_model_fingerprint_status();
-  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolRequest.get_model_fingerprint_status)
-  return _msg;
-}
-
 // .sailor.editor.v1.UpdateMaterialPreviewRequest update_material_preview = 102;
 inline bool ProtocolRequest::has_update_material_preview() const {
   return command_case() == kUpdateMaterialPreview;
@@ -25557,85 +25120,6 @@ inline ::sailor::editor::v1::GlobalIlluminationStateResult* ProtocolResponse::_i
 inline ::sailor::editor::v1::GlobalIlluminationStateResult* ProtocolResponse::mutable_global_illumination_state_result() ABSL_ATTRIBUTE_LIFETIME_BOUND {
   ::sailor::editor::v1::GlobalIlluminationStateResult* _msg = _internal_mutable_global_illumination_state_result();
   // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolResponse.global_illumination_state_result)
-  return _msg;
-}
-
-// .sailor.editor.v1.ModelFingerprintStatusResult model_fingerprint_status_result = 100;
-inline bool ProtocolResponse::has_model_fingerprint_status_result() const {
-  return result_case() == kModelFingerprintStatusResult;
-}
-inline bool ProtocolResponse::_internal_has_model_fingerprint_status_result() const {
-  return result_case() == kModelFingerprintStatusResult;
-}
-inline void ProtocolResponse::set_has_model_fingerprint_status_result() {
-  _impl_._oneof_case_[0] = kModelFingerprintStatusResult;
-}
-inline void ProtocolResponse::clear_model_fingerprint_status_result() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (result_case() == kModelFingerprintStatusResult) {
-    if (GetArena() == nullptr) {
-      delete _impl_.result_.model_fingerprint_status_result_;
-    } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
-      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.result_.model_fingerprint_status_result_);
-    }
-    clear_has_result();
-  }
-}
-inline ::sailor::editor::v1::ModelFingerprintStatusResult* ProtocolResponse::release_model_fingerprint_status_result() {
-  // @@protoc_insertion_point(field_release:sailor.editor.v1.ProtocolResponse.model_fingerprint_status_result)
-  if (result_case() == kModelFingerprintStatusResult) {
-    clear_has_result();
-    auto* temp = _impl_.result_.model_fingerprint_status_result_;
-    if (GetArena() != nullptr) {
-      temp = ::google::protobuf::internal::DuplicateIfNonNull(temp);
-    }
-    _impl_.result_.model_fingerprint_status_result_ = nullptr;
-    return temp;
-  } else {
-    return nullptr;
-  }
-}
-inline const ::sailor::editor::v1::ModelFingerprintStatusResult& ProtocolResponse::_internal_model_fingerprint_status_result() const {
-  return result_case() == kModelFingerprintStatusResult ? *_impl_.result_.model_fingerprint_status_result_ : reinterpret_cast<::sailor::editor::v1::ModelFingerprintStatusResult&>(::sailor::editor::v1::_ModelFingerprintStatusResult_default_instance_);
-}
-inline const ::sailor::editor::v1::ModelFingerprintStatusResult& ProtocolResponse::model_fingerprint_status_result() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.ProtocolResponse.model_fingerprint_status_result)
-  return _internal_model_fingerprint_status_result();
-}
-inline ::sailor::editor::v1::ModelFingerprintStatusResult* ProtocolResponse::unsafe_arena_release_model_fingerprint_status_result() {
-  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.ProtocolResponse.model_fingerprint_status_result)
-  if (result_case() == kModelFingerprintStatusResult) {
-    clear_has_result();
-    auto* temp = _impl_.result_.model_fingerprint_status_result_;
-    _impl_.result_.model_fingerprint_status_result_ = nullptr;
-    return temp;
-  } else {
-    return nullptr;
-  }
-}
-inline void ProtocolResponse::unsafe_arena_set_allocated_model_fingerprint_status_result(::sailor::editor::v1::ModelFingerprintStatusResult* value) {
-  // We rely on the oneof clear method to free the earlier contents
-  // of this oneof. We can directly use the pointer we're given to
-  // set the new value.
-  clear_result();
-  if (value) {
-    set_has_model_fingerprint_status_result();
-    _impl_.result_.model_fingerprint_status_result_ = value;
-  }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ProtocolResponse.model_fingerprint_status_result)
-}
-inline ::sailor::editor::v1::ModelFingerprintStatusResult* ProtocolResponse::_internal_mutable_model_fingerprint_status_result() {
-  if (result_case() != kModelFingerprintStatusResult) {
-    clear_result();
-    set_has_model_fingerprint_status_result();
-    _impl_.result_.model_fingerprint_status_result_ =
-        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::ModelFingerprintStatusResult>(GetArena());
-  }
-  return _impl_.result_.model_fingerprint_status_result_;
-}
-inline ::sailor::editor::v1::ModelFingerprintStatusResult* ProtocolResponse::mutable_model_fingerprint_status_result() ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  ::sailor::editor::v1::ModelFingerprintStatusResult* _msg = _internal_mutable_model_fingerprint_status_result();
-  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolResponse.model_fingerprint_status_result)
   return _msg;
 }
 
@@ -33923,32 +33407,6 @@ inline void RuntimeGIProbesPreviewBudgetRequest::_internal_set_budget(::sailor::
 
 // -------------------------------------------------------------------
 
-// ModelFingerprintStatusResult
-
-// .sailor.editor.v1.ModelFingerprintStatus status = 1;
-inline void ModelFingerprintStatusResult::clear_status() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.status_ = 0;
-}
-inline ::sailor::editor::v1::ModelFingerprintStatus ModelFingerprintStatusResult::status() const {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.ModelFingerprintStatusResult.status)
-  return _internal_status();
-}
-inline void ModelFingerprintStatusResult::set_status(::sailor::editor::v1::ModelFingerprintStatus value) {
-  _internal_set_status(value);
-  // @@protoc_insertion_point(field_set:sailor.editor.v1.ModelFingerprintStatusResult.status)
-}
-inline ::sailor::editor::v1::ModelFingerprintStatus ModelFingerprintStatusResult::_internal_status() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return static_cast<::sailor::editor::v1::ModelFingerprintStatus>(_impl_.status_);
-}
-inline void ModelFingerprintStatusResult::_internal_set_status(::sailor::editor::v1::ModelFingerprintStatus value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.status_ = value;
-}
-
-// -------------------------------------------------------------------
-
 // UpdateMaterialPreviewRequest
 
 // uint64 session_id = 1;
@@ -34173,6 +33631,54 @@ inline ::uint32_t UpdateMaterialPreviewRequest::_internal_height() const {
 inline void UpdateMaterialPreviewRequest::_internal_set_height(::uint32_t value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.height_ = value;
+}
+
+// string model_file_id = 10;
+inline void UpdateMaterialPreviewRequest::clear_model_file_id() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.model_file_id_.ClearToEmpty();
+}
+inline const std::string& UpdateMaterialPreviewRequest::model_file_id() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.UpdateMaterialPreviewRequest.model_file_id)
+  return _internal_model_file_id();
+}
+template <typename Arg_, typename... Args_>
+inline PROTOBUF_ALWAYS_INLINE void UpdateMaterialPreviewRequest::set_model_file_id(Arg_&& arg,
+                                                     Args_... args) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.model_file_id_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.UpdateMaterialPreviewRequest.model_file_id)
+}
+inline std::string* UpdateMaterialPreviewRequest::mutable_model_file_id() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  std::string* _s = _internal_mutable_model_file_id();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.UpdateMaterialPreviewRequest.model_file_id)
+  return _s;
+}
+inline const std::string& UpdateMaterialPreviewRequest::_internal_model_file_id() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.model_file_id_.Get();
+}
+inline void UpdateMaterialPreviewRequest::_internal_set_model_file_id(const std::string& value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.model_file_id_.Set(value, GetArena());
+}
+inline std::string* UpdateMaterialPreviewRequest::_internal_mutable_model_file_id() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _impl_.model_file_id_.Mutable( GetArena());
+}
+inline std::string* UpdateMaterialPreviewRequest::release_model_file_id() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.UpdateMaterialPreviewRequest.model_file_id)
+  return _impl_.model_file_id_.Release();
+}
+inline void UpdateMaterialPreviewRequest::set_allocated_model_file_id(std::string* value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.model_file_id_.SetAllocated(value, GetArena());
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.model_file_id_.IsDefault()) {
+    _impl_.model_file_id_.Set("", GetArena());
+  }
+  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.UpdateMaterialPreviewRequest.model_file_id)
 }
 
 // -------------------------------------------------------------------
@@ -34505,12 +34011,6 @@ struct is_proto_enum<::sailor::editor::v1::GlobalIlluminationProbeResidency> : s
 template <>
 inline const EnumDescriptor* GetEnumDescriptor<::sailor::editor::v1::GlobalIlluminationProbeResidency>() {
   return ::sailor::editor::v1::GlobalIlluminationProbeResidency_descriptor();
-}
-template <>
-struct is_proto_enum<::sailor::editor::v1::ModelFingerprintStatus> : std::true_type {};
-template <>
-inline const EnumDescriptor* GetEnumDescriptor<::sailor::editor::v1::ModelFingerprintStatus>() {
-  return ::sailor::editor::v1::ModelFingerprintStatus_descriptor();
 }
 template <>
 struct is_proto_enum<::sailor::editor::v1::MaterialPreviewPrimitive> : std::true_type {};

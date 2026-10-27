@@ -51,6 +51,49 @@ public sealed class MaterialPreviewProtocolTests
     }
 
     [Theory]
+    [InlineData(0)]
+    [InlineData(999)]
+    public async Task ModelUpdate_UsesSharedPreviewSessionAndModelId_WithoutMaterialOrPrimitiveRequirement(int primitive)
+    {
+        ProtocolRequest? sent = null;
+        using var client = Create(request =>
+        {
+            sent = request;
+            return new() { SessionId = 15, Revision = 2, State = MaterialPreviewState.Pending };
+        });
+        const string modelId = "{89ABCDEF-0123-4567-89AB-CDEF01234567}";
+        var result = await client.UpdateMaterialPreviewAsync(new(15, 2,
+            new(string.Empty, (PreviewPrimitive)primitive, Width: 256, Height: 256, ModelFileId: modelId)));
+
+        Assert.Equal(PreviewState.Pending, result.State);
+        Assert.Equal(ProtocolRequest.CommandOneofCase.UpdateMaterialPreview, sent!.CommandCase);
+        Assert.Equal(modelId, sent.UpdateMaterialPreview.ModelFileId);
+        Assert.Empty(sent.UpdateMaterialPreview.MaterialYaml);
+        Assert.Equal(256u, sent.UpdateMaterialPreview.Width);
+        Assert.Equal(256u, sent.UpdateMaterialPreview.Height);
+        Assert.Equal(1u, sent.ProtocolVersion);
+    }
+
+    [Theory]
+    [InlineData("", "")]
+    [InlineData(" ", " ")]
+    [InlineData("shaderUid: test", "model")]
+    public async Task AmbiguousOrMissingSource_DoesNotReachNative(string yaml, string model)
+    {
+        using var client = Create(_ => throw new InvalidOperationException("Invalid source must not be sent."));
+        await Assert.ThrowsAnyAsync<ArgumentException>(() => client.UpdateMaterialPreviewAsync(
+            new(1, 1, new(yaml, ModelFileId: model))));
+    }
+
+    [Fact]
+    public async Task OversizedModelId_DoesNotReachNative()
+    {
+        using var client = Create(_ => throw new InvalidOperationException("Invalid source must not be sent."));
+        await Assert.ThrowsAsync<ArgumentException>(() => client.UpdateMaterialPreviewAsync(
+            new(1, 1, new(string.Empty, ModelFileId: new string('x', 1025)))));
+    }
+
+    [Theory]
     [InlineData(0ul, 1ul, 1, 384u, 384u, 0f)]
     [InlineData(1ul, 0ul, 1, 384u, 384u, 0f)]
     [InlineData(1ul, 1ul, 0, 384u, 384u, 0f)]

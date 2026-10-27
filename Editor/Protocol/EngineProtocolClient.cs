@@ -678,35 +678,6 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 .ConfigureAwait(false),
             nameof(ProtocolRequest.PreviewAudioAsset));
 
-    public async Task<bool> GenerateModelFingerprintAsync(
-        string fileId,
-        CancellationToken cancellationToken = default)
-    {
-        var requestedId = ValidateString(fileId, nameof(fileId));
-        if (!ReadBool(await SendAsync(new ProtocolRequest
-            {
-                RequestModelFingerprint = new FileIdRequest { FileId = requestedId }
-            }, cancellationToken).ConfigureAwait(false), nameof(ProtocolRequest.RequestModelFingerprint)))
-        {
-            return false;
-        }
-
-        while (true)
-        {
-            var response = await SendAsync(new ProtocolRequest
-            {
-                GetModelFingerprintStatus = new FileIdRequest { FileId = requestedId }
-            }, cancellationToken).ConfigureAwait(false);
-            var status = RequireResult<ModelFingerprintStatusResult>(
-                response.ModelFingerprintStatusResult,
-                nameof(ProtocolRequest.GetModelFingerprintStatus)).Status;
-            if (status != ModelFingerprintStatus.Pending)
-                return status == ModelFingerprintStatus.Ready;
-
-            await Task.Delay(100, cancellationToken).ConfigureAwait(false);
-        }
-    }
-
     public async Task<MaterialPreviewResponse> UpdateMaterialPreviewAsync(
         MaterialPreviewRequest request,
         CancellationToken cancellationToken = default)
@@ -716,11 +687,23 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
         ValidatePreviewSession(request.SessionId);
         if (request.Revision == 0)
             throw new ArgumentOutOfRangeException(nameof(request.Revision));
-        if (!Enum.IsDefined(snapshot.Primitive))
-            throw new ArgumentOutOfRangeException(nameof(snapshot.Primitive));
         var yaml = ValidateString(snapshot.MaterialYaml, nameof(snapshot.MaterialYaml));
-        if (string.IsNullOrWhiteSpace(yaml) || System.Text.Encoding.UTF8.GetByteCount(yaml) > 1024 * 1024)
-            throw new ArgumentException("Material preview YAML must contain between 1 byte and 1 MiB.", nameof(request));
+        var modelId = ValidateString(snapshot.ModelFileId, nameof(snapshot.ModelFileId));
+        yaml = string.IsNullOrWhiteSpace(yaml) ? string.Empty : yaml;
+        modelId = string.IsNullOrWhiteSpace(modelId) ? string.Empty : modelId;
+        if (string.IsNullOrWhiteSpace(yaml) == string.IsNullOrWhiteSpace(modelId))
+        {
+            throw new ArgumentException("Preview requires exactly one material YAML snapshot or model FileId.", nameof(request));
+        }
+        if (modelId.Length == 0 && !Enum.IsDefined(snapshot.Primitive))
+        {
+            throw new ArgumentOutOfRangeException(nameof(snapshot.Primitive));
+        }
+        if (System.Text.Encoding.UTF8.GetByteCount(yaml) > 1024 * 1024 ||
+            System.Text.Encoding.UTF8.GetByteCount(modelId) > 1024)
+        {
+            throw new ArgumentException("Preview material YAML exceeds 1 MiB or model FileId exceeds 1024 bytes.", nameof(request));
+        }
         if (!float.IsFinite(snapshot.Yaw) || !float.IsFinite(snapshot.Pitch) || !float.IsFinite(snapshot.Distance))
             throw new ArgumentException("Material preview camera values must be finite.", nameof(request));
         if (snapshot.Width is < 64 or > 512 || snapshot.Height is < 64 or > 512)
@@ -733,6 +716,7 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 SessionId = request.SessionId,
                 Revision = request.Revision,
                 MaterialYaml = yaml,
+                ModelFileId = modelId,
                 Primitive = (MaterialPreviewPrimitive)snapshot.Primitive,
                 Yaw = snapshot.Yaw,
                 Pitch = snapshot.Pitch,
