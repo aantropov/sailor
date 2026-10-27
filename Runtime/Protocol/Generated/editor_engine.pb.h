@@ -137,6 +137,12 @@ extern Int32ResultDefaultTypeInternal _Int32Result_default_instance_;
 class ManagedMutationRevisionRequest;
 struct ManagedMutationRevisionRequestDefaultTypeInternal;
 extern ManagedMutationRevisionRequestDefaultTypeInternal _ManagedMutationRevisionRequest_default_instance_;
+class MaterialPreviewResult;
+struct MaterialPreviewResultDefaultTypeInternal;
+extern MaterialPreviewResultDefaultTypeInternal _MaterialPreviewResult_default_instance_;
+class MaterialPreviewSessionRequest;
+struct MaterialPreviewSessionRequestDefaultTypeInternal;
+extern MaterialPreviewSessionRequestDefaultTypeInternal _MaterialPreviewSessionRequest_default_instance_;
 class ModelFingerprintStatusResult;
 struct ModelFingerprintStatusResultDefaultTypeInternal;
 extern ModelFingerprintStatusResultDefaultTypeInternal _ModelFingerprintStatusResult_default_instance_;
@@ -206,6 +212,9 @@ extern UInt64ResultDefaultTypeInternal _UInt64Result_default_instance_;
 class UpdateAssetRequest;
 struct UpdateAssetRequestDefaultTypeInternal;
 extern UpdateAssetRequestDefaultTypeInternal _UpdateAssetRequest_default_instance_;
+class UpdateMaterialPreviewRequest;
+struct UpdateMaterialPreviewRequestDefaultTypeInternal;
+extern UpdateMaterialPreviewRequestDefaultTypeInternal _UpdateMaterialPreviewRequest_default_instance_;
 class UpdateObjectRequest;
 struct UpdateObjectRequestDefaultTypeInternal;
 extern UpdateObjectRequestDefaultTypeInternal _UpdateObjectRequest_default_instance_;
@@ -663,6 +672,77 @@ inline const std::string& ModelFingerprintStatus_Name(ModelFingerprintStatus val
 inline bool ModelFingerprintStatus_Parse(absl::string_view name, ModelFingerprintStatus* value) {
   return ::google::protobuf::internal::ParseNamedEnum<ModelFingerprintStatus>(
       ModelFingerprintStatus_descriptor(), name, value);
+}
+enum MaterialPreviewPrimitive : int {
+  MATERIAL_PREVIEW_PRIMITIVE_UNSPECIFIED = 0,
+  MATERIAL_PREVIEW_PRIMITIVE_SPHERE = 1,
+  MATERIAL_PREVIEW_PRIMITIVE_PLANE = 2,
+  MATERIAL_PREVIEW_PRIMITIVE_BOX = 3,
+  MaterialPreviewPrimitive_INT_MIN_SENTINEL_DO_NOT_USE_ =
+      std::numeric_limits<::int32_t>::min(),
+  MaterialPreviewPrimitive_INT_MAX_SENTINEL_DO_NOT_USE_ =
+      std::numeric_limits<::int32_t>::max(),
+};
+
+bool MaterialPreviewPrimitive_IsValid(int value);
+extern const uint32_t MaterialPreviewPrimitive_internal_data_[];
+constexpr MaterialPreviewPrimitive MaterialPreviewPrimitive_MIN = static_cast<MaterialPreviewPrimitive>(0);
+constexpr MaterialPreviewPrimitive MaterialPreviewPrimitive_MAX = static_cast<MaterialPreviewPrimitive>(3);
+constexpr int MaterialPreviewPrimitive_ARRAYSIZE = 3 + 1;
+const ::google::protobuf::EnumDescriptor*
+MaterialPreviewPrimitive_descriptor();
+template <typename T>
+const std::string& MaterialPreviewPrimitive_Name(T value) {
+  static_assert(std::is_same<T, MaterialPreviewPrimitive>::value ||
+                    std::is_integral<T>::value,
+                "Incorrect type passed to MaterialPreviewPrimitive_Name().");
+  return MaterialPreviewPrimitive_Name(static_cast<MaterialPreviewPrimitive>(value));
+}
+template <>
+inline const std::string& MaterialPreviewPrimitive_Name(MaterialPreviewPrimitive value) {
+  return ::google::protobuf::internal::NameOfDenseEnum<MaterialPreviewPrimitive_descriptor,
+                                                 0, 3>(
+      static_cast<int>(value));
+}
+inline bool MaterialPreviewPrimitive_Parse(absl::string_view name, MaterialPreviewPrimitive* value) {
+  return ::google::protobuf::internal::ParseNamedEnum<MaterialPreviewPrimitive>(
+      MaterialPreviewPrimitive_descriptor(), name, value);
+}
+enum MaterialPreviewState : int {
+  MATERIAL_PREVIEW_STATE_UNSPECIFIED = 0,
+  MATERIAL_PREVIEW_STATE_PENDING = 1,
+  MATERIAL_PREVIEW_STATE_READY = 2,
+  MATERIAL_PREVIEW_STATE_ERROR = 3,
+  MATERIAL_PREVIEW_STATE_CLOSED = 4,
+  MaterialPreviewState_INT_MIN_SENTINEL_DO_NOT_USE_ =
+      std::numeric_limits<::int32_t>::min(),
+  MaterialPreviewState_INT_MAX_SENTINEL_DO_NOT_USE_ =
+      std::numeric_limits<::int32_t>::max(),
+};
+
+bool MaterialPreviewState_IsValid(int value);
+extern const uint32_t MaterialPreviewState_internal_data_[];
+constexpr MaterialPreviewState MaterialPreviewState_MIN = static_cast<MaterialPreviewState>(0);
+constexpr MaterialPreviewState MaterialPreviewState_MAX = static_cast<MaterialPreviewState>(4);
+constexpr int MaterialPreviewState_ARRAYSIZE = 4 + 1;
+const ::google::protobuf::EnumDescriptor*
+MaterialPreviewState_descriptor();
+template <typename T>
+const std::string& MaterialPreviewState_Name(T value) {
+  static_assert(std::is_same<T, MaterialPreviewState>::value ||
+                    std::is_integral<T>::value,
+                "Incorrect type passed to MaterialPreviewState_Name().");
+  return MaterialPreviewState_Name(static_cast<MaterialPreviewState>(value));
+}
+template <>
+inline const std::string& MaterialPreviewState_Name(MaterialPreviewState value) {
+  return ::google::protobuf::internal::NameOfDenseEnum<MaterialPreviewState_descriptor,
+                                                 0, 4>(
+      static_cast<int>(value));
+}
+inline bool MaterialPreviewState_Parse(absl::string_view name, MaterialPreviewState* value) {
+  return ::google::protobuf::internal::ParseNamedEnum<MaterialPreviewState>(
+      MaterialPreviewState_descriptor(), name, value);
 }
 
 // ===================================================================
@@ -2962,6 +3042,298 @@ class UpdateObjectRequest final : public ::google::protobuf::Message
                           const UpdateObjectRequest& from_msg);
     ::google::protobuf::internal::ArenaStringPtr instance_id_;
     ::google::protobuf::internal::ArenaStringPtr yaml_changes_;
+    ::google::protobuf::internal::CachedSize _cached_size_;
+    PROTOBUF_TSAN_DECLARE_MEMBER
+  };
+  union { Impl_ _impl_; };
+  friend struct ::TableStruct_editor_5fengine_2eproto;
+};
+// -------------------------------------------------------------------
+
+class UpdateMaterialPreviewRequest final : public ::google::protobuf::Message
+/* @@protoc_insertion_point(class_definition:sailor.editor.v1.UpdateMaterialPreviewRequest) */ {
+ public:
+  inline UpdateMaterialPreviewRequest() : UpdateMaterialPreviewRequest(nullptr) {}
+  ~UpdateMaterialPreviewRequest() PROTOBUF_FINAL;
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+  void operator delete(UpdateMaterialPreviewRequest* msg, std::destroying_delete_t) {
+    SharedDtor(*msg);
+    ::google::protobuf::internal::SizedDelete(msg, sizeof(UpdateMaterialPreviewRequest));
+  }
+#endif
+
+  template <typename = void>
+  explicit PROTOBUF_CONSTEXPR UpdateMaterialPreviewRequest(
+      ::google::protobuf::internal::ConstantInitialized);
+
+  inline UpdateMaterialPreviewRequest(const UpdateMaterialPreviewRequest& from) : UpdateMaterialPreviewRequest(nullptr, from) {}
+  inline UpdateMaterialPreviewRequest(UpdateMaterialPreviewRequest&& from) noexcept
+      : UpdateMaterialPreviewRequest(nullptr, std::move(from)) {}
+  inline UpdateMaterialPreviewRequest& operator=(const UpdateMaterialPreviewRequest& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline UpdateMaterialPreviewRequest& operator=(UpdateMaterialPreviewRequest&& from) noexcept {
+    if (this == &from) return *this;
+    if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance);
+  }
+  inline ::google::protobuf::UnknownFieldSet* mutable_unknown_fields()
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.mutable_unknown_fields<::google::protobuf::UnknownFieldSet>();
+  }
+
+  static const ::google::protobuf::Descriptor* descriptor() {
+    return GetDescriptor();
+  }
+  static const ::google::protobuf::Descriptor* GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  static const ::google::protobuf::Reflection* GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  static const UpdateMaterialPreviewRequest& default_instance() {
+    return *internal_default_instance();
+  }
+  static inline const UpdateMaterialPreviewRequest* internal_default_instance() {
+    return reinterpret_cast<const UpdateMaterialPreviewRequest*>(
+        &_UpdateMaterialPreviewRequest_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages = 65;
+  friend void swap(UpdateMaterialPreviewRequest& a, UpdateMaterialPreviewRequest& b) { a.Swap(&b); }
+  inline void Swap(UpdateMaterialPreviewRequest* other) {
+    if (other == this) return;
+    if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
+      InternalSwap(other);
+    } else {
+      ::google::protobuf::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(UpdateMaterialPreviewRequest* other) {
+    if (other == this) return;
+    ABSL_DCHECK(GetArena() == other->GetArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  UpdateMaterialPreviewRequest* New(::google::protobuf::Arena* arena = nullptr) const {
+    return ::google::protobuf::Message::DefaultConstruct<UpdateMaterialPreviewRequest>(arena);
+  }
+  using ::google::protobuf::Message::CopyFrom;
+  void CopyFrom(const UpdateMaterialPreviewRequest& from);
+  using ::google::protobuf::Message::MergeFrom;
+  void MergeFrom(const UpdateMaterialPreviewRequest& from) { UpdateMaterialPreviewRequest::MergeImpl(*this, from); }
+
+  private:
+  static void MergeImpl(
+      ::google::protobuf::MessageLite& to_msg,
+      const ::google::protobuf::MessageLite& from_msg);
+
+  public:
+  bool IsInitialized() const {
+    return true;
+  }
+  ABSL_ATTRIBUTE_REINITIALIZES void Clear() PROTOBUF_FINAL;
+  #if defined(PROTOBUF_CUSTOM_VTABLE)
+  private:
+  static ::size_t ByteSizeLong(const ::google::protobuf::MessageLite& msg);
+  static ::uint8_t* _InternalSerialize(
+      const MessageLite& msg, ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream);
+
+  public:
+  ::size_t ByteSizeLong() const { return ByteSizeLong(*this); }
+  ::uint8_t* _InternalSerialize(
+      ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream) const {
+    return _InternalSerialize(*this, target, stream);
+  }
+  #else   // PROTOBUF_CUSTOM_VTABLE
+  ::size_t ByteSizeLong() const final;
+  ::uint8_t* _InternalSerialize(
+      ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream) const final;
+  #endif  // PROTOBUF_CUSTOM_VTABLE
+  int GetCachedSize() const { return _impl_._cached_size_.Get(); }
+
+  private:
+  void SharedCtor(::google::protobuf::Arena* arena);
+  static void SharedDtor(MessageLite& self);
+  void InternalSwap(UpdateMaterialPreviewRequest* other);
+ private:
+  template <typename T>
+  friend ::absl::string_view(
+      ::google::protobuf::internal::GetAnyMessageName)();
+  static ::absl::string_view FullMessageName() { return "sailor.editor.v1.UpdateMaterialPreviewRequest"; }
+
+ protected:
+  explicit UpdateMaterialPreviewRequest(::google::protobuf::Arena* arena);
+  UpdateMaterialPreviewRequest(::google::protobuf::Arena* arena, const UpdateMaterialPreviewRequest& from);
+  UpdateMaterialPreviewRequest(::google::protobuf::Arena* arena, UpdateMaterialPreviewRequest&& from) noexcept
+      : UpdateMaterialPreviewRequest(arena) {
+    *this = ::std::move(from);
+  }
+  const ::google::protobuf::internal::ClassData* GetClassData() const PROTOBUF_FINAL;
+  static void* PlacementNew_(const void*, void* mem,
+                             ::google::protobuf::Arena* arena);
+  static constexpr auto InternalNewImpl_();
+  static const ::google::protobuf::internal::ClassDataFull _class_data_;
+
+ public:
+  ::google::protobuf::Metadata GetMetadata() const;
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+  enum : int {
+    kMaterialYamlFieldNumber = 3,
+    kSessionIdFieldNumber = 1,
+    kRevisionFieldNumber = 2,
+    kPrimitiveFieldNumber = 4,
+    kYawFieldNumber = 5,
+    kPitchFieldNumber = 6,
+    kDistanceFieldNumber = 7,
+    kWidthFieldNumber = 8,
+    kHeightFieldNumber = 9,
+  };
+  // string material_yaml = 3;
+  void clear_material_yaml() ;
+  const std::string& material_yaml() const;
+  template <typename Arg_ = const std::string&, typename... Args_>
+  void set_material_yaml(Arg_&& arg, Args_... args);
+  std::string* mutable_material_yaml();
+  PROTOBUF_NODISCARD std::string* release_material_yaml();
+  void set_allocated_material_yaml(std::string* value);
+
+  private:
+  const std::string& _internal_material_yaml() const;
+  inline PROTOBUF_ALWAYS_INLINE void _internal_set_material_yaml(
+      const std::string& value);
+  std::string* _internal_mutable_material_yaml();
+
+  public:
+  // uint64 session_id = 1;
+  void clear_session_id() ;
+  ::uint64_t session_id() const;
+  void set_session_id(::uint64_t value);
+
+  private:
+  ::uint64_t _internal_session_id() const;
+  void _internal_set_session_id(::uint64_t value);
+
+  public:
+  // uint64 revision = 2;
+  void clear_revision() ;
+  ::uint64_t revision() const;
+  void set_revision(::uint64_t value);
+
+  private:
+  ::uint64_t _internal_revision() const;
+  void _internal_set_revision(::uint64_t value);
+
+  public:
+  // .sailor.editor.v1.MaterialPreviewPrimitive primitive = 4;
+  void clear_primitive() ;
+  ::sailor::editor::v1::MaterialPreviewPrimitive primitive() const;
+  void set_primitive(::sailor::editor::v1::MaterialPreviewPrimitive value);
+
+  private:
+  ::sailor::editor::v1::MaterialPreviewPrimitive _internal_primitive() const;
+  void _internal_set_primitive(::sailor::editor::v1::MaterialPreviewPrimitive value);
+
+  public:
+  // float yaw = 5;
+  void clear_yaw() ;
+  float yaw() const;
+  void set_yaw(float value);
+
+  private:
+  float _internal_yaw() const;
+  void _internal_set_yaw(float value);
+
+  public:
+  // float pitch = 6;
+  void clear_pitch() ;
+  float pitch() const;
+  void set_pitch(float value);
+
+  private:
+  float _internal_pitch() const;
+  void _internal_set_pitch(float value);
+
+  public:
+  // float distance = 7;
+  void clear_distance() ;
+  float distance() const;
+  void set_distance(float value);
+
+  private:
+  float _internal_distance() const;
+  void _internal_set_distance(float value);
+
+  public:
+  // uint32 width = 8;
+  void clear_width() ;
+  ::uint32_t width() const;
+  void set_width(::uint32_t value);
+
+  private:
+  ::uint32_t _internal_width() const;
+  void _internal_set_width(::uint32_t value);
+
+  public:
+  // uint32 height = 9;
+  void clear_height() ;
+  ::uint32_t height() const;
+  void set_height(::uint32_t value);
+
+  private:
+  ::uint32_t _internal_height() const;
+  void _internal_set_height(::uint32_t value);
+
+  public:
+  // @@protoc_insertion_point(class_scope:sailor.editor.v1.UpdateMaterialPreviewRequest)
+ private:
+  class _Internal;
+  friend class ::google::protobuf::internal::TcParser;
+  static const ::google::protobuf::internal::TcParseTable<
+      4, 9, 0,
+      75, 2>
+      _table_;
+
+  friend class ::google::protobuf::MessageLite;
+  friend class ::google::protobuf::Arena;
+  template <typename T>
+  friend class ::google::protobuf::Arena::InternalHelper;
+  using InternalArenaConstructable_ = void;
+  using DestructorSkippable_ = void;
+  struct Impl_ {
+    inline explicit constexpr Impl_(
+        ::google::protobuf::internal::ConstantInitialized) noexcept;
+    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
+                          ::google::protobuf::Arena* arena);
+    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
+                          ::google::protobuf::Arena* arena, const Impl_& from,
+                          const UpdateMaterialPreviewRequest& from_msg);
+    ::google::protobuf::internal::ArenaStringPtr material_yaml_;
+    ::uint64_t session_id_;
+    ::uint64_t revision_;
+    int primitive_;
+    float yaw_;
+    float pitch_;
+    float distance_;
+    ::uint32_t width_;
+    ::uint32_t height_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
@@ -7280,6 +7652,482 @@ class ModelFingerprintStatusResult final : public ::google::protobuf::Message
                           ::google::protobuf::Arena* arena, const Impl_& from,
                           const ModelFingerprintStatusResult& from_msg);
     int status_;
+    ::google::protobuf::internal::CachedSize _cached_size_;
+    PROTOBUF_TSAN_DECLARE_MEMBER
+  };
+  union { Impl_ _impl_; };
+  friend struct ::TableStruct_editor_5fengine_2eproto;
+};
+// -------------------------------------------------------------------
+
+class MaterialPreviewSessionRequest final : public ::google::protobuf::Message
+/* @@protoc_insertion_point(class_definition:sailor.editor.v1.MaterialPreviewSessionRequest) */ {
+ public:
+  inline MaterialPreviewSessionRequest() : MaterialPreviewSessionRequest(nullptr) {}
+  ~MaterialPreviewSessionRequest() PROTOBUF_FINAL;
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+  void operator delete(MaterialPreviewSessionRequest* msg, std::destroying_delete_t) {
+    SharedDtor(*msg);
+    ::google::protobuf::internal::SizedDelete(msg, sizeof(MaterialPreviewSessionRequest));
+  }
+#endif
+
+  template <typename = void>
+  explicit PROTOBUF_CONSTEXPR MaterialPreviewSessionRequest(
+      ::google::protobuf::internal::ConstantInitialized);
+
+  inline MaterialPreviewSessionRequest(const MaterialPreviewSessionRequest& from) : MaterialPreviewSessionRequest(nullptr, from) {}
+  inline MaterialPreviewSessionRequest(MaterialPreviewSessionRequest&& from) noexcept
+      : MaterialPreviewSessionRequest(nullptr, std::move(from)) {}
+  inline MaterialPreviewSessionRequest& operator=(const MaterialPreviewSessionRequest& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline MaterialPreviewSessionRequest& operator=(MaterialPreviewSessionRequest&& from) noexcept {
+    if (this == &from) return *this;
+    if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance);
+  }
+  inline ::google::protobuf::UnknownFieldSet* mutable_unknown_fields()
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.mutable_unknown_fields<::google::protobuf::UnknownFieldSet>();
+  }
+
+  static const ::google::protobuf::Descriptor* descriptor() {
+    return GetDescriptor();
+  }
+  static const ::google::protobuf::Descriptor* GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  static const ::google::protobuf::Reflection* GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  static const MaterialPreviewSessionRequest& default_instance() {
+    return *internal_default_instance();
+  }
+  static inline const MaterialPreviewSessionRequest* internal_default_instance() {
+    return reinterpret_cast<const MaterialPreviewSessionRequest*>(
+        &_MaterialPreviewSessionRequest_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages = 66;
+  friend void swap(MaterialPreviewSessionRequest& a, MaterialPreviewSessionRequest& b) { a.Swap(&b); }
+  inline void Swap(MaterialPreviewSessionRequest* other) {
+    if (other == this) return;
+    if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
+      InternalSwap(other);
+    } else {
+      ::google::protobuf::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(MaterialPreviewSessionRequest* other) {
+    if (other == this) return;
+    ABSL_DCHECK(GetArena() == other->GetArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  MaterialPreviewSessionRequest* New(::google::protobuf::Arena* arena = nullptr) const {
+    return ::google::protobuf::Message::DefaultConstruct<MaterialPreviewSessionRequest>(arena);
+  }
+  using ::google::protobuf::Message::CopyFrom;
+  void CopyFrom(const MaterialPreviewSessionRequest& from);
+  using ::google::protobuf::Message::MergeFrom;
+  void MergeFrom(const MaterialPreviewSessionRequest& from) { MaterialPreviewSessionRequest::MergeImpl(*this, from); }
+
+  private:
+  static void MergeImpl(
+      ::google::protobuf::MessageLite& to_msg,
+      const ::google::protobuf::MessageLite& from_msg);
+
+  public:
+  bool IsInitialized() const {
+    return true;
+  }
+  ABSL_ATTRIBUTE_REINITIALIZES void Clear() PROTOBUF_FINAL;
+  #if defined(PROTOBUF_CUSTOM_VTABLE)
+  private:
+  static ::size_t ByteSizeLong(const ::google::protobuf::MessageLite& msg);
+  static ::uint8_t* _InternalSerialize(
+      const MessageLite& msg, ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream);
+
+  public:
+  ::size_t ByteSizeLong() const { return ByteSizeLong(*this); }
+  ::uint8_t* _InternalSerialize(
+      ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream) const {
+    return _InternalSerialize(*this, target, stream);
+  }
+  #else   // PROTOBUF_CUSTOM_VTABLE
+  ::size_t ByteSizeLong() const final;
+  ::uint8_t* _InternalSerialize(
+      ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream) const final;
+  #endif  // PROTOBUF_CUSTOM_VTABLE
+  int GetCachedSize() const { return _impl_._cached_size_.Get(); }
+
+  private:
+  void SharedCtor(::google::protobuf::Arena* arena);
+  static void SharedDtor(MessageLite& self);
+  void InternalSwap(MaterialPreviewSessionRequest* other);
+ private:
+  template <typename T>
+  friend ::absl::string_view(
+      ::google::protobuf::internal::GetAnyMessageName)();
+  static ::absl::string_view FullMessageName() { return "sailor.editor.v1.MaterialPreviewSessionRequest"; }
+
+ protected:
+  explicit MaterialPreviewSessionRequest(::google::protobuf::Arena* arena);
+  MaterialPreviewSessionRequest(::google::protobuf::Arena* arena, const MaterialPreviewSessionRequest& from);
+  MaterialPreviewSessionRequest(::google::protobuf::Arena* arena, MaterialPreviewSessionRequest&& from) noexcept
+      : MaterialPreviewSessionRequest(arena) {
+    *this = ::std::move(from);
+  }
+  const ::google::protobuf::internal::ClassData* GetClassData() const PROTOBUF_FINAL;
+  static void* PlacementNew_(const void*, void* mem,
+                             ::google::protobuf::Arena* arena);
+  static constexpr auto InternalNewImpl_();
+  static const ::google::protobuf::internal::ClassDataFull _class_data_;
+
+ public:
+  ::google::protobuf::Metadata GetMetadata() const;
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+  enum : int {
+    kSessionIdFieldNumber = 1,
+    kAfterRevisionFieldNumber = 2,
+  };
+  // uint64 session_id = 1;
+  void clear_session_id() ;
+  ::uint64_t session_id() const;
+  void set_session_id(::uint64_t value);
+
+  private:
+  ::uint64_t _internal_session_id() const;
+  void _internal_set_session_id(::uint64_t value);
+
+  public:
+  // uint64 after_revision = 2;
+  void clear_after_revision() ;
+  ::uint64_t after_revision() const;
+  void set_after_revision(::uint64_t value);
+
+  private:
+  ::uint64_t _internal_after_revision() const;
+  void _internal_set_after_revision(::uint64_t value);
+
+  public:
+  // @@protoc_insertion_point(class_scope:sailor.editor.v1.MaterialPreviewSessionRequest)
+ private:
+  class _Internal;
+  friend class ::google::protobuf::internal::TcParser;
+  static const ::google::protobuf::internal::TcParseTable<
+      1, 2, 0,
+      0, 2>
+      _table_;
+
+  friend class ::google::protobuf::MessageLite;
+  friend class ::google::protobuf::Arena;
+  template <typename T>
+  friend class ::google::protobuf::Arena::InternalHelper;
+  using InternalArenaConstructable_ = void;
+  using DestructorSkippable_ = void;
+  struct Impl_ {
+    inline explicit constexpr Impl_(
+        ::google::protobuf::internal::ConstantInitialized) noexcept;
+    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
+                          ::google::protobuf::Arena* arena);
+    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
+                          ::google::protobuf::Arena* arena, const Impl_& from,
+                          const MaterialPreviewSessionRequest& from_msg);
+    ::uint64_t session_id_;
+    ::uint64_t after_revision_;
+    ::google::protobuf::internal::CachedSize _cached_size_;
+    PROTOBUF_TSAN_DECLARE_MEMBER
+  };
+  union { Impl_ _impl_; };
+  friend struct ::TableStruct_editor_5fengine_2eproto;
+};
+// -------------------------------------------------------------------
+
+class MaterialPreviewResult final : public ::google::protobuf::Message
+/* @@protoc_insertion_point(class_definition:sailor.editor.v1.MaterialPreviewResult) */ {
+ public:
+  inline MaterialPreviewResult() : MaterialPreviewResult(nullptr) {}
+  ~MaterialPreviewResult() PROTOBUF_FINAL;
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+  void operator delete(MaterialPreviewResult* msg, std::destroying_delete_t) {
+    SharedDtor(*msg);
+    ::google::protobuf::internal::SizedDelete(msg, sizeof(MaterialPreviewResult));
+  }
+#endif
+
+  template <typename = void>
+  explicit PROTOBUF_CONSTEXPR MaterialPreviewResult(
+      ::google::protobuf::internal::ConstantInitialized);
+
+  inline MaterialPreviewResult(const MaterialPreviewResult& from) : MaterialPreviewResult(nullptr, from) {}
+  inline MaterialPreviewResult(MaterialPreviewResult&& from) noexcept
+      : MaterialPreviewResult(nullptr, std::move(from)) {}
+  inline MaterialPreviewResult& operator=(const MaterialPreviewResult& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline MaterialPreviewResult& operator=(MaterialPreviewResult&& from) noexcept {
+    if (this == &from) return *this;
+    if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance);
+  }
+  inline ::google::protobuf::UnknownFieldSet* mutable_unknown_fields()
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.mutable_unknown_fields<::google::protobuf::UnknownFieldSet>();
+  }
+
+  static const ::google::protobuf::Descriptor* descriptor() {
+    return GetDescriptor();
+  }
+  static const ::google::protobuf::Descriptor* GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  static const ::google::protobuf::Reflection* GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  static const MaterialPreviewResult& default_instance() {
+    return *internal_default_instance();
+  }
+  static inline const MaterialPreviewResult* internal_default_instance() {
+    return reinterpret_cast<const MaterialPreviewResult*>(
+        &_MaterialPreviewResult_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages = 67;
+  friend void swap(MaterialPreviewResult& a, MaterialPreviewResult& b) { a.Swap(&b); }
+  inline void Swap(MaterialPreviewResult* other) {
+    if (other == this) return;
+    if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
+      InternalSwap(other);
+    } else {
+      ::google::protobuf::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(MaterialPreviewResult* other) {
+    if (other == this) return;
+    ABSL_DCHECK(GetArena() == other->GetArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  MaterialPreviewResult* New(::google::protobuf::Arena* arena = nullptr) const {
+    return ::google::protobuf::Message::DefaultConstruct<MaterialPreviewResult>(arena);
+  }
+  using ::google::protobuf::Message::CopyFrom;
+  void CopyFrom(const MaterialPreviewResult& from);
+  using ::google::protobuf::Message::MergeFrom;
+  void MergeFrom(const MaterialPreviewResult& from) { MaterialPreviewResult::MergeImpl(*this, from); }
+
+  private:
+  static void MergeImpl(
+      ::google::protobuf::MessageLite& to_msg,
+      const ::google::protobuf::MessageLite& from_msg);
+
+  public:
+  bool IsInitialized() const {
+    return true;
+  }
+  ABSL_ATTRIBUTE_REINITIALIZES void Clear() PROTOBUF_FINAL;
+  #if defined(PROTOBUF_CUSTOM_VTABLE)
+  private:
+  static ::size_t ByteSizeLong(const ::google::protobuf::MessageLite& msg);
+  static ::uint8_t* _InternalSerialize(
+      const MessageLite& msg, ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream);
+
+  public:
+  ::size_t ByteSizeLong() const { return ByteSizeLong(*this); }
+  ::uint8_t* _InternalSerialize(
+      ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream) const {
+    return _InternalSerialize(*this, target, stream);
+  }
+  #else   // PROTOBUF_CUSTOM_VTABLE
+  ::size_t ByteSizeLong() const final;
+  ::uint8_t* _InternalSerialize(
+      ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream) const final;
+  #endif  // PROTOBUF_CUSTOM_VTABLE
+  int GetCachedSize() const { return _impl_._cached_size_.Get(); }
+
+  private:
+  void SharedCtor(::google::protobuf::Arena* arena);
+  static void SharedDtor(MessageLite& self);
+  void InternalSwap(MaterialPreviewResult* other);
+ private:
+  template <typename T>
+  friend ::absl::string_view(
+      ::google::protobuf::internal::GetAnyMessageName)();
+  static ::absl::string_view FullMessageName() { return "sailor.editor.v1.MaterialPreviewResult"; }
+
+ protected:
+  explicit MaterialPreviewResult(::google::protobuf::Arena* arena);
+  MaterialPreviewResult(::google::protobuf::Arena* arena, const MaterialPreviewResult& from);
+  MaterialPreviewResult(::google::protobuf::Arena* arena, MaterialPreviewResult&& from) noexcept
+      : MaterialPreviewResult(arena) {
+    *this = ::std::move(from);
+  }
+  const ::google::protobuf::internal::ClassData* GetClassData() const PROTOBUF_FINAL;
+  static void* PlacementNew_(const void*, void* mem,
+                             ::google::protobuf::Arena* arena);
+  static constexpr auto InternalNewImpl_();
+  static const ::google::protobuf::internal::ClassDataFull _class_data_;
+
+ public:
+  ::google::protobuf::Metadata GetMetadata() const;
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+  enum : int {
+    kPngFieldNumber = 6,
+    kDiagnosticFieldNumber = 7,
+    kSessionIdFieldNumber = 1,
+    kRevisionFieldNumber = 2,
+    kStateFieldNumber = 3,
+    kWidthFieldNumber = 4,
+    kHeightFieldNumber = 5,
+  };
+  // bytes png = 6;
+  void clear_png() ;
+  const std::string& png() const;
+  template <typename Arg_ = const std::string&, typename... Args_>
+  void set_png(Arg_&& arg, Args_... args);
+  std::string* mutable_png();
+  PROTOBUF_NODISCARD std::string* release_png();
+  void set_allocated_png(std::string* value);
+
+  private:
+  const std::string& _internal_png() const;
+  inline PROTOBUF_ALWAYS_INLINE void _internal_set_png(
+      const std::string& value);
+  std::string* _internal_mutable_png();
+
+  public:
+  // string diagnostic = 7;
+  void clear_diagnostic() ;
+  const std::string& diagnostic() const;
+  template <typename Arg_ = const std::string&, typename... Args_>
+  void set_diagnostic(Arg_&& arg, Args_... args);
+  std::string* mutable_diagnostic();
+  PROTOBUF_NODISCARD std::string* release_diagnostic();
+  void set_allocated_diagnostic(std::string* value);
+
+  private:
+  const std::string& _internal_diagnostic() const;
+  inline PROTOBUF_ALWAYS_INLINE void _internal_set_diagnostic(
+      const std::string& value);
+  std::string* _internal_mutable_diagnostic();
+
+  public:
+  // uint64 session_id = 1;
+  void clear_session_id() ;
+  ::uint64_t session_id() const;
+  void set_session_id(::uint64_t value);
+
+  private:
+  ::uint64_t _internal_session_id() const;
+  void _internal_set_session_id(::uint64_t value);
+
+  public:
+  // uint64 revision = 2;
+  void clear_revision() ;
+  ::uint64_t revision() const;
+  void set_revision(::uint64_t value);
+
+  private:
+  ::uint64_t _internal_revision() const;
+  void _internal_set_revision(::uint64_t value);
+
+  public:
+  // .sailor.editor.v1.MaterialPreviewState state = 3;
+  void clear_state() ;
+  ::sailor::editor::v1::MaterialPreviewState state() const;
+  void set_state(::sailor::editor::v1::MaterialPreviewState value);
+
+  private:
+  ::sailor::editor::v1::MaterialPreviewState _internal_state() const;
+  void _internal_set_state(::sailor::editor::v1::MaterialPreviewState value);
+
+  public:
+  // uint32 width = 4;
+  void clear_width() ;
+  ::uint32_t width() const;
+  void set_width(::uint32_t value);
+
+  private:
+  ::uint32_t _internal_width() const;
+  void _internal_set_width(::uint32_t value);
+
+  public:
+  // uint32 height = 5;
+  void clear_height() ;
+  ::uint32_t height() const;
+  void set_height(::uint32_t value);
+
+  private:
+  ::uint32_t _internal_height() const;
+  void _internal_set_height(::uint32_t value);
+
+  public:
+  // @@protoc_insertion_point(class_scope:sailor.editor.v1.MaterialPreviewResult)
+ private:
+  class _Internal;
+  friend class ::google::protobuf::internal::TcParser;
+  static const ::google::protobuf::internal::TcParseTable<
+      3, 7, 0,
+      57, 2>
+      _table_;
+
+  friend class ::google::protobuf::MessageLite;
+  friend class ::google::protobuf::Arena;
+  template <typename T>
+  friend class ::google::protobuf::Arena::InternalHelper;
+  using InternalArenaConstructable_ = void;
+  using DestructorSkippable_ = void;
+  struct Impl_ {
+    inline explicit constexpr Impl_(
+        ::google::protobuf::internal::ConstantInitialized) noexcept;
+    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
+                          ::google::protobuf::Arena* arena);
+    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
+                          ::google::protobuf::Arena* arena, const Impl_& from,
+                          const MaterialPreviewResult& from_msg);
+    ::google::protobuf::internal::ArenaStringPtr png_;
+    ::google::protobuf::internal::ArenaStringPtr diagnostic_;
+    ::uint64_t session_id_;
+    ::uint64_t revision_;
+    int state_;
+    ::uint32_t width_;
+    ::uint32_t height_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
@@ -15037,6 +15885,9 @@ class ProtocolRequest final : public ::google::protobuf::Message
     kCaptureRemoteViewportFrameEvidence = 77,
     kRequestModelFingerprint = 100,
     kGetModelFingerprintStatus = 101,
+    kUpdateMaterialPreview = 102,
+    kGetMaterialPreview = 103,
+    kCloseMaterialPreview = 104,
     COMMAND_NOT_SET = 0,
   };
   static inline const ProtocolRequest* internal_default_instance() {
@@ -15200,6 +16051,9 @@ class ProtocolRequest final : public ::google::protobuf::Message
     kCaptureRemoteViewportFrameEvidenceFieldNumber = 77,
     kRequestModelFingerprintFieldNumber = 100,
     kGetModelFingerprintStatusFieldNumber = 101,
+    kUpdateMaterialPreviewFieldNumber = 102,
+    kGetMaterialPreviewFieldNumber = 103,
+    kCloseMaterialPreviewFieldNumber = 104,
   };
   // uint64 request_id = 2;
   void clear_request_id() ;
@@ -16513,6 +17367,63 @@ class ProtocolRequest final : public ::google::protobuf::Message
   ::sailor::editor::v1::FileIdRequest* _internal_mutable_get_model_fingerprint_status();
 
   public:
+  // .sailor.editor.v1.UpdateMaterialPreviewRequest update_material_preview = 102;
+  bool has_update_material_preview() const;
+  private:
+  bool _internal_has_update_material_preview() const;
+
+  public:
+  void clear_update_material_preview() ;
+  const ::sailor::editor::v1::UpdateMaterialPreviewRequest& update_material_preview() const;
+  PROTOBUF_NODISCARD ::sailor::editor::v1::UpdateMaterialPreviewRequest* release_update_material_preview();
+  ::sailor::editor::v1::UpdateMaterialPreviewRequest* mutable_update_material_preview();
+  void set_allocated_update_material_preview(::sailor::editor::v1::UpdateMaterialPreviewRequest* value);
+  void unsafe_arena_set_allocated_update_material_preview(::sailor::editor::v1::UpdateMaterialPreviewRequest* value);
+  ::sailor::editor::v1::UpdateMaterialPreviewRequest* unsafe_arena_release_update_material_preview();
+
+  private:
+  const ::sailor::editor::v1::UpdateMaterialPreviewRequest& _internal_update_material_preview() const;
+  ::sailor::editor::v1::UpdateMaterialPreviewRequest* _internal_mutable_update_material_preview();
+
+  public:
+  // .sailor.editor.v1.MaterialPreviewSessionRequest get_material_preview = 103;
+  bool has_get_material_preview() const;
+  private:
+  bool _internal_has_get_material_preview() const;
+
+  public:
+  void clear_get_material_preview() ;
+  const ::sailor::editor::v1::MaterialPreviewSessionRequest& get_material_preview() const;
+  PROTOBUF_NODISCARD ::sailor::editor::v1::MaterialPreviewSessionRequest* release_get_material_preview();
+  ::sailor::editor::v1::MaterialPreviewSessionRequest* mutable_get_material_preview();
+  void set_allocated_get_material_preview(::sailor::editor::v1::MaterialPreviewSessionRequest* value);
+  void unsafe_arena_set_allocated_get_material_preview(::sailor::editor::v1::MaterialPreviewSessionRequest* value);
+  ::sailor::editor::v1::MaterialPreviewSessionRequest* unsafe_arena_release_get_material_preview();
+
+  private:
+  const ::sailor::editor::v1::MaterialPreviewSessionRequest& _internal_get_material_preview() const;
+  ::sailor::editor::v1::MaterialPreviewSessionRequest* _internal_mutable_get_material_preview();
+
+  public:
+  // .sailor.editor.v1.MaterialPreviewSessionRequest close_material_preview = 104;
+  bool has_close_material_preview() const;
+  private:
+  bool _internal_has_close_material_preview() const;
+
+  public:
+  void clear_close_material_preview() ;
+  const ::sailor::editor::v1::MaterialPreviewSessionRequest& close_material_preview() const;
+  PROTOBUF_NODISCARD ::sailor::editor::v1::MaterialPreviewSessionRequest* release_close_material_preview();
+  ::sailor::editor::v1::MaterialPreviewSessionRequest* mutable_close_material_preview();
+  void set_allocated_close_material_preview(::sailor::editor::v1::MaterialPreviewSessionRequest* value);
+  void unsafe_arena_set_allocated_close_material_preview(::sailor::editor::v1::MaterialPreviewSessionRequest* value);
+  ::sailor::editor::v1::MaterialPreviewSessionRequest* unsafe_arena_release_close_material_preview();
+
+  private:
+  const ::sailor::editor::v1::MaterialPreviewSessionRequest& _internal_close_material_preview() const;
+  ::sailor::editor::v1::MaterialPreviewSessionRequest* _internal_mutable_close_material_preview();
+
+  public:
   void clear_command();
   CommandCase command_case() const;
   // @@protoc_insertion_point(class_scope:sailor.editor.v1.ProtocolRequest)
@@ -16586,11 +17497,14 @@ class ProtocolRequest final : public ::google::protobuf::Message
   void set_has_capture_remote_viewport_frame_evidence();
   void set_has_request_model_fingerprint();
   void set_has_get_model_fingerprint_status();
+  void set_has_update_material_preview();
+  void set_has_get_material_preview();
+  void set_has_close_material_preview();
   inline bool has_command() const;
   inline void clear_has_command();
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      1, 70, 68,
+      1, 73, 71,
       0, 15>
       _table_;
 
@@ -16681,6 +17595,9 @@ class ProtocolRequest final : public ::google::protobuf::Message
       ::sailor::editor::v1::ViewportIdRequest* capture_remote_viewport_frame_evidence_;
       ::sailor::editor::v1::FileIdRequest* request_model_fingerprint_;
       ::sailor::editor::v1::FileIdRequest* get_model_fingerprint_status_;
+      ::sailor::editor::v1::UpdateMaterialPreviewRequest* update_material_preview_;
+      ::sailor::editor::v1::MaterialPreviewSessionRequest* get_material_preview_;
+      ::sailor::editor::v1::MaterialPreviewSessionRequest* close_material_preview_;
     } command_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     ::uint32_t _oneof_case_[1];
@@ -16961,6 +17878,7 @@ class ProtocolResponse final : public ::google::protobuf::Message
     kGiProbesBakeStatusResult = 24,
     kGlobalIlluminationStateResult = 25,
     kModelFingerprintStatusResult = 100,
+    kMaterialPreviewResult = 101,
     RESULT_NOT_SET = 0,
   };
   static inline const ProtocolResponse* internal_default_instance() {
@@ -17076,6 +17994,7 @@ class ProtocolResponse final : public ::google::protobuf::Message
     kGiProbesBakeStatusResultFieldNumber = 24,
     kGlobalIlluminationStateResultFieldNumber = 25,
     kModelFingerprintStatusResultFieldNumber = 100,
+    kMaterialPreviewResultFieldNumber = 101,
   };
   // string error = 4;
   void clear_error() ;
@@ -17456,6 +18375,25 @@ class ProtocolResponse final : public ::google::protobuf::Message
   ::sailor::editor::v1::ModelFingerprintStatusResult* _internal_mutable_model_fingerprint_status_result();
 
   public:
+  // .sailor.editor.v1.MaterialPreviewResult material_preview_result = 101;
+  bool has_material_preview_result() const;
+  private:
+  bool _internal_has_material_preview_result() const;
+
+  public:
+  void clear_material_preview_result() ;
+  const ::sailor::editor::v1::MaterialPreviewResult& material_preview_result() const;
+  PROTOBUF_NODISCARD ::sailor::editor::v1::MaterialPreviewResult* release_material_preview_result();
+  ::sailor::editor::v1::MaterialPreviewResult* mutable_material_preview_result();
+  void set_allocated_material_preview_result(::sailor::editor::v1::MaterialPreviewResult* value);
+  void unsafe_arena_set_allocated_material_preview_result(::sailor::editor::v1::MaterialPreviewResult* value);
+  ::sailor::editor::v1::MaterialPreviewResult* unsafe_arena_release_material_preview_result();
+
+  private:
+  const ::sailor::editor::v1::MaterialPreviewResult& _internal_material_preview_result() const;
+  ::sailor::editor::v1::MaterialPreviewResult* _internal_mutable_material_preview_result();
+
+  public:
   void clear_result();
   ResultCase result_case() const;
   // @@protoc_insertion_point(class_scope:sailor.editor.v1.ProtocolResponse)
@@ -17478,11 +18416,12 @@ class ProtocolResponse final : public ::google::protobuf::Message
   void set_has_gi_probes_bake_status_result();
   void set_has_global_illumination_state_result();
   void set_has_model_fingerprint_status_result();
+  void set_has_material_preview_result();
   inline bool has_result() const;
   inline void clear_has_result();
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      3, 22, 17,
+      3, 23, 18,
       63, 7>
       _table_;
 
@@ -17525,6 +18464,7 @@ class ProtocolResponse final : public ::google::protobuf::Message
       ::sailor::editor::v1::GIProbesBakeStatusResult* gi_probes_bake_status_result_;
       ::sailor::editor::v1::GlobalIlluminationStateResult* global_illumination_state_result_;
       ::sailor::editor::v1::ModelFingerprintStatusResult* model_fingerprint_status_result_;
+      ::sailor::editor::v1::MaterialPreviewResult* material_preview_result_;
     } result_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     ::uint32_t _oneof_case_[1];
@@ -22970,6 +23910,243 @@ inline ::sailor::editor::v1::FileIdRequest* ProtocolRequest::mutable_get_model_f
   return _msg;
 }
 
+// .sailor.editor.v1.UpdateMaterialPreviewRequest update_material_preview = 102;
+inline bool ProtocolRequest::has_update_material_preview() const {
+  return command_case() == kUpdateMaterialPreview;
+}
+inline bool ProtocolRequest::_internal_has_update_material_preview() const {
+  return command_case() == kUpdateMaterialPreview;
+}
+inline void ProtocolRequest::set_has_update_material_preview() {
+  _impl_._oneof_case_[0] = kUpdateMaterialPreview;
+}
+inline void ProtocolRequest::clear_update_material_preview() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (command_case() == kUpdateMaterialPreview) {
+    if (GetArena() == nullptr) {
+      delete _impl_.command_.update_material_preview_;
+    } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
+      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.command_.update_material_preview_);
+    }
+    clear_has_command();
+  }
+}
+inline ::sailor::editor::v1::UpdateMaterialPreviewRequest* ProtocolRequest::release_update_material_preview() {
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.ProtocolRequest.update_material_preview)
+  if (command_case() == kUpdateMaterialPreview) {
+    clear_has_command();
+    auto* temp = _impl_.command_.update_material_preview_;
+    if (GetArena() != nullptr) {
+      temp = ::google::protobuf::internal::DuplicateIfNonNull(temp);
+    }
+    _impl_.command_.update_material_preview_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline const ::sailor::editor::v1::UpdateMaterialPreviewRequest& ProtocolRequest::_internal_update_material_preview() const {
+  return command_case() == kUpdateMaterialPreview ? *_impl_.command_.update_material_preview_ : reinterpret_cast<::sailor::editor::v1::UpdateMaterialPreviewRequest&>(::sailor::editor::v1::_UpdateMaterialPreviewRequest_default_instance_);
+}
+inline const ::sailor::editor::v1::UpdateMaterialPreviewRequest& ProtocolRequest::update_material_preview() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ProtocolRequest.update_material_preview)
+  return _internal_update_material_preview();
+}
+inline ::sailor::editor::v1::UpdateMaterialPreviewRequest* ProtocolRequest::unsafe_arena_release_update_material_preview() {
+  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.ProtocolRequest.update_material_preview)
+  if (command_case() == kUpdateMaterialPreview) {
+    clear_has_command();
+    auto* temp = _impl_.command_.update_material_preview_;
+    _impl_.command_.update_material_preview_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline void ProtocolRequest::unsafe_arena_set_allocated_update_material_preview(::sailor::editor::v1::UpdateMaterialPreviewRequest* value) {
+  // We rely on the oneof clear method to free the earlier contents
+  // of this oneof. We can directly use the pointer we're given to
+  // set the new value.
+  clear_command();
+  if (value) {
+    set_has_update_material_preview();
+    _impl_.command_.update_material_preview_ = value;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ProtocolRequest.update_material_preview)
+}
+inline ::sailor::editor::v1::UpdateMaterialPreviewRequest* ProtocolRequest::_internal_mutable_update_material_preview() {
+  if (command_case() != kUpdateMaterialPreview) {
+    clear_command();
+    set_has_update_material_preview();
+    _impl_.command_.update_material_preview_ =
+        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::UpdateMaterialPreviewRequest>(GetArena());
+  }
+  return _impl_.command_.update_material_preview_;
+}
+inline ::sailor::editor::v1::UpdateMaterialPreviewRequest* ProtocolRequest::mutable_update_material_preview() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::sailor::editor::v1::UpdateMaterialPreviewRequest* _msg = _internal_mutable_update_material_preview();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolRequest.update_material_preview)
+  return _msg;
+}
+
+// .sailor.editor.v1.MaterialPreviewSessionRequest get_material_preview = 103;
+inline bool ProtocolRequest::has_get_material_preview() const {
+  return command_case() == kGetMaterialPreview;
+}
+inline bool ProtocolRequest::_internal_has_get_material_preview() const {
+  return command_case() == kGetMaterialPreview;
+}
+inline void ProtocolRequest::set_has_get_material_preview() {
+  _impl_._oneof_case_[0] = kGetMaterialPreview;
+}
+inline void ProtocolRequest::clear_get_material_preview() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (command_case() == kGetMaterialPreview) {
+    if (GetArena() == nullptr) {
+      delete _impl_.command_.get_material_preview_;
+    } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
+      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.command_.get_material_preview_);
+    }
+    clear_has_command();
+  }
+}
+inline ::sailor::editor::v1::MaterialPreviewSessionRequest* ProtocolRequest::release_get_material_preview() {
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.ProtocolRequest.get_material_preview)
+  if (command_case() == kGetMaterialPreview) {
+    clear_has_command();
+    auto* temp = _impl_.command_.get_material_preview_;
+    if (GetArena() != nullptr) {
+      temp = ::google::protobuf::internal::DuplicateIfNonNull(temp);
+    }
+    _impl_.command_.get_material_preview_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline const ::sailor::editor::v1::MaterialPreviewSessionRequest& ProtocolRequest::_internal_get_material_preview() const {
+  return command_case() == kGetMaterialPreview ? *_impl_.command_.get_material_preview_ : reinterpret_cast<::sailor::editor::v1::MaterialPreviewSessionRequest&>(::sailor::editor::v1::_MaterialPreviewSessionRequest_default_instance_);
+}
+inline const ::sailor::editor::v1::MaterialPreviewSessionRequest& ProtocolRequest::get_material_preview() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ProtocolRequest.get_material_preview)
+  return _internal_get_material_preview();
+}
+inline ::sailor::editor::v1::MaterialPreviewSessionRequest* ProtocolRequest::unsafe_arena_release_get_material_preview() {
+  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.ProtocolRequest.get_material_preview)
+  if (command_case() == kGetMaterialPreview) {
+    clear_has_command();
+    auto* temp = _impl_.command_.get_material_preview_;
+    _impl_.command_.get_material_preview_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline void ProtocolRequest::unsafe_arena_set_allocated_get_material_preview(::sailor::editor::v1::MaterialPreviewSessionRequest* value) {
+  // We rely on the oneof clear method to free the earlier contents
+  // of this oneof. We can directly use the pointer we're given to
+  // set the new value.
+  clear_command();
+  if (value) {
+    set_has_get_material_preview();
+    _impl_.command_.get_material_preview_ = value;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ProtocolRequest.get_material_preview)
+}
+inline ::sailor::editor::v1::MaterialPreviewSessionRequest* ProtocolRequest::_internal_mutable_get_material_preview() {
+  if (command_case() != kGetMaterialPreview) {
+    clear_command();
+    set_has_get_material_preview();
+    _impl_.command_.get_material_preview_ =
+        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::MaterialPreviewSessionRequest>(GetArena());
+  }
+  return _impl_.command_.get_material_preview_;
+}
+inline ::sailor::editor::v1::MaterialPreviewSessionRequest* ProtocolRequest::mutable_get_material_preview() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::sailor::editor::v1::MaterialPreviewSessionRequest* _msg = _internal_mutable_get_material_preview();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolRequest.get_material_preview)
+  return _msg;
+}
+
+// .sailor.editor.v1.MaterialPreviewSessionRequest close_material_preview = 104;
+inline bool ProtocolRequest::has_close_material_preview() const {
+  return command_case() == kCloseMaterialPreview;
+}
+inline bool ProtocolRequest::_internal_has_close_material_preview() const {
+  return command_case() == kCloseMaterialPreview;
+}
+inline void ProtocolRequest::set_has_close_material_preview() {
+  _impl_._oneof_case_[0] = kCloseMaterialPreview;
+}
+inline void ProtocolRequest::clear_close_material_preview() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (command_case() == kCloseMaterialPreview) {
+    if (GetArena() == nullptr) {
+      delete _impl_.command_.close_material_preview_;
+    } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
+      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.command_.close_material_preview_);
+    }
+    clear_has_command();
+  }
+}
+inline ::sailor::editor::v1::MaterialPreviewSessionRequest* ProtocolRequest::release_close_material_preview() {
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.ProtocolRequest.close_material_preview)
+  if (command_case() == kCloseMaterialPreview) {
+    clear_has_command();
+    auto* temp = _impl_.command_.close_material_preview_;
+    if (GetArena() != nullptr) {
+      temp = ::google::protobuf::internal::DuplicateIfNonNull(temp);
+    }
+    _impl_.command_.close_material_preview_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline const ::sailor::editor::v1::MaterialPreviewSessionRequest& ProtocolRequest::_internal_close_material_preview() const {
+  return command_case() == kCloseMaterialPreview ? *_impl_.command_.close_material_preview_ : reinterpret_cast<::sailor::editor::v1::MaterialPreviewSessionRequest&>(::sailor::editor::v1::_MaterialPreviewSessionRequest_default_instance_);
+}
+inline const ::sailor::editor::v1::MaterialPreviewSessionRequest& ProtocolRequest::close_material_preview() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ProtocolRequest.close_material_preview)
+  return _internal_close_material_preview();
+}
+inline ::sailor::editor::v1::MaterialPreviewSessionRequest* ProtocolRequest::unsafe_arena_release_close_material_preview() {
+  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.ProtocolRequest.close_material_preview)
+  if (command_case() == kCloseMaterialPreview) {
+    clear_has_command();
+    auto* temp = _impl_.command_.close_material_preview_;
+    _impl_.command_.close_material_preview_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline void ProtocolRequest::unsafe_arena_set_allocated_close_material_preview(::sailor::editor::v1::MaterialPreviewSessionRequest* value) {
+  // We rely on the oneof clear method to free the earlier contents
+  // of this oneof. We can directly use the pointer we're given to
+  // set the new value.
+  clear_command();
+  if (value) {
+    set_has_close_material_preview();
+    _impl_.command_.close_material_preview_ = value;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ProtocolRequest.close_material_preview)
+}
+inline ::sailor::editor::v1::MaterialPreviewSessionRequest* ProtocolRequest::_internal_mutable_close_material_preview() {
+  if (command_case() != kCloseMaterialPreview) {
+    clear_command();
+    set_has_close_material_preview();
+    _impl_.command_.close_material_preview_ =
+        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::MaterialPreviewSessionRequest>(GetArena());
+  }
+  return _impl_.command_.close_material_preview_;
+}
+inline ::sailor::editor::v1::MaterialPreviewSessionRequest* ProtocolRequest::mutable_close_material_preview() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::sailor::editor::v1::MaterialPreviewSessionRequest* _msg = _internal_mutable_close_material_preview();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolRequest.close_material_preview)
+  return _msg;
+}
+
 inline bool ProtocolRequest::has_command() const {
   return command_case() != COMMAND_NOT_SET;
 }
@@ -24459,6 +25636,85 @@ inline ::sailor::editor::v1::ModelFingerprintStatusResult* ProtocolResponse::_in
 inline ::sailor::editor::v1::ModelFingerprintStatusResult* ProtocolResponse::mutable_model_fingerprint_status_result() ABSL_ATTRIBUTE_LIFETIME_BOUND {
   ::sailor::editor::v1::ModelFingerprintStatusResult* _msg = _internal_mutable_model_fingerprint_status_result();
   // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolResponse.model_fingerprint_status_result)
+  return _msg;
+}
+
+// .sailor.editor.v1.MaterialPreviewResult material_preview_result = 101;
+inline bool ProtocolResponse::has_material_preview_result() const {
+  return result_case() == kMaterialPreviewResult;
+}
+inline bool ProtocolResponse::_internal_has_material_preview_result() const {
+  return result_case() == kMaterialPreviewResult;
+}
+inline void ProtocolResponse::set_has_material_preview_result() {
+  _impl_._oneof_case_[0] = kMaterialPreviewResult;
+}
+inline void ProtocolResponse::clear_material_preview_result() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (result_case() == kMaterialPreviewResult) {
+    if (GetArena() == nullptr) {
+      delete _impl_.result_.material_preview_result_;
+    } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
+      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.result_.material_preview_result_);
+    }
+    clear_has_result();
+  }
+}
+inline ::sailor::editor::v1::MaterialPreviewResult* ProtocolResponse::release_material_preview_result() {
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.ProtocolResponse.material_preview_result)
+  if (result_case() == kMaterialPreviewResult) {
+    clear_has_result();
+    auto* temp = _impl_.result_.material_preview_result_;
+    if (GetArena() != nullptr) {
+      temp = ::google::protobuf::internal::DuplicateIfNonNull(temp);
+    }
+    _impl_.result_.material_preview_result_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline const ::sailor::editor::v1::MaterialPreviewResult& ProtocolResponse::_internal_material_preview_result() const {
+  return result_case() == kMaterialPreviewResult ? *_impl_.result_.material_preview_result_ : reinterpret_cast<::sailor::editor::v1::MaterialPreviewResult&>(::sailor::editor::v1::_MaterialPreviewResult_default_instance_);
+}
+inline const ::sailor::editor::v1::MaterialPreviewResult& ProtocolResponse::material_preview_result() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ProtocolResponse.material_preview_result)
+  return _internal_material_preview_result();
+}
+inline ::sailor::editor::v1::MaterialPreviewResult* ProtocolResponse::unsafe_arena_release_material_preview_result() {
+  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.ProtocolResponse.material_preview_result)
+  if (result_case() == kMaterialPreviewResult) {
+    clear_has_result();
+    auto* temp = _impl_.result_.material_preview_result_;
+    _impl_.result_.material_preview_result_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline void ProtocolResponse::unsafe_arena_set_allocated_material_preview_result(::sailor::editor::v1::MaterialPreviewResult* value) {
+  // We rely on the oneof clear method to free the earlier contents
+  // of this oneof. We can directly use the pointer we're given to
+  // set the new value.
+  clear_result();
+  if (value) {
+    set_has_material_preview_result();
+    _impl_.result_.material_preview_result_ = value;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ProtocolResponse.material_preview_result)
+}
+inline ::sailor::editor::v1::MaterialPreviewResult* ProtocolResponse::_internal_mutable_material_preview_result() {
+  if (result_case() != kMaterialPreviewResult) {
+    clear_result();
+    set_has_material_preview_result();
+    _impl_.result_.material_preview_result_ =
+        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::MaterialPreviewResult>(GetArena());
+  }
+  return _impl_.result_.material_preview_result_;
+}
+inline ::sailor::editor::v1::MaterialPreviewResult* ProtocolResponse::mutable_material_preview_result() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::sailor::editor::v1::MaterialPreviewResult* _msg = _internal_mutable_material_preview_result();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolResponse.material_preview_result)
   return _msg;
 }
 
@@ -32691,6 +33947,492 @@ inline void ModelFingerprintStatusResult::_internal_set_status(::sailor::editor:
   _impl_.status_ = value;
 }
 
+// -------------------------------------------------------------------
+
+// UpdateMaterialPreviewRequest
+
+// uint64 session_id = 1;
+inline void UpdateMaterialPreviewRequest::clear_session_id() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.session_id_ = ::uint64_t{0u};
+}
+inline ::uint64_t UpdateMaterialPreviewRequest::session_id() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.UpdateMaterialPreviewRequest.session_id)
+  return _internal_session_id();
+}
+inline void UpdateMaterialPreviewRequest::set_session_id(::uint64_t value) {
+  _internal_set_session_id(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.UpdateMaterialPreviewRequest.session_id)
+}
+inline ::uint64_t UpdateMaterialPreviewRequest::_internal_session_id() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.session_id_;
+}
+inline void UpdateMaterialPreviewRequest::_internal_set_session_id(::uint64_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.session_id_ = value;
+}
+
+// uint64 revision = 2;
+inline void UpdateMaterialPreviewRequest::clear_revision() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.revision_ = ::uint64_t{0u};
+}
+inline ::uint64_t UpdateMaterialPreviewRequest::revision() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.UpdateMaterialPreviewRequest.revision)
+  return _internal_revision();
+}
+inline void UpdateMaterialPreviewRequest::set_revision(::uint64_t value) {
+  _internal_set_revision(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.UpdateMaterialPreviewRequest.revision)
+}
+inline ::uint64_t UpdateMaterialPreviewRequest::_internal_revision() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.revision_;
+}
+inline void UpdateMaterialPreviewRequest::_internal_set_revision(::uint64_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.revision_ = value;
+}
+
+// string material_yaml = 3;
+inline void UpdateMaterialPreviewRequest::clear_material_yaml() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.material_yaml_.ClearToEmpty();
+}
+inline const std::string& UpdateMaterialPreviewRequest::material_yaml() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.UpdateMaterialPreviewRequest.material_yaml)
+  return _internal_material_yaml();
+}
+template <typename Arg_, typename... Args_>
+inline PROTOBUF_ALWAYS_INLINE void UpdateMaterialPreviewRequest::set_material_yaml(Arg_&& arg,
+                                                     Args_... args) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.material_yaml_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.UpdateMaterialPreviewRequest.material_yaml)
+}
+inline std::string* UpdateMaterialPreviewRequest::mutable_material_yaml() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  std::string* _s = _internal_mutable_material_yaml();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.UpdateMaterialPreviewRequest.material_yaml)
+  return _s;
+}
+inline const std::string& UpdateMaterialPreviewRequest::_internal_material_yaml() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.material_yaml_.Get();
+}
+inline void UpdateMaterialPreviewRequest::_internal_set_material_yaml(const std::string& value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.material_yaml_.Set(value, GetArena());
+}
+inline std::string* UpdateMaterialPreviewRequest::_internal_mutable_material_yaml() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _impl_.material_yaml_.Mutable( GetArena());
+}
+inline std::string* UpdateMaterialPreviewRequest::release_material_yaml() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.UpdateMaterialPreviewRequest.material_yaml)
+  return _impl_.material_yaml_.Release();
+}
+inline void UpdateMaterialPreviewRequest::set_allocated_material_yaml(std::string* value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.material_yaml_.SetAllocated(value, GetArena());
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.material_yaml_.IsDefault()) {
+    _impl_.material_yaml_.Set("", GetArena());
+  }
+  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.UpdateMaterialPreviewRequest.material_yaml)
+}
+
+// .sailor.editor.v1.MaterialPreviewPrimitive primitive = 4;
+inline void UpdateMaterialPreviewRequest::clear_primitive() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.primitive_ = 0;
+}
+inline ::sailor::editor::v1::MaterialPreviewPrimitive UpdateMaterialPreviewRequest::primitive() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.UpdateMaterialPreviewRequest.primitive)
+  return _internal_primitive();
+}
+inline void UpdateMaterialPreviewRequest::set_primitive(::sailor::editor::v1::MaterialPreviewPrimitive value) {
+  _internal_set_primitive(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.UpdateMaterialPreviewRequest.primitive)
+}
+inline ::sailor::editor::v1::MaterialPreviewPrimitive UpdateMaterialPreviewRequest::_internal_primitive() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return static_cast<::sailor::editor::v1::MaterialPreviewPrimitive>(_impl_.primitive_);
+}
+inline void UpdateMaterialPreviewRequest::_internal_set_primitive(::sailor::editor::v1::MaterialPreviewPrimitive value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.primitive_ = value;
+}
+
+// float yaw = 5;
+inline void UpdateMaterialPreviewRequest::clear_yaw() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.yaw_ = 0;
+}
+inline float UpdateMaterialPreviewRequest::yaw() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.UpdateMaterialPreviewRequest.yaw)
+  return _internal_yaw();
+}
+inline void UpdateMaterialPreviewRequest::set_yaw(float value) {
+  _internal_set_yaw(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.UpdateMaterialPreviewRequest.yaw)
+}
+inline float UpdateMaterialPreviewRequest::_internal_yaw() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.yaw_;
+}
+inline void UpdateMaterialPreviewRequest::_internal_set_yaw(float value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.yaw_ = value;
+}
+
+// float pitch = 6;
+inline void UpdateMaterialPreviewRequest::clear_pitch() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.pitch_ = 0;
+}
+inline float UpdateMaterialPreviewRequest::pitch() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.UpdateMaterialPreviewRequest.pitch)
+  return _internal_pitch();
+}
+inline void UpdateMaterialPreviewRequest::set_pitch(float value) {
+  _internal_set_pitch(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.UpdateMaterialPreviewRequest.pitch)
+}
+inline float UpdateMaterialPreviewRequest::_internal_pitch() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.pitch_;
+}
+inline void UpdateMaterialPreviewRequest::_internal_set_pitch(float value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.pitch_ = value;
+}
+
+// float distance = 7;
+inline void UpdateMaterialPreviewRequest::clear_distance() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.distance_ = 0;
+}
+inline float UpdateMaterialPreviewRequest::distance() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.UpdateMaterialPreviewRequest.distance)
+  return _internal_distance();
+}
+inline void UpdateMaterialPreviewRequest::set_distance(float value) {
+  _internal_set_distance(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.UpdateMaterialPreviewRequest.distance)
+}
+inline float UpdateMaterialPreviewRequest::_internal_distance() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.distance_;
+}
+inline void UpdateMaterialPreviewRequest::_internal_set_distance(float value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.distance_ = value;
+}
+
+// uint32 width = 8;
+inline void UpdateMaterialPreviewRequest::clear_width() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.width_ = 0u;
+}
+inline ::uint32_t UpdateMaterialPreviewRequest::width() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.UpdateMaterialPreviewRequest.width)
+  return _internal_width();
+}
+inline void UpdateMaterialPreviewRequest::set_width(::uint32_t value) {
+  _internal_set_width(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.UpdateMaterialPreviewRequest.width)
+}
+inline ::uint32_t UpdateMaterialPreviewRequest::_internal_width() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.width_;
+}
+inline void UpdateMaterialPreviewRequest::_internal_set_width(::uint32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.width_ = value;
+}
+
+// uint32 height = 9;
+inline void UpdateMaterialPreviewRequest::clear_height() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.height_ = 0u;
+}
+inline ::uint32_t UpdateMaterialPreviewRequest::height() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.UpdateMaterialPreviewRequest.height)
+  return _internal_height();
+}
+inline void UpdateMaterialPreviewRequest::set_height(::uint32_t value) {
+  _internal_set_height(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.UpdateMaterialPreviewRequest.height)
+}
+inline ::uint32_t UpdateMaterialPreviewRequest::_internal_height() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.height_;
+}
+inline void UpdateMaterialPreviewRequest::_internal_set_height(::uint32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.height_ = value;
+}
+
+// -------------------------------------------------------------------
+
+// MaterialPreviewSessionRequest
+
+// uint64 session_id = 1;
+inline void MaterialPreviewSessionRequest::clear_session_id() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.session_id_ = ::uint64_t{0u};
+}
+inline ::uint64_t MaterialPreviewSessionRequest::session_id() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.MaterialPreviewSessionRequest.session_id)
+  return _internal_session_id();
+}
+inline void MaterialPreviewSessionRequest::set_session_id(::uint64_t value) {
+  _internal_set_session_id(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.MaterialPreviewSessionRequest.session_id)
+}
+inline ::uint64_t MaterialPreviewSessionRequest::_internal_session_id() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.session_id_;
+}
+inline void MaterialPreviewSessionRequest::_internal_set_session_id(::uint64_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.session_id_ = value;
+}
+
+// uint64 after_revision = 2;
+inline void MaterialPreviewSessionRequest::clear_after_revision() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.after_revision_ = ::uint64_t{0u};
+}
+inline ::uint64_t MaterialPreviewSessionRequest::after_revision() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.MaterialPreviewSessionRequest.after_revision)
+  return _internal_after_revision();
+}
+inline void MaterialPreviewSessionRequest::set_after_revision(::uint64_t value) {
+  _internal_set_after_revision(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.MaterialPreviewSessionRequest.after_revision)
+}
+inline ::uint64_t MaterialPreviewSessionRequest::_internal_after_revision() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.after_revision_;
+}
+inline void MaterialPreviewSessionRequest::_internal_set_after_revision(::uint64_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.after_revision_ = value;
+}
+
+// -------------------------------------------------------------------
+
+// MaterialPreviewResult
+
+// uint64 session_id = 1;
+inline void MaterialPreviewResult::clear_session_id() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.session_id_ = ::uint64_t{0u};
+}
+inline ::uint64_t MaterialPreviewResult::session_id() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.MaterialPreviewResult.session_id)
+  return _internal_session_id();
+}
+inline void MaterialPreviewResult::set_session_id(::uint64_t value) {
+  _internal_set_session_id(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.MaterialPreviewResult.session_id)
+}
+inline ::uint64_t MaterialPreviewResult::_internal_session_id() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.session_id_;
+}
+inline void MaterialPreviewResult::_internal_set_session_id(::uint64_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.session_id_ = value;
+}
+
+// uint64 revision = 2;
+inline void MaterialPreviewResult::clear_revision() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.revision_ = ::uint64_t{0u};
+}
+inline ::uint64_t MaterialPreviewResult::revision() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.MaterialPreviewResult.revision)
+  return _internal_revision();
+}
+inline void MaterialPreviewResult::set_revision(::uint64_t value) {
+  _internal_set_revision(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.MaterialPreviewResult.revision)
+}
+inline ::uint64_t MaterialPreviewResult::_internal_revision() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.revision_;
+}
+inline void MaterialPreviewResult::_internal_set_revision(::uint64_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.revision_ = value;
+}
+
+// .sailor.editor.v1.MaterialPreviewState state = 3;
+inline void MaterialPreviewResult::clear_state() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.state_ = 0;
+}
+inline ::sailor::editor::v1::MaterialPreviewState MaterialPreviewResult::state() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.MaterialPreviewResult.state)
+  return _internal_state();
+}
+inline void MaterialPreviewResult::set_state(::sailor::editor::v1::MaterialPreviewState value) {
+  _internal_set_state(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.MaterialPreviewResult.state)
+}
+inline ::sailor::editor::v1::MaterialPreviewState MaterialPreviewResult::_internal_state() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return static_cast<::sailor::editor::v1::MaterialPreviewState>(_impl_.state_);
+}
+inline void MaterialPreviewResult::_internal_set_state(::sailor::editor::v1::MaterialPreviewState value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.state_ = value;
+}
+
+// uint32 width = 4;
+inline void MaterialPreviewResult::clear_width() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.width_ = 0u;
+}
+inline ::uint32_t MaterialPreviewResult::width() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.MaterialPreviewResult.width)
+  return _internal_width();
+}
+inline void MaterialPreviewResult::set_width(::uint32_t value) {
+  _internal_set_width(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.MaterialPreviewResult.width)
+}
+inline ::uint32_t MaterialPreviewResult::_internal_width() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.width_;
+}
+inline void MaterialPreviewResult::_internal_set_width(::uint32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.width_ = value;
+}
+
+// uint32 height = 5;
+inline void MaterialPreviewResult::clear_height() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.height_ = 0u;
+}
+inline ::uint32_t MaterialPreviewResult::height() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.MaterialPreviewResult.height)
+  return _internal_height();
+}
+inline void MaterialPreviewResult::set_height(::uint32_t value) {
+  _internal_set_height(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.MaterialPreviewResult.height)
+}
+inline ::uint32_t MaterialPreviewResult::_internal_height() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.height_;
+}
+inline void MaterialPreviewResult::_internal_set_height(::uint32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.height_ = value;
+}
+
+// bytes png = 6;
+inline void MaterialPreviewResult::clear_png() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.png_.ClearToEmpty();
+}
+inline const std::string& MaterialPreviewResult::png() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.MaterialPreviewResult.png)
+  return _internal_png();
+}
+template <typename Arg_, typename... Args_>
+inline PROTOBUF_ALWAYS_INLINE void MaterialPreviewResult::set_png(Arg_&& arg,
+                                                     Args_... args) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.png_.SetBytes(static_cast<Arg_&&>(arg), args..., GetArena());
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.MaterialPreviewResult.png)
+}
+inline std::string* MaterialPreviewResult::mutable_png() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  std::string* _s = _internal_mutable_png();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.MaterialPreviewResult.png)
+  return _s;
+}
+inline const std::string& MaterialPreviewResult::_internal_png() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.png_.Get();
+}
+inline void MaterialPreviewResult::_internal_set_png(const std::string& value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.png_.Set(value, GetArena());
+}
+inline std::string* MaterialPreviewResult::_internal_mutable_png() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _impl_.png_.Mutable( GetArena());
+}
+inline std::string* MaterialPreviewResult::release_png() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.MaterialPreviewResult.png)
+  return _impl_.png_.Release();
+}
+inline void MaterialPreviewResult::set_allocated_png(std::string* value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.png_.SetAllocated(value, GetArena());
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.png_.IsDefault()) {
+    _impl_.png_.Set("", GetArena());
+  }
+  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.MaterialPreviewResult.png)
+}
+
+// string diagnostic = 7;
+inline void MaterialPreviewResult::clear_diagnostic() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.diagnostic_.ClearToEmpty();
+}
+inline const std::string& MaterialPreviewResult::diagnostic() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.MaterialPreviewResult.diagnostic)
+  return _internal_diagnostic();
+}
+template <typename Arg_, typename... Args_>
+inline PROTOBUF_ALWAYS_INLINE void MaterialPreviewResult::set_diagnostic(Arg_&& arg,
+                                                     Args_... args) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.diagnostic_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.MaterialPreviewResult.diagnostic)
+}
+inline std::string* MaterialPreviewResult::mutable_diagnostic() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  std::string* _s = _internal_mutable_diagnostic();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.MaterialPreviewResult.diagnostic)
+  return _s;
+}
+inline const std::string& MaterialPreviewResult::_internal_diagnostic() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.diagnostic_.Get();
+}
+inline void MaterialPreviewResult::_internal_set_diagnostic(const std::string& value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.diagnostic_.Set(value, GetArena());
+}
+inline std::string* MaterialPreviewResult::_internal_mutable_diagnostic() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _impl_.diagnostic_.Mutable( GetArena());
+}
+inline std::string* MaterialPreviewResult::release_diagnostic() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.MaterialPreviewResult.diagnostic)
+  return _impl_.diagnostic_.Release();
+}
+inline void MaterialPreviewResult::set_allocated_diagnostic(std::string* value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.diagnostic_.SetAllocated(value, GetArena());
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.diagnostic_.IsDefault()) {
+    _impl_.diagnostic_.Set("", GetArena());
+  }
+  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.MaterialPreviewResult.diagnostic)
+}
+
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif  // __GNUC__
@@ -32769,6 +34511,18 @@ struct is_proto_enum<::sailor::editor::v1::ModelFingerprintStatus> : std::true_t
 template <>
 inline const EnumDescriptor* GetEnumDescriptor<::sailor::editor::v1::ModelFingerprintStatus>() {
   return ::sailor::editor::v1::ModelFingerprintStatus_descriptor();
+}
+template <>
+struct is_proto_enum<::sailor::editor::v1::MaterialPreviewPrimitive> : std::true_type {};
+template <>
+inline const EnumDescriptor* GetEnumDescriptor<::sailor::editor::v1::MaterialPreviewPrimitive>() {
+  return ::sailor::editor::v1::MaterialPreviewPrimitive_descriptor();
+}
+template <>
+struct is_proto_enum<::sailor::editor::v1::MaterialPreviewState> : std::true_type {};
+template <>
+inline const EnumDescriptor* GetEnumDescriptor<::sailor::editor::v1::MaterialPreviewState>() {
+  return ::sailor::editor::v1::MaterialPreviewState_descriptor();
 }
 
 }  // namespace protobuf

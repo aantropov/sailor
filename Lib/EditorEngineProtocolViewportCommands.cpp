@@ -3,6 +3,7 @@
 #include "Memory/UniquePtr.hpp"
 #include "Editor/EditorRuntimeBridge.h"
 #include "Editor/EditorViewportEvent.h"
+#include "Editor/MaterialPreview.h"
 #include "Protocol/Generated/editor_engine.pb.h"
 #include "Sailor.h"
 #include "Settings/GraphicsSettings.h"
@@ -108,6 +109,19 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 	{
 		SetSuccess(response);
 		response.mutable_uint32_result()->set_value(value);
+	}
+
+	static void SetMaterialPreviewResult(ProtocolResponse& response, const EditorRuntime::MaterialPreviewResult& value)
+	{
+		SetSuccess(response);
+		auto* result = response.mutable_material_preview_result();
+		result->set_session_id(value.m_sessionId);
+		result->set_revision(value.m_revision);
+		result->set_state(static_cast<sailor::editor::v1::MaterialPreviewState>(value.m_state));
+		result->set_width(value.m_width);
+		result->set_height(value.m_height);
+		if (!value.m_png.empty()) result->set_png(value.m_png.data(), value.m_png.size());
+		result->set_diagnostic(value.m_diagnostic);
 	}
 
 	static void SetVector4Result(ProtocolResponse& response, float x, float y, float z, float w)
@@ -272,6 +286,32 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 	{
 		switch (request.command_case())
 		{
+		case ProtocolRequest::kUpdateMaterialPreview:
+		{
+			const auto& input = request.update_material_preview();
+			EditorRuntime::MaterialPreviewRequest preview;
+			preview.m_sessionId = input.session_id();
+			preview.m_revision = input.revision();
+			preview.m_materialYaml = input.material_yaml();
+			preview.m_primitive = static_cast<EditorRuntime::EMaterialPreviewPrimitive>(input.primitive());
+			preview.m_yaw = input.yaw();
+			preview.m_pitch = input.pitch();
+			preview.m_distance = input.distance();
+			preview.m_width = input.width();
+			preview.m_height = input.height();
+			EditorRuntime::MaterialPreviewResult result;
+			std::string diagnostic;
+			if (EditorRuntime::UpdateMaterialPreview(std::move(preview), result, diagnostic)) SetMaterialPreviewResult(response, result);
+			else SetError(response, diagnostic);
+			break;
+		}
+		case ProtocolRequest::kGetMaterialPreview:
+			SetMaterialPreviewResult(response, EditorRuntime::GetMaterialPreview(
+				request.get_material_preview().session_id(), request.get_material_preview().after_revision()));
+			break;
+		case ProtocolRequest::kCloseMaterialPreview:
+			SetMaterialPreviewResult(response, EditorRuntime::CloseMaterialPreview(request.close_material_preview().session_id()));
+			break;
 		case ProtocolRequest::kSetEditorStatsMode:
 		{
 			Sailor::Settings::ERenderStatsMode statsMode{};

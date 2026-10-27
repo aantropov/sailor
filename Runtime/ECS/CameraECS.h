@@ -15,6 +15,7 @@ namespace Sailor
 	public:
 
 		SAILOR_API __forceinline void SetProjectionMatrix(const glm::mat4& projection) { m_projectionMatrix = projection; }
+		SAILOR_API __forceinline void SetViewMatrix(const glm::mat4& view) { m_viewMatrix = view; }
 
 		SAILOR_API __forceinline const glm::mat4& GetProjectionMatrix() const { return m_projectionMatrix; }
 		SAILOR_API __forceinline const glm::mat4& GetViewMatrix() const { return m_viewMatrix; }

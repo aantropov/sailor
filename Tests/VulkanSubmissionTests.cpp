@@ -111,6 +111,7 @@ using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
 namespace Sailor::Tests { int RunPathTracerCommandTests(int argc, const char** argv); }
+namespace Sailor::Tests { int RunMaterialPreviewGpu(int argc, const char** argv); }
 namespace Sailor::Tests { int RunAudioCommandTests(int argc, const char** argv); }
 namespace Sailor::Tests { int RunSkyGpu(int argc, const char** argv, bool bTestStars); }
 namespace Sailor::Tests { int RunLandscapeGpu(int argc, const char** argv); }
@@ -7581,6 +7582,7 @@ int main(int argc, const char** argv)
 	for (int i = 1; i < argc; ++i)
 	{
 		const std::string_view mode(argv[i]);
+		if (mode == "--gpu-material-preview") return Tests::RunMaterialPreviewGpu(argc, argv);
 		if (mode == "--gpu-audio")
 		{
 			return Tests::RunAudioCommandTests(argc, argv);

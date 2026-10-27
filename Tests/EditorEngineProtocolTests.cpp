@@ -785,6 +785,55 @@ namespace
 			"status queries must distinguish an absent request/importer from pending or ready output");
 	}
 
+	void TestMaterialPreviewProtocol()
+	{
+		using namespace sailor::editor::v1;
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::string error;
+		Require(gate.TryBeginInitialization(error), "material preview protocol fixture must initialize");
+		gate.CompleteInitialization(true);
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies;
+		dependencies.m_lifecycleGate = &gate;
+		UpdateMaterialPreviewRequest request;
+		request.set_session_id(216);
+		request.set_revision(1);
+		request.set_material_yaml("shaderUid: test");
+		request.set_primitive(MATERIAL_PREVIEW_PRIMITIVE_SPHERE);
+		request.set_width(1024);
+		request.set_height(384);
+		TProtocolBuffer invalidSize;
+		auto response = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 216,
+			ProtocolRequest::kUpdateMaterialPreviewFieldNumber, request.SerializeAsString()), invalidSize, dependencies);
+		Require(!response.success() && response.error().find("dimensions") != std::string::npos,
+			"preview dimensions must reject oversized GPU allocation requests before renderer access");
+		request.set_width(384);
+		request.set_yaw(std::numeric_limits<float>::quiet_NaN());
+		TProtocolBuffer invalidCamera;
+		response = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 217,
+			ProtocolRequest::kUpdateMaterialPreviewFieldNumber, request.SerializeAsString()), invalidCamera, dependencies);
+		Require(!response.success() && response.error().find("camera") != std::string::npos,
+			"non-finite preview camera input must fail without queuing GPU work");
+		MaterialPreviewSessionRequest session;
+		session.set_session_id(216);
+		session.set_after_revision(9);
+		for (uint32_t command : { ProtocolRequest::kGetMaterialPreviewFieldNumber, ProtocolRequest::kCloseMaterialPreviewFieldNumber })
+		{
+			TProtocolBuffer buffer;
+			response = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 218,
+				command, session.SerializeAsString()), buffer, dependencies);
+			Require(response.success() && response.has_material_preview_result() &&
+				response.material_preview_result().session_id() == 216 &&
+				response.material_preview_result().state() == MATERIAL_PREVIEW_STATE_CLOSED &&
+				response.material_preview_result().png().empty(),
+				"absent or closed sessions must report Closed without starting rendering");
+		}
+		MaterialPreviewResult image;
+		image.set_png(std::string("\211PNG\0binary", 11));
+		MaterialPreviewResult decoded;
+		Require(decoded.ParseFromString(image.SerializeAsString()) && decoded.png() == image.png(),
+			"preview PNG transport must preserve embedded zero bytes");
+	}
+
 	void TestPathTracedExportIsUnsupported()
 	{
 		Sailor::Tests::TempDirectory output("unsupported-export");
@@ -2326,6 +2375,7 @@ SAILOR_SHARED_API int RunEditorEngineProtocolTests()
 		TestEditorRenderModeWireContract();
 		TestAudioPreviewWireContract();
 		TestModelFingerprintProtocol();
+		TestMaterialPreviewProtocol();
 		TestPathTracedExportIsUnsupported();
 		TestEmbeddedNullIsRejected();
 		TestUtf8StringIsAccepted();

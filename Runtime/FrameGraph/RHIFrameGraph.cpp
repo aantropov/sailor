@@ -627,7 +627,8 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 	TVector<RHI::RHICommandListPtr>& outTransferCommandLists,
 	TVector<RHI::RHICommandListPtr>& outCommandLists,
 	RHISemaphorePtr inSignalSemaphore,
-	RHISemaphorePtr& outWaitSemaphore)
+	RHISemaphorePtr& outWaitSemaphore,
+	bool bTrackGpuStats)
 {
 	SAILOR_PROFILE_FUNCTION();
 	m_drawCallStats = {};
@@ -734,12 +735,12 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 		driver->SetDebugName(transferCmdList, "FrameGraph:Transfer"_h);
 
 		driverCommands->BeginCommandList(cmdList, true);
-		uint32_t graphicsGpuFrameTimeRange =
-			driver->BeginGpuFrameTimeRange(cmdList);
+		uint32_t graphicsGpuFrameTimeRange = bTrackGpuStats ?
+			driver->BeginGpuFrameTimeRange(cmdList) : IGraphicsDriver::InvalidGpuFrameTimeRange;
 		driverCommands->BeginDebugRegion(cmdList, "FrameGraph:Graphics"_h, glm::vec4(0.75f, 1.0f, 0.75f, 0.1f));
 		driverCommands->BeginCommandList(transferCmdList, true);
-		uint32_t transferGpuFrameTimeRange =
-			driver->BeginGpuFrameTimeRange(transferCmdList);
+		uint32_t transferGpuFrameTimeRange = bTrackGpuStats ?
+			driver->BeginGpuFrameTimeRange(transferCmdList) : IGraphicsDriver::InvalidGpuFrameTimeRange;
 		driverCommands->BeginDebugRegion(transferCmdList, "FrameGraph:Transfer"_h, glm::vec4(0.75f, 0.75f, 1.0f, 0.1f));
 
 		PrepareViewSubmissionResources(this, transferCmdList, snapshot);
@@ -806,7 +807,7 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 			m_lastFrameGpuStats.m_barriers.Clear();
 		}
 
-		const bool bExecuteQueries = driver->StartGpuTracking();
+		const bool bExecuteQueries = bTrackGpuStats && driver->StartGpuTracking();
 
 		uint32_t nodeIndex = 0u;
 		for (auto& node : m_graph)
@@ -933,13 +934,13 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 					driver->SetDebugName(transferCmdList, "FrameGraph:Transfer"_h);
 
 					driverCommands->BeginCommandList(cmdList, true);
-					graphicsGpuFrameTimeRange =
-						driver->BeginGpuFrameTimeRange(cmdList);
+					graphicsGpuFrameTimeRange = bTrackGpuStats ?
+						driver->BeginGpuFrameTimeRange(cmdList) : IGraphicsDriver::InvalidGpuFrameTimeRange;
 					driverCommands->BeginDebugRegion(cmdList, "FrameGraph:Graphics"_h, glm::vec4(0.75f, 1.0f, 0.75f, 0.1f));
 
 					driverCommands->BeginCommandList(transferCmdList, true);
-					transferGpuFrameTimeRange =
-						driver->BeginGpuFrameTimeRange(transferCmdList);
+					transferGpuFrameTimeRange = bTrackGpuStats ?
+						driver->BeginGpuFrameTimeRange(transferCmdList) : IGraphicsDriver::InvalidGpuFrameTimeRange;
 					driverCommands->BeginDebugRegion(transferCmdList, "FrameGraph:Transfer"_h, glm::vec4(0.75f, 0.75f, 1.0f, 0.1f));
 				}
 			}
@@ -968,12 +969,12 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 
 		if (!submitsSucceeded->load(std::memory_order_acquire))
 		{
-			m_lastFrameGpuStats = driver->FinishGpuTracking();
+			if (bTrackGpuStats) m_lastFrameGpuStats = driver->FinishGpuTracking();
 			outWaitSemaphore = submissionProgress->GetLastSuccessfulSemaphore();
 			return false;
 		}
 
-		m_lastFrameGpuStats = driver->FinishGpuTracking();
+		if (bTrackGpuStats) m_lastFrameGpuStats = driver->FinishGpuTracking();
 
 		frameGraphChainSemaphore = chainSemaphore;
 		outCommandLists.Emplace(std::move(cmdList));

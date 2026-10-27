@@ -124,6 +124,17 @@ Neither command changes the model processing acknowledgement. Both remain v1.
 
 Contract rules:
 
+- `update_material_preview` queues the latest unsaved material YAML for one
+  private preview session and returns Pending immediately. Session and revision
+  are nonzero caller identities. Sphere, Plane and Box use a private GPU scene
+  snapshot, fixed studio lighting and 64-512 pixel targets (384 by default).
+  Camera yaw/pitch are radians; distance is clamped to 1.5-12. At most one render
+  and one latest replacement are retained. `get_material_preview` reports
+  Pending, Ready, Error or Closed and includes PNG bytes only when the ready
+  revision exceeds `after_revision`. `close_material_preview` discards pending
+  requests and prevents an in-flight result from publishing after close. No
+  preview registers assets, edits a world or presents to an editor viewport.
+
 - All commands use `protocol_version = 1`, including strict InstanceId
   restoration. Update producers and consumers together without legacy wire
   variants. The current host advertises `supports_strict_instance_ids = true`.

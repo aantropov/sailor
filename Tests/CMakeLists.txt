@@ -365,6 +365,7 @@ add_executable(VulkanSubmissionTests
     RuntimeGIProbesTaskTests.cpp
     TextureImporterCommandTests.cpp
     MaterialImporterCommandTests.cpp
+    MaterialPreviewCommandTests.cpp
     AudioCommandTests.cpp
     LogCommandTests.cpp
     EditorViewportCommandTests.cpp

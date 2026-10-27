@@ -157,6 +157,9 @@ namespace Sailor
 		SAILOR_API bool LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate = true) override;
 		SAILOR_API bool LoadMaterial_Immediate(FileId uid, MaterialPtr& outMaterial);
 		SAILOR_API Tasks::TaskPtr<MaterialPtr> LoadMaterial(FileId uid, MaterialPtr& outMaterial);
+		// Private, caller-owned material; no registry entry or hot-reload subscriptions.
+		SAILOR_API Tasks::TaskPtr<MaterialPtr> CreateTransientMaterial(TSharedPtr<MaterialAsset> asset,
+			const Memory::ObjectAllocatorPtr& allocator, MaterialPtr& outMaterial);
 
 		SAILOR_API const FileId& CreateMaterialAsset(const std::string& assetpath, MaterialAsset::Data data);
 
@@ -171,7 +174,8 @@ namespace Sailor
 
 		SAILOR_API bool IsMaterialLoaded(FileId uid) const;
 		Tasks::TaskPtr<MaterialPtr> CreateMaterialTask(MaterialPtr material,
-			TSharedPtr<MaterialAsset> asset, bool bHotReload, const Tasks::ITaskPtr& previous);
+			TSharedPtr<MaterialAsset> asset, bool bHotReload, const Tasks::ITaskPtr& previous,
+			bool bTransient = false);
 
 		TConcurrentMap<FileId, Tasks::TaskPtr<MaterialPtr>> m_promises;
 		TConcurrentMap<FileId, MaterialPtr> m_loadedMaterials;

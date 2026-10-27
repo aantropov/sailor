@@ -80,6 +80,9 @@ message ProtocolRequest {
 		ViewportIdRequest capture_remote_viewport_frame_evidence = 77;
 		FileIdRequest request_model_fingerprint = 100;
 		FileIdRequest get_model_fingerprint_status = 101;
+		UpdateMaterialPreviewRequest update_material_preview = 102;
+		MaterialPreviewSessionRequest get_material_preview = 103;
+		MaterialPreviewSessionRequest close_material_preview = 104;
 	}
 
 	reserved 3 to 9;
@@ -115,6 +118,7 @@ message ProtocolResponse {
 		GIProbesBakeStatusResult gi_probes_bake_status_result = 24;
 		GlobalIlluminationStateResult global_illumination_state_result = 25;
 		ModelFingerprintStatusResult model_fingerprint_status_result = 100;
+		MaterialPreviewResult material_preview_result = 101;
 	}
 
 	reserved 6 to 9;
@@ -634,4 +638,46 @@ enum ModelFingerprintStatus {
 
 message ModelFingerprintStatusResult {
 	ModelFingerprintStatus status = 1;
+}
+
+enum MaterialPreviewPrimitive {
+	MATERIAL_PREVIEW_PRIMITIVE_UNSPECIFIED = 0;
+	MATERIAL_PREVIEW_PRIMITIVE_SPHERE = 1;
+	MATERIAL_PREVIEW_PRIMITIVE_PLANE = 2;
+	MATERIAL_PREVIEW_PRIMITIVE_BOX = 3;
+}
+
+enum MaterialPreviewState {
+	MATERIAL_PREVIEW_STATE_UNSPECIFIED = 0;
+	MATERIAL_PREVIEW_STATE_PENDING = 1;
+	MATERIAL_PREVIEW_STATE_READY = 2;
+	MATERIAL_PREVIEW_STATE_ERROR = 3;
+	MATERIAL_PREVIEW_STATE_CLOSED = 4;
+}
+
+message UpdateMaterialPreviewRequest {
+	uint64 session_id = 1;
+	uint64 revision = 2;
+	string material_yaml = 3;
+	MaterialPreviewPrimitive primitive = 4;
+	float yaw = 5;
+	float pitch = 6;
+	float distance = 7;
+	uint32 width = 8;
+	uint32 height = 9;
+}
+
+message MaterialPreviewSessionRequest {
+	uint64 session_id = 1;
+	uint64 after_revision = 2;
+}
+
+message MaterialPreviewResult {
+	uint64 session_id = 1;
+	uint64 revision = 2;
+	MaterialPreviewState state = 3;
+	uint32 width = 4;
+	uint32 height = 5;
+	bytes png = 6;
+	string diagnostic = 7;
 }
