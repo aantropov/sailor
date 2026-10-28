@@ -13,7 +13,6 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <views:ControlPanelView Grid.Row="0" Grid.ColumnSpan="2"/>
 
         <Label Text="Code" FontAttributes="Bold" Grid.Row="1" />
         <Editor Text="{Binding Code}" FontSize="12" IsReadOnly="True" AutoSize="Disabled" Grid.Row="2" />

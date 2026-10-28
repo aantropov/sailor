@@ -1,5 +1,6 @@
 using Google.Protobuf;
 using SailorEditor.Protocol.Generated;
+using SailorEditor.Services;
 
 namespace SailorEditor.Protocol;
 
@@ -677,33 +678,107 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 .ConfigureAwait(false),
             nameof(ProtocolRequest.PreviewAudioAsset));
 
-    public async Task<bool> GenerateModelFingerprintAsync(
-        string fileId,
+    public async Task<MaterialPreviewResponse> UpdateMaterialPreviewAsync(
+        MaterialPreviewRequest request,
         CancellationToken cancellationToken = default)
     {
-        var requestedId = ValidateString(fileId, nameof(fileId));
-        if (!ReadBool(await SendAsync(new ProtocolRequest
-            {
-                RequestModelFingerprint = new FileIdRequest { FileId = requestedId }
-            }, cancellationToken).ConfigureAwait(false), nameof(ProtocolRequest.RequestModelFingerprint)))
+        ArgumentNullException.ThrowIfNull(request);
+        var snapshot = request.Snapshot;
+        ValidatePreviewSession(request.SessionId);
+        if (request.Revision == 0)
         {
-            return false;
+            throw new ArgumentOutOfRangeException(nameof(request.Revision));
+        }
+        var yaml = ValidateString(snapshot.MaterialYaml, nameof(snapshot.MaterialYaml));
+        var modelId = ValidateString(snapshot.ModelFileId, nameof(snapshot.ModelFileId));
+        yaml = string.IsNullOrWhiteSpace(yaml) ? string.Empty : yaml;
+        modelId = string.IsNullOrWhiteSpace(modelId) ? string.Empty : modelId;
+        if (string.IsNullOrWhiteSpace(yaml) == string.IsNullOrWhiteSpace(modelId))
+        {
+            throw new ArgumentException("Preview requires exactly one material YAML snapshot or model FileId.", nameof(request));
+        }
+        if (modelId.Length == 0 && !Enum.IsDefined(snapshot.Primitive))
+        {
+            throw new ArgumentOutOfRangeException(nameof(snapshot.Primitive));
+        }
+        if (System.Text.Encoding.UTF8.GetByteCount(yaml) > 1024 * 1024 ||
+            System.Text.Encoding.UTF8.GetByteCount(modelId) > 1024)
+        {
+            throw new ArgumentException("Preview material YAML exceeds 1 MiB or model FileId exceeds 1024 bytes.", nameof(request));
+        }
+        if (!float.IsFinite(snapshot.Yaw) || !float.IsFinite(snapshot.Pitch) || !float.IsFinite(snapshot.Distance))
+        {
+            throw new ArgumentException("Material preview camera values must be finite.", nameof(request));
+        }
+        if (snapshot.Width is < 64 or > 512 || snapshot.Height is < 64 or > 512)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request), "Material preview dimensions must be between 64 and 512.");
         }
 
-        while (true)
+        var response = await SendAsync(new ProtocolRequest
         {
-            var response = await SendAsync(new ProtocolRequest
+            UpdateMaterialPreview = new UpdateMaterialPreviewRequest
             {
-                GetModelFingerprintStatus = new FileIdRequest { FileId = requestedId }
-            }, cancellationToken).ConfigureAwait(false);
-            var status = RequireResult<ModelFingerprintStatusResult>(
-                response.ModelFingerprintStatusResult,
-                nameof(ProtocolRequest.GetModelFingerprintStatus)).Status;
-            if (status != ModelFingerprintStatus.Pending)
-                return status == ModelFingerprintStatus.Ready;
+                SessionId = request.SessionId,
+                Revision = request.Revision,
+                MaterialYaml = yaml,
+                ModelFileId = modelId,
+                Primitive = (MaterialPreviewPrimitive)snapshot.Primitive,
+                Yaw = snapshot.Yaw,
+                Pitch = snapshot.Pitch,
+                Distance = snapshot.Distance,
+                Width = snapshot.Width,
+                Height = snapshot.Height
+            }
+        }, cancellationToken).ConfigureAwait(false);
+        return ReadMaterialPreview(response, nameof(ProtocolRequest.UpdateMaterialPreview));
+    }
 
-            await Task.Delay(100, cancellationToken).ConfigureAwait(false);
+    public async Task<MaterialPreviewResponse> GetMaterialPreviewAsync(
+        ulong sessionId, ulong afterRevision,
+        CancellationToken cancellationToken = default)
+    {
+        ValidatePreviewSession(sessionId);
+        var response = await SendAsync(new ProtocolRequest
+        {
+            GetMaterialPreview = new MaterialPreviewSessionRequest { SessionId = sessionId, AfterRevision = afterRevision }
+        }, cancellationToken).ConfigureAwait(false);
+        return ReadMaterialPreview(response, nameof(ProtocolRequest.GetMaterialPreview));
+    }
+
+    public async Task CloseMaterialPreviewAsync(
+        ulong sessionId, CancellationToken cancellationToken = default)
+    {
+        ValidatePreviewSession(sessionId);
+        var response = await SendAsync(new ProtocolRequest
+        {
+            CloseMaterialPreview = new MaterialPreviewSessionRequest { SessionId = sessionId }
+        }, cancellationToken).ConfigureAwait(false);
+        var result = ReadMaterialPreview(response, nameof(ProtocolRequest.CloseMaterialPreview));
+        if (result.SessionId != sessionId || result.State != PreviewState.Closed)
+        {
+            throw new EngineProtocolException("Engine did not close the requested material preview session.");
         }
+    }
+
+    static void ValidatePreviewSession(ulong sessionId)
+    {
+        if (sessionId == 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(sessionId));
+        }
+    }
+
+    static MaterialPreviewResponse ReadMaterialPreview(ProtocolResponse response, string command)
+    {
+        var result = RequireResult<MaterialPreviewResult>(response.MaterialPreviewResult, command);
+        var state = (PreviewState)result.State;
+        if (result.SessionId == 0 || !Enum.IsDefined(state) || result.Width > 512 || result.Height > 512 ||
+            result.Png.Length > 512 * 512 * 4 + 65536 || result.Diagnostic.Length > 8192)
+        {
+            throw new EngineProtocolException("Engine returned an invalid material preview result.");
+        }
+        return new(result.SessionId, result.Revision, state, result.Png.ToByteArray(), result.Diagnostic);
     }
 
     public async Task SetViewportAsync(

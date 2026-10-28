@@ -103,7 +103,15 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
     {
         if (PlatformView is NativeSceneViewportPlatformView platformView)
         {
-            DispatchQueue.MainQueue.DispatchAsync(platformView.FocusInput);
+            DispatchQueue.MainQueue.DispatchAsync(() => platformView.FocusInput());
+        }
+    }
+
+    public void ReleaseInputFocus()
+    {
+        if (PlatformView is NativeSceneViewportPlatformView platformView)
+        {
+            platformView.ReleaseInputFocus();
         }
     }
 
@@ -435,7 +443,7 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             }
         }
 
-        public void FocusInput()
+        public void FocusInput(bool isPointerFocus = false)
         {
             if (!isAttachedToWindow || isDisposed)
             {
@@ -448,7 +456,14 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             }
 
             AttachKeyboardInput();
-            PublishFocus(true);
+            PublishFocus(true, isPointerFocus);
+        }
+
+        public void ReleaseInputFocus()
+        {
+            ReleaseActivePointerState();
+            textInput.ResignFirstResponder();
+            PublishFocus(false);
         }
 
         public override void TouchesBegan(NSSet touches, UIEvent? evt)
@@ -723,7 +738,7 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
 
             if (pressed)
             {
-                FocusInput();
+                FocusInput(isPointerFocus: true);
                 if (!HasInputFocus)
                 {
                     return false;
@@ -1069,7 +1084,7 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             {
                 if (!HasInputFocus)
                 {
-                    FocusInput();
+                    FocusInput(isPointerFocus: true);
                     if (!HasInputFocus)
                     {
                         return;
@@ -1321,9 +1336,9 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             }
         }
 
-        void PublishFocus(bool focused)
+        void PublishFocus(bool focused, bool isPointerFocus = false)
         {
-            if (isInputFocused == focused)
+            if (isInputFocused == focused && !isPointerFocus)
             {
                 return;
             }
@@ -1333,7 +1348,7 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             {
                 ReleaseKeyboardInput();
             }
-            Publish(new NativeSceneViewportInputEvent(NativeSceneViewportInputKind.Focus, Focused: focused));
+            Publish(new NativeSceneViewportInputEvent(NativeSceneViewportInputKind.Focus, Focused: focused, IsPointerFocus: isPointerFocus));
         }
 
         void Publish(NativeSceneViewportInputEvent input)

@@ -78,7 +78,7 @@ namespace SailorEditor.Services
         Disposed = 9
     }
 
-    internal class EngineService : IDisposable, IAsyncDisposable
+    internal class EngineService : IDisposable, IAsyncDisposable, IMaterialPreviewTransport
     {
         sealed class EngineSession
         {
@@ -198,6 +198,7 @@ namespace SailorEditor.Services
 
         public EngineLifecycleState State => (EngineLifecycleState)Volatile.Read(ref lifecycleState);
         public bool IsRunning => State == EngineLifecycleState.Running;
+        public long Generation => Volatile.Read(ref engineGeneration);
         public int LastExitCode => Volatile.Read(ref lastExitCode);
 
         public Exception? LastFailure
@@ -235,6 +236,7 @@ namespace SailorEditor.Services
 
         public event Action<EngineLifecycleState> OnLifecycleStateChanged = delegate { };
         public event Action<AssetReloadCompletion> OnAssetReloadCompleted = delegate { };
+        public event Action OnAssetUpdated = delegate { };
         public event Action<IReadOnlyList<EditorViewportEvent>> OnEditorViewportEvents = delegate { };
         public event Action<bool> OnEditorSimulationStateChanged = delegate { };
         public event Action<SceneViewRenderMode> OnEditorRenderModeChanged = delegate { };
@@ -2275,24 +2277,36 @@ namespace SailorEditor.Services
                 cancellationToken);
         }
 
-        public Task<bool> UpdateAssetAsync(
+        public async Task<bool> UpdateAssetAsync(
             FileId fileId,
             CancellationToken cancellationToken = default)
         {
             var stringId = fileId?.Value ?? string.Empty;
-            return InvokeRunningInteropAsync(
+            var generation = Generation;
+            var succeeded = await InvokeRunningInteropAsync(
                 token => protocolClient.UpdateAssetAsync(stringId, token),
-                cancellationToken: cancellationToken);
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (succeeded && IsGenerationActive(generation))
+            {
+                OnAssetUpdated();
+            }
+            return succeeded;
         }
 
-        public Task<bool> ReimportAssetAsync(
+        public async Task<bool> ReimportAssetAsync(
             FileId fileId,
             CancellationToken cancellationToken = default)
         {
             var stringId = fileId?.Value ?? string.Empty;
-            return InvokeRunningInteropAsync(
+            var generation = Generation;
+            var succeeded = await InvokeRunningInteropAsync(
                 token => protocolClient.ReimportAssetAsync(stringId, token),
-                cancellationToken: cancellationToken);
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (succeeded && IsGenerationActive(generation))
+            {
+                OnAssetUpdated();
+            }
+            return succeeded;
         }
 
         public Task<bool> PreviewAudioAssetAsync(
@@ -2305,19 +2319,61 @@ namespace SailorEditor.Services
                 cancellationToken: cancellationToken);
         }
 
-        public async Task<bool> GenerateModelFingerprintAsync(
-            FileId fileId,
-            CancellationToken cancellationToken = default)
+        public Task<MaterialPreviewResponse> UpdateMaterialPreviewAsync(
+            MaterialPreviewRequest request, long generation, CancellationToken cancellationToken = default)
+            => InvokeMaterialPreviewAsync(
+                token => protocolClient.UpdateMaterialPreviewAsync(request, token), generation, cancellationToken);
+
+        public Task<MaterialPreviewResponse> GetMaterialPreviewAsync(
+            ulong sessionId, ulong afterRevision, long generation, CancellationToken cancellationToken = default)
+            => InvokeMaterialPreviewAsync(
+                token => protocolClient.GetMaterialPreviewAsync(sessionId, afterRevision, token), generation, cancellationToken);
+
+        public async Task CloseMaterialPreviewAsync(
+            ulong sessionId, long generation, CancellationToken cancellationToken = default)
         {
-            var generation = Volatile.Read(ref engineGeneration);
+            if (!IsGenerationActive(generation))
+            {
+                return;
+            }
+            await protocolClient.CloseMaterialPreviewAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        }
+
+        async Task<MaterialPreviewResponse> InvokeMaterialPreviewAsync(
+            Func<CancellationToken, Task<MaterialPreviewResponse>> invoke,
+            long generation, CancellationToken cancellationToken)
+        {
             CancellationToken sessionToken;
             lock (runLock)
+            {
                 sessionToken = activeSession?.PollCancellation.Token ?? default;
+            }
             using var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, sessionToken);
-            return IsInteropRunning() && IsGenerationActive(generation) &&
-                await protocolClient.GenerateModelFingerprintAsync(fileId?.Value ?? string.Empty, operation.Token)
-                    .ConfigureAwait(false) && IsGenerationActive(generation);
+            if (!IsGenerationActive(generation))
+            {
+                throw new OperationCanceledException("The material preview engine session has ended.");
+            }
+            operation.Token.ThrowIfCancellationRequested();
+            var result = await invoke(operation.Token).ConfigureAwait(false);
+            operation.Token.ThrowIfCancellationRequested();
+            if (!IsGenerationActive(generation))
+            {
+                throw new OperationCanceledException("The material preview engine session has changed.");
+            }
+            return result;
         }
+
+        Task<MaterialPreviewResponse> IMaterialPreviewTransport.UpdateAsync(
+            MaterialPreviewRequest request, long engineGeneration, CancellationToken cancellationToken)
+            => UpdateMaterialPreviewAsync(request, engineGeneration, cancellationToken);
+
+        Task<MaterialPreviewResponse> IMaterialPreviewTransport.GetAsync(
+            ulong sessionId, ulong afterRevision, long engineGeneration, CancellationToken cancellationToken)
+            => GetMaterialPreviewAsync(sessionId, afterRevision, engineGeneration, cancellationToken);
+
+        Task IMaterialPreviewTransport.CloseAsync(
+            ulong sessionId, long engineGeneration, CancellationToken cancellationToken)
+            => CloseMaterialPreviewAsync(sessionId, engineGeneration, cancellationToken);
 
         public Task<bool> SetAnimatorFloatAsync(
             InstanceId instanceId,

@@ -112,17 +112,27 @@ regular asset registry, and plays it as a non-spatial one-shot voice. Starting
 another preview stops and destroys the previous preview voice. The Editor sends
 this command asynchronously through the normal WebSocket transport.
 
-`request_model_fingerprint` accepts a model FileId and queues its preview only
-on explicit consumer demand. `get_model_fingerprint_status` reports Unavailable,
-Pending, Ready or Failed without starting or retrying work. Both commands marshal
-to the Engine main thread; rendering runs on Background and does not block the
-Editor worker. A renewed request retries failure without a source edit, while
-duplicate pending requests share the same attempt. Ready means publication
-completed successfully. Failed rendering or replacement preserves the old PNG;
-a failure to confirm OS sync after replacement remains retryable, not a rollback.
-Neither command changes the model processing acknowledgement. Both remain v1.
-
 Contract rules:
+
+- `update_material_preview` queues the latest request for one private GPU
+  preview session and returns Pending immediately. Exactly one source must be
+  supplied: unsaved `material_yaml` or a registered `model_file_id`. Materials
+  use the selected Sphere, Plane or Box. Models use every imported mesh instance
+  at LOD0 with its node transform and material slot; `primitive` is ignored.
+  Model bounds are centered and normalized to fit the same camera controls.
+  Missing material slots use a private neutral glTF material.
+  Both sources share a private GPU scene snapshot, fixed studio lighting,
+  tonemapping and 64-512 pixel targets (384 by default). Session and revision
+  are nonzero caller identities. Camera yaw/pitch are radians; distance is
+  clamped to 1.5-12. At most 16 sessions retain their latest pending request;
+  one render runs at a time and up to four private jobs are cached.
+  `get_material_preview` reports
+  Pending, Ready, Error or Closed and includes PNG bytes only when the ready
+  revision exceeds `after_revision`. `close_material_preview` discards pending
+  requests and prevents an in-flight result from publishing after close. No
+  preview registers assets, edits a world, writes a fingerprint file or presents
+  to an editor viewport. Model thumbnails use this same GPU path; there is no
+  model fingerprint generation or polling command.
 
 - All commands use `protocol_version = 1`, including strict InstanceId
   restoration. Update producers and consumers together without legacy wire

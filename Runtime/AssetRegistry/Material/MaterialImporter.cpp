@@ -768,7 +768,7 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::GetLoadPromise(FileId uid)
 
 Tasks::TaskPtr<MaterialPtr> MaterialImporter::CreateMaterialTask(
 	MaterialPtr material, TSharedPtr<MaterialAsset> asset, bool bHotReload,
-	const Tasks::ITaskPtr& previous)
+	const Tasks::ITaskPtr& previous, bool bTransient)
 {
 	ShaderSetPtr shader;
 	auto loadShader = App::GetSubmodule<ShaderCompiler>()->LoadShader(
@@ -783,11 +783,11 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::CreateMaterialTask(
 				App::GetSubmodule<TextureImporter>()->LoadTexture(*sampler.m_second, texture));
 		}
 	}
-	const std::string filename = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(
-		material->GetFileId())->GetAssetFilepath();
+	const std::string filename = bTransient ? "Transient material preview" :
+		App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(material->GetFileId())->GetAssetFilepath();
 
 	auto publish = Tasks::CreateTask<MaterialPtr>("Publish material"_h,
-		[material, asset, loadShader, samplers, filename, bHotReload]() mutable
+		[material, asset, loadShader, samplers, filename, bHotReload, bTransient]() mutable
 		{
 			auto shader = loadShader ? loadShader->GetResult() : ShaderSetPtr{};
 			if (!shader || !shader->IsReady())
@@ -850,10 +850,13 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::CreateMaterialTask(
 			material->AdvanceContentRevision();
 			material->AdvanceRenderMetadataRevision();
 
-			material->m_shader->AddHotReloadDependentObject(material);
-			for (auto& sampler : material->m_samplers)
+			if (!bTransient)
 			{
-				sampler.m_second->AddHotReloadDependentObject(material);
+				material->m_shader->AddHotReloadDependentObject(material);
+				for (auto& sampler : material->m_samplers)
+				{
+					sampler.m_second->AddHotReloadDependentObject(material);
+				}
 			}
 			if (bHotReload)
 			{
@@ -869,6 +872,19 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::CreateMaterialTask(
 	}
 	publish->Join(previous);
 	return publish;
+}
+
+Tasks::TaskPtr<MaterialPtr> MaterialImporter::CreateTransientMaterial(TSharedPtr<MaterialAsset> asset,
+	const Memory::ObjectAllocatorPtr& allocator, MaterialPtr& outMaterial)
+{
+	if (!asset || !allocator)
+	{
+		return {};
+	}
+	outMaterial = MaterialPtr::Make(allocator, FileId{});
+	auto task = CreateMaterialTask(outMaterial, std::move(asset), false, {}, true);
+	task->Run();
+	return task;
 }
 
 Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(FileId uid, MaterialPtr& outMaterial)

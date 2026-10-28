@@ -79,7 +79,8 @@ namespace Sailor::RHI
 			TVector<RHI::RHICommandListPtr>& outTransferCommandLists,
 			TVector<RHI::RHICommandListPtr>& outSecondaryCommandLists,
 			RHISemaphorePtr inSignalSemaphore,
-			RHISemaphorePtr& outWaitSemaphore);
+			RHISemaphorePtr& outWaitSemaphore,
+			bool bTrackGpuStats = true);
 
 		SAILOR_API void Clear();
 

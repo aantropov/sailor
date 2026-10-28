@@ -38,12 +38,14 @@ public readonly record struct NativeSceneViewportInputEvent(
     bool Pressed = false,
     bool Focused = false,
     bool Captured = false,
-    string Text = "");
+    string Text = "",
+    bool IsPointerFocus = false);
 
 public interface INativeSceneViewportLayoutHost
 {
     void RequestLayoutUpdate(double width, double height, double contentsScale);
     void RequestInputFocus();
+    void ReleaseInputFocus();
 }
 
 public class NativeSceneViewport : View
@@ -82,6 +84,14 @@ public class NativeSceneViewport : View
         if (Handler is INativeSceneViewportLayoutHost layoutHost)
         {
             layoutHost.RequestInputFocus();
+        }
+    }
+
+    public void ReleaseInputFocus()
+    {
+        if (Handler is INativeSceneViewportLayoutHost layoutHost)
+        {
+            layoutHost.ReleaseInputFocus();
         }
     }
 }

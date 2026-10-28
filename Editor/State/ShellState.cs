@@ -121,10 +121,14 @@ public sealed class ShellState : INotifyPropertyChanged
         };
     }
 
-    public void FocusViewport(string? viewportId, string? selectionOwner = null, string? keyboardInputOwner = null)
+    public void FocusViewport(string? viewportId, string? selectionOwner = null, string? keyboardInputOwner = null,
+        PanelId? panelId = null, string? groupId = null, PanelId? activeDocument = null)
     {
         Focus = Focus with
         {
+            FocusedPanelId = panelId ?? Focus.FocusedPanelId,
+            ActiveTabGroupId = groupId ?? Focus.ActiveTabGroupId,
+            ActiveDocumentPanelId = activeDocument ?? Focus.ActiveDocumentPanelId,
             FocusedViewportId = viewportId,
             SelectionOwner = selectionOwner,
             KeyboardInputOwner = keyboardInputOwner

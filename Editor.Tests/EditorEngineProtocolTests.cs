@@ -43,7 +43,7 @@ public sealed class EditorEngineProtocolTests
     [InlineData("BA0100", ProtocolResponse.ResultOneofCase.EditorRenderModeResult)]
     [InlineData("C20100", ProtocolResponse.ResultOneofCase.GiProbesBakeStatusResult)]
     [InlineData("CA0100", ProtocolResponse.ResultOneofCase.GlobalIlluminationStateResult)]
-    [InlineData("A20600", ProtocolResponse.ResultOneofCase.ModelFingerprintStatusResult)]
+    [InlineData("AA0600", ProtocolResponse.ResultOneofCase.MaterialPreviewResult)]
     public void GoldenEmptyResults_PreserveOneofPresence(string hex, ProtocolResponse.ResultOneofCase expected)
     {
         var bytes = Convert.FromHexString(hex);

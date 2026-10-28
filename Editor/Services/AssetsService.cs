@@ -73,18 +73,26 @@ namespace SailorEditor.Services
             {
                 var selectionService = MauiProgram.GetService<SelectionService>();
                 var selection = selectionService.Snapshot;
+                var inspectedAsset = selectionService.InspectedItem as AssetFile;
                 var workspaceEpoch = WorkspaceEpoch;
                 await RefreshAsync();
-                await MainThread.InvokeOnMainThreadAsync(() =>
+                await MainThread.InvokeOnMainThreadAsync(async () =>
                 {
                     // Reload must not replace a newer selection or cross a workspace change.
-                    if (workspaceEpoch != WorkspaceEpoch || selection != selectionService.Snapshot ||
-                        selection.Kind != SelectionTargetKind.Asset || selection.SelectedId is null)
+                    if (workspaceEpoch != WorkspaceEpoch || selection != selectionService.Snapshot)
                     {
                         return;
                     }
 
-                    RestoreSelectedAsset(selectionService, new FileId(selection.SelectedId));
+                    if (selection.Kind == SelectionTargetKind.Asset && selection.SelectedId is not null)
+                    {
+                        RestoreSelectedAsset(selectionService, new FileId(selection.SelectedId));
+                    }
+                    else if (inspectedAsset is not null)
+                    {
+                        await selectionService.RebindInspectedAssetAsync(inspectedAsset,
+                            Assets.TryGetValue(inspectedAsset.FileId, out var refreshed) ? refreshed : null);
+                    }
                 });
             }
             catch (Exception exception)
@@ -1063,6 +1071,7 @@ namespace SailorEditor.Services
         {
             var selectionService = MauiProgram.GetService<SelectionService>();
             var selectedAssetId = (selectionService.SelectedItem as AssetFile)?.FileId;
+            var inspectedAsset = selectionService.InspectedItem as AssetFile;
             ProjectContentFileOperationResult result;
 
             lock (_watcherLock)
@@ -1102,16 +1111,20 @@ namespace SailorEditor.Services
                 }
                 else if (result.Succeeded && !string.IsNullOrWhiteSpace(successfulFolderSelectionPath))
                 {
-                    if (selectionService.SelectedItem is AssetFile)
+                    if (selectionService.InspectedItem is AssetFile)
+                    {
                         selectionService.ClearSelection();
+                    }
 
                     MauiProgram.GetService<ProjectContentStore>().RestoreFolderSelectionByPath(
                         successfulFolderSelectionPath);
                 }
                 else if (folderRebindPlan is { HasSelection: true } plan)
                 {
-                    if (selectionService.SelectedItem is AssetFile)
+                    if (selectionService.InspectedItem is AssetFile)
+                    {
                         selectionService.ClearSelection();
+                    }
 
                     MauiProgram.GetService<ProjectContentStore>().RestoreFolderSelectionByPath(
                         result.Succeeded ? plan.SuccessPath : plan.OriginalPath);
@@ -1119,6 +1132,10 @@ namespace SailorEditor.Services
                 else
                 {
                     RestoreSelectedAsset(selectionService, selectedAssetId);
+                    if (selectedAssetId is null && inspectedAsset is not null)
+                    {
+                        _ = RestoreInspectedAssetAsync(selectionService, inspectedAsset);
+                    }
                 }
             }
 
@@ -1175,6 +1192,19 @@ namespace SailorEditor.Services
             else
             {
                 selectionService.ClearSelection();
+            }
+        }
+
+        async Task RestoreInspectedAssetAsync(SelectionService selectionService, AssetFile inspectedAsset)
+        {
+            try
+            {
+                await selectionService.RebindInspectedAssetAsync(inspectedAsset,
+                    Assets.TryGetValue(inspectedAsset.FileId, out var refreshed) ? refreshed : null);
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine($"Could not refresh inspected asset {inspectedAsset.FileId}: {exception.Message}");
             }
         }
 

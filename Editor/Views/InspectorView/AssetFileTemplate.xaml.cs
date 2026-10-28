@@ -36,7 +36,6 @@ public partial class AssetFileTemplate : DataTemplate
 
         asset.EnsureAssetPropertiesTyped();
 
-        layout.Children.Add(new Views.ControlPanelView { BindingContext = asset });
         if (string.Equals(
             asset.AssetInfoTypeName,
             "Sailor::AudioAssetInfo",

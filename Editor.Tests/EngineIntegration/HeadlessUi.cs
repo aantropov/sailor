@@ -82,24 +82,30 @@ namespace SailorEditor
 
 namespace SailorEditor.Services
 {
-    sealed class WorldService
+    public sealed class WorldService
     {
+        public Dictionary<string, SailorEditor.ViewModels.GameObject> GameObjects { get; } = new();
+        public Dictionary<string, SailorEditor.ViewModels.Component> Components { get; } = new();
+        public event Action<object?>? OnUpdateWorldAction;
+        public void PublishUpdate() => OnUpdateWorldAction?.Invoke(null);
+        public IEnumerable<SailorEditor.ViewModels.Component> GetComponents(SailorEditor.ViewModels.GameObject gameObject)
+            => Components.Values.Where(component => component.Owner == gameObject);
         public long WorkspaceEpoch => throw new NotSupportedException();
         public bool TryPopulateWorld(string yaml, long epoch) => throw new NotSupportedException();
         public object CreatePrefabFromSubHierarchy(SailorEditor.ViewModels.GameObject root,
             out List<SailorEngine.InstanceId> externalReferences) => throw new NotSupportedException();
         public bool TryGetGameObject(SailorEngine.InstanceId id,
-            out SailorEditor.ViewModels.GameObject gameObject) => throw new NotSupportedException();
+            out SailorEditor.ViewModels.GameObject gameObject) => GameObjects.TryGetValue(id.Value, out gameObject!);
         public bool TryGetComponent(SailorEngine.InstanceId id,
-            out SailorEditor.ViewModels.Component component) => throw new NotSupportedException();
+            out SailorEditor.ViewModels.Component component) => Components.TryGetValue(id.Value, out component!);
         public SailorEditor.ViewModels.GameObject FindOwner(SailorEditor.ViewModels.Component component)
-            => throw new NotSupportedException();
+            => component.Owner!;
     }
 }
 
 namespace SailorEditor.ViewModels
 {
-    // Refresh and selection use the real AssetFile; specialized inspectors and scene objects are not exercised.
+    // Refresh and selection use the real AssetFile; scene objects supply only projection data.
     public sealed class ModelFile : AssetFile
     {
         public Task<bool> LoadDependentResources(CancellationToken token)
@@ -121,12 +127,15 @@ namespace SailorEditor.ViewModels
     public sealed class GIProbesFile : AssetFile;
     public sealed class GameObject : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
     {
-        public string Name => throw new NotSupportedException();
-        public SailorEngine.InstanceId InstanceId => throw new NotSupportedException();
+        public string Name { get; set; } = "Test object";
+        public SailorEngine.InstanceId InstanceId { get; set; } = new("test-object");
     }
     public sealed class Component : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
     {
-        public SailorEngine.InstanceId InstanceId => throw new NotSupportedException();
+        public SailorEngine.InstanceId InstanceId { get; set; } = new("test-component");
+        public string DisplayName { get; set; } = "Test component";
+        public SailorEngine.ComponentType? Typename { get; set; }
+        public GameObject? Owner { get; set; }
     }
 }
 

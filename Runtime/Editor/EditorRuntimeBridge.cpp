@@ -1,4 +1,5 @@
 #include "EditorRuntimeBridge.h"
+#include "MaterialPreview.h"
 #include "Containers/Containers.h"
 
 #include "Sailor.h"
@@ -699,6 +700,7 @@ void Sailor::EditorRuntime::UpdateRuntimeGIWorkAllowanceOnEngineThread()
 
 void Sailor::EditorRuntime::ResetForAppLifecycle()
 {
+	ResetMaterialPreviewForAppLifecycle();
 	const auto clearBindings = []()
 	{
 		for (const auto& entry : g_remoteViewportBindings)

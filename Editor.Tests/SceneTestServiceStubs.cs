@@ -37,7 +37,8 @@ namespace SailorEditor.Controls
         bool Pressed = false,
         bool Focused = false,
         bool Captured = false,
-        string Text = "");
+        string Text = "",
+        bool IsPointerFocus = false);
 }
 
 namespace SailorEditor.Services

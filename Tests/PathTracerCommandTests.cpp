@@ -52,11 +52,11 @@ namespace Sailor::Tests
 	int RunGIShutdownCommandTests(int argc, const char** argv, const std::filesystem::path& workspace);
 	void RunTextureImporterCommandTests(const std::filesystem::path& workspace);
 	void RunMaterialImporterCommandTests(const std::filesystem::path& workspace);
+	void RunMaterialPreviewCommandTests(const std::filesystem::path& workspace);
 	void RunAudioCommandTests(const std::filesystem::path& workspace);
 	void RunLoggingCommandTests();
 	void RunLoggingShutdownTests();
 	FileId RunModelLodCommandTests(const std::filesystem::path& workspace);
-	void RunModelPreviewCommandTests(FileId modelId);
 	void RunLandscapeCommandTests(const std::filesystem::path& workspace);
 	void RunPrefabImporterCommandTests(const std::filesystem::path& workspace);
 	void RunFrameGraphNodeCommandTests(const std::filesystem::path& workspace);
@@ -1490,6 +1490,42 @@ namespace Sailor::Tests
 		return result;
 	}
 
+	int RunMaterialPreviewGpu(int argc, const char** argv)
+	{
+		Tests::TempDirectory workspace("material-preview");
+		int result = 1;
+		try
+		{
+			std::string enginePath = std::filesystem::current_path().string();
+			for (int i = 1; i + 1 < argc; ++i)
+			{
+				if (std::string_view(argv[i]) == "--workspace")
+				{
+					enginePath = argv[i + 1];
+				}
+			}
+			// Exercise private single-sample targets while the scene uses MSAA.
+			WriteScene(workspace, enginePath, 2);
+			const auto root = workspace.Get().string();
+			std::vector<const char*> arguments(argv, argv + argc);
+			arguments.insert(arguments.end(), { "--workspace", root.c_str(), "--editor", "--port", "0", "--world", "" });
+			Require(App::Initialize(arguments.data(), static_cast<int32_t>(arguments.size())) == EAppInitializationResult::Ready &&
+				App::IsRendererInitialized(), "material preview fixture must initialize the native renderer");
+			RunMaterialPreviewCommandTests(workspace.Get());
+			result = 0;
+		}
+		catch (const std::exception& error)
+		{
+			std::cerr << error.what() << '\n';
+		}
+		App::Stop();
+		if (!App::Shutdown())
+		{
+			result = 1;
+		}
+		return result;
+	}
+
 	int RunPathTracerCommandTests(int argc, const char** argv)
 	{
 		Tests::TempDirectory workspace("pathtracer-command");
@@ -1542,7 +1578,7 @@ namespace Sailor::Tests
 			RunTextureImporterCommandTests(workspace.Get());
 			RunMaterialImporterCommandTests(workspace.Get());
 			RunAudioCommandTests(workspace.Get());
-			RunModelPreviewCommandTests(RunModelLodCommandTests(workspace.Get()));
+			RunModelLodCommandTests(workspace.Get());
 			RunLandscapeCommandTests(workspace.Get());
 			RunPrefabImporterCommandTests(workspace.Get());
 			RunFrameGraphNodeCommandTests(workspace.Get());

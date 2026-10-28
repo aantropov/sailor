@@ -5,10 +5,55 @@ using SkiaSharp;
 
 namespace SailorEditor.Services;
 
-sealed class AssetFingerprintService(EngineService engineService)
+sealed class AssetFingerprintService : IDisposable
 {
     const int FingerprintSize = 256;
+    readonly EngineService engineService;
+    readonly AssetsService assetsService;
+    readonly AssetThumbnailCache assetThumbnails;
     readonly SemaphoreSlim fingerprintWriteLock = new(1, 1);
+    long previewGeneration;
+    public long PreviewGeneration => Interlocked.Read(ref previewGeneration);
+    public event Action? PreviewInvalidated;
+
+    public AssetFingerprintService(EngineService engineService, AssetsService assetsService)
+    {
+        this.engineService = engineService;
+        this.assetsService = assetsService;
+        assetThumbnails = new AssetThumbnailCache(engineService);
+        engineService.OnLifecycleStateChanged += OnEngineStateChanged;
+        engineService.OnAssetReloadCompleted += OnAssetsReloaded;
+        engineService.OnAssetUpdated += OnAssetsChanged;
+        assetsService.Changed += OnAssetsChanged;
+    }
+
+    void OnEngineStateChanged(EngineLifecycleState state) => InvalidatePreviews();
+
+    void OnAssetsChanged() => InvalidatePreviews();
+
+    void InvalidatePreviews()
+    {
+        Interlocked.Increment(ref previewGeneration);
+        assetThumbnails.Clear();
+        PreviewInvalidated?.Invoke();
+    }
+
+    void OnAssetsReloaded(AssetReloadCompletion completion)
+    {
+        if (completion.Succeeded)
+        {
+            InvalidatePreviews();
+        }
+    }
+
+    public void Dispose()
+    {
+        engineService.OnLifecycleStateChanged -= OnEngineStateChanged;
+        engineService.OnAssetReloadCompleted -= OnAssetsReloaded;
+        engineService.OnAssetUpdated -= OnAssetsChanged;
+        assetsService.Changed -= OnAssetsChanged;
+        assetThumbnails.Dispose();
+    }
 
     public string? GetFingerprintPath(FileId? fileId)
     {
@@ -33,8 +78,10 @@ sealed class AssetFingerprintService(EngineService engineService)
 
     public ImageSource? TryGetCachedPreview(AssetFile asset)
     {
-        if (asset is ModelFile { Fingerprint: not null } model)
-            return model.Fingerprint;
+        if (asset is ModelFile or MaterialFile)
+        {
+            return null;
+        }
         if (asset is TextureFile { Texture: not null } texture &&
             !texture.Texture.IsEmpty)
         {
@@ -49,10 +96,16 @@ sealed class AssetFingerprintService(EngineService engineService)
 
     public async Task<ImageSource?> LoadPreviewAsync(
         AssetFile asset,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, uint previewSize = 128)
     {
         ArgumentNullException.ThrowIfNull(asset);
+        var generation = PreviewGeneration;
         await asset.EnsureMetadataLoadedAsync(cancellationToken);
+
+        if (asset is MaterialFile material)
+        {
+            return await LoadMaterialPreviewAsync(material, previewSize, generation, cancellationToken);
+        }
 
         if (asset is TextureFile texture)
         {
@@ -62,39 +115,65 @@ sealed class AssetFingerprintService(EngineService engineService)
 
         if (asset is ModelFile model)
         {
-            await model.LoadDependentResources(cancellationToken);
-            return model.Fingerprint;
+            return await LoadModelPreviewAsync(model, previewSize, generation, cancellationToken);
         }
 
         return TryGetCachedPreview(asset);
     }
 
-    public async Task<ImageSource?> LoadModelPreviewAsync(
-        ModelFile model,
-        CancellationToken cancellationToken = default)
+    async Task<ImageSource?> LoadMaterialPreviewAsync(
+        MaterialFile material, uint size, long contentGeneration, CancellationToken cancellationToken)
     {
-        var path = GetFingerprintPath(model.FileId);
-        if (path is null)
+        if (!engineService.IsRunning)
+        {
             return null;
+        }
+        var generation = engineService.Generation;
+        var workspace = engineService.GetLaunchContext().WorkspaceIdentity;
+        // Use the same immutable draft as the large preview; never save or mutate the asset.
+        var yaml = await MainThread.InvokeOnMainThreadAsync(material.CreatePreviewSnapshot);
+        var key = AssetThumbnailKey.Create(AssetThumbnailKind.Material, workspace, generation,
+            material.FileId.Value, yaml, size, size) with { ContentGeneration = contentGeneration };
+        return await LoadRenderedPreviewAsync(key,
+            new MaterialPreviewSnapshot(yaml, Width: size, Height: size), cancellationToken);
+    }
 
-        try
+    async Task<ImageSource?> LoadModelPreviewAsync(
+        ModelFile model, uint size, long contentGeneration, CancellationToken cancellationToken)
+    {
+        if (!engineService.IsRunning)
         {
-            if (await engineService.GenerateModelFingerprintAsync(model.FileId, cancellationToken))
-            {
-                var bytes = await File.ReadAllBytesAsync(path, cancellationToken);
-                // A new source avoids reusing MAUI's file cache after atomic replacement.
-                return ImageSource.FromStream(() => new MemoryStream(bytes, writable: false));
-            }
+            return null;
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        var generation = engineService.Generation;
+        var workspace = engineService.GetLaunchContext().WorkspaceIdentity;
+        var key = await AssetThumbnailKey.CreateModelAsync(workspace, generation, model.FileId.Value,
+            model.Asset.FullName, model.AssetInfo.FullName, size, cancellationToken);
+        key = key with { ContentGeneration = contentGeneration };
+        return await LoadRenderedPreviewAsync(key,
+            new MaterialPreviewSnapshot(string.Empty, Width: size, Height: size, ModelFileId: model.FileId.Value),
+            cancellationToken);
+    }
+
+    async Task<ImageSource?> LoadRenderedPreviewAsync(AssetThumbnailKey key,
+        MaterialPreviewSnapshot snapshot, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!IsCurrent())
         {
-            throw;
+            return null;
         }
-        catch (Exception exception)
+        var png = await assetThumbnails.GetAsync(key, snapshot, cancellationToken);
+        if (!IsCurrent())
         {
-            Console.Error.WriteLine($"Could not generate model fingerprint for {model.FileId}: {exception.Message}");
+            return null;
         }
-        return TryGetCachedPreview(model);
+        return png is { Length: > 0 }
+            ? ImageSource.FromStream(() => new MemoryStream(png, writable: false))
+            : null;
+
+        bool IsCurrent() => engineService.IsRunning && key.EngineGeneration == engineService.Generation &&
+            key.Workspace == engineService.GetLaunchContext().WorkspaceIdentity && key.ContentGeneration == PreviewGeneration;
     }
 
     public async Task<ImageSource?> LoadTexturePreviewAsync(

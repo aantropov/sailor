@@ -6,7 +6,6 @@
 #include "AssetRegistry/Animation/AnimationController.h"
 #include "Editor/EditorViewportEvent.h"
 #include "Editor/EditorViewportController.h"
-#include "AssetRegistry/Model/ModelImporter.h"
 #include "Support/TempDirectory.h"
 #include "Support/EditorProtocolWire.h"
 #include "Support/ScopeExit.h"
@@ -46,6 +45,7 @@ extern "C"
 
 namespace
 {
+	using Sailor::operator""_h;
 	using Sailor::Protocol::EEditorEngineTransportStatus;
 	using Sailor::Protocol::EditorEngineProtocolMaxPayloadSize;
 	using Sailor::Protocol::EditorEngineProtocolVersion;
@@ -200,7 +200,7 @@ namespace
 			{ "\x82\x01\x00"sv, 16 }, { "\x8a\x01\x00"sv, 17 }, { "\x92\x01\x00"sv, 18 },
 			{ "\x9a\x01\x00"sv, 19 }, { "\xa2\x01\x00"sv, 20 }, { "\xaa\x01\x00"sv, 21 },
 			{ "\xb2\x01\x00"sv, 22 }, { "\xba\x01\x00"sv, 23 }, { "\xc2\x01\x00"sv, 24 },
-			{ "\xca\x01\x00"sv, 25 }, { "\xa2\x06\x00"sv, 100 }
+			{ "\xca\x01\x00"sv, 25 }, { "\xaa\x06\x00"sv, 101 }
 		};
 		TProtocolResponseWire response;
 		for (const auto& [bytes, field] : results)
@@ -754,35 +754,103 @@ namespace
 				kFileIdFieldNumber == 1);
 	}
 
-	void TestModelFingerprintProtocol()
+	void TestMaterialPreviewProtocol()
 	{
-		using Status = Sailor::ModelImporter::EFingerprintStatus;
 		using namespace sailor::editor::v1;
-		static_assert(static_cast<uint32_t>(Status::Unavailable) == MODEL_FINGERPRINT_STATUS_UNAVAILABLE);
-		static_assert(static_cast<uint32_t>(Status::Pending) == MODEL_FINGERPRINT_STATUS_PENDING);
-		static_assert(static_cast<uint32_t>(Status::Ready) == MODEL_FINGERPRINT_STATUS_READY);
-		static_assert(static_cast<uint32_t>(Status::Failed) == MODEL_FINGERPRINT_STATUS_FAILED);
 		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
 		std::string error;
-		Require(gate.TryBeginInitialization(error), "preview protocol fixture must initialize");
+		Require(gate.TryBeginInitialization(error), "material preview protocol fixture must initialize");
 		gate.CompleteInitialization(true);
 		Sailor::Protocol::EditorEngineProtocolDependencies dependencies;
 		dependencies.m_lifecycleGate = &gate;
-		Proto::FileIdRequest fileId;
-		fileId.set_file_id("01234567-89AB-CDEF-0123-456789ABCDEF");
-		TProtocolBuffer admitted;
-		const auto response = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 143,
-			ProtocolRequest::kRequestModelFingerprintFieldNumber, fileId.SerializeAsString()), admitted, dependencies);
-		Require(response.success() && response.request_id() == 143 &&
-			response.result_case() == c_boolResultField && !response.bool_result().value(),
-			"an unavailable importer must refuse generation rather than report a ready image");
-		TProtocolBuffer queried;
-		const auto status = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 144,
-			ProtocolRequest::kGetModelFingerprintStatusFieldNumber, fileId.SerializeAsString()), queried, dependencies);
-		Require(status.success() && status.request_id() == 144 &&
-			status.result_case() == ProtocolResponse::kModelFingerprintStatusResult &&
-			status.model_fingerprint_status_result().status() == MODEL_FINGERPRINT_STATUS_UNAVAILABLE,
-			"status queries must distinguish an absent request/importer from pending or ready output");
+		UpdateMaterialPreviewRequest request;
+		request.set_session_id(216);
+		request.set_revision(1);
+		request.set_material_yaml("shaderUid: test");
+		request.set_primitive(MATERIAL_PREVIEW_PRIMITIVE_SPHERE);
+		request.set_width(1024);
+		request.set_height(384);
+		TProtocolBuffer invalidSize;
+		auto response = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 216,
+			ProtocolRequest::kUpdateMaterialPreviewFieldNumber, request.SerializeAsString()), invalidSize, dependencies);
+		Require(!response.success() && response.error().find("dimensions") != std::string::npos,
+			"preview dimensions must reject oversized GPU allocation requests before renderer access");
+		request.set_width(384);
+		request.set_yaw(std::numeric_limits<float>::quiet_NaN());
+		TProtocolBuffer invalidCamera;
+		response = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 217,
+			ProtocolRequest::kUpdateMaterialPreviewFieldNumber, request.SerializeAsString()), invalidCamera, dependencies);
+		Require(!response.success() && response.error().find("camera") != std::string::npos,
+			"non-finite preview camera input must fail without queuing GPU work");
+		MaterialPreviewSessionRequest session;
+		session.set_session_id(216);
+		session.set_after_revision(9);
+		for (uint32_t command : { ProtocolRequest::kGetMaterialPreviewFieldNumber, ProtocolRequest::kCloseMaterialPreviewFieldNumber })
+		{
+			TProtocolBuffer buffer;
+			response = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 218,
+				command, session.SerializeAsString()), buffer, dependencies);
+			Require(response.success() && response.has_material_preview_result() &&
+				response.material_preview_result().session_id() == 216 &&
+				response.material_preview_result().state() == MATERIAL_PREVIEW_STATE_CLOSED &&
+				response.material_preview_result().png().empty(),
+				"absent or closed sessions must report Closed without starting rendering");
+		}
+		MaterialPreviewResult image;
+		image.set_png(std::string("\211PNG\0binary", 11));
+		MaterialPreviewResult decoded;
+		Require(decoded.ParseFromString(image.SerializeAsString()) && decoded.png() == image.png(),
+			"preview PNG transport must preserve embedded zero bytes");
+	}
+
+	void TestModelPreviewProtocol()
+	{
+		using namespace sailor::editor::v1;
+		static_assert(UpdateMaterialPreviewRequest::kModelFileIdFieldNumber == 10);
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::string error;
+		Require(gate.TryBeginInitialization(error), "model preview protocol fixture must initialize");
+		gate.CompleteInitialization(true);
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies;
+		dependencies.m_lifecycleGate = &gate;
+
+		UpdateMaterialPreviewRequest request;
+		request.set_session_id(228);
+		request.set_revision(1);
+		request.set_model_file_id("01234567-89AB-CDEF-0123-456789ABCDEF");
+		request.set_yaw(0.45f);
+		request.set_pitch(0.25f);
+		request.set_distance(3.0f);
+		request.set_width(128);
+		request.set_height(128);
+		UpdateMaterialPreviewRequest decoded;
+		Require(decoded.ParseFromString(request.SerializeAsString()) &&
+			decoded.model_file_id() == request.model_file_id() && decoded.material_yaml().empty() &&
+			decoded.primitive() == MATERIAL_PREVIEW_PRIMITIVE_UNSPECIFIED &&
+			decoded.session_id() == request.session_id() && decoded.revision() == request.revision() &&
+			decoded.width() == 128 && decoded.height() == 128 &&
+			decoded.yaw() == request.yaw() && decoded.pitch() == request.pitch() && decoded.distance() == 3.0f,
+			"the shared preview wire request must preserve a model source, camera and target without a material primitive");
+		TProtocolBuffer unavailable;
+		auto response = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 228,
+			ProtocolRequest::kUpdateMaterialPreviewFieldNumber, request.SerializeAsString()), unavailable, dependencies);
+		Require(!response.success() && response.error().find("renderer") != std::string::npos,
+			"a model-only request must pass source validation and report the unavailable renderer");
+
+		request.set_material_yaml("shaderUid: test");
+		TProtocolBuffer ambiguous;
+		response = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 229,
+			ProtocolRequest::kUpdateMaterialPreviewFieldNumber, request.SerializeAsString()), ambiguous, dependencies);
+		Require(!response.success() && response.error().find("source") != std::string::npos,
+			"a preview must reject simultaneous model and material sources before renderer access");
+
+		request.clear_material_yaml();
+		request.clear_model_file_id();
+		TProtocolBuffer missing;
+		response = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 230,
+			ProtocolRequest::kUpdateMaterialPreviewFieldNumber, request.SerializeAsString()), missing, dependencies);
+		Require(!response.success() && response.error().find("source") != std::string::npos,
+			"a preview must reject a missing source before renderer access");
 	}
 
 	void TestPathTracedExportIsUnsupported()
@@ -2325,7 +2393,8 @@ SAILOR_SHARED_API int RunEditorEngineProtocolTests()
 		TestEditorStatsModeWireContract();
 		TestEditorRenderModeWireContract();
 		TestAudioPreviewWireContract();
-		TestModelFingerprintProtocol();
+		TestMaterialPreviewProtocol();
+		TestModelPreviewProtocol();
 		TestPathTracedExportIsUnsupported();
 		TestEmbeddedNullIsRejected();
 		TestUtf8StringIsAccepted();

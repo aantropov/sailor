@@ -205,7 +205,7 @@ namespace Sailor::Tests::ProtocolWire
 				}
 				else if ((fieldNumber >= Response::kEmptyResultFieldNumber &&
 					fieldNumber <= Response::kGlobalIlluminationStateResultFieldNumber) ||
-					fieldNumber == Response::kModelFingerprintStatusResultFieldNumber)
+					fieldNumber == Response::kMaterialPreviewResultFieldNumber)
 				{
 					outResponse.m_resultField = fieldNumber;
 					outResponse.m_resultPayload = value;

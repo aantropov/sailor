@@ -252,17 +252,17 @@ public partial class MaterialFile : AssetFile
         using (var yamlAsset = new FileStream(Asset.FullName, FileMode.Create))
         using (var writer = new StreamWriter(yamlAsset))
         {
-            var serializer = SerializationUtils.CreateSerializerBuilder()
-                .WithTypeConverter(new MaterialFileYamlConverter())
-                .Build();
-
-            var yaml = serializer.Serialize(this);
-            writer.Write(yaml);
+            writer.Write(CreatePreviewSnapshot());
         }
 
         IsDirty = false;
         return Task.CompletedTask;
     }
+
+    public string CreatePreviewSnapshot() => SerializationUtils.CreateSerializerBuilder()
+        .WithTypeConverter(new MaterialFileYamlConverter())
+        .Build()
+        .Serialize(this);
 
     public override Task Revert()
     {
@@ -545,7 +545,7 @@ public class MaterialFileYamlConverter : IYamlTypeConverter
         foreach (var sampler in assetFile.Samplers)
         {
             emitter.Emit(new Scalar(null, sampler.Key));
-            emitter.Emit(new Scalar(null, sampler.Value.Value));
+            emitter.Emit(new Scalar(null, sampler.Value?.Value));
         }
         emitter.Emit(new MappingEnd());
 

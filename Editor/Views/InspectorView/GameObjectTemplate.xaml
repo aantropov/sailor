@@ -35,16 +35,6 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <HorizontalStackLayout Grid.Row="0"
-                               Grid.ColumnSpan="2"
-                               Spacing="8"
-                               IsVisible="{Binding IsPrefabLinked}">
-            <Button Text="Apply prefab"
-                    Clicked="OnApplyPrefabClicked" />
-            <Button Text="Select Prefab"
-                    Clicked="OnSelectPrefabClicked" />
-        </HorizontalStackLayout>
-
         <!-- Properties Label -->
         <Label Text="Transform" FontAttributes="Bold" Grid.Row="1" Grid.ColumnSpan="2" />
 

@@ -1345,26 +1345,4 @@ namespace Sailor::Tests
 		return fixture.m_id;
 	}
 
-	void RunModelPreviewCommandTests(FileId modelId)
-	{
-		const auto* info = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(modelId);
-		Require(info != nullptr, "the preview must use the imported model fixture");
-		const auto modelPath = Workspace::PathFromUtf8(info->GetAssetFilepath());
-		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
-		const auto previewId = modelId.ToString();
-		const auto preview = App::GetWorkspaceContext().GetCache() / "Fingerprints" / (previewId + ".png");
-		Require(EditorRuntime::RequestModelFingerprint(previewId.c_str()), "the editor bridge must accept a registered model preview");
-		scheduler->WaitIdle({ EThreadType::Background, EThreadType::Main });
-		Require(EditorRuntime::GetModelFingerprintStatus(previewId.c_str()) == static_cast<uint32_t>(ModelImporter::EFingerprintStatus::Ready) &&
-			std::filesystem::is_regular_file(preview) && std::filesystem::file_size(preview) > 0,
-			"the initialized engine must publish the requested preview into the active workspace cache");
-		const auto modelTime = std::filesystem::last_write_time(modelPath);
-		Require(std::filesystem::remove(preview), "remove only the generated fixture preview");
-		Require(EditorRuntime::RequestModelFingerprint(previewId.c_str()), "the editor bridge must permit retrying a missing preview");
-		scheduler->WaitIdle({ EThreadType::Background, EThreadType::Main });
-		Require(EditorRuntime::GetModelFingerprintStatus(previewId.c_str()) == static_cast<uint32_t>(ModelImporter::EFingerprintStatus::Ready) &&
-			std::filesystem::is_regular_file(preview) && std::filesystem::last_write_time(modelPath) == modelTime,
-			"native preview retry must complete without another model edit");
-		std::cout << "Explicit model preview bridge, workspace cache and missing-output retry passed\n";
-	}
 }

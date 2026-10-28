@@ -12,6 +12,7 @@ namespace SailorEditor.Services
     {
         readonly SelectionStore _selectionStore = new();
         int selectionRequestVersion;
+        int inspectionRebindVersion;
         long workspaceEpoch;
         CancellationTokenSource? pendingSelectionCancellation;
         int suppressRuntimeSelectionSync;
@@ -192,6 +193,27 @@ namespace SailorEditor.Services
             ClearSelectionCore();
         }
 
+        internal async Task RebindInspectedAssetAsync(AssetFile previous, AssetFile? replacement)
+        {
+            var epoch = WorkspaceEpoch;
+            if (!ReferenceEquals(InspectedItem, previous) || IsWorkspaceChangeInProgress)
+            {
+                return;
+            }
+            var requestVersion = Interlocked.Increment(ref inspectionRebindVersion);
+            if (replacement is not null)
+            {
+                await replacement.EnsureMetadataLoadedAsync();
+                await replacement.PrepareInspectorResources();
+                await replacement.LoadDependentResources();
+            }
+            if (requestVersion == Volatile.Read(ref inspectionRebindVersion) &&
+                epoch == WorkspaceEpoch && !IsWorkspaceChangeInProgress && ReferenceEquals(InspectedItem, previous))
+            {
+                InspectedItem = replacement;
+            }
+        }
+
         public void ApplyRuntimeSelection(InstanceId? instanceId)
         {
             Interlocked.Increment(ref suppressRuntimeSelectionSync);
@@ -199,7 +221,8 @@ namespace SailorEditor.Services
             {
                 if (instanceId is null || instanceId.IsEmpty())
                 {
-                    ClearSelection();
+                    CancelPendingSelection();
+                    ClearSelectionCore(preserveInspectedItem: true);
                 }
                 else
                 {
@@ -257,12 +280,16 @@ namespace SailorEditor.Services
         public void CompleteWorkspaceChange()
             => Interlocked.Exchange(ref workspaceChangeInProgress, 0);
 
-        void ClearSelectionCore()
+        void ClearSelectionCore(bool preserveInspectedItem = false)
         {
             _selectionStore.Clear();
             SelectedItems.Clear();
             SelectedItem = null;
             SelectedInstanceId = InstanceId.NullInstanceId;
+            if (!preserveInspectedItem)
+            {
+                InspectedItem = null;
+            }
             OnSelectAssetAction?.Invoke(null);
         }
 
@@ -282,6 +309,7 @@ namespace SailorEditor.Services
             SelectedItems.Clear();
             SelectedItems.Add(obj);
             SelectedItem = obj;
+            InspectedItem = obj;
 
             if (raiseInstanceAction && SelectedInstanceId is not null && !SelectedInstanceId.IsEmpty())
                 OnSelectInstanceAction?.Invoke(SelectedInstanceId);
@@ -335,6 +363,9 @@ namespace SailorEditor.Services
 
         [ObservableProperty]
         private ObservableObject selectedItem;
+
+        [ObservableProperty]
+        private ObservableObject? inspectedItem;
 
         [ObservableProperty]
         private ObservableList<INotifyPropertyChanged> selectedItems = [];
