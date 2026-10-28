@@ -1,4 +1,6 @@
 #include "ECS/LightingECS.h"
+#include "ECS/LightingECSInternal.h"
+#include "RHI/RenderTarget.h"
 #include "ECS/TransformECS.h"
 #include "Components/LightComponent.h"
 #include "Components/SkyComponent.h"
@@ -33,16 +35,19 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView, uint32_t sha
 		Settings::ResolveRenderDimensions(static_cast<uint32_t>((std::max)(viewportExtent.x, 1)),
 			static_cast<uint32_t>((std::max)(viewportExtent.y, 1)),
 			App::GetActiveGraphicsSettings().m_resolutionFactor);
-	const uint32_t viewportHeight = renderExtent.m_height;
 	const size_t numCameras = sceneView->m_cameraTransforms.Num();
 	sceneView->m_shadowMapsToUpdate.Resize(numCameras);
 	sceneView->m_shadowMapsToBlit.Resize(numCameras);
 	sceneView->m_shadowIndices.Resize(numCameras);
 	sceneView->m_shadowAtlasTiles.Resize(numCameras);
 	sceneView->m_shadowMatrices.Resize(numCameras);
+	sceneView->m_rhiLightsDataPerCamera.Resize(numCameras);
 
-	for (uint32_t i = 0; i < numCameras; i++)
+	for (uint32_t pass = 0; pass < numCameras; pass++)
 	{
+		// Offscreen captures execute before the normal view. Its local shadows
+		// remain independent so a deferred capture cannot suppress their writes.
+		const uint32_t i = static_cast<uint32_t>((pass + sceneView->m_firstShadowCamera) % numCameras);
 		auto& updateShadowMaps = sceneView->m_shadowMapsToUpdate[i];
 		auto& shadowMapsToBlit = sceneView->m_shadowMapsToBlit[i];
 		auto& shadowIndices = sceneView->m_shadowIndices[i];
@@ -76,6 +81,9 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView, uint32_t sha
 		}
 
 		const auto& camera = sceneView->m_cameras[i];
+		const uint32_t viewportHeight = i < sceneView->m_cameraRenderExtents.Num() &&
+			sceneView->m_cameraRenderExtents[i].y > 0 ?
+			static_cast<uint32_t>(sceneView->m_cameraRenderExtents[i].y) : renderExtent.m_height;
 
 		Math::Frustum frustum;
 		frustum.ExtractFrustumPlanes(sceneView->m_cameraTransforms[i].Matrix(),
@@ -117,7 +125,8 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView, uint32_t sha
 			flightResources,
 			shadowIndices,
 			shadowAtlasTiles,
-			updateShadowMaps);
+			updateShadowMaps,
+			i >= sceneView->m_firstShadowCamera);
 		for (uint32_t cascadeIndex = 0u;
 			cascadeIndex < snapshotIndex - cameraCsmSnapshotStart &&
 				cameraCsmSnapshotStart + cascadeIndex < flightResources.m_csmSnapshots.Num();
@@ -160,12 +169,34 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView, uint32_t sha
 		{
 			PublishShadowMapBindings();
 		}
-		sceneView->m_rhiLightsDataPerCamera.Add(m_shadows.m_bindings);
+		sceneView->m_rhiLightsDataPerCamera[i] = m_shadows.m_bindings;
 	}
 
 	if (flightResources.m_csmSnapshots.Num() > snapshotIndex)
 	{
 		flightResources.m_csmSnapshots.Resize(snapshotIndex);
+	}
+	// Captures add temporary cameras. Their submitted snapshots retain the maps;
+	// the reusable flight cache returns to the ordinary camera count on its next use.
+	for (size_t index = snapshotIndex; index < flightResources.m_csmShadowMaps.Num(); ++index)
+	{
+		const auto map = flightResources.m_csmShadowMaps[index];
+		const float memoryMb = LightingECSInternal::CalculateCsmShadowMapMemoryMb(map);
+		m_shadows.m_csmMapsMb = (std::max)(0.0f, m_shadows.m_csmMapsMb - memoryMb);
+		m_shadows.m_mapsMb = (std::max)(0.0f, m_shadows.m_mapsMb - memoryMb);
+		for (size_t cascade = 0u; cascade < m_shadows.m_csmMaps.Num(); ++cascade)
+		{
+			if (map && m_shadows.m_csmMaps[cascade] == map)
+			{
+				m_shadows.m_csmMaps[cascade].Clear();
+				m_shadows.m_textures[cascade] = m_shadows.m_defaultMap;
+				m_shadows.m_bBindingsDirty = true;
+			}
+		}
+	}
+	if (flightResources.m_csmShadowMaps.Num() > snapshotIndex)
+	{
+		flightResources.m_csmShadowMaps.Resize(snapshotIndex);
 	}
 
 	ReleaseUnusedLocalShadowAllocations(GetWorld()->GetCurrentFrame());

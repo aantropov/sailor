@@ -21,12 +21,14 @@ namespace Sailor::Framegraph
 			RHI::RHICommandListPtr commandList,
 			const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override;
+		bool WasRecorded() const { return m_bComplete; }
 
 	protected:
 		ShaderSetPtr m_shader{};
 		RHI::RHIShaderBindingSetPtr m_bindings{};
 		RHI::RHITexturePtr m_depthTexture{};
 		RHI::RHITexturePtr m_probeCellIndicesTexture{};
+		bool m_bComplete = false;
 	};
 
 	template class TFrameGraphNode<GlobalIlluminationResolveNode>;

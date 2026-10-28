@@ -27,7 +27,7 @@ namespace Sailor::Framegraph
 		class SubmissionResources final : public RHI::RHIFrameGraphSubmissionResource
 		{
 		public:
-			void ResetForSubmission() override {}
+			void ResetForSubmission() override { m_bComplete = false; }
 			void InvalidateSubmission() override { m_uniformTileCount = 0u; }
 
 			RHI::RHIShaderBindingSetPtr m_bindings{};
@@ -37,6 +37,7 @@ namespace Sailor::Framegraph
 			std::array<uint32_t, LightsPerTile> m_uniformLightIndices{};
 			uint32_t m_uniformLightCount = 0u;
 			size_t m_uniformTileCount = 0u;
+			bool m_bComplete = false;
 		};
 
 		struct PushConstants

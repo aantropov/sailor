@@ -574,12 +574,16 @@ void LightingECS::PrepareLocalShadowPasses(const RHI::RHISceneViewPtr& sceneView
 	LightingShadowFlightResources& flightResources,
 	TVector<uint32_t>& shadowIndices,
 	TVector<uint32_t>& shadowAtlasTiles,
-	TVector<RHI::RHIUpdateShadowMapCommand>& outUpdateShadowMaps)
+	TVector<RHI::RHIUpdateShadowMapCommand>& outUpdateShadowMaps,
+	bool bAllowPendingShadowReuse)
 {
 	const uint64_t frame = GetWorld()->GetCurrentFrame();
 	const auto casterSceneVersions = sceneView->GetRetainedSceneVersions();
 	const size_t lodCameraRevision = CalculateShadowLodCameraRevision(cameraData);
 	const auto submissionToken = sceneView->GetOrCreateSubmissionCompletionToken();
+	// A normal view cannot depend on a skippable offscreen capture's writes.
+	const auto reusableSubmissionToken = bAllowPendingShadowReuse ? submissionToken :
+		RHI::RHISubmissionCompletionTokenPtr{};
 	outUpdateShadowMaps.Reserve(outUpdateShadowMaps.Num() + spotLights.Num() + pointLights.Num() * 6u);
 
 	auto prepareLights = [&](const TVector<RHI::RHILightProxy>& lights)
@@ -695,7 +699,7 @@ void LightingECS::PrepareLocalShadowPasses(const RHI::RHISceneViewPtr& sceneView
 																				   sceneView->m_shadowCastersRevision,
 																				   casterSceneVersions,
 																				   shadowFrustum,
-																				   submissionToken,
+																				   reusableSubmissionToken,
 																				   sceneView->m_animationRevision))
 				{
 					cachedState.m_sceneRevision = sceneView->m_shadowCastersRevision;

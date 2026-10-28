@@ -129,6 +129,7 @@ TObjectPtr<SkyComponent> LightingECS::GetSky() const
 
 void LightingECS::BeginPlay()
 {
+	m_localReflection = TSharedPtr<LocalReflectionCaptureState>::Make();
 	m_shadows.m_mapsMb = 0.0f;
 	m_shadows.m_csmMapsMb = 0.0f;
 	m_shadows.m_localAllocationRevision = 0ull;
@@ -285,6 +286,8 @@ void LightingECS::Tick(float deltaTime)
 
 void LightingECS::EndPlay()
 {
+	ResetLocalReflection();
+	m_localReflection.Clear();
 	m_skies.Clear();
 	m_cpuLightsData.Clear();
 	m_publishedLightsData.Clear();

@@ -474,6 +474,7 @@ namespace Sailor::RHI
 			const Math::Frustum& frustum,
 			TVector<RHIVisibleShadowCaster>& outVisibleCasters) const;
 		SAILOR_API void PrepareSnapshots();
+		SAILOR_API void RestoreCameraCount(uint32_t count);
 		SAILOR_API void PrepareDebugDrawCommandLists(
 			WorldPtr world,
 			const glm::ivec2& renderExtent);
@@ -512,6 +513,10 @@ namespace Sailor::RHI
 
 		TVector<CameraData> m_cameras;
 		TVector<Math::Transform> m_cameraTransforms;
+		// An empty extent uses the viewport; offscreen cameras supply their own.
+		TVector<glm::ivec2> m_cameraRenderExtents;
+		// Shadow producers follow GPU execution order without changing camera identities.
+		uint32_t m_firstShadowCamera = 0u;
 		RHIPathTracerScenePtr m_pathTracerScene;
 
 		Tasks::TaskPtr<RHI::RHICommandListPtr, void> m_drawImGui;
