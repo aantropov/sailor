@@ -686,7 +686,9 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
         var snapshot = request.Snapshot;
         ValidatePreviewSession(request.SessionId);
         if (request.Revision == 0)
+        {
             throw new ArgumentOutOfRangeException(nameof(request.Revision));
+        }
         var yaml = ValidateString(snapshot.MaterialYaml, nameof(snapshot.MaterialYaml));
         var modelId = ValidateString(snapshot.ModelFileId, nameof(snapshot.ModelFileId));
         yaml = string.IsNullOrWhiteSpace(yaml) ? string.Empty : yaml;
@@ -705,9 +707,13 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
             throw new ArgumentException("Preview material YAML exceeds 1 MiB or model FileId exceeds 1024 bytes.", nameof(request));
         }
         if (!float.IsFinite(snapshot.Yaw) || !float.IsFinite(snapshot.Pitch) || !float.IsFinite(snapshot.Distance))
+        {
             throw new ArgumentException("Material preview camera values must be finite.", nameof(request));
+        }
         if (snapshot.Width is < 64 or > 512 || snapshot.Height is < 64 or > 512)
+        {
             throw new ArgumentOutOfRangeException(nameof(request), "Material preview dimensions must be between 64 and 512.");
+        }
 
         var response = await SendAsync(new ProtocolRequest
         {
@@ -750,13 +756,17 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
         }, cancellationToken).ConfigureAwait(false);
         var result = ReadMaterialPreview(response, nameof(ProtocolRequest.CloseMaterialPreview));
         if (result.SessionId != sessionId || result.State != PreviewState.Closed)
+        {
             throw new EngineProtocolException("Engine did not close the requested material preview session.");
+        }
     }
 
     static void ValidatePreviewSession(ulong sessionId)
     {
         if (sessionId == 0)
+        {
             throw new ArgumentOutOfRangeException(nameof(sessionId));
+        }
     }
 
     static MaterialPreviewResponse ReadMaterialPreview(ProtocolResponse response, string command)
@@ -765,7 +775,9 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
         var state = (PreviewState)result.State;
         if (result.SessionId == 0 || !Enum.IsDefined(state) || result.Width > 512 || result.Height > 512 ||
             result.Png.Length > 512 * 512 * 4 + 65536 || result.Diagnostic.Length > 8192)
+        {
             throw new EngineProtocolException("Engine returned an invalid material preview result.");
+        }
         return new(result.SessionId, result.Revision, state, result.Png.ToByteArray(), result.Diagnostic);
     }
 

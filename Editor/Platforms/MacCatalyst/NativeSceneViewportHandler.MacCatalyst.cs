@@ -110,7 +110,9 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
     public void ReleaseInputFocus()
     {
         if (PlatformView is NativeSceneViewportPlatformView platformView)
+        {
             platformView.ReleaseInputFocus();
+        }
     }
 
     void FlushPendingLayout()

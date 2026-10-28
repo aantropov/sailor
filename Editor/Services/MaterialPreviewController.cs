@@ -97,7 +97,13 @@ internal sealed class MaterialPreviewController : IAsyncDisposable
 
     public MaterialPreviewPresentation Presentation
     {
-        get { lock (gate) return presentation; }
+        get
+        {
+            lock (gate)
+            {
+                return presentation;
+            }
+        }
     }
 
     public bool SetContext(object? binding, long engineGeneration, bool active)
@@ -107,13 +113,19 @@ internal sealed class MaterialPreviewController : IAsyncDisposable
             ObjectDisposedException.ThrowIf(disposed, this);
             if (active && binding is not null && session is not null &&
                 ReferenceEquals(session.Binding, binding) && session.EngineGeneration == engineGeneration)
+            {
                 return false;
+            }
             if ((!active || binding is null) && session is null)
+            {
                 return false;
+            }
 
             CloseSessionLocked();
             if (active && binding is not null)
+            {
                 session = new Session(binding, engineGeneration, checked((ulong)Interlocked.Increment(ref nextSessionId)));
+            }
             presentation = new(session?.Id ?? 0, 0, 0, null, false, string.Empty);
             StartProcessingLocked();
         }
@@ -126,9 +138,13 @@ internal sealed class MaterialPreviewController : IAsyncDisposable
         lock (gate)
         {
             if (disposed || session is null || desired?.Request.Snapshot == snapshot)
+            {
                 return;
+            }
             if (desired is not null && !HasSameContent(desired.Request.Snapshot, snapshot))
+            {
                 activeOperation?.Cancel();
+            }
             desired = new Work(session, new MaterialPreviewRequest(session.Id, ++session.NextRevision, snapshot));
             presentation = presentation with
             {
@@ -146,7 +162,9 @@ internal sealed class MaterialPreviewController : IAsyncDisposable
         lock (gate)
         {
             if (disposed || session is null)
+            {
                 return;
+            }
             activeOperation?.Cancel();
             desired = null;
             presentation = presentation with { IsLoading = false, Diagnostic = diagnostic };
@@ -170,7 +188,9 @@ internal sealed class MaterialPreviewController : IAsyncDisposable
     void StartProcessingLocked()
     {
         if (processingActive || (closing.Count == 0 && (desired is null || ReferenceEquals(desired, handled))))
+        {
             return;
+        }
         processingActive = true;
         processing = Task.Run(ProcessAsync);
     }
@@ -223,7 +243,9 @@ internal sealed class MaterialPreviewController : IAsyncDisposable
                 lock (gate)
                 {
                     if (desired is null || !ReferenceEquals(session, work.Session))
+                    {
                         continue;
+                    }
                     work = desired;
                     handled = work;
                     operation = CancellationTokenSource.CreateLinkedTokenSource(work.Session.Cancellation.Token);
@@ -237,39 +259,55 @@ internal sealed class MaterialPreviewController : IAsyncDisposable
                 while (IsCurrent(work) && response.State == PreviewState.Pending)
                 {
                     if (response.SessionId != work.Session.Id)
+                    {
                         throw new InvalidOperationException("Material preview returned a different session.");
+                    }
                     await Task.Delay(pollInterval, operation.Token).ConfigureAwait(false);
                     response = await transport.GetAsync(
                         work.Session.Id, afterRevision, work.Session.EngineGeneration, operation.Token).ConfigureAwait(false);
                 }
 
                 if (!IsCurrent(work))
+                {
                     continue;
+                }
                 if (response.SessionId != work.Session.Id || response.Revision != work.Request.Revision)
+                {
                     throw new InvalidOperationException("Material preview returned a stale revision.");
+                }
                 if (response.State == PreviewState.Ready && response.Png.Length > 0)
+                {
                     Publish(work, response.Png, string.Empty);
+                }
                 else
+                {
                     Publish(work, null, string.IsNullOrWhiteSpace(response.Diagnostic)
                         ? "Material preview could not be rendered."
                         : response.Diagnostic);
+                }
             }
             catch (OperationCanceledException)
             {
                 if (work is not null && IsCurrent(work))
+                {
                     Publish(work, null, "Material preview timed out. Change a setting to retry.");
+                }
             }
             catch (Exception exception)
             {
                 if (work is not null)
+                {
                     Publish(work, null, exception.Message);
+                }
             }
             finally
             {
                 lock (gate)
                 {
                     if (ReferenceEquals(activeOperation, operation))
+                    {
                         activeOperation = null;
+                    }
                     operation?.Dispose();
                 }
             }
@@ -279,8 +317,10 @@ internal sealed class MaterialPreviewController : IAsyncDisposable
     bool IsCurrent(Work work)
     {
         lock (gate)
+        {
             return !disposed && ReferenceEquals(session, work.Session) && desired is not null &&
                 HasSameContent(desired.Request.Snapshot, work.Request.Snapshot);
+        }
     }
 
     static bool HasSameContent(MaterialPreviewSnapshot left, MaterialPreviewSnapshot right) =>
@@ -293,7 +333,9 @@ internal sealed class MaterialPreviewController : IAsyncDisposable
         lock (gate)
         {
             if (!IsCurrent(work))
+            {
                 return;
+            }
             presentation = presentation with
             {
                 Png = png ?? presentation.Png,

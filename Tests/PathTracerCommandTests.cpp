@@ -1498,7 +1498,12 @@ namespace Sailor::Tests
 		{
 			std::string enginePath = std::filesystem::current_path().string();
 			for (int i = 1; i + 1 < argc; ++i)
-				if (std::string_view(argv[i]) == "--workspace") enginePath = argv[i + 1];
+			{
+				if (std::string_view(argv[i]) == "--workspace")
+				{
+					enginePath = argv[i + 1];
+				}
+			}
 			// Exercise private single-sample targets while the scene uses MSAA.
 			WriteScene(workspace, enginePath, 2);
 			const auto root = workspace.Get().string();
@@ -1509,9 +1514,15 @@ namespace Sailor::Tests
 			RunMaterialPreviewCommandTests(workspace.Get());
 			result = 0;
 		}
-		catch (const std::exception& error) { std::cerr << error.what() << '\n'; }
+		catch (const std::exception& error)
+		{
+			std::cerr << error.what() << '\n';
+		}
 		App::Stop();
-		if (!App::Shutdown()) result = 1;
+		if (!App::Shutdown())
+		{
+			result = 1;
+		}
 		return result;
 	}
 

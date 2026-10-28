@@ -30,7 +30,9 @@ public sealed partial class InspectorProjectionService : ObservableObject
         _selectionService.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName == nameof(SelectionService.InspectedItem))
+            {
                 Refresh();
+            }
         };
         _worldService.OnUpdateWorldAction += _ => Refresh();
 

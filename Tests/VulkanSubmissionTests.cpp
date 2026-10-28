@@ -7582,7 +7582,10 @@ int main(int argc, const char** argv)
 	for (int i = 1; i < argc; ++i)
 	{
 		const std::string_view mode(argv[i]);
-		if (mode == "--gpu-material-preview") return Tests::RunMaterialPreviewGpu(argc, argv);
+		if (mode == "--gpu-material-preview")
+		{
+			return Tests::RunMaterialPreviewGpu(argc, argv);
+		}
 		if (mode == "--gpu-audio")
 		{
 			return Tests::RunAudioCommandTests(argc, argv);

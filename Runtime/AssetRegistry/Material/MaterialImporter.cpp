@@ -877,7 +877,10 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::CreateMaterialTask(
 Tasks::TaskPtr<MaterialPtr> MaterialImporter::CreateTransientMaterial(TSharedPtr<MaterialAsset> asset,
 	const Memory::ObjectAllocatorPtr& allocator, MaterialPtr& outMaterial)
 {
-	if (!asset || !allocator) return {};
+	if (!asset || !allocator)
+	{
+		return {};
+	}
 	outMaterial = MaterialPtr::Make(allocator, FileId{});
 	auto task = CreateMaterialTask(outMaterial, std::move(asset), false, {}, true);
 	task->Run();

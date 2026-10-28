@@ -69,9 +69,13 @@ public sealed class InspectorSelectionTests : IDisposable
         selection.ApplyRuntimeSelection(null);
         var resetGeneration = inspector.ResetGeneration;
         if (workspace)
+        {
             selection.ResetForWorkspaceChange();
+        }
         else
+        {
             selection.ResetForDocumentChange();
+        }
 
         Assert.Null(selection.InspectedItem);
         Assert.Null(inspector.SelectedItem);

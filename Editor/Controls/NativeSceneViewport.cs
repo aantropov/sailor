@@ -90,6 +90,8 @@ public class NativeSceneViewport : View
     public void ReleaseInputFocus()
     {
         if (Handler is INativeSceneViewportLayoutHost layoutHost)
+        {
             layoutHost.ReleaseInputFocus();
+        }
     }
 }

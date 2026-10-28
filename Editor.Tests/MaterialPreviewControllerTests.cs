@@ -12,7 +12,9 @@ public sealed class MaterialPreviewControllerTests
         await using var controller = Create(transport, debounce: 40);
         controller.SetContext(new object(), 1, true);
         for (var i = 0; i < 20; ++i)
+        {
             controller.Update(new($"shaderUid: shader-{i}"));
+        }
 
         await Until(() => controller.Presentation.Png is not null);
         Assert.Single(transport.Updates);
@@ -61,7 +63,9 @@ public sealed class MaterialPreviewControllerTests
         controller.Update(new("material", Yaw: 0));
         await Until(() => transport.Updates.Count == 1);
         for (var i = 1; i <= 30; ++i)
+        {
             controller.Update(new("material", Yaw: i * 0.02f));
+        }
 
         Assert.False(firstCancellation.IsCancellationRequested);
         first.SetResult(Ready(transport.Updates.First().Request, [1]));
@@ -93,7 +97,10 @@ public sealed class MaterialPreviewControllerTests
                     await Task.Delay(20, cancellation);
                     return Ready(request, [(byte)request.Revision]);
                 }
-                finally { Interlocked.Decrement(ref inFlight); }
+                finally
+                {
+                    Interlocked.Decrement(ref inFlight);
+                }
             }
         };
         await using var controller = Create(transport);
@@ -104,7 +111,9 @@ public sealed class MaterialPreviewControllerTests
             controller.Update(new("material", Yaw: i * 0.01f));
             await Task.Delay(5);
             if (controller.Presentation.ImageRevision > 0)
+            {
                 imagesDuringInput.Add(controller.Presentation.ImageRevision);
+            }
         }
 
         Assert.True(imagesDuringInput.Count >= 3, "Orbit must display completed frames while input continues.");
@@ -332,7 +341,9 @@ public sealed class MaterialPreviewControllerTests
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
         while (!condition())
+        {
             await Task.Delay(5, timeout.Token);
+        }
     }
 
     sealed class PreviewTransport : IMaterialPreviewTransport

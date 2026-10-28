@@ -85,10 +85,14 @@ namespace SailorEditor.Services
                     }
 
                     if (selection.Kind == SelectionTargetKind.Asset && selection.SelectedId is not null)
+                    {
                         RestoreSelectedAsset(selectionService, new FileId(selection.SelectedId));
+                    }
                     else if (inspectedAsset is not null)
+                    {
                         await selectionService.RebindInspectedAssetAsync(inspectedAsset,
                             Assets.TryGetValue(inspectedAsset.FileId, out var refreshed) ? refreshed : null);
+                    }
                 });
             }
             catch (Exception exception)
@@ -1108,7 +1112,9 @@ namespace SailorEditor.Services
                 else if (result.Succeeded && !string.IsNullOrWhiteSpace(successfulFolderSelectionPath))
                 {
                     if (selectionService.InspectedItem is AssetFile)
+                    {
                         selectionService.ClearSelection();
+                    }
 
                     MauiProgram.GetService<ProjectContentStore>().RestoreFolderSelectionByPath(
                         successfulFolderSelectionPath);
@@ -1116,7 +1122,9 @@ namespace SailorEditor.Services
                 else if (folderRebindPlan is { HasSelection: true } plan)
                 {
                     if (selectionService.InspectedItem is AssetFile)
+                    {
                         selectionService.ClearSelection();
+                    }
 
                     MauiProgram.GetService<ProjectContentStore>().RestoreFolderSelectionByPath(
                         result.Succeeded ? plan.SuccessPath : plan.OriginalPath);
@@ -1125,7 +1133,9 @@ namespace SailorEditor.Services
                 {
                     RestoreSelectedAsset(selectionService, selectedAssetId);
                     if (selectedAssetId is null && inspectedAsset is not null)
+                    {
                         _ = RestoreInspectedAssetAsync(selectionService, inspectedAsset);
+                    }
                 }
             }
 

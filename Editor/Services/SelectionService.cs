@@ -197,7 +197,9 @@ namespace SailorEditor.Services
         {
             var epoch = WorkspaceEpoch;
             if (!ReferenceEquals(InspectedItem, previous) || IsWorkspaceChangeInProgress)
+            {
                 return;
+            }
             var requestVersion = Interlocked.Increment(ref inspectionRebindVersion);
             if (replacement is not null)
             {
@@ -207,7 +209,9 @@ namespace SailorEditor.Services
             }
             if (requestVersion == Volatile.Read(ref inspectionRebindVersion) &&
                 epoch == WorkspaceEpoch && !IsWorkspaceChangeInProgress && ReferenceEquals(InspectedItem, previous))
+            {
                 InspectedItem = replacement;
+            }
         }
 
         public void ApplyRuntimeSelection(InstanceId? instanceId)
@@ -283,7 +287,9 @@ namespace SailorEditor.Services
             SelectedItem = null;
             SelectedInstanceId = InstanceId.NullInstanceId;
             if (!preserveInspectedItem)
+            {
                 InspectedItem = null;
+            }
             OnSelectAssetAction?.Invoke(null);
         }
 

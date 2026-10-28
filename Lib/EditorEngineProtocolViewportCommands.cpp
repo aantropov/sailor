@@ -120,7 +120,10 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		result->set_state(static_cast<sailor::editor::v1::MaterialPreviewState>(value.m_state));
 		result->set_width(value.m_width);
 		result->set_height(value.m_height);
-		if (!value.m_png.empty()) result->set_png(value.m_png.data(), value.m_png.size());
+		if (!value.m_png.empty())
+		{
+			result->set_png(value.m_png.data(), value.m_png.size());
+		}
 		result->set_diagnostic(value.m_diagnostic);
 	}
 

@@ -2333,7 +2333,9 @@ namespace SailorEditor.Services
             ulong sessionId, long generation, CancellationToken cancellationToken = default)
         {
             if (!IsGenerationActive(generation))
+            {
                 return;
+            }
             await protocolClient.CloseMaterialPreviewAsync(sessionId, cancellationToken).ConfigureAwait(false);
         }
 
@@ -2343,15 +2345,21 @@ namespace SailorEditor.Services
         {
             CancellationToken sessionToken;
             lock (runLock)
+            {
                 sessionToken = activeSession?.PollCancellation.Token ?? default;
+            }
             using var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, sessionToken);
             if (!IsGenerationActive(generation))
+            {
                 throw new OperationCanceledException("The material preview engine session has ended.");
+            }
             operation.Token.ThrowIfCancellationRequested();
             var result = await invoke(operation.Token).ConfigureAwait(false);
             operation.Token.ThrowIfCancellationRequested();
             if (!IsGenerationActive(generation))
+            {
                 throw new OperationCanceledException("The material preview engine session has changed.");
+            }
             return result;
         }
 

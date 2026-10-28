@@ -969,12 +969,18 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 
 		if (!submitsSucceeded->load(std::memory_order_acquire))
 		{
-			if (bTrackGpuStats) m_lastFrameGpuStats = driver->FinishGpuTracking();
+			if (bTrackGpuStats)
+			{
+				m_lastFrameGpuStats = driver->FinishGpuTracking();
+			}
 			outWaitSemaphore = submissionProgress->GetLastSuccessfulSemaphore();
 			return false;
 		}
 
-		if (bTrackGpuStats) m_lastFrameGpuStats = driver->FinishGpuTracking();
+		if (bTrackGpuStats)
+		{
+			m_lastFrameGpuStats = driver->FinishGpuTracking();
+		}
 
 		frameGraphChainSemaphore = chainSemaphore;
 		outCommandLists.Emplace(std::move(cmdList));

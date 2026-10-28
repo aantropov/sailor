@@ -154,7 +154,9 @@ public sealed class SceneViewportLifecycleTests
         shell.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName == nameof(ShellState.Focus))
+            {
                 observedOwners.Add(shell.Focus.FocusedViewportId);
+            }
         };
 
         scene.SetViewportFocus(true);
@@ -196,7 +198,9 @@ public sealed class SceneViewportLifecycleTests
         shell.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName != nameof(ShellState.Focus))
+            {
                 return;
+            }
             observed.Add(shell.Focus);
             if (localSceneFocus && !scene.IsFocused)
             {

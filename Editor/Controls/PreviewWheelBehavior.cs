@@ -57,11 +57,15 @@ internal sealed class PreviewWheelBehavior(Action<double> scroll) : Behavior<Vie
     {
         DetachNative();
         if (!loaded)
+        {
             return;
+        }
 #if MACCATALYST
         nativeView = owner?.Handler?.PlatformView as UIView;
         if (nativeView is null)
+        {
             return;
+        }
         wheel = new UIPanGestureRecognizer(OnScroll)
         {
             AllowedScrollTypesMask = UIScrollTypeMask.All,
@@ -74,7 +78,9 @@ internal sealed class PreviewWheelBehavior(Action<double> scroll) : Behavior<Vie
 #elif WINDOWS
         nativeView = owner?.Handler?.PlatformView as FrameworkElement;
         if (nativeView is not null)
+        {
             nativeView.PointerWheelChanged += OnScroll;
+        }
 #endif
     }
 
@@ -90,7 +96,9 @@ internal sealed class PreviewWheelBehavior(Action<double> scroll) : Behavior<Vie
         nativeView = null;
 #elif WINDOWS
         if (nativeView is not null)
+        {
             nativeView.PointerWheelChanged -= OnScroll;
+        }
         nativeView = null;
 #endif
     }
@@ -99,20 +107,28 @@ internal sealed class PreviewWheelBehavior(Action<double> scroll) : Behavior<Vie
     void OnScroll(UIPanGestureRecognizer gesture)
     {
         if (nativeView is null || gesture.State is not (UIGestureRecognizerState.Began or UIGestureRecognizerState.Changed))
+        {
             return;
+        }
         var translation = gesture.TranslationInView(nativeView);
         gesture.SetTranslation(CGPoint.Empty, nativeView);
         if (translation.Y != 0)
+        {
             scroll((double)translation.Y / 40.0);
+        }
     }
 #elif WINDOWS
     void OnScroll(object sender, PointerRoutedEventArgs args)
     {
         if (nativeView is null)
+        {
             return;
+        }
         var point = args.GetCurrentPoint(nativeView);
         if (point.Properties.IsHorizontalMouseWheel)
+        {
             return;
+        }
         args.Handled = true;
         scroll(point.Properties.MouseWheelDelta / 120.0);
     }

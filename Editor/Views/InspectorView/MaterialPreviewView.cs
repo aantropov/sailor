@@ -115,7 +115,9 @@ public sealed class MaterialPreviewView : ContentView
     void OnLoaded(object? sender, EventArgs args)
     {
         if (loaded)
+        {
             return;
+        }
         loaded = true;
         shellState = MauiProgram.GetService<ShellState>();
         focusCoordinator = new RenderViewFocusCoordinator(shellState, viewportId);
@@ -133,17 +135,23 @@ public sealed class MaterialPreviewView : ContentView
         loaded = false;
         focusCoordinator?.ReleaseIfOwned();
         if (shellState is not null)
+        {
             shellState.PropertyChanged -= OnShellFocusChanged;
+        }
         focusCoordinator = null;
         shellState = null;
         UpdateFocusVisual();
         snapshotQueued = false;
         if (material is not null)
+        {
             material.PropertyChanged -= OnMaterialChanged;
+        }
         material = null;
         materialYaml = null;
         if (engine is not null)
+        {
             engine.OnLifecycleStateChanged -= OnEngineStateChanged;
+        }
         StopObservingVisibility();
         if (controller is not null)
         {
@@ -158,11 +166,15 @@ public sealed class MaterialPreviewView : ContentView
     void BindMaterial()
     {
         if (material is not null)
+        {
             material.PropertyChanged -= OnMaterialChanged;
+        }
         material = loaded ? BindingContext as MaterialFile : null;
         materialYaml = null;
         if (material is not null)
+        {
             material.PropertyChanged += OnMaterialChanged;
+        }
         SyncContext();
     }
 
@@ -182,7 +194,9 @@ public sealed class MaterialPreviewView : ContentView
     void StopObservingVisibility()
     {
         foreach (var ancestor in visibilityAncestors)
+        {
             ancestor.PropertyChanged -= OnAncestorChanged;
+        }
         visibilityAncestors.Clear();
     }
 
@@ -194,7 +208,9 @@ public sealed class MaterialPreviewView : ContentView
             SyncContext();
         }
         else if (args.PropertyName is nameof(IsVisible) or nameof(Width) or nameof(Height))
+        {
             SyncContext();
+        }
     }
 
     bool CanPreview() => loaded && expanded && Window is not null && material is not null && engine?.IsRunning == true &&
@@ -203,15 +219,23 @@ public sealed class MaterialPreviewView : ContentView
     void SyncContext()
     {
         if (controller is null || engine is null)
+        {
             return;
+        }
         var active = CanPreview();
         if (!active)
+        {
             focusCoordinator?.ReleaseIfOwned();
+        }
         var changed = controller.SetContext(material, engine.Generation, active);
         if (active && changed)
+        {
             QueueSnapshot();
+        }
         if (!engine.IsRunning)
+        {
             status.Text = "Start the engine to preview this material.";
+        }
     }
 
     void OnEngineStateChanged(EngineLifecycleState state) => SyncContext();
@@ -225,13 +249,17 @@ public sealed class MaterialPreviewView : ContentView
     void QueueSnapshot()
     {
         if (snapshotQueued || !CanPreview())
+        {
             return;
+        }
         snapshotQueued = true;
         Dispatcher.Dispatch(() =>
         {
             snapshotQueued = false;
             if (!CanPreview() || controller is null || material is null)
+            {
                 return;
+            }
             try
             {
                 controller.Update(new MaterialPreviewSnapshot(
@@ -251,11 +279,15 @@ public sealed class MaterialPreviewView : ContentView
         var source = controller;
         var state = source?.Presentation;
         if (source is null || state is null)
+        {
             return;
+        }
         Dispatcher.Dispatch(() =>
         {
             if (!loaded || !ReferenceEquals(source, controller) || !ReferenceEquals(state, source.Presentation))
+            {
                 return;
+            }
             if (!ReferenceEquals(displayedPng, state.Png))
             {
                 displayedPng = state.Png;
@@ -279,7 +311,9 @@ public sealed class MaterialPreviewView : ContentView
     void OnShellFocusChanged(object? sender, PropertyChangedEventArgs args)
     {
         if (args.PropertyName == nameof(ShellState.Focus))
+        {
             UpdateFocusVisual();
+        }
     }
 
     void UpdateFocusVisual()
@@ -292,7 +326,9 @@ public sealed class MaterialPreviewView : ContentView
     void OnPreviewWheel(double delta)
     {
         if (!CanPreview() || !double.IsFinite(delta) || delta == 0)
+        {
             return;
+        }
         ++ReceivedWheelEvents;
         SelectPreview();
         distance = Math.Clamp(distance * (float)Math.Exp(-delta * 0.12), 1.5f, 12f);
@@ -323,6 +359,8 @@ public sealed class MaterialPreviewView : ContentView
             QueueSnapshot();
         }
         else if (args.StatusType == GestureStatus.Completed)
+        {
             QueueSnapshot();
+        }
     }
 }

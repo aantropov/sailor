@@ -261,7 +261,9 @@ namespace SailorEditor.Views
             if (!focusCoordinator.IsFocused &&
                 (input.Kind is NativeSceneViewportInputKind.Key or NativeSceneViewportInputKind.Text or NativeSceneViewportInputKind.Capture ||
                  input.Kind == NativeSceneViewportInputKind.PointerButton && !input.Pressed))
+            {
                 return NativeViewportInputDispatchResult.Forwarded;
+            }
             var captured = input.Captured || isInputCaptured;
 
             if (input.Kind == NativeSceneViewportInputKind.Key &&
@@ -931,7 +933,9 @@ namespace SailorEditor.Views
             EditorViewportToolShortcutEvent viewportEvent)
         {
             if (!focusCoordinator.IsFocused)
+            {
                 return;
+            }
             if (!SceneViewportToolShortcuts.TryApply(
                     viewportEvent.KeyCode,
                     isPressed: true,
@@ -1326,7 +1330,9 @@ namespace SailorEditor.Views
         void OnShellFocusChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
         {
             if (args.PropertyName != nameof(State.ShellState.Focus) || focusCoordinator.IsFocused || !isFocused)
+            {
                 return;
+            }
             ResetNativeViewportInputQueue();
             SetSceneFocus(false, sendRemoteFocus: true);
             nativeViewportHost?.ReleaseInputFocus();
