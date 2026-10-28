@@ -5,11 +5,17 @@
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "Editor/EditorRuntimeBridge.h"
+#include "Editor/EditorScene.h"
+#include "Memory/UniquePtr.hpp"
 #include "RHI/Renderer.h"
 #include "RHI/Mesh.h"
 #include "Submodules/Editor.h"
 #include "Support/ScopeExit.h"
 #include "Tasks/Tasks.h"
+#define STB_IMAGE_STATIC
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ONLY_PNG
+#define STBI_NO_STDIO
 #include <stb_image.h>
 #include <nlohmann/json.hpp>
 
@@ -34,6 +40,15 @@ namespace
 		{
 			throw std::runtime_error(message);
 		}
+	}
+
+	std::string CaptureSceneSnapshot()
+	{
+		char* buffer = nullptr;
+		const uint32_t length = EditorRuntime::SerializeCurrentWorld(&buffer);
+		TUniquePtr<char[]> ownedBuffer(buffer);
+		Require(buffer && length != 0, "the active scene must provide a serialized snapshot");
+		return std::string(buffer, length);
 	}
 
 	MaterialPreviewResult WaitForPreview(uint64_t session, uint64_t revision)
@@ -508,7 +523,7 @@ void RunMaterialPreviewCommandTests(const std::filesystem::path& workspace)
 	const auto sceneSamples = renderer->GetMsaaSamples();
 	const auto renderMode = App::GetEditorRenderMode();
 	const auto readback = renderer->GetEditorReadback();
-	const auto serializedScene = editor && world ? YAML::Dump(editor->SerializeWorld()) : std::string{};
+	const auto serializedScene = editor && world ? CaptureSceneSnapshot() : std::string{};
 
 	MaterialAsset::Data data;
 	data.m_shader = FileId("1A4BA353-FDA4-4F65-941F-D9FFEE4630A0");
@@ -824,7 +839,7 @@ void RunMaterialPreviewCommandTests(const std::filesystem::path& workspace)
 		renderer->GetMsaaSamples() == sceneSamples && App::GetEditorRenderMode() == renderMode &&
 		renderer->GetEditorReadback() == readback && (!editor || editor->GetWorld() == world),
 		"private preview must preserve the active scene graph, extent, MSAA, mode, readback and world");
-	Require(!editor || !world || YAML::Dump(editor->SerializeWorld()) == serializedScene,
+	Require(!editor || !world || CaptureSceneSnapshot() == serializedScene,
 		"private preview must not edit the scene serialization");
 	std::cout << "Material preview GPU: primitives, unsaved uniforms/textures, roughness, warm orbit, dependency reload, independent sessions, FIFO, bounded LRU, errors, close and isolation passed\n";
 }
