@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 using namespace Sailor;
@@ -56,33 +57,58 @@ namespace
 		using EnvironmentNode::EnvironmentMaps;
 		using EnvironmentNode::CacheEnvironment;
 		using EnvironmentNode::TryRestoreEnvironment;
+		using EnvironmentNode::CompleteLocalReflection;
+		using EnvironmentNode::InvalidateLocalReflection;
 
 		uint32_t NumCachedEnvironments() const { return m_numCachedEnvironments; }
 
-		void SeedLocalReflection(RHITexturePtr upload)
+		void SeedLocalReflection(RHICubemapPtr raw)
 		{
-			LocalReflectionImage image;
-			image.m_extent = glm::uvec2(4u, 2u);
-			image.m_pixels.Resize(8u);
-			for (glm::vec4& pixel : image.m_pixels)
-			{
-				pixel = glm::vec4(1.0f);
-			}
-			image.m_samplesPerPixel = 16u;
-			image.m_parameters.m_positionBlend = glm::vec4(0, 0, 0, 1);
-			image.m_parameters.m_minEnabled = glm::vec4(-1, -1, -1, 1);
-			image.m_parameters.m_max = glm::vec4(1);
-			m_localParameters = image.m_parameters;
-			m_localReflection = TSharedPtr<const LocalReflectionImage>::Make(std::move(image));
-			m_localUploadTexture = std::move(upload);
-			m_localReflectionSamples.store(16u);
+			LocalReflectionCubemap capture;
+			capture.m_cubemap = std::move(raw);
+			capture.m_generation = 16u;
+			capture.m_parameters.m_positionBlend = glm::vec4(0, 0, 0, 1);
+			capture.m_parameters.m_minEnabled = glm::vec4(-1, -1, -1, 1);
+			capture.m_parameters.m_max = glm::vec4(1);
+			m_localParameters = capture.m_parameters;
+			m_localReflection = TSharedPtr<const LocalReflectionCubemap>::Make(std::move(capture));
+			m_localReflectionGeneration.store(16u);
 			m_localReflectionReady.store(true);
 			m_bLocalReflectionDirty = false;
 		}
 
+		void SeedFiltering(RHICubemapPtr specular, RHICubemapPtr sheen, RHIFencePtr completion)
+		{
+			m_localFiltering = { m_localReflection, std::move(specular), std::move(sheen), std::move(completion) };
+			m_bLocalReflectionDirty = true;
+		}
+
+		void SeedPendingLocalReflection(RHICubemapPtr raw, uint64_t generation)
+		{
+			LocalReflectionCubemap capture{ m_localParameters, std::move(raw), generation };
+			m_localReflection = TSharedPtr<const LocalReflectionCubemap>::Make(std::move(capture));
+			m_bLocalReflectionDirty = true;
+		}
+
+		bool HasPendingLocalGeneration(uint64_t generation) const
+		{
+			return m_localReflection && m_localReflection->m_generation == generation;
+		}
+
+		bool HasFilteringLocalGeneration(uint64_t generation) const
+		{
+			return m_localFiltering.m_source && m_localFiltering.m_source->m_generation == generation &&
+				m_localFiltering.m_completion;
+		}
+
 		bool IsLocalResetPending() const
 		{
-			return m_bLocalReflectionDirty && !m_localReflection && !m_localUploadTexture;
+			return m_bLocalReflectionDirty && !m_localReflection && !m_localFiltering.m_completion;
+		}
+
+		bool IsLocalRetryPending() const
+		{
+			return m_bLocalReflectionDirty && m_localReflection && !m_localFiltering.m_completion;
 		}
 
 		void SeedEnvironmentSky(const SkyParameters& parameters)
@@ -227,29 +253,140 @@ namespace
 		Require(counts.Live() == 0u, "the final consumer release must destroy the last evicted map");
 	}
 
+	void TestLocalReflectionCaptureValidation()
+	{
+		LocalReflectionCaptureRequest request;
+		request.m_parameters.m_positionBlend = glm::vec4(0, 0, 0, 1);
+		request.m_parameters.m_minEnabled = glm::vec4(-1, -1, -1, 1);
+		request.m_parameters.m_max = glm::vec4(1);
+		Require(request.IsValid(), "an interior capture with a finite frustum must be accepted");
+		for (uint32_t size : { 16u, 128u, 512u })
+		{
+			request.m_faceSize = size;
+			Require(request.IsValid(), "supported face resolutions must be accepted");
+		}
+		for (uint32_t size : { 0u, 15u, 17u, 1024u })
+		{
+			request.m_faceSize = size;
+			Require(!request.IsValid(), "invalid or unbounded face resolutions must be rejected");
+		}
+		request.m_faceSize = 128u;
+		for (float value : { 0.0f, -1.0f, std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN() })
+		{
+			auto invalid = request;
+			invalid.m_nearPlane = value;
+			Require(!invalid.IsValid(), "capture must reject a non-finite or nonpositive near plane");
+			invalid = request;
+			invalid.m_farPlane = value;
+			Require(!invalid.IsValid(), "capture must reject a non-finite or reversed far plane");
+		}
+		auto invalid = request;
+		invalid.m_farPlane = invalid.m_nearPlane;
+		Require(!invalid.IsValid(), "the capture frustum must have positive depth");
+		invalid = request;
+		invalid.m_parameters.m_positionBlend.w = 0;
+		Require(!invalid.IsValid(), "zero box blend distance must be rejected");
+		for (uint32_t axis = 0u; axis < 3u; ++axis)
+		{
+			invalid = request;
+			invalid.m_parameters.m_positionBlend[axis] = request.m_parameters.m_max[axis];
+			Require(!invalid.IsValid(), "the capture position must lie strictly inside the projection box");
+			invalid = request;
+			invalid.m_parameters.m_minEnabled[axis] = request.m_parameters.m_max[axis];
+			Require(!invalid.IsValid(), "degenerate projection boxes must be rejected");
+			invalid = request;
+			invalid.m_parameters.m_max[axis] = std::numeric_limits<float>::quiet_NaN();
+			Require(!invalid.IsValid(), "non-finite projection boxes must be rejected");
+		}
+		LocalReflectionCubemap capture;
+		capture.m_parameters = request.m_parameters;
+		capture.m_generation = 1u;
+		Require(!capture.IsValid(), "a generation without a completed GPU cubemap must be rejected");
+	}
+
+	void TestUnfinishedOrFailedLocalFilterKeepsPublishedBundle()
+	{
+		ResourceCounts sourceCounts, filterCounts, publishedCounts;
+		EnvironmentNodeProbe node;
+		auto frameGraph = RHIFrameGraphPtr::Make();
+		node.SeedLocalReflection(TRefPtr<CountedCubemap>::Make(sourceCounts, 1u, 0u));
+		const LocalReflectionParameters previousParameters = node.GetLocalReflectionParameters();
+		auto previousSpecular = TRefPtr<CountedCubemap>::Make(publishedCounts, 1u, 0u);
+		auto previousSheen = TRefPtr<CountedCubemap>::Make(publishedCounts, 1u, 1u);
+		frameGraph->SetSampler("g_localEnvCubemap"_h, previousSpecular);
+		frameGraph->SetSampler("g_localSheenEnvCubemap"_h, previousSheen);
+		auto completion = RHIFencePtr::Make();
+		node.SeedFiltering(TRefPtr<CountedCubemap>::Make(filterCounts, 2u, 0u),
+			TRefPtr<CountedCubemap>::Make(filterCounts, 2u, 1u), completion);
+		node.CompleteLocalReflection(frameGraph);
+		Require(filterCounts.Live() == 2u && sourceCounts.Live() == 1u &&
+			node.GetLocalReflectionGeneration() == 16u && node.IsLocalReflectionReady(),
+			"an unfinished filter must retain its GPU inputs and leave the published status unchanged");
+		completion->MarkSubmissionFailed();
+		node.CompleteLocalReflection(frameGraph);
+		Require(node.IsLocalRetryPending() && filterCounts.Live() == 0u && sourceCounts.Live() == 1u &&
+			node.GetLocalReflectionGeneration() == 16u && node.IsLocalReflectionReady(),
+			"failed filtering must release rejected outputs and retain the source for a retry");
+		Require(frameGraph->GetSampler("g_localEnvCubemap"_h) == previousSpecular &&
+			frameGraph->GetSampler("g_localSheenEnvCubemap"_h) == previousSheen &&
+			node.GetLocalReflectionParameters().m_positionBlend == previousParameters.m_positionBlend &&
+			node.GetLocalReflectionParameters().m_minEnabled == previousParameters.m_minEnabled &&
+			node.GetLocalReflectionParameters().m_max == previousParameters.m_max,
+			"a pending or failed filter must preserve the previous pair and its matching box parameters");
+		node.SeedFiltering(TRefPtr<CountedCubemap>::Make(filterCounts, 3u, 0u),
+			TRefPtr<CountedCubemap>::Make(filterCounts, 3u, 1u), RHIFencePtr::Make());
+		node.Clear();
+		node.CompleteLocalReflection(frameGraph);
+		Require(node.IsLocalResetPending() && sourceCounts.Live() == 0u && filterCounts.Live() == 0u &&
+			node.GetLocalReflectionGeneration() == 0u && !node.IsLocalReflectionReady(),
+			"reset must invalidate pending capture and filter ownership without republishing it");
+	}
+
 	void TestLocalReflectionResetKeepsEnvironmentCache()
 	{
 		ResourceCounts filteredCounts;
-		ResourceCounts uploadCounts;
+		ResourceCounts sourceCounts;
 		EnvironmentNodeProbe node;
 		auto frameGraph = RHIFrameGraphPtr::Make();
 		const SkyParameters sky;
 		node.CacheEnvironment(sky.GetEnvironmentKey(), MakeMaps(filteredCounts, 1u));
 		node.SeedEnvironmentSky(sky);
-		node.SeedLocalReflection(TRefPtr<CountedCubemap>::Make(uploadCounts, 0u, 0u));
-		Require(node.IsLocalReflectionReady() && node.GetLocalReflectionSamples() == 16u,
+		node.SeedLocalReflection(TRefPtr<CountedCubemap>::Make(sourceCounts, 0u, 0u));
+		Require(node.IsLocalReflectionReady() && node.GetLocalReflectionGeneration() == 16u,
 			"the reset fixture must contain a published local reflection");
 		node.Clear();
-		Require(!node.IsLocalReflectionReady() && node.GetLocalReflectionSamples() == 0u &&
+		Require(!node.IsLocalReflectionReady() && node.GetLocalReflectionGeneration() == 0u &&
 			node.GetLocalReflectionParameters().m_minEnabled.w == 0.0f && node.IsLocalResetPending() &&
-			uploadCounts.Live() == 0u,
-			"Clear must reset local reflection status, parameters and upload ownership");
+			sourceCounts.Live() == 0u,
+			"Clear must reset local reflection status, parameters and GPU capture ownership");
 		SkyParameters retainedSky;
 		Require(node.NumCachedEnvironments() == 1u && filteredCounts.Live() == 3u &&
 			node.GetEnvironmentSkyParams(retainedSky) && retainedSky == sky &&
 			node.TryRestoreEnvironment(frameGraph, sky.GetEnvironmentKey(), {}),
 			"local reflection reset must preserve fallback IBL resources and their sky parameters");
 		RequireFrameGraphMaps(frameGraph, 1u);
+	}
+
+	void TestLateResetKeepsNewerLocalCapture()
+	{
+		ResourceCounts sourceCounts, filterCounts;
+		EnvironmentNodeProbe node;
+		node.SeedLocalReflection(TRefPtr<CountedCubemap>::Make(sourceCounts, 16u, 0u));
+		node.SeedPendingLocalReflection(TRefPtr<CountedCubemap>::Make(sourceCounts, 32u, 0u), 32u);
+		node.InvalidateLocalReflection(16u);
+		Require(!node.IsLocalReflectionReady() && node.GetLocalReflectionGeneration() == 0u &&
+			node.GetLocalReflectionParameters().m_minEnabled.w == 0.0f &&
+			node.HasPendingLocalGeneration(32u) && sourceCounts.Live() == 1u,
+			"an older owner's reset must disable its published capture without deleting a newer queued source");
+		node.SeedFiltering(TRefPtr<CountedCubemap>::Make(filterCounts, 32u, 0u),
+			TRefPtr<CountedCubemap>::Make(filterCounts, 32u, 1u), RHIFencePtr::Make());
+		node.InvalidateLocalReflection(16u);
+		Require(node.HasPendingLocalGeneration(32u) && node.HasFilteringLocalGeneration(32u) &&
+			sourceCounts.Live() == 1u && filterCounts.Live() == 2u,
+			"a repeated late reset must preserve a newer generation's in-flight filtering and GPU source");
+		node.Clear();
+		Require(sourceCounts.Live() == 0u && filterCounts.Live() == 0u && node.IsLocalResetPending(),
+			"an explicit unconditional reset must still invalidate the newer pending generation");
 	}
 }
 
@@ -260,7 +397,10 @@ int main()
 		TestCacheRemainsBoundedAcrossLightingStates();
 		TestCacheHitsRefreshLruAndRawSource();
 		TestConsumersRetainEvictedMaps();
+		TestLocalReflectionCaptureValidation();
+		TestUnfinishedOrFailedLocalFilterKeepsPublishedBundle();
 		TestLocalReflectionResetKeepsEnvironmentCache();
+		TestLateResetKeepsNewerLocalCapture();
 		std::cout << "Environment cache tests passed." << std::endl;
 		return 0;
 	}

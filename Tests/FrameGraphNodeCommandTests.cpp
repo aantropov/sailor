@@ -3062,6 +3062,26 @@ frame:
 	{
 	public:
 		uint32_t NumCachedEnvironments() const { return m_numCachedEnvironments; }
+
+		ShaderSetPtr ExchangeLocalFilterShader(bool bSheen, ShaderSetPtr replacement)
+		{
+			auto& shader = bSheen ? m_pComputeSheenShader : m_pComputeSpecularShader;
+			auto previous = shader;
+			shader = std::move(replacement);
+			return previous;
+		}
+
+		bool IsLocalFilterRetryPending() const
+		{
+			return m_bLocalReflectionDirty && m_localReflection && !m_localFiltering.m_completion;
+		}
+	};
+
+	class UnavailableComputeShader final : public ShaderSet
+	{
+	public:
+		UnavailableComputeShader() : ShaderSet(FileId::CreateNewFileId(), {}) {}
+		bool IsReady() const override { return true; }
 	};
 
 	class SkyRendererAccess : public Renderer
@@ -3553,7 +3573,7 @@ frame:
 		auto registry = App::GetSubmodule<AssetRegistry>();
 		auto importer = App::GetSubmodule<TextureImporter>();
 		Require(registry->GetOrLoadFile(path.string()) == id, "the authored HDR must register");
-		auto node = TRefPtr<EnvironmentNode>::Make();
+		auto node = TRefPtr<EnvironmentCommandProbe>::Make();
 		node->SetString("EnvironmentMap"_h, path.filename().string());
 		auto graph = RHIFrameGraphPtr::Make();
 		const StringHash names[] = { "g_rawEnvCubemap"_h, "g_envCubemap"_h, "g_irradianceCubemap"_h, "g_sheenEnvCubemap"_h };
@@ -3868,18 +3888,33 @@ frame:
 			checkLighting(); // A graph without Environment must initialize a disabled local capture.
 			graph->GetGraph().Add(node);
 		});
-		const auto publishLocal = [&](uint32_t samples, glm::vec3 radiance)
+		const auto publishLocal = [&](uint64_t generation, glm::vec3 radiance)
 		{
-			LocalReflectionImage image;
-			image.m_extent = { 4, 2 };
-			image.m_parameters.m_positionBlend = { float(samples), 0, 0, 1 + float(samples) };
-			image.m_parameters.m_minEnabled = { -10, -10, -10, 1 };
-			image.m_parameters.m_max = { 10, 10, 10, 0 };
-			image.m_samplesPerPixel = samples;
-			image.m_pixels.Resize(8);
-			for (auto& pixel : image.m_pixels) pixel = glm::vec4(radiance, 1);
-			Require(node->SetLocalReflection(std::move(image)), "the actual local capture must enter the Render queue");
+			LocalReflectionCubemap capture;
+			capture.m_parameters.m_positionBlend = { float(generation), 0, 0, 1 + float(generation) };
+			capture.m_parameters.m_minEnabled = { -100, -10, -10, 1 };
+			capture.m_parameters.m_max = { 100, 10, 10, 0 };
+			capture.m_generation = generation;
+			onRender([&]()
+			{
+				auto& driver = Renderer::GetDriver();
+				auto commands = Renderer::GetDriverCommands();
+				capture.m_cubemap = driver->CreateCubemap(glm::ivec2(16), 5u, EFormat::R16G16B16A16_SFLOAT,
+					ETextureFiltration::Linear, ETextureClamping::Clamp,
+					ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit);
+				Require(capture.m_cubemap.IsValid(), "the GPU source cubemap must allocate");
+				auto command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				commands->BeginCommandList(command, true);
+				ClearColor(command, capture.m_cubemap, glm::vec4(radiance, 1));
+				commands->GenerateMipMaps(command, capture.m_cubemap);
+				commands->ImageMemoryBarrier(command, capture.m_cubemap, capture.m_cubemap->GetDefaultLayout());
+				commands->EndCommandList(command);
+				Require(driver->SubmitCommandList_Immediate(command), "the GPU capture source must finish before handoff");
+				driver->TrackResources_ThreadSafe();
+			});
+			Require(capture.IsValid() && node->SetLocalReflection(capture), "the completed GPU capture must enter the Render queue");
 			App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(EThreadType::Render);
+			return capture;
 		};
 		const auto checkLocalPixels = [&](glm::vec3 expected)
 		{
@@ -3890,47 +3925,99 @@ frame:
 				auto cube = graph->GetSampler(name);
 				Require(cube.IsValid(), "both local reflection maps must publish together");
 				for (uint32_t mip = 0; mip < 8; ++mip)
-				for (uint32_t face = 0; face < 6; ++face)
 				{
-					const uint32_t size = 128u >> mip;
-					auto buffer = driver->CreateBuffer(size * size * 8u, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
-					auto command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
-					commands->BeginCommandList(command, true);
-					commands->ImageMemoryBarrier(command, cube, EImageLayout::TransferSrcOptimal);
-					command->m_vulkan.m_commandBuffer->CopyImageToBuffer(*buffer->m_vulkan.m_buffer->Get(),
-						cube->m_vulkan.m_image, size, size, 1, mip, face);
-					commands->ImageMemoryBarrier(command, cube, cube->GetDefaultLayout());
-					commands->MemoryBarrier(command, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
-						static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
-					commands->EndCommandList(command);
-					Require(driver->SubmitCommandList_Immediate(command), "local reflection readback must complete");
-					const auto pixels = static_cast<const uint16_t*>(buffer->GetPointer());
-					for (uint32_t i = 0; i < size * size; ++i)
-					for (uint32_t channel = 0; channel < 3; ++channel)
-						Require(std::abs(glm::unpackHalf1x16(pixels[4 * i + channel]) - expected[channel]) < 0.02f,
-							"every local reflection face/mip pixel must match the accepted capture");
+					for (uint32_t face = 0; face < 6; ++face)
+					{
+						const uint32_t size = 128u >> mip;
+						auto buffer = driver->CreateBuffer(size * size * 8u, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+						auto command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+						commands->BeginCommandList(command, true);
+						commands->ImageMemoryBarrier(command, cube, EImageLayout::TransferSrcOptimal);
+						command->m_vulkan.m_commandBuffer->CopyImageToBuffer(*buffer->m_vulkan.m_buffer->Get(),
+							cube->m_vulkan.m_image, size, size, 1, mip, face);
+						commands->ImageMemoryBarrier(command, cube, cube->GetDefaultLayout());
+						commands->MemoryBarrier(command, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+							static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+						commands->EndCommandList(command);
+						Require(driver->SubmitCommandList_Immediate(command), "local reflection readback must complete");
+						const auto pixels = static_cast<const uint16_t*>(buffer->GetPointer());
+						for (uint32_t i = 0; i < size * size; ++i)
+						{
+							for (uint32_t channel = 0; channel < 3; ++channel)
+							{
+								Require(std::abs(glm::unpackHalf1x16(pixels[4 * i + channel]) - expected[channel]) < 0.02f,
+									"every local reflection face/mip pixel must match the accepted capture");
+							}
+						}
+					}
 				}
 			}
 		};
-		publishLocal(1, { 1, 0.5f, 0.25f });
+		const auto initialCapture = publishLocal(1, { 1, 0.5f, 0.25f });
 		onRender([&]()
 		{
-			for (uint32_t frame = 0; frame < 16 && !node->IsLocalReflectionReady(); ++frame) process();
-			Require(node->GetLocalReflectionSamples() == 1, "the initial local capture must publish");
+			process();
+			Require(!node->IsLocalReflectionReady() && node->GetLocalReflectionGeneration() == 0u &&
+				!graph->GetSampler(localNames[0]) && !graph->GetSampler(localNames[1]),
+				"submitting filter work must not publish an unfinished local reflection");
+			for (uint32_t frame = 0; frame < 16 && !node->IsLocalReflectionReady(); ++frame)
+			{
+				process();
+			}
+			Require(node->GetLocalReflectionGeneration() == 1, "the completed initial filter must publish");
 			checkLocalPixels({ 1, 0.5f, 0.25f });
 			checkLighting();
 		});
-		uint32_t samples = 1;
+		Require(!node->SetLocalReflection(initialCapture), "a completed generation must not be filtered and published twice");
+		auto invalidCapture = initialCapture;
+		invalidCapture.m_generation = 0u;
+		Require(!node->SetLocalReflection(invalidCapture), "a GPU source without a generation must be refused");
+		uint64_t generation = 1;
 		for (auto error : { VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY })
 		{
-			++samples;
-			const glm::vec3 radiance(0.25f, float(samples), 0.5f);
+			++generation;
+			const glm::vec3 radiance(0.25f, float(generation), 0.5f);
 			std::array<RHITexturePtr, 2> previous;
-			onRender([&]() { for (uint32_t i = 0; i < previous.size(); ++i) previous[i] = graph->GetSampler(localNames[i]); });
-			publishLocal(samples, radiance);
+			LocalReflectionParameters previousParameters;
 			onRender([&]()
 			{
-				const auto reject = [&](uint32_t stage)
+				for (uint32_t i = 0; i < previous.size(); ++i)
+				{
+					previous[i] = graph->GetSampler(localNames[i]);
+				}
+				previousParameters = node->GetLocalReflectionParameters();
+			});
+			publishLocal(generation, radiance);
+			onRender([&]()
+			{
+				const auto requirePrevious = [&]()
+				{
+					Require(node->GetLocalReflectionGeneration() == generation - 1 && node->IsLocalReflectionReady(),
+						"an unfinished replacement must retain the previous completed generation");
+					for (uint32_t i = 0; i < previous.size(); ++i)
+					{
+						Require(graph->GetSampler(localNames[i]) == previous[i],
+							"an unfinished replacement must retain both published map owners");
+					}
+					const auto parameters = node->GetLocalReflectionParameters();
+					Require(parameters.m_positionBlend == previousParameters.m_positionBlend &&
+						parameters.m_minEnabled == previousParameters.m_minEnabled && parameters.m_max == previousParameters.m_max,
+						"an unfinished replacement must retain the box parameters matching the published maps");
+				};
+				if (generation == 2u)
+				{
+					const auto unavailable = TObjectPtr<UnavailableComputeShader>::Make(Memory::ObjectAllocatorPtr::Make());
+					for (bool bSheen : { false, true })
+					{
+						auto original = node->ExchangeLocalFilterShader(bSheen, unavailable);
+						process();
+						node->ExchangeLocalFilterShader(bSheen, std::move(original));
+						Require(node->IsLocalFilterRetryPending(),
+							"a skipped GGX or sheen dispatch must discard the incomplete list and retain the GPU source for retry");
+						requirePrevious();
+					}
+				}
+				for (uint32_t stage = 0; stage < 3; ++stage)
 				{
 					auto& driver = Renderer::GetDriver();
 					auto commands = Renderer::GetDriverCommands();
@@ -3938,18 +4025,21 @@ frame:
 					auto draw = driver->CreateCommandList(false, ECommandListQueue::Graphics);
 					commands->BeginCommandList(upload, true);
 					commands->BeginCommandList(draw, true);
+					// Refuse either filtered image initialization or the actual filtering submission.
 					Tests::RequireAttachmentInitializationRefusal([&]() { node->Process(graph, upload, draw, {}); }, stage, error);
-					Require(draw->GetNumRecordedCommands() == 0 && node->GetLocalReflectionSamples() == samples - 1 &&
-						node->IsLocalReflectionReady(), "failed local replacement must retain the previous ready capture and record no filter work");
-					for (uint32_t i = 0; i < previous.size(); ++i)
-						Require(graph->GetSampler(localNames[i]) == previous[i], "failed local replacement must retain both published map owners");
+					Require(draw->GetNumRecordedCommands() == 0,
+						"local filtering must not record work into the main scene command list");
+					requirePrevious();
 					CompleteCommands(upload, draw);
-				};
-				reject(0); // Upload.
+				}
 				process();
-				for (uint32_t stage = 0; stage < 3; ++stage) reject(stage);
-				for (uint32_t frame = 0; frame < 16 && node->GetLocalReflectionSamples() != samples; ++frame) process();
-				Require(node->GetLocalReflectionSamples() == samples, "the pending local capture must retry without another SetLocalReflection");
+				requirePrevious();
+				for (uint32_t frame = 0; frame < 16 && node->GetLocalReflectionGeneration() != generation; ++frame)
+				{
+					process();
+				}
+				Require(node->GetLocalReflectionGeneration() == generation,
+					"the pending GPU capture must retry without another SetLocalReflection");
 				checkLocalPixels(radiance);
 				checkLighting();
 				const auto bindings = lightingView->m_snapshots[0].m_rhiLightsData;
@@ -3957,10 +4047,18 @@ frame:
 				Require(lightingView->m_snapshots[0].m_rhiLightsData == bindings, "warm local parameters must reuse lighting bindings");
 				checkLighting(true);
 				std::array<RHITexturePtr, 2> accepted;
-				for (uint32_t i = 0; i < accepted.size(); ++i) accepted[i] = graph->GetSampler(localNames[i]);
-				for (uint32_t frame = 0; frame < 8; ++frame) process();
 				for (uint32_t i = 0; i < accepted.size(); ++i)
+				{
+					accepted[i] = graph->GetSampler(localNames[i]);
+				}
+				for (uint32_t frame = 0; frame < 8; ++frame)
+				{
+					process();
+				}
+				for (uint32_t i = 0; i < accepted.size(); ++i)
+				{
 					Require(graph->GetSampler(localNames[i]) == accepted[i], "warm local reflection frames must retain the accepted pair");
+				}
 			});
 		}
 		onRender([&]()
@@ -3970,17 +4068,58 @@ frame:
 			graph->GetGraph().Add(node);
 			checkLighting();
 		});
+		publishLocal(++generation, { 2, 3, 4 });
+		onRender([&]()
+		{
+			process();
+			Require(node->GetLocalReflectionGeneration() == generation - 1,
+				"the replacement must still be pending when reset is requested");
+		});
+		node->ResetLocalReflection(generation - 1u);
+		App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(EThreadType::Render);
+		onRender([&]()
+		{
+			Require(!node->IsLocalReflectionReady() && node->GetLocalReflectionGeneration() == 0u,
+				"a scoped reset must disable the older published generation while keeping the newer filter");
+			for (uint32_t frame = 0; frame < 16 && node->GetLocalReflectionGeneration() != generation; ++frame)
+			{
+				process();
+			}
+			Require(node->GetLocalReflectionGeneration() == generation,
+				"a newer in-flight generation must still publish after an older owner's delayed reset");
+			checkLocalPixels({ 2, 3, 4 });
+			checkLighting();
+		});
+		node->ResetLocalReflection(generation - 1u);
+		App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(EThreadType::Render);
+		onRender([&]()
+		{
+			process();
+			Require(node->IsLocalReflectionReady() && node->GetLocalReflectionGeneration() == generation,
+				"an older owner's delayed reset must not clear a newer completed generation");
+			checkLighting();
+		});
+		publishLocal(++generation, { 3, 4, 5 });
+		onRender([&]()
+		{
+			process();
+			Require(node->GetLocalReflectionGeneration() == generation - 1,
+				"the unconditional reset fixture must have an uncommitted replacement");
+		});
 		node->ResetLocalReflection();
 		App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(EThreadType::Render);
 		onRender([&]()
 		{
 			checkLighting();
 			checkLighting();
+			Require(!node->IsLocalReflectionReady() && node->GetLocalReflectionGeneration() == 0u &&
+				!graph->GetSampler(localNames[0]) && !graph->GetSampler(localNames[1]),
+				"reset must discard pending GPU work without republishing its maps");
 			graph->Clear();
 			checkLighting();
 		});
-		std::cout << "Local reflection initialization: upload/three-map refusal, retained capture, Render-queue retry and all face/mip pixels passed\n";
-		std::cout << "Local reflection lighting: two camera GPU uniforms, matching maps, warm reuse, replaced bindings, reset and absent node passed\n";
+		std::cout << "Local reflection initialization: GPU cubemap source, two-map and filter-submit refusals, completion-gated retry and all face/mip pixels passed\n";
+		std::cout << "Local reflection lighting: two camera GPU uniforms, matching maps, warm reuse, replaced bindings, pending reset and absent node passed\n";
 		std::cout << "Authored HDR reload: four-map pixels, retained consumers, failed reload/repair and 32 warm invalidations passed\n";
 	}
 

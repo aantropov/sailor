@@ -8,6 +8,7 @@
 #include "FrameGraph/FrameGraphNode.h"
 #include "FrameGraph/SkyNode.h"
 #include "FrameGraph/LocalReflection.h"
+#include "RHI/Fence.h"
 #include <array>
 #include <atomic>
 
@@ -41,10 +42,10 @@ namespace Sailor::Framegraph
 		}
 
 		// Updates are queued to Render. The game thread may read the published status.
-		SAILOR_SHARED_API bool SetLocalReflection(LocalReflectionImage image);
-		SAILOR_SHARED_API void ResetLocalReflection();
+		SAILOR_SHARED_API bool SetLocalReflection(LocalReflectionCubemap capture);
+		SAILOR_SHARED_API void ResetLocalReflection(uint64_t maximumGeneration = UINT64_MAX);
 		bool IsLocalReflectionReady() const { return m_localReflectionReady.load(); }
-		uint32_t GetLocalReflectionSamples() const { return m_localReflectionSamples.load(); }
+		uint64_t GetLocalReflectionGeneration() const { return m_localReflectionGeneration.load(); }
 		// Render-thread access, alongside the matching frame-graph samplers.
 		LocalReflectionParameters GetLocalReflectionParameters() const { return m_localParameters; }
 
@@ -67,12 +68,23 @@ namespace Sailor::Framegraph
 		// Called after a miss, once the complete bundle has been filtered.
 		SAILOR_SHARED_API void CacheEnvironment(const SkyEnvironmentKey& key, EnvironmentMaps maps);
 
-		void ProcessLocalReflection(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr commandList);
-		TSharedPtr<const LocalReflectionImage> m_localReflection;
+		struct LocalReflectionFiltering
+		{
+			TSharedPtr<const LocalReflectionCubemap> m_source;
+			RHI::RHICubemapPtr m_specular;
+			RHI::RHICubemapPtr m_sheen;
+			RHI::RHIFencePtr m_completion;
+		};
+
+		SAILOR_SHARED_API void CompleteLocalReflection(RHI::RHIFrameGraphPtr frameGraph);
+		SAILOR_SHARED_API void InvalidateLocalReflection(uint64_t maximumGeneration);
+		void ProcessLocalReflection(RHI::RHIFrameGraphPtr frameGraph);
+		TSharedPtr<const LocalReflectionCubemap> m_localReflection;
+		LocalReflectionFiltering m_localFiltering;
 		bool m_bLocalReflectionDirty = false;
+		bool m_bLocalReflectionResetPending = false;
 		std::atomic<bool> m_localReflectionReady{ false };
-		std::atomic<uint32_t> m_localReflectionSamples{ 0u };
-		RHI::RHITexturePtr m_localUploadTexture;
+		std::atomic<uint64_t> m_localReflectionGeneration{ 0u };
 		LocalReflectionParameters m_localParameters{};
 
 		ShaderSetPtr m_pComputeIrradianceShader{};

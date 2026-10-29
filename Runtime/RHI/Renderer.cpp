@@ -56,6 +56,8 @@ struct Renderer::FrameSubmission
 	RHIFrameGraphPtr m_frameGraph;
 	RHISceneViewPtr m_sceneView;
 	RHIRenderSubmissionContextPtr m_context;
+	TSharedPtr<LocalReflectionCaptureState> m_reflections;
+	TRefPtr<LocalReflectionCaptureJob> m_reflectionCapture;
 	FrameSubmissionResult m_result;
 };
 
@@ -542,6 +544,10 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 			else
 			{
 				current->m_sceneView->CompleteSubmissionResources(false);
+				if (current->m_reflections && current->m_reflectionCapture)
+				{
+					current->m_reflections->Cancel(current->m_reflectionCapture);
+				}
 				ReturnSceneView(current->m_sceneView);
 			}
 		}, EThreadType::Render);
@@ -554,7 +560,15 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 			if (bAcquired)
 			{
 				PrepareSceneView(*current);
+				if (current->m_reflections)
+				{
+					current->m_reflections->Poll(current->m_frameGraph);
+				}
 				auto tasks = current->m_frameGraph->Prepare(current->m_sceneView);
+				if (current->m_reflectionCapture)
+				{
+					tasks.AddRange(current->m_reflectionCapture->Prepare(current->m_frameGraph, current->m_context));
+				}
 				for (auto& task : tasks)
 				{
 					record->Join(task);
@@ -623,12 +637,22 @@ void Renderer::CaptureSceneView(FrameSubmission& submission, const Sailor::Frame
 	rhiSceneView->m_deltaTime = frame.GetDeltaTime();
 	rhiSceneView->m_currentTime = world->GetTime();
 	world->GetECS<AnimationECS>()->FillAnimationData(rhiSceneView);
-	const uint32_t shadowSlot = static_cast<uint32_t>(
-		(submission.m_submissionId - 1u) % m_submissionContexts.Num());
-	world->GetECS<LightingECS>()->FillLightingData(rhiSceneView, shadowSlot);
 	rhiSceneView->m_drawImGui = frame.GetDrawImGuiTask();
 	rhiSceneView->PrepareDebugDrawCommandLists(world, rhiFrameGraph->GetSceneRenderExtent());
+	auto lighting = world->GetECS<LightingECS>();
+	submission.m_reflections = lighting->GetLocalReflectionState();
+	if (submission.m_reflections)
+	{
+		submission.m_reflectionCapture = submission.m_reflections->Capture(rhiSceneView);
+	}
+	const uint32_t shadowSlot = static_cast<uint32_t>(
+		(submission.m_submissionId - 1u) % m_submissionContexts.Num());
+	lighting->FillLightingData(rhiSceneView, shadowSlot);
 	rhiSceneView->PrepareSnapshots();
+	if (submission.m_reflectionCapture)
+	{
+		submission.m_reflectionCapture->ExtractSnapshots(rhiSceneView);
+	}
 }
 
 bool Renderer::AcquireSubmission(FrameSubmission& submission)
@@ -759,6 +783,24 @@ void Renderer::RecordAndSubmitFrame(FrameSubmission& submission, const Sailor::F
 	DrawCallStats drawCallStats;
 	RHIGlobalIlluminationRenderStats globalIlluminationStats;
 
+	if (bFrameSubmitsSucceeded && submission.m_reflectionCapture)
+	{
+		if (bCanRenderFrame && !m_bFrameGraphOutdated && !m_pViewport->IsIconic())
+		{
+			if (!submission.m_reflectionCapture->Submit(chainSemaphore))
+			{
+				bFrameSubmitsSucceeded = false;
+				SAILOR_LOG_ERROR("Renderer::PushFrame: local reflection capture submission failed.");
+			}
+		}
+		else
+		{
+			// No capture commands were attempted. Preserve the request across
+			// resize, minimized-window and temporarily unavailable drawable frames.
+			submission.m_reflectionCapture->m_bRetry = true;
+		}
+	}
+
 	if (bFrameSubmitsSucceeded && bCanRenderFrame &&
 		!m_bFrameGraphOutdated && !m_pViewport->IsIconic())
 	{
@@ -887,7 +929,8 @@ void Renderer::RecordAndSubmitFrame(FrameSubmission& submission, const Sailor::F
 	const bool bFrameCompleted = frameSubmission.m_bSubmitted;
 	if (bFrameCompleted)
 	{
-		submission.m_bResourcesSucceeded = bFrameGraphProcessed;
+		submission.m_bResourcesSucceeded = bFrameGraphProcessed &&
+			(!submission.m_reflectionCapture || submission.m_reflectionCapture->m_bSubmitted);
 		UpdateGlobalIlluminationRenderStats(
 			globalIlluminationStats);
 		m_stats.m_numBatches.store(drawCallStats.m_numBatches, std::memory_order_relaxed);

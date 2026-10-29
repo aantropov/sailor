@@ -796,6 +796,8 @@ void RHISceneView::Clear()
 
 	m_cameras.Clear(false);
 	m_cameraTransforms.Clear(false);
+	m_cameraRenderExtents.Clear(false);
+	m_firstShadowCamera = 0u;
 	m_shadowMapsToUpdate.Clear(false);
 	m_shadowMapsToBlit.Clear(false);
 	m_shadowIndices.Clear(false);
@@ -1372,6 +1374,23 @@ void RHISceneView::PrepareVisibleProxies(uint32_t cameraIndex,
 	}
 	// LOD preparation mutates offsets in the submission's copy, never the cache.
 	outVisibleProxies = cache.m_proxies;
+}
+
+void RHISceneView::RestoreCameraCount(uint32_t count)
+{
+	m_firstShadowCamera = 0u;
+	m_cameras.Resize(count);
+	m_cameraTransforms.Resize(count);
+	m_cameraRenderExtents.Resize(count);
+	m_snapshots.Resize(count);
+	m_shadowMapsToUpdate.Resize(count);
+	m_shadowMapsToBlit.Resize(count);
+	m_shadowIndices.Resize(count);
+	m_shadowAtlasTiles.Resize(count);
+	m_shadowMatrices.Resize(count);
+	m_rhiLightsDataPerCamera.Resize(count);
+	m_visibilityCache.Resize(count);
+	m_rhiLightsData = count ? m_rhiLightsDataPerCamera[count - 1u] : RHIShaderBindingSetPtr{};
 }
 
 void RHISceneView::PrepareSnapshots()

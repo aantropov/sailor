@@ -3,6 +3,7 @@
 #include "Engine/Object.h"
 #include "Tasks/Scheduler.h"
 #include "ECS/ECS.h"
+#include "ECS/LightingReflection.h"
 #include "Engine/Types.h"
 #include "RHI/Types.h"
 #include "Components/Component.h"
@@ -182,6 +183,11 @@ namespace Sailor
 		SAILOR_API void GetGlobalIlluminationBakeLightProxies(
 			TVector<Raytracing::LightProxy>& outLights, const LightData* excludedLight = nullptr) const;
 		SAILOR_API void FillLightingData(RHI::RHISceneViewPtr& sceneView, uint32_t shadowSlot);
+		SAILOR_API uint64_t RequestLocalReflection(const Framegraph::LocalReflectionCaptureRequest& request);
+		SAILOR_API void ResetLocalReflection();
+		SAILOR_API LocalReflectionCaptureStatus GetLocalReflectionStatus() const;
+		SAILOR_API Framegraph::LocalReflectionCubemap GetLocalReflectionCapture() const;
+		TSharedPtr<LocalReflectionCaptureState> GetLocalReflectionState() const { return m_localReflection; }
 
 		float GetShadowsOccupiedMemoryMb() const { return m_shadows.m_mapsMb; }
 		float GetCsmShadowsOccupiedMemoryMb() const { return m_shadows.m_csmMapsMb; }
@@ -200,6 +206,7 @@ namespace Sailor
 			TVector<Raytracing::LightProxy>& outLights,
 			bool bGlobalIlluminationBakeContributorsOnly, const LightData* excludedLight = nullptr) const;
 		TVector<TObjectPtr<SkyComponent>> m_skies;
+		TSharedPtr<LocalReflectionCaptureState> m_localReflection;
 
 		SAILOR_API void PrepareCSMPasses(
 			const RHI::RHISceneViewPtr& sceneView,
@@ -222,7 +229,8 @@ namespace Sailor
 			LightingShadowFlightResources& flightResources,
 			TVector<uint32_t>& shadowIndices,
 			TVector<uint32_t>& shadowAtlasTiles,
-			TVector<RHI::RHIUpdateShadowMapCommand>& outUpdateShadowMaps);
+			TVector<RHI::RHIUpdateShadowMapCommand>& outUpdateShadowMaps,
+			bool bAllowPendingShadowReuse = true);
 		SAILOR_API bool EnsureLocalShadowAllocation(
 			uint32_t componentIndex,
 			ELightType lightType,

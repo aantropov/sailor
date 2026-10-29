@@ -25,12 +25,14 @@ void GlobalIlluminationResolveNode::Process(
 {
 	SAILOR_PROFILE_FUNCTION();
 	ResetDrawCallStats();
+	m_bComplete = false;
 
 	const bool bDebugProbes = sceneView.m_renderMode >= ESceneViewRenderMode::GlobalIlluminationProbes &&
 		sceneView.m_renderMode <= ESceneViewRenderMode::GlobalIlluminationSubdivisions;
 	if (!bDebugProbes && (!sceneView.m_bGlobalIlluminationEnabled ||
 		sceneView.m_globalIlluminationMode == EGlobalIlluminationMode::NoGI))
 	{
+		m_bComplete = true;
 		return;
 	}
 
@@ -50,7 +52,9 @@ void GlobalIlluminationResolveNode::Process(
 		// A single grid has only one candidate. Material sampling still checks
 		// its bounds and probe validity; no screen-space traversal is needed.
 		commands->ImageMemoryBarrier(commandList, probeCellIndicesTexture, EImageLayout::TransferDstOptimal);
+		const uint32_t beforeClear = commandList->GetNumRecordedCommands();
 		commands->ClearImage(commandList, probeCellIndicesTexture, glm::vec4(1.0f));
+		m_bComplete = commandList->GetNumRecordedCommands() > beforeClear;
 		return;
 	}
 	if (!m_shader)
@@ -113,6 +117,7 @@ void GlobalIlluminationResolveNode::Process(
 	const glm::uvec2 extent(
 		static_cast<uint32_t>(probeCellIndicesTexture->GetExtent().x),
 		static_cast<uint32_t>(probeCellIndicesTexture->GetExtent().y));
+	const uint32_t beforeDispatch = commandList->GetNumRecordedCommands();
 	commands->Dispatch(
 		commandList,
 		m_shader->GetComputeShaderRHI(),
@@ -120,6 +125,7 @@ void GlobalIlluminationResolveNode::Process(
 		(extent.y + ResolveGroupSize - 1u) / ResolveGroupSize,
 		1u,
 		{ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_bindings });
+	m_bComplete = commandList->GetNumRecordedCommands() > beforeDispatch;
 	commands->EndDebugRegion(commandList);
 }
 

@@ -1,5 +1,6 @@
 #include "LightCullingNode.h"
 #include "RHI/SceneView.h"
+#include "RHI/CommandList.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
 #include "RHI/Texture.h"
@@ -124,6 +125,7 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 			resources->m_uniformLightCount = uniformLightCount;
 			resources->m_uniformTileCount = numTiles;
 		}
+		resources->m_bComplete = true;
 		return;
 	}
 	// Local or overflowing lights overwrite the shared-list layout on the GPU.
@@ -144,10 +146,12 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 		pushConstants.m_numTiles.x = (linearDepthAttachment->GetExtent().x - 1) / (int32_t)TileSize + 1;
 		pushConstants.m_numTiles.y = (linearDepthAttachment->GetExtent().y - 1) / (int32_t)TileSize + 1;
 		commands->ImageMemoryBarrierForComputeSampling(commandList, linearDepthAttachment);
+		const uint32_t beforeDispatch = commandList->GetNumRecordedCommands();
 		commands->Dispatch(commandList, computeShader,
 			pushConstants.m_numTiles.x, pushConstants.m_numTiles.y, 1,
 			{ lightsBindings, bindings, sceneView.m_frameBindings },
 			&pushConstants, sizeof(PushConstants));
+		resources->m_bComplete = commandList->GetNumRecordedCommands() > beforeDispatch;
 
 		commands->MemoryBarrier(commandList,
 			static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit),
