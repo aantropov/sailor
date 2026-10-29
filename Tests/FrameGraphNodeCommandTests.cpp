@@ -9,6 +9,7 @@
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
 #include "ECS/LightingECS.h"
+#include "ECS/ReflectionProbeRendering.h"
 #include "FrameGraph/AtmosphericFogNode.h"
 #include "FrameGraph/BlitNode.h"
 #include "FrameGraph/ClearNode.h"
@@ -4121,6 +4122,208 @@ frame:
 		std::cout << "Local reflection initialization: GPU cubemap source, two-map and filter-submit refusals, completion-gated retry and all face/mip pixels passed\n";
 		std::cout << "Local reflection lighting: two camera GPU uniforms, matching maps, warm reuse, replaced bindings, pending reset and absent node passed\n";
 		std::cout << "Authored HDR reload: four-map pixels, retained consumers, failed reload/repair and 32 warm invalidations passed\n";
+	}
+
+	void TestReflectionProbeRendering()
+	{
+		const auto onRender = [](const std::function<void()>& action)
+		{
+			auto task = Tasks::CreateTaskWithResult<std::string>("Reflection probe regression"_h,
+				[&]() -> std::string
+				{
+					try
+					{
+						action();
+						return {};
+					}
+					catch (const std::exception& error)
+					{
+						return error.what();
+					}
+				}, EThreadType::Render);
+			task->Run();
+			task->Wait();
+			Require(task->GetResult().empty(), task->GetResult().c_str());
+		};
+		const auto request = [](uint32_t size, glm::vec3 position = glm::vec3(0))
+		{
+			LocalReflectionCaptureRequest result;
+			result.m_faceSize = size;
+			result.m_parameters.m_positionBlend = glm::vec4(position, 1);
+			result.m_parameters.m_minEnabled = glm::vec4(position - glm::vec3(10), 1);
+			result.m_parameters.m_max = glm::vec4(position + glm::vec3(10), 0);
+			return result;
+		};
+		auto state = TSharedPtr<ReflectionProbeRenderState>::Make();
+		auto graph = RHIFrameGraphPtr::Make();
+		std::array<RHITexturePtr, 2> sources;
+		onRender([&]()
+		{
+			auto& driver = Renderer::GetDriver();
+			auto commands = Renderer::GetDriverCommands();
+			for (uint32_t source = 0u; source < sources.size(); ++source)
+			{
+				sources[source] = driver->CreateRenderTarget(glm::ivec2(32, 16), 1u, EFormat::R16G16B16A16_SFLOAT);
+				auto command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+				commands->BeginCommandList(command, true);
+				ClearColor(command, sources[source], source == 0u ? glm::vec4(4, 0.5f, 0.25f, 1) : glm::vec4(0.25f, 2, 0.5f, 1));
+				commands->ImageMemoryBarrier(command, sources[source], EImageLayout::ShaderReadOnlyOptimal);
+				commands->EndCommandList(command);
+				Require(driver->SubmitCommandList_Immediate(command), "reflection HDR source clear must complete");
+			}
+		});
+		state->Upsert(0u, 1u, request(16u), sources[0]);
+		state->Upsert(1u, 1u, request(32u, glm::vec3(20, 0, 0)), sources[1]);
+		const auto prepare = [&]()
+		{
+			auto cameras = RHISceneViewPtr::Make();
+			Require(state->Capture(cameras).IsEmpty() && cameras->m_cameras.IsEmpty(),
+				"authored reflection maps must not append scene capture cameras");
+		};
+		prepare();
+		App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(EThreadType::Worker);
+		prepare();
+		const auto complete = [&]()
+		{
+			onRender([&]()
+			{
+				for (uint32_t frame = 0u; frame < 8u; ++frame)
+				{
+					state->Poll(graph);
+					Renderer::GetDriver()->WaitIdle();
+					Renderer::GetDriver()->TrackResources_ThreadSafe();
+				}
+			});
+		};
+		complete();
+		const auto checkProbePixels = [&](RHISceneReflectionsSnapshotPtr snapshot, uint32_t slot, glm::vec3 expected, uint32_t size)
+		{
+			Require(snapshot && snapshot->m_probes[slot].m_textureIndices.z == 1u,
+				"a probe must publish valid metadata only with both completed maps");
+			Require(snapshot->m_probes[slot].m_textureIndices.x == slot * 2u &&
+				snapshot->m_probes[slot].m_textureIndices.y == slot * 2u + 1u,
+				"each probe must use its stable interleaved scene texture indices");
+			onRender([&]()
+			{
+				auto& driver = Renderer::GetDriver();
+				auto commands = Renderer::GetDriverCommands();
+				for (uint32_t channel = 0u; channel < 2u; ++channel)
+				{
+					auto texture = snapshot->m_textures[slot * 2u + channel];
+					auto cubemap = texture.DynamicCast<RHICubemap>();
+					Require(cubemap && cubemap->GetExtent() == glm::ivec2(size),
+						"both filtered maps must respect the authored probe resolution");
+					for (uint32_t mip = 0u; mip < cubemap->GetMipLevels(); ++mip)
+					{
+						for (uint32_t face = 0u; face < 6u; ++face)
+						{
+							const uint32_t side = (std::max)(1u, size >> mip);
+							auto buffer = driver->CreateBuffer(side * side * 8u, EBufferUsageBit::BufferTransferDst_Bit, HostMemory);
+							auto command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+							commands->BeginCommandList(command, true);
+							commands->ImageMemoryBarrier(command, cubemap, EImageLayout::TransferSrcOptimal);
+							command->m_vulkan.m_commandBuffer->CopyImageToBuffer(*buffer->m_vulkan.m_buffer->Get(),
+								cubemap->m_vulkan.m_image, side, side, 1u, mip, face);
+							commands->ImageMemoryBarrier(command, cubemap, EImageLayout::ShaderReadOnlyOptimal);
+							commands->MemoryBarrier(command, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+								static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+							commands->EndCommandList(command);
+							Require(driver->SubmitCommandList_Immediate(command), "reflection probe readback must complete");
+							const auto pixels = static_cast<const uint16_t*>(buffer->GetPointer());
+							for (uint32_t pixel = 0u; pixel < side * side; ++pixel)
+							{
+								for (uint32_t component = 0u; component < 3u; ++component)
+								{
+									Require(std::abs(glm::unpackHalf1x16(pixels[pixel * 4u + component]) - expected[component]) < 0.03f,
+										"each probe face/mip must retain its own HDR source without cross-probe contamination");
+								}
+							}
+						}
+					}
+				}
+			});
+		};
+		const auto retained = state->GetSnapshot();
+		checkProbePixels(retained, 0u, { 4, 0.5f, 0.25f }, 16u);
+		checkProbePixels(retained, 1u, { 0.25f, 2, 0.5f }, 32u);
+		state->Upsert(0u, 1u, request(64u), sources[1]);
+		prepare();
+		onRender([&]() { state->Poll(graph); });
+		Require(state->GetSnapshot()->m_textures[0] == retained->m_textures[0],
+			"a submitted replacement must retain the previous complete reflection pair");
+		state->Remove(0u, 1u);
+		state->Upsert(0u, 1u, request(16u, glm::vec3(2, 0, 0)), sources[0]);
+		prepare();
+		complete();
+		checkProbePixels(state->GetSnapshot(), 0u, { 4, 0.5f, 0.25f }, 16u);
+		Require(state->GetSnapshot()->m_probes[0].m_capturePosition.x == 2.0f,
+			"retired filtering must not publish after removal and re-registration of the same component generation");
+		state->Remove(0u, 1u);
+		state->Upsert(0u, 2u, request(32u), sources[1]);
+		prepare();
+		complete();
+		checkProbePixels(state->GetSnapshot(), 0u, { 0.25f, 2, 0.5f }, 32u);
+		state->Reset();
+		complete();
+		Require(state->GetSnapshot()->m_probes[0].m_textureIndices.z == 0u &&
+			!state->GetSnapshot()->m_textures[0], "reset must discard completed and in-flight reflection publications");
+		checkProbePixels(retained, 0u, { 4, 0.5f, 0.25f }, 16u);
+		checkProbePixels(retained, 1u, { 0.25f, 2, 0.5f }, 32u);
+		auto retired = TSharedPtr<ReflectionProbeRenderState>::Make();
+		retired->Upsert(0u, 1u, request(16u), sources[0]);
+		retired->Capture(RHISceneViewPtr::Make());
+		App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(EThreadType::Worker);
+		retired->Capture(RHISceneViewPtr::Make());
+		onRender([&]() { retired->Poll(graph); });
+		retired->Remove(0u, 1u);
+		retired->Upsert(0u, 1u, request(32u), sources[1]);
+		onRender([&]()
+		{
+			Renderer::GetDriver()->WaitIdle();
+			retired->Poll(graph);
+		});
+		Require(retired->GetSnapshot()->m_probes[0].m_textureIndices.z == 0u &&
+			!retired->GetSnapshot()->m_textures[0],
+			"a retired first filter must never publish after same-owner re-registration before the replacement starts");
+		retired->Capture(RHISceneViewPtr::Make());
+		onRender([&]()
+		{
+			for (uint32_t frame = 0u; frame < 8u; ++frame)
+			{
+				retired->Poll(graph);
+				Renderer::GetDriver()->WaitIdle();
+			}
+		});
+		checkProbePixels(retired->GetSnapshot(), 0u, { 0.25f, 2, 0.5f }, 32u);
+		retired->Reset();
+
+		state->Upsert(0u, 3u, request(16u));
+		state->Upsert(1u, 2u, request(16u, glm::vec3(20, 0, 0)));
+		state->Request(0u, 3u);
+		state->Request(1u, 2u);
+		auto firstView = RHISceneViewPtr::Make();
+		auto first = state->Capture(firstView);
+		Require(first.Num() == 2u && firstView->m_cameras.Num() == 12u,
+			"two requested dynamic probes must append two complete six-face camera bursts");
+		state->Request(0u, 3u);
+		state->Request(1u, 2u);
+		auto secondView = RHISceneViewPtr::Make();
+		auto second = state->Capture(secondView);
+		Require(second.Num() == 2u && secondView->m_cameras.Num() == 12u,
+			"EveryFrame probes must schedule the next capture while the previous frame is still in flight");
+		state->Upsert(0u, 3u, request(16u, glm::vec3(1, 0, 0)));
+		Require(!first[0]->m_bCancelled.load() && !second[0]->m_bCancelled.load(),
+			"moving a dynamic probe must not continuously cancel all unfinished captures");
+		for (auto& capture : first)
+		{
+			state->Cancel(capture);
+		}
+		for (auto& capture : second)
+		{
+			state->Cancel(capture);
+		}
+		state->Reset();
+		std::cout << "Reflection probes: two HDR sources, configurable GGX/sheen resolutions, all face/mip pixels, immutable retained snapshots, replacement/reuse/reset and overlapping dynamic requests passed\n";
 	}
 
 	void TestGraphTargetLifetime()
@@ -8372,6 +8575,7 @@ namespace Sailor::Tests
 		TestSkyQueuedFrameOrder();
 		TestSkyEnvironmentPublication();
 		TestAuthoredEnvironmentReload(workspace);
+		TestReflectionProbeRendering();
 		const auto smallShader = WriteShader(workspace, false);
 		const auto largeShader = WriteShader(workspace, true);
 		const auto depthReadback = WriteDepthReadbackShader(workspace);

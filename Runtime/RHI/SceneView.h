@@ -11,6 +11,7 @@
 #include "RHI/Scene.h"
 #include "RHI/MotionHistory.h"
 #include "RHI/Lighting.h"
+#include "RHI/Reflections.h"
 #include "RHI/GlobalIllumination.h"
 #include "ECS/CameraECS.h"
 #include "Math/Math.h"
@@ -171,6 +172,7 @@ namespace Sailor::RHI
 		SAILOR_API const Math::AABB& GetWorldBounds() const;
 		SAILOR_API EMobilityType GetMobility() const;
 		SAILOR_API uint32_t GetSkeletonOffset() const;
+		SAILOR_API uint32_t GetReflectionProbeIndex() const;
 		SAILOR_API uint32_t GetRenderFlags() const;
 		SAILOR_API uint64_t GetContentRevision() const;
 		SAILOR_API glm::mat4 ResolveMeshWorldMatrix(size_t meshIndex) const;
@@ -447,6 +449,7 @@ namespace Sailor::RHI
 
 		RHIShaderBindingSetPtr m_frameBindings{};
 		RHIShaderBindingSetPtr m_rhiLightsData{};
+		RHISceneReflectionsSnapshotPtr m_reflections{};
 		TSharedPtr<const TVector<RHILightShaderData>> m_cpuLightsData{};
 		TVector<glm::mat4> m_shadowMatrices{};
 		uint64_t m_lightingRevision = 0ull;
@@ -493,6 +496,7 @@ namespace Sailor::RHI
 
 		uint32_t m_totalNumLights = 0;
 		RHI::RHIShaderBindingSetPtr m_rhiLightsData{};
+		RHISceneReflectionsSnapshotPtr m_reflections{};
 		TVector<RHI::RHIShaderBindingSetPtr> m_rhiLightsDataPerCamera{};
 		TSharedPtr<const TVector<RHILightShaderData>> m_cpuLightsData{};
 		uint64_t m_lightingRevision = 0ull;

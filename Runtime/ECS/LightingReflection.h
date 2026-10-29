@@ -44,6 +44,8 @@ namespace Sailor
 		bool m_bRetry = false;
 		std::atomic_bool m_bCancelled = false;
 
+		static bool WarmupShaders();
+		void AppendCameras(const RHI::RHISceneViewPtr& source);
 		void ExtractSnapshots(const RHI::RHISceneViewPtr& source);
 		TVector<Tasks::ITaskPtr> Prepare(const RHI::RHIFrameGraphPtr& source,
 			const RHI::RHIRenderSubmissionContextPtr& context);

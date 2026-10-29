@@ -408,6 +408,11 @@ uint64_t LocalReflectionCaptureState::Request(const LocalReflectionCaptureReques
 	return generation;
 }
 
+bool LocalReflectionCaptureJob::WarmupShaders()
+{
+	return WarmCaptureShaders();
+}
+
 bool LocalReflectionCaptureState::Reset()
 {
 	m_lock.Lock();
@@ -477,28 +482,34 @@ TRefPtr<LocalReflectionCaptureJob> LocalReflectionCaptureState::Capture(const RH
 	m_status.m_state = ELocalReflectionCaptureState::Capturing;
 	m_lock.Unlock();
 
+	source->m_firstShadowCamera = job->m_firstCamera;
+	job->AppendCameras(source);
+	return job;
+}
+
+void LocalReflectionCaptureJob::AppendCameras(const RHISceneViewPtr& source)
+{
+	m_firstCamera = static_cast<uint32_t>(source->m_cameras.Num());
 	const glm::vec3 directions[] = { { 1, 0, 0 }, { -1, 0, 0 }, { 0, 1, 0 },
 		{ 0, -1, 0 }, { 0, 0, 1 }, { 0, 0, -1 } };
 	const glm::vec3 up[] = { { 0, 1, 0 }, { 0, 1, 0 }, { 0, 0, -1 },
 		{ 0, 0, 1 }, { 0, 1, 0 }, { 0, 1, 0 } };
-	const glm::vec3 position(job->m_request.m_parameters.m_positionBlend);
-	source->m_firstShadowCamera = job->m_firstCamera;
+	const glm::vec3 position(m_request.m_parameters.m_positionBlend);
 	source->m_cameraRenderExtents.Resize(source->m_cameras.Num());
 	for (uint32_t face = 0u; face < 6u; ++face)
 	{
 		CameraData camera;
 		camera.SetFov(90.0f);
 		camera.SetAspect(1.0f);
-		camera.SetZNear(job->m_request.m_nearPlane);
-		camera.SetZFar(job->m_request.m_farPlane);
+		camera.SetZNear(m_request.m_nearPlane);
+		camera.SetZFar(m_request.m_farPlane);
 		camera.SetViewMatrix(glm::lookAtRH(position, position + directions[face], up[face]));
 		camera.SetProjectionMatrix(Math::PerspectiveRH(glm::radians(90.0f), 1.0f,
-			job->m_request.m_nearPlane, job->m_request.m_farPlane));
+			m_request.m_nearPlane, m_request.m_farPlane));
 		source->m_cameras.Add(camera);
 		source->m_cameraTransforms.Add(Math::Transform::FromMatrix(camera.GetInvViewMatrix()));
-		source->m_cameraRenderExtents.Add(glm::ivec2(job->m_request.m_faceSize));
+		source->m_cameraRenderExtents.Add(glm::ivec2(m_request.m_faceSize));
 	}
-	return job;
 }
 
 void LocalReflectionCaptureJob::ExtractSnapshots(const RHISceneViewPtr& source)
@@ -513,6 +524,7 @@ void LocalReflectionCaptureJob::ExtractSnapshots(const RHISceneViewPtr& source)
 		snapshot.m_debugDrawSecondaryCmdList.Clear();
 		snapshot.m_drawImGui.Clear();
 		snapshot.m_pathTracerScene.Clear();
+		snapshot.m_reflections.Clear();
 		m_faces[face] = std::move(view);
 	}
 	source->RestoreCameraCount(m_firstCamera);
@@ -525,8 +537,13 @@ TVector<Tasks::ITaskPtr> LocalReflectionCaptureJob::Prepare(const RHIFrameGraphP
 	auto frameContext = context;
 	frameContext->RetainResource(ToRefPtr<LocalReflectionCaptureJob>());
 	TVector<Tasks::ITaskPtr> tasks;
-	if (m_bCancelled.load(std::memory_order_acquire) || !InitializeGraph(*this, source))
+	if (m_bCancelled.load(std::memory_order_acquire))
 	{
+		return tasks;
+	}
+	if (!InitializeGraph(*this, source))
+	{
+		m_bRetry = true;
 		return tasks;
 	}
 	// Private resource ownership avoids keeping obsolete per-request graph/node

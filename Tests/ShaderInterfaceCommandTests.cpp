@@ -66,13 +66,18 @@ namespace
 		FIELD(MainInstance, materialInstance, "materialInstance"_h),
 		FIELD(MainInstance, skeletonOffset, "skeletonOffset"_h),
 		FIELD(MainInstance, bIsCulled, "isCulled"_h),
-		FIELD(MainInstance, padding, "padding"_h),
+		FIELD(MainInstance, reflectionProbeIndex, "reflectionProbeIndex"_h),
 		FIELD(MainInstance, bakedVolumeScale, "bakedVolumeScale"_h),
 		FIELD(MainInstance, motion, "motion"_h)
 	};
 	const std::array MotionFields{
 		FIELD(RHIObjectMotionData, m_previousModel, "previousModel"_h),
 		FIELD(RHIObjectMotionData, m_state, "state"_h)
+	};
+	const std::array ReflectionProbeFields{
+		FIELD(RHIReflectionProbeShaderData, m_positionRadius, "positionRadius"_h),
+		FIELD(RHIReflectionProbeShaderData, m_capturePosition, "capturePosition"_h),
+		FIELD(RHIReflectionProbeShaderData, m_textureIndices, "textureIndices"_h)
 	};
 	const std::array BoneFields{ Field{ "matrix"_h, 0, sizeof(glm::mat4) } };
 	using DepthInstance = DepthPrepassNode::PerInstanceData;
@@ -187,6 +192,16 @@ namespace
 			Require(arrayType.dims_count == 1 && arrayType.dims[0] == 0 && arrayType.stride == size,
 				"compiled runtime-array stride differs from sizeof the C++ record");
 			return instances;
+		}
+
+		void CheckSamplerArray(uint32_t set, uint32_t binding, uint32_t count) const
+		{
+			SpvReflectResult result;
+			const auto* descriptor = spvReflectGetDescriptorBinding(&m_module, binding, set, &result);
+			Require(result == SPV_REFLECT_RESULT_SUCCESS && descriptor &&
+				descriptor->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER &&
+				descriptor->count == count,
+				"reflection maps must share the scene-wide cubemap descriptor array");
 		}
 
 		const SpvReflectBlockVariable& PushConstants(size_t size) const
@@ -639,6 +654,10 @@ namespace Sailor::Tests
 					}
 				}
 				const auto fragment = names ? shader.GetDebugFragmentShaderRHI() : shader.GetFragmentShaderRHI();
+				SpirvReflection fragmentInterface(fragment);
+				CheckFields(fragmentInterface.Block(1u, 23u, true, sizeof(RHIReflectionProbeShaderData)),
+					ReflectionProbeFields, names);
+				fragmentInterface.CheckSamplerArray(1u, 24u, MaxReflectionTextures);
 				Require(fragment->m_vulkan.m_shader->GetFragmentOutputMask() == (defines.Contains("MOTIONS") ? 3u : 1u),
 					"compiled color/motion outputs must match the requested variant");
 			});

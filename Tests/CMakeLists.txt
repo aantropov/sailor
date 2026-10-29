@@ -99,7 +99,7 @@ add_executable(YamlUtilsContractTests
     YamlUtilsContractTests.cpp
 )
 
-foreach(suite IN ITEMS EcsLifecycleContractTests ScenePublicationContractTests PrefabDocumentContractTests)
+foreach(suite IN ITEMS EcsLifecycleContractTests ScenePublicationContractTests PrefabDocumentContractTests ReflectionProbeContractTests)
     add_executable(${suite} ${suite}.cpp)
     target_compile_features(${suite} PRIVATE cxx_std_20)
     target_include_directories(${suite} PRIVATE ${SAILOR_RUNTIME_DIR})

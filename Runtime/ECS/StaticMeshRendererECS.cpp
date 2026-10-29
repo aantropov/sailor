@@ -1,5 +1,6 @@
 #include "ECS/StaticMeshRendererECS.h"
 #include "ECS/TransformECS.h"
+#include "ECS/ReflectionsECS.h"
 #include "Engine/GameObject.h"
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
@@ -389,8 +390,13 @@ void StaticMeshRendererECS::Tick(float deltaTime)
 
 	const uint64_t materialContentRevision = Material::GetGlobalContentRevision();
 	const bool bCheckMaterialRevisions = materialContentRevision != m_lastMaterialContentRevision;
+	const auto* reflections = GetWorld()->GetECS<ReflectionsECS>();
+	const auto reflectionProbes = reflections ? reflections->GetSpatialSnapshot() :
+		TSharedPtr<const ReflectionProbeSpatialSnapshot>{};
+	const uint64_t reflectionSpatialRevision = reflectionProbes ? reflectionProbes->GetRevision() : 0u;
+	const bool bReflectionProbesChanged = reflectionSpatialRevision != m_lastReflectionProbeSpatialRevision;
 	bool bHasCustomDepthShadowCasters = false;
-	auto needsUpdate = [this, bCheckMaterialRevisions](size_t componentIndex, bool& bHasCustomDepthShadowCasters)
+	auto needsUpdate = [this, bCheckMaterialRevisions, bReflectionProbesChanged](size_t componentIndex, bool& bHasCustomDepthShadowCasters)
 	{
 		if (!IsComponentRegistered(componentIndex))
 		{
@@ -413,7 +419,7 @@ void StaticMeshRendererECS::Tick(float deltaTime)
 		auto& data = m_components[componentIndex];
 		// A transform evaluated at frame zero is valid. Publication is tracked by
 		// the scene handle, not by the last observed transform timestamp.
-		bool bNeedsUpdate = data.m_bIsDirty ||
+		bool bNeedsUpdate = bReflectionProbesChanged || data.m_bIsDirty ||
 			(data.GetModel() && !m_renderInstanceHandles.ContainsKey(componentIndex));
 		if (data.m_owner)
 		{
@@ -446,7 +452,8 @@ void StaticMeshRendererECS::Tick(float deltaTime)
 	// on the mutable scene's lock.
 	const auto previousSceneVersion = m_rhiScene ?
 		m_rhiScene->GetCurrentVersion() : RHI::RHISceneVersionPtr{};
-	auto prepareProxyUpdate = [this, &previousSceneVersion](size_t componentIndex)
+	auto prepareProxyUpdate = [this, &previousSceneVersion, &reflectionProbes,
+		bReflectionProbesChanged, bCheckMaterialRevisions](size_t componentIndex)
 		{
 			PreparedProxyUpdate result;
 			result.m_componentIndex = componentIndex;
@@ -472,6 +479,34 @@ void StaticMeshRendererECS::Tick(float deltaTime)
 				data.m_materialContentRevisions.Num() != data.GetMaterials().Num() + 1u ||
 				data.m_materialContentRevisions[data.GetMaterials().Num()] !=
 					CalculateMaterialRenderMetadataSignature(data.GetMaterials());
+			if (bReflectionProbesChanged && !bTopologyDirty && !bTransformDirty &&
+				!bMaterialsDirty && !bCheckMaterialRevisions && previousSceneVersion)
+			{
+				RHI::RenderInstanceHandle* renderHandle = nullptr;
+				const RHI::RHISceneInstanceRecord* previousRecord = nullptr;
+				if (m_renderInstanceHandles.Find(componentIndex, renderHandle) && renderHandle &&
+					previousSceneVersion->Resolve(*renderHandle, previousRecord) && previousRecord)
+				{
+					const uint32_t probeIndex = reflectionProbes ?
+						reflectionProbes->FindNearest(previousRecord->m_worldBounds.GetCenter()) :
+						RHI::InvalidReflectionProbeIndex;
+					if (probeIndex == previousRecord->m_reflectionProbeIndex)
+					{
+						result.m_state = EPreparedProxyState::Unchanged;
+						return result;
+					}
+					result.m_state = owner->GetMobilityType() == EMobilityType::Static ?
+						EPreparedProxyState::Static : EPreparedProxyState::Stationary;
+					result.m_skeletonOffset = previousRecord->m_skeletonOffset;
+					result.m_sceneUpdate.m_handle = *renderHandle;
+					result.m_sceneUpdate.m_record = *previousRecord;
+					result.m_sceneUpdate.m_record.m_reflectionProbeIndex = probeIndex;
+					result.m_changeMask = RHI::ToMask(RHI::ESceneChangeBit::ReflectionProbe);
+					result.m_sceneUpdate.m_changeMask = result.m_changeMask;
+					result.m_bStateOnly = true;
+					return result;
+				}
+			}
 			if (bTransformDirty)
 			{
 				result.m_changeMask |= RHI::ToMask(RHI::ESceneChangeBit::Transform) |
@@ -532,7 +567,7 @@ void StaticMeshRendererECS::Tick(float deltaTime)
 					return result;
 				}
 			}
-			if (!bTopologyDirty && !bTransformDirty && !bMaterialsDirty)
+			if (!bTopologyDirty && !bTransformDirty && !bMaterialsDirty && !bReflectionProbesChanged)
 			{
 				// Uniform-only changes publish a new immutable RHI material version.
 				// Scene topology and instance records remain valid and are selected by
@@ -576,12 +611,24 @@ void StaticMeshRendererECS::Tick(float deltaTime)
 						record.m_worldMatrix = ownerWorldMatrix;
 						record.m_worldBounds = worldBounds;
 						record.m_skeletonOffset = result.m_skeletonOffset;
+						record.m_reflectionProbeIndex = reflectionProbes ?
+							reflectionProbes->FindNearest(worldBounds.GetCenter()) :
+							RHI::InvalidReflectionProbeIndex;
+						if (record.m_reflectionProbeIndex != previousRecord->m_reflectionProbeIndex)
+						{
+							result.m_changeMask |= RHI::ToMask(RHI::ESceneChangeBit::ReflectionProbe);
+						}
 						if (record.m_mobility != previousRecord->m_mobility)
 						{
 							result.m_changeMask |= RHI::ToMask(RHI::ESceneChangeBit::Mobility);
 						}
-						result.m_spatialChangeMask = GetSpatialChangeMask(previousRecord->m_mobility) |
-							GetSpatialChangeMask(record.m_mobility);
+						if ((result.m_changeMask & (RHI::ToMask(RHI::ESceneChangeBit::Transform) |
+							RHI::ToMask(RHI::ESceneChangeBit::Bounds) |
+							RHI::ToMask(RHI::ESceneChangeBit::Mobility))) != 0u)
+						{
+							result.m_spatialChangeMask = GetSpatialChangeMask(previousRecord->m_mobility) |
+								GetSpatialChangeMask(record.m_mobility);
+						}
 						result.m_sceneUpdate.m_changeMask = result.m_changeMask;
 						result.m_bStateOnly = true;
 						return result;
@@ -606,6 +653,10 @@ void StaticMeshRendererECS::Tick(float deltaTime)
 			{
 				return result;
 			}
+			record.m_reflectionProbeIndex = reflectionProbes ?
+				reflectionProbes->FindNearest(record.m_worldBounds.GetCenter()) :
+				RHI::InvalidReflectionProbeIndex;
+			result.m_changeMask |= RHI::ToMask(RHI::ESceneChangeBit::ReflectionProbe);
 
 			auto shadowCaster = TSharedPtr<RHI::RHIShadowCasterProxy>::Make();
 			shadowCaster->m_meshes.Reserve(selectedMeshes.Num());
@@ -711,6 +762,10 @@ void StaticMeshRendererECS::Tick(float deltaTime)
 				}
 
 				auto& data = m_components[update.m_componentIndex];
+				if (update.m_state == EPreparedProxyState::Unchanged)
+				{
+					continue;
+				}
 				auto cacheMaterialRevisions = [&data]()
 					{
 						data.m_materialContentRevisions.Resize(data.GetMaterials().Num() + 1u);
@@ -767,7 +822,12 @@ void StaticMeshRendererECS::Tick(float deltaTime)
 
 				if (update.m_bStateOnly)
 				{
-					bShadowCastersChanged |= data.ShouldCastShadow();
+					const auto shadowChanges = RHI::ToMask(RHI::ESceneChangeBit::Transform) |
+						RHI::ToMask(RHI::ESceneChangeBit::Bounds) |
+						RHI::ToMask(RHI::ESceneChangeBit::Mobility) |
+						RHI::ToMask(RHI::ESceneChangeBit::SkeletonOffset) |
+						RHI::ToMask(RHI::ESceneChangeBit::ShadowState);
+					bShadowCastersChanged |= data.ShouldCastShadow() && (update.m_changeMask & shadowChanges) != 0u;
 					spatialChangeMask |= update.m_spatialChangeMask;
 				}
 				else
@@ -897,6 +957,7 @@ void StaticMeshRendererECS::Tick(float deltaTime)
 	{
 		m_lastMaterialContentRevision = materialContentRevision;
 	}
+	m_lastReflectionProbeSpatialRevision = reflectionSpatialRevision;
 	if (bGIMaterialsChanged)
 	{
 		// Uniform-only edits leave the RHI scene intact but still invalidate GI.

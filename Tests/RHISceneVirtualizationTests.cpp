@@ -3,12 +3,14 @@
 #include "FrameGraph/BlitFormatConversion.h"
 #include "FrameGraph/FrameGraphNode.h"
 #include "FrameGraph/RHIFrameGraph.h"
+#include "FrameGraph/RenderSceneNode.h"
 #include "RHI/DebugContext.h"
 #include "RHI/Material.h"
 #include "RHI/RenderSubmission.h"
 #include "RHI/Scene.h"
 #include "RHI/SceneView.h"
 #include "RHI/MotionHistory.h"
+#include "RHI/PackedDraw.hpp"
 
 #include <iostream>
 #include <limits>
@@ -639,6 +641,69 @@ namespace
 			"a caster change intersecting the light frustum must invalidate that shadow view");
 	}
 
+	void TestReflectionProbeAssignmentPublication()
+	{
+		static_assert(offsetof(RenderSceneNode::PerInstanceData, reflectionProbeIndex) == 92u);
+		static_assert(sizeof(RenderSceneNode::PerInstanceData) == 192u);
+		static_assert(std::is_same_v<decltype(std::declval<RHISceneReflectionsSnapshotPtr>().GetRawPtr()),
+			const RHISceneReflectionsSnapshot*>);
+
+		auto scene = RHIScenePtr::Make(3u);
+		auto record = MakeRecord(230u, EMobilityType::Static);
+		record.m_topology = RHISceneProxyResourcePtr::Make();
+		record.m_renderFlags = 1u;
+		record.m_reflectionProbeIndex = 2u;
+		const auto handle = scene->AddInstance(record);
+		auto original = scene->PublishVersion();
+		auto firstFlight = scene->PrepareFlight(0u, original);
+		auto secondFlight = scene->PrepareFlight(1u, original);
+
+		record.m_reflectionProbeIndex = 7u;
+		Require(scene->UpdateInstance(handle, record, ToMask(ESceneChangeBit::ReflectionProbe)),
+			"a static mesh must accept a probe-only update");
+		auto changed = scene->PublishVersion();
+		scene->PrepareFlight(0u, changed);
+		const RHISceneInstanceRecord* retained = nullptr;
+		const RHISceneInstanceRecord* updated = nullptr;
+		Require(secondFlight->m_appliedVersion->Resolve(handle, retained) &&
+			firstFlight->m_appliedVersion->Resolve(handle, updated) &&
+			retained->m_reflectionProbeIndex == 2u && updated->m_reflectionProbeIndex == 7u,
+			"a new probe assignment must not overwrite an older flight's instance data");
+		Require(changed->m_staticRevision > original->m_staticRevision &&
+			!changed->HasShadowChangesIntersecting(*original, Math::Frustum(glm::mat4(1.0f))),
+			"a probe-only edit must invalidate static draw payloads without invalidating shadow casters");
+
+		RHIPackedDrawSceneState previous;
+		previous.m_sceneVersions = TSharedPtr<const TVector<RHISceneVersionPtr>>::Make(
+			TVector<RHISceneVersionPtr>{ original });
+		RHIPackedDrawSceneState current;
+		current.m_sceneVersions = TSharedPtr<const TVector<RHISceneVersionPtr>>::Make(
+			TVector<RHISceneVersionPtr>{ changed });
+		RHIPackedDrawSceneChanges changes;
+		changes.Gather(current, &previous, EMobilityType::Static);
+		Require(changes.m_removed.IsEmpty() && changes.m_updated.Num() == 1u &&
+			changes.m_updated[0].GetReflectionProbeIndex() == 7u &&
+			changes.m_updated[0].m_record->m_topology == record.m_topology,
+			"packed draw ranges must detect changed probe indices while retaining mesh topology");
+
+		RenderSceneNode::PerInstanceData first{};
+		RenderSceneNode::PerInstanceData second{};
+		first.model = second.model = glm::mat4(1.0f);
+		first.sphereBounds = second.sphereBounds = glm::vec4(0.0f);
+		first.reflectionProbeIndex = 2u;
+		second.reflectionProbeIndex = 7u;
+		Require(!(first == second),
+			"probe indices must participate in immutable per-instance payload comparison");
+		TPackedDrawPacket<RenderSceneNode::PerInstanceData> packet;
+		auto mesh = RHIMeshPtr::Make();
+		RHIBatch sharedBatch;
+		packet.Add(sharedBatch, mesh, first);
+		packet.Add(sharedBatch, mesh, second);
+		packet.Finalize(false);
+		Require(packet.m_groups.Num() == 1u && packet.m_groups[0].m_numInstances == 2u,
+			"different probe assignments must remain in the same instanced material batch");
+	}
+
 	void TestSubmissionCompletionToken()
 	{
 		auto successful = RHISubmissionCompletionTokenPtr::Make();
@@ -1132,6 +1197,7 @@ int main()
 		TestSubmissionSemaphoreRetention();
 		TestImmutableMaterialBindingVersions();
 		TestLocalizedShadowVersionDiff();
+		TestReflectionProbeAssignmentPublication();
 		TestSubmissionCompletionToken();
 		TestSubmissionContextSurvivesSnapshotPreparation();
 		TestVisibilityAcrossCameraChanges();

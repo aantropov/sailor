@@ -33,7 +33,7 @@ glslCompute: |
       uint reserved;
   #else
       uint isCulled;
-      uint padding;
+      uint reflectionProbeIndex;
       vec4 bakedVolumeScale;
       mat4 previousModel;
       uvec4 motionState;

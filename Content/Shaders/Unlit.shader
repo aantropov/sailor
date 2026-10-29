@@ -40,7 +40,7 @@ glslVertex: |
       uint materialInstance;
       uint skeletonOffset;
       uint isCulled;
-      uint padding;
+      uint reflectionProbeIndex;
       vec4 bakedVolumeScale;
       ObjectMotionData motion;
   };
@@ -194,7 +194,7 @@ glslFragment: |
       uint materialInstance;
       uint skeletonOffset;
       uint isCulled;
-      uint padding;
+      uint reflectionProbeIndex;
       vec4 bakedVolumeScale;
       ObjectMotionData motion;
   };

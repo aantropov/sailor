@@ -7,7 +7,7 @@ struct PerInstanceData
   uint materialInstance;
   uint skeletonOffset;
   uint isCulled;
-  uint padding;
+  uint reflectionProbeIndex;
   vec4 bakedVolumeScale;
   ObjectMotionData motion;
 };
@@ -44,6 +44,8 @@ layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
 #endif
 
 #ifdef VERTEX
+
+layout(location = 10) flat out uint reflectionProbeIndex;
 
 layout(std430, set = 2, binding = 1) readonly buffer InstanceIndicesSSBO
 {
@@ -95,6 +97,8 @@ void BuildForwardVertexFrame(
 
 #ifdef FRAGMENT
 
+layout(location = 10) flat in uint reflectionProbeIndex;
+
 layout(std430, set = 1, binding = 0) readonly buffer LightDataSSBO
 {
   LightData instance[];
@@ -121,6 +125,22 @@ layout(set = 1, binding = 20) uniform LocalReflectionData
 } localReflection;
 layout(set = 1, binding = 21) uniform samplerCube g_localEnvCubemap;
 layout(set = 1, binding = 22) uniform samplerCube g_localSheenEnvCubemap;
+
+const uint MAX_REFLECTION_PROBES = 32u;
+const uint MAX_REFLECTION_TEXTURES = MAX_REFLECTION_PROBES * 2u;
+
+struct ReflectionProbeData
+{
+  vec4 positionRadius;
+  vec4 capturePosition;
+  uvec4 textureIndices;
+};
+
+layout(std430, set = 1, binding = 23) readonly buffer ReflectionProbesSSBO
+{
+  ReflectionProbeData instance[];
+} reflectionProbes;
+layout(set = 1, binding = 24) uniform samplerCube reflectionTextures[MAX_REFLECTION_TEXTURES];
 
 layout(std430, set = 1, binding = 6) readonly buffer LightsMatricesSSBO
 {
@@ -449,11 +469,38 @@ vec3 LocalReflectionDirection(vec3 worldPosition, vec3 direction)
 vec3 SampleForwardEnvironment(
   samplerCube distantMap, samplerCube localMap,
   vec3 worldPosition, vec3 direction, float roughness,
-  float cosLo, float ambientOcclusion, float environmentVisibility)
+  float cosLo, float ambientOcclusion, float environmentVisibility,
+  bool sheen)
 {
   vec3 distant = textureLod(distantMap, direction,
     CalculateSpecularEnvironmentLod(textureQueryLevels(distantMap), roughness)).rgb;
   distant *= CalculateSpecularOcclusion(min(ambientOcclusion, environmentVisibility), cosLo, roughness);
+  if(reflectionProbeIndex < MAX_REFLECTION_PROBES &&
+      reflectionProbeIndex < uint(reflectionProbes.instance.length()))
+  {
+    ReflectionProbeData probe = reflectionProbes.instance[reflectionProbeIndex];
+    float radius = probe.positionRadius.w;
+    uint textureIndex = sheen ? probe.textureIndices.y : probe.textureIndices.x;
+    if(probe.textureIndices.z == 0u || radius <= 0.0 || textureIndex >= MAX_REFLECTION_TEXTURES)
+    {
+      return distant;
+    }
+    vec3 offset = worldPosition - probe.positionRadius.xyz;
+    float distanceSquared = dot(offset, offset);
+    if(distanceSquared >= radius * radius)
+    {
+      return distant;
+    }
+    float weight = 1.0 - smoothstep(radius * 0.9, radius, sqrt(distanceSquared));
+    float projection = dot(offset, direction);
+    float exitDistance = -projection + sqrt(max(0.0,
+      projection * projection + radius * radius - distanceSquared));
+    vec3 capturedDirection = worldPosition + direction * exitDistance - probe.capturePosition.xyz;
+    vec3 captured = textureLod(reflectionTextures[nonuniformEXT(textureIndex)], capturedDirection,
+      CalculateSpecularEnvironmentLod(textureQueryLevels(reflectionTextures[nonuniformEXT(textureIndex)]), roughness)).rgb;
+    captured *= CalculateSpecularOcclusion(ambientOcclusion, cosLo, roughness);
+    return mix(distant, captured, weight);
+  }
   float weight = LocalReflectionWeight(worldPosition);
   if(weight <= 0.0) return distant;
   vec3 captured = textureLod(localMap, LocalReflectionDirection(worldPosition, direction),
@@ -462,6 +509,15 @@ vec3 SampleForwardEnvironment(
   // must not remove their outgoing radiance; material AO still applies.
   captured *= CalculateSpecularOcclusion(ambientOcclusion, cosLo, roughness);
   return mix(distant, captured, weight);
+}
+
+vec3 SampleForwardEnvironment(
+  samplerCube distantMap, samplerCube localMap,
+  vec3 worldPosition, vec3 direction, float roughness,
+  float cosLo, float ambientOcclusion, float environmentVisibility)
+{
+  return SampleForwardEnvironment(distantMap, localMap, worldPosition, direction,
+    roughness, cosLo, ambientOcclusion, environmentVisibility, false);
 }
 
 vec3 CalculateForwardAmbientLighting(

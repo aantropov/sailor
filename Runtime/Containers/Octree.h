@@ -252,6 +252,15 @@ namespace Sailor
 		}
 
 		__forceinline void Resolve() { Resolve_Internal(*m_root); }
+		template <typename TCallback>
+		void TracePoint(const glm::vec3& point, TCallback&& callback) const
+		{
+			if (m_root)
+			{
+				TracePoint_Internal(*m_root, point, callback);
+			}
+		}
+
 		__forceinline void DrawOctree(RHI::DebugContext& context, float duration = 0.0f) const { DrawOctree_Internal(*m_root, context, duration); }
 		__forceinline void Trace(const Math::Frustum& frustum, TVector<TElementType>& outElements) const
 		{
@@ -307,6 +316,33 @@ namespace Sailor
 		}
 
 	protected:
+		template <typename TCallback>
+		void TracePoint_Internal(const TNode& node, const glm::vec3& point, TCallback& callback) const
+		{
+			const glm::vec3 halfSize(static_cast<float>(node.m_size) * 0.5f);
+			if (glm::any(glm::lessThan(point, glm::vec3(node.m_center) - halfSize)) ||
+				glm::any(glm::greaterThan(point, glm::vec3(node.m_center) + halfSize)))
+			{
+				return;
+			}
+
+			for (const auto& element : node.m_elements)
+			{
+				const auto& bounds = *element.m_second;
+				if (glm::all(glm::greaterThanEqual(point, glm::vec3(bounds.m_position - bounds.m_extents))) &&
+					glm::all(glm::lessThanEqual(point, glm::vec3(bounds.m_position + bounds.m_extents))))
+				{
+					callback(element.m_first);
+				}
+			}
+			if (!node.IsLeaf())
+			{
+				for (uint32_t index = 0u; index < 8u; ++index)
+				{
+					TracePoint_Internal(node.m_internal[index], point, callback);
+				}
+			}
+		}
 
 		void TraceRay_Internal(const TNode& node, const Math::Ray& ray, TVector<TElementType>& outElements, float maxRayLength) const
 		{

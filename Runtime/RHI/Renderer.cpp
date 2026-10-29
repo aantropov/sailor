@@ -20,6 +20,8 @@
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "ECS/CameraECS.h"
 #include "ECS/LightingECS.h"
+#include "ECS/ReflectionsECS.h"
+#include "ECS/ReflectionProbeRendering.h"
 #include "ECS/GlobalIlluminationECS.h"
 #include "ECS/LandscapeECS.h"
 #include "ECS/AnimationECS.h"
@@ -58,6 +60,8 @@ struct Renderer::FrameSubmission
 	RHIRenderSubmissionContextPtr m_context;
 	TSharedPtr<LocalReflectionCaptureState> m_reflections;
 	TRefPtr<LocalReflectionCaptureJob> m_reflectionCapture;
+	TSharedPtr<ReflectionProbeRenderState> m_reflectionProbes;
+	TVector<TRefPtr<LocalReflectionCaptureJob>> m_probeCaptures;
 	FrameSubmissionResult m_result;
 };
 
@@ -548,6 +552,13 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 				{
 					current->m_reflections->Cancel(current->m_reflectionCapture);
 				}
+				if (current->m_reflectionProbes)
+				{
+					for (const auto& capture : current->m_probeCaptures)
+					{
+						current->m_reflectionProbes->Cancel(capture);
+					}
+				}
 				ReturnSceneView(current->m_sceneView);
 			}
 		}, EThreadType::Render);
@@ -564,10 +575,18 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 				{
 					current->m_reflections->Poll(current->m_frameGraph);
 				}
+				if (current->m_reflectionProbes)
+				{
+					current->m_reflectionProbes->Poll(current->m_frameGraph);
+				}
 				auto tasks = current->m_frameGraph->Prepare(current->m_sceneView);
 				if (current->m_reflectionCapture)
 				{
 					tasks.AddRange(current->m_reflectionCapture->Prepare(current->m_frameGraph, current->m_context));
+				}
+				for (auto& capture : current->m_probeCaptures)
+				{
+					tasks.AddRange(capture->Prepare(current->m_frameGraph, current->m_context));
 				}
 				for (auto& task : tasks)
 				{
@@ -640,15 +659,34 @@ void Renderer::CaptureSceneView(FrameSubmission& submission, const Sailor::Frame
 	rhiSceneView->m_drawImGui = frame.GetDrawImGuiTask();
 	rhiSceneView->PrepareDebugDrawCommandLists(world, rhiFrameGraph->GetSceneRenderExtent());
 	auto lighting = world->GetECS<LightingECS>();
+	const uint32_t firstCaptureCamera = static_cast<uint32_t>(rhiSceneView->m_cameras.Num());
 	submission.m_reflections = lighting->GetLocalReflectionState();
 	if (submission.m_reflections)
 	{
 		submission.m_reflectionCapture = submission.m_reflections->Capture(rhiSceneView);
 	}
+	if (auto* reflections = world->GetECS<ReflectionsECS>())
+	{
+		submission.m_reflectionProbes = reflections->GetRenderState();
+		if (submission.m_reflectionProbes)
+		{
+			rhiSceneView->m_reflections = submission.m_reflectionProbes->GetSnapshot();
+			submission.m_probeCaptures = submission.m_reflectionProbes->Capture(rhiSceneView);
+		}
+	}
+	if (rhiSceneView->m_cameras.Num() > firstCaptureCamera)
+	{
+		rhiSceneView->m_firstShadowCamera = firstCaptureCamera;
+	}
 	const uint32_t shadowSlot = static_cast<uint32_t>(
 		(submission.m_submissionId - 1u) % m_submissionContexts.Num());
 	lighting->FillLightingData(rhiSceneView, shadowSlot);
 	rhiSceneView->PrepareSnapshots();
+	// Extraction removes the appended camera tail, so detach jobs in reverse order.
+	for (size_t index = submission.m_probeCaptures.Num(); index > 0u; --index)
+	{
+		submission.m_probeCaptures[index - 1u]->ExtractSnapshots(rhiSceneView);
+	}
 	if (submission.m_reflectionCapture)
 	{
 		submission.m_reflectionCapture->ExtractSnapshots(rhiSceneView);
@@ -798,6 +836,21 @@ void Renderer::RecordAndSubmitFrame(FrameSubmission& submission, const Sailor::F
 			// No capture commands were attempted. Preserve the request across
 			// resize, minimized-window and temporarily unavailable drawable frames.
 			submission.m_reflectionCapture->m_bRetry = true;
+		}
+	}
+	for (auto& capture : submission.m_probeCaptures)
+	{
+		if (bFrameSubmitsSucceeded && bCanRenderFrame && !m_bFrameGraphOutdated && !m_pViewport->IsIconic())
+		{
+			if (!capture->Submit(chainSemaphore))
+			{
+				bFrameSubmitsSucceeded = false;
+				SAILOR_LOG_ERROR("Renderer::PushFrame: reflection probe capture submission failed.");
+			}
+		}
+		else
+		{
+			capture->m_bRetry = true;
 		}
 	}
 

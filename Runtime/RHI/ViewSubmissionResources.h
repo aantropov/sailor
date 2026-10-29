@@ -21,6 +21,7 @@ namespace Sailor::RHI
 			m_shadowMatricesHash = InvalidContentHash;
 			m_shadowIndicesHash = InvalidContentHash;
 			m_shadowAtlasTilesHash = InvalidContentHash;
+			m_reflectionsHash = InvalidContentHash;
 		}
 
 		RHIShaderBindingSetPtr m_lightsBindings{};
@@ -36,6 +37,7 @@ namespace Sailor::RHI
 		uint64_t m_shadowMatricesHash = InvalidContentHash;
 		uint64_t m_shadowIndicesHash = InvalidContentHash;
 		uint64_t m_shadowAtlasTilesHash = InvalidContentHash;
+		uint64_t m_reflectionsHash = InvalidContentHash;
 	};
 
 	class RHISharedViewSubmissionResources final : public RHIFrameGraphSubmissionResource

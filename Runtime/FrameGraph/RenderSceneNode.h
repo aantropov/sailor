@@ -31,7 +31,7 @@ namespace Sailor::Framegraph
 			uint32_t materialInstance = 0;
 			uint32_t skeletonOffset = 0;
 			uint32_t bIsCulled = 0;
-			uint32_t padding = 0;
+			uint32_t reflectionProbeIndex = RHI::InvalidReflectionProbeIndex;
 			vec4 bakedVolumeScale = vec4(1.0f);
 			RHI::RHIObjectMotionData motion{};
 
@@ -42,7 +42,7 @@ namespace Sailor::Framegraph
 					materialInstance == rhs.materialInstance &&
 					skeletonOffset == rhs.skeletonOffset &&
 					bIsCulled == rhs.bIsCulled &&
-					padding == rhs.padding &&
+					reflectionProbeIndex == rhs.reflectionProbeIndex &&
 					bakedVolumeScale == rhs.bakedVolumeScale && motion == rhs.motion;
 			}
 

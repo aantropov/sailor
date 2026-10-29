@@ -438,6 +438,11 @@ uint32_t RHIVisibleSceneProxy::GetSkeletonOffset() const
 	return m_record->m_skeletonOffset;
 }
 
+uint32_t RHIVisibleSceneProxy::GetReflectionProbeIndex() const
+{
+	return m_record->m_reflectionProbeIndex;
+}
+
 uint32_t RHIVisibleSceneProxy::GetRenderFlags() const
 {
 	return m_record->m_renderFlags;
@@ -791,6 +796,7 @@ void RHISceneView::PrepareDebugDrawCommandLists(
 void RHISceneView::Clear()
 {
 	m_rhiLightsData.Clear();
+	m_reflections.Clear();
 	m_rhiLightsDataPerCamera.Clear(false);
 	m_boneMatrices.Clear();
 
@@ -877,6 +883,7 @@ void RHISceneViewSnapshot::ResetForReuse()
 	m_shadowAtlasTiles.Clear(false);
 	m_frameBindings.Clear();
 	m_rhiLightsData.Clear();
+	m_reflections.Clear();
 	m_cpuLightsData.Clear();
 	m_shadowMatrices.Clear(false);
 	m_lightingRevision = 0ull;
@@ -1425,6 +1432,7 @@ void RHISceneView::PrepareSnapshots()
 		res.m_totalNumLights = m_totalNumLights;
 		res.m_rhiLightsData = i < m_rhiLightsDataPerCamera.Num() ?
 			m_rhiLightsDataPerCamera[i] : m_rhiLightsData;
+		res.m_reflections = m_reflections;
 		res.m_boneMatrices = m_boneMatrices;
 		res.m_drawImGui = m_drawImGui;
 		res.m_shadowMapsToUpdate = std::move(m_shadowMapsToUpdate[i]);

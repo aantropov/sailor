@@ -53,6 +53,7 @@ glslVertex: |
     vout.color = inColor;
     vout.texcoord = inTexcoord;
     materialInstance = data.instance[instanceIndex].materialInstance;
+    reflectionProbeIndex = data.instance[instanceIndex].reflectionProbeIndex;
   #ifdef MOTIONS
     ObjectMotionData motion = data.instance[instanceIndex].motion;
     WriteMotionVertex(gl_Position, previousFrame.projection *

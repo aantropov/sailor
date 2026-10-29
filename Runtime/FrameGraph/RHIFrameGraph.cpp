@@ -141,6 +141,13 @@ namespace
 		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_localEnvCubemap"_h)));
 		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_localSheenEnvCubemap"_h)));
 		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetRenderTarget("g_AO"_h)));
+		if (snapshot.m_reflections)
+		{
+			for (const auto& texture : snapshot.m_reflections->m_textures)
+			{
+				HashCombine(frameGraphSamplerHash, Sailor::GetHash(texture));
+			}
+		}
 		const bool bRecreateLights = !resources->m_lightsBindings ||
 			resources->m_lightsTemplate != lightsTemplate ||
 			resources->m_sharedLightsStorage != sharedResources->m_lightsStorage ||
@@ -160,6 +167,8 @@ namespace
 			resources->m_lightsBindings = driver->CreateShaderBindings();
 			driver->AddBufferToShaderBindings(resources->m_lightsBindings, "localReflection"_h,
 				sizeof(LocalReflectionParameters), 20u, EShaderBindingType::UniformBuffer);
+			driver->AddSsboToShaderBindings(resources->m_lightsBindings, "reflectionProbes"_h,
+				sizeof(RHIReflectionProbeShaderData), MaxReflectionProbes, 23u, true);
 			driver->AddShaderBinding(
 				resources->m_lightsBindings,
 				sharedResources->m_lightsStorage->GetOrAddShaderBinding("light"_h),
@@ -276,6 +285,19 @@ namespace
 					resources->m_lightsBindings,
 					"g_localSheenEnvCubemap"_h, localSheen, 22u);
 			}
+			auto reflectionFallback = owner->GetSampler("g_envCubemap"_h);
+			if (reflectionFallback)
+			{
+				TVector<RHITexturePtr> reflectionTextures;
+				reflectionTextures.Reserve(MaxReflectionTextures);
+				for (uint32_t index = 0u; index < MaxReflectionTextures; ++index)
+				{
+					auto texture = snapshot.m_reflections ? snapshot.m_reflections->m_textures[index] : RHITexturePtr{};
+					reflectionTextures.Add(texture ? texture : reflectionFallback);
+				}
+				driver->AddSamplerToShaderBindings(resources->m_lightsBindings,
+					"reflectionTextures"_h, reflectionTextures, 24u);
+			}
 			resources->m_lightsBindings->RecalculateCompatibility();
 			resources->m_lightsTemplate = lightsTemplate;
 			resources->m_sharedLightsStorage = sharedResources->m_lightsStorage;
@@ -286,6 +308,18 @@ namespace
 			resources->m_shadowMatricesHash = InvalidContentHash;
 			resources->m_shadowIndicesHash = InvalidContentHash;
 			resources->m_shadowAtlasTilesHash = InvalidContentHash;
+			resources->m_reflectionsHash = InvalidContentHash;
+		}
+
+		const std::array<RHIReflectionProbeShaderData, MaxReflectionProbes> emptyProbes{};
+		const auto& reflectionProbes = snapshot.m_reflections ? snapshot.m_reflections->m_probes : emptyProbes;
+		const uint64_t reflectionsHash = HashBytes(reflectionProbes.data(), sizeof(reflectionProbes));
+		if (resources->m_reflectionsHash != reflectionsHash)
+		{
+			commands->UpdateShaderBinding(transferCommandList,
+				resources->m_lightsBindings->GetOrAddShaderBinding("reflectionProbes"_h),
+				reflectionProbes.data(), sizeof(reflectionProbes), 0u);
+			resources->m_reflectionsHash = reflectionsHash;
 		}
 
 		// Shader defaults apply even when the graph omits the producing node.
