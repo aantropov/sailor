@@ -6,6 +6,17 @@ public static class InspectorPropertyPresentation
     const string SkyComponentTypeName = "Sailor::SkyComponent";
     const string GlobalIlluminationModePropertyName = "globalIlluminationMode";
 
+    public static bool IsVisibleProperty(string componentTypeName, string propertyName)
+    {
+        if (propertyName is "fileId" or "instanceId")
+        {
+            return false;
+        }
+        return componentTypeName != "Sailor::LandscapeComponent" || propertyName is not
+            ("layerTextures" or "heightmapTexture" or "materialMasks" or "sculptStamps" or
+             "paintStamps" or "regenerate" or "flatten" or "saveVegetation");
+    }
+
     public static string FormatPropertyName(
         string componentTypeName,
         string propertyName)

@@ -3,6 +3,7 @@ using SailorEditor.Content;
 using SailorEditor.Services;
 using SailorEditor.ViewModels;
 using SailorEditor.Workspace;
+using SailorEditor.Utility;
 
 namespace Editor.Tests.EngineIntegration;
 
@@ -85,6 +86,67 @@ public sealed class AssetRefreshTests
         {
             MainThread.QueueInvocations = false;
             MainThread.Drain();
+            MauiProgram.ClearServices();
+            directory.Delete(true);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DirtyGroupAssetAdoptsRenamedLocationBeforeSave(bool retainInspectionOnly)
+    {
+        var directory = Directory.CreateTempSubdirectory("sailor-dirty-rename-");
+        try
+        {
+            var serializer = new WorkspaceManifestSerializer();
+            var lifecycle = new WorkspaceLifecycleService(serializer, new WorkspaceTemplateService(serializer),
+                new RecentWorkspaceStore(Path.Combine(directory.FullName, "Recent.yaml")));
+            await using var engine = new EngineService(lifecycle);
+            MauiProgram.SetService(engine);
+            var selection = new SelectionService();
+            MauiProgram.SetService(selection);
+            using var assets = new AssetsService();
+            var context = MakeContext(directory.FullName, "Project");
+            var source = Path.Combine(context.ContentDirectory, "Note.txt");
+            File.WriteAllText(source, "Asset refresh fixture");
+            File.WriteAllText(source + ".asset", """
+                assetInfoType: Sailor::AssetInfo
+                fileId: '{00000000-0000-0000-0000-000000000302}'
+                filename: Note.txt
+                custom: before
+                """);
+            assets.AddProjectRoot(context);
+            await assets.EnsureFolderLoadedAsync(ProjectContentFolderIds.ContentRootId);
+            var original = Assert.IsType<AssetFile>(Assert.Single(assets.Files));
+            await selection.SelectObjectAsync(original);
+            original.ReadOnlyAssetProperties.Remove("custom");
+            var edited = Assert.IsType<Observable<string>>(original.AssetProperties["custom"]);
+            edited.Value = "edited";
+            Assert.True(original.IsDirty);
+            if (retainInspectionOnly)
+            {
+                selection.ApplyRuntimeSelection(null);
+            }
+
+            var result = assets.RenameAsset(original, "Renamed.txt");
+
+            Assert.True(result.Succeeded, result.Error);
+            Assert.Same(original, selection.InspectedItem);
+            Assert.True(original.IsDirty);
+            Assert.Same(edited, original.AssetProperties["custom"]);
+            Assert.True(ProjectContentPathPolicy.IsSamePath(
+                Path.Combine(assets.CurrentProjectRootPath, "Renamed.txt.asset"), original.AssetInfo.FullName),
+                $"Expected renamed metadata under {context.ContentDirectory}; actual {original.AssetInfo.FullName}");
+            Assert.Equal("Renamed.txt", original.Filename.Value);
+            await original.Save();
+            var saved = File.ReadAllText(original.AssetInfo.FullName);
+            Assert.Contains("custom: edited", saved);
+            Assert.Contains("filename: Renamed.txt", saved);
+            Assert.False(File.Exists(source + ".asset"));
+        }
+        finally
+        {
             MauiProgram.ClearServices();
             directory.Delete(true);
         }

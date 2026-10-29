@@ -1,86 +1,30 @@
 using SailorEditor.Commands;
-using SailorEditor.History;
 using SailorEditor.Shell;
+using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using SailorEngine;
-using System.Text;
 
 namespace SailorEditor.Services;
-
-internal sealed record GameObjectClipboardPayload(
-    string PrefabYaml,
-    string? ParentInstanceId);
-
-internal static class GameObjectClipboardCodec
-{
-    const string Header = "SailorEditor.GameObject/1";
-
-    public static string Encode(GameObjectClipboardPayload payload)
-    {
-        ArgumentNullException.ThrowIfNull(payload);
-        var parent = payload.ParentInstanceId ?? string.Empty;
-        var yaml = Convert.ToBase64String(
-            Encoding.UTF8.GetBytes(payload.PrefabYaml));
-        return $"{Header}\n{parent}\n{yaml}";
-    }
-
-    public static bool TryDecode(
-        string? text,
-        out GameObjectClipboardPayload? payload)
-    {
-        payload = null;
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return false;
-        }
-
-        var parts = text.Split('\n', 3);
-        if (parts.Length != 3 ||
-            !string.Equals(parts[0], Header, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        try
-        {
-            var prefabYaml = Encoding.UTF8.GetString(
-                Convert.FromBase64String(parts[2]));
-            if (string.IsNullOrWhiteSpace(prefabYaml))
-            {
-                return false;
-            }
-
-            payload = new GameObjectClipboardPayload(
-                prefabYaml,
-                string.IsNullOrWhiteSpace(parts[1]) ? null : parts[1]);
-            return true;
-        }
-        catch (FormatException)
-        {
-            return false;
-        }
-    }
-}
 
 internal sealed class GameObjectClipboardService
 {
     string? copiedPayload;
 
-    public async Task CopyAsync(
-        GameObject gameObject,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(gameObject);
-        cancellationToken.ThrowIfCancellationRequested();
+    public Task CopyAsync(GameObject gameObject, CancellationToken cancellationToken = default)
+        => CopyAsync(new[] { gameObject }, cancellationToken);
 
+    public async Task CopyAsync(IEnumerable<GameObject> gameObjects, CancellationToken cancellationToken = default)
+    {
+        var roots = GetRoots(gameObjects);
+        cancellationToken.ThrowIfCancellationRequested();
         var world = MauiProgram.GetService<WorldService>();
-        var prefab = world.CreatePrefabFromSubHierarchy(
-            gameObject,
-            out _);
-        copiedPayload = GameObjectClipboardCodec.Encode(
-            new GameObjectClipboardPayload(
+        copiedPayload = GameObjectClipboardCodec.Encode(roots.Select(gameObject =>
+        {
+            var prefab = world.CreatePrefabFromSubHierarchy(gameObject, out _);
+            return new GameObjectClipboardEntry(
                 EditorYaml.SerializePrefab(prefab),
-                world.ResolveParentInstanceId(gameObject)?.Value));
+                world.ResolveParentInstanceId(gameObject)?.Value);
+        }));
 
         try
         {
@@ -88,16 +32,14 @@ internal sealed class GameObjectClipboardService
         }
         catch (Exception exception)
         {
-            Console.Error.WriteLine(
-                $"Could not publish GameObject to the system clipboard: {exception}");
+            Console.Error.WriteLine($"Could not publish GameObjects to the system clipboard: {exception}");
         }
 
-        MauiProgram.GetService<EditorShellHost>()
-            .SetStatus($"Copied {gameObject.Name}");
+        MauiProgram.GetService<EditorShellHost>().SetStatus(
+            roots.Count == 1 ? $"Copied {roots[0].Name}" : $"Copied {roots.Count} GameObjects");
     }
 
-    public async Task PasteAsync(
-        CancellationToken cancellationToken = default)
+    public async Task PasteAsync(CancellationToken cancellationToken = default)
     {
         string? systemClipboardText = null;
         try
@@ -106,80 +48,78 @@ internal sealed class GameObjectClipboardService
         }
         catch (Exception exception)
         {
-            Console.Error.WriteLine(
-                $"Could not read the system clipboard: {exception}");
+            Console.Error.WriteLine($"Could not read the system clipboard: {exception}");
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        var decoded = GameObjectClipboardCodec.TryDecode(
-            systemClipboardText,
-            out var payload);
-        if (!decoded)
+        if (!GameObjectClipboardCodec.TryDecode(systemClipboardText, out var entries) &&
+            !GameObjectClipboardCodec.TryDecode(copiedPayload, out entries))
         {
-            decoded = GameObjectClipboardCodec.TryDecode(
-                copiedPayload,
-                out payload);
-        }
-
-        if (!decoded || payload is null)
-        {
-            throw new InvalidDataException(
-                "The clipboard does not contain a Sailor GameObject.");
+            throw new InvalidDataException("The clipboard does not contain Sailor GameObjects.");
         }
 
         var world = MauiProgram.GetService<WorldService>();
-        InstanceId? parentId = null;
-        if (!string.IsNullOrWhiteSpace(payload.ParentInstanceId))
+        var commands = entries.Select(entry =>
         {
-            var candidate = new InstanceId(payload.ParentInstanceId);
-            if (world.TryGetGameObject(candidate, out _))
+            InstanceId? parentId = null;
+            if (!string.IsNullOrWhiteSpace(entry.ParentInstanceId))
             {
-                parentId = candidate;
+                var candidate = new InstanceId(entry.ParentInstanceId);
+                if (world.TryGetGameObject(candidate, out _))
+                {
+                    parentId = candidate;
+                }
             }
-        }
 
-        var result = await MauiProgram.GetService<ICommandDispatcher>()
-            .DispatchAsync(
-                new DuplicateGameObjectCommand(
-                    payload.PrefabYaml,
-                    parentId),
-                MauiProgram.GetService<IActionContextProvider>()
-                    .GetCurrentContext(
-                        new CommandOrigin(
-                            CommandOriginKind.Menu,
-                            nameof(GameObjectClipboardService))),
-                cancellationToken);
-        if (!result.Succeeded)
-        {
-            throw new InvalidOperationException(
-                result.Message ?? "Paste GameObject failed.");
-        }
+            return new DuplicateGameObjectCommand(entry.PrefabYaml, parentId);
+        });
 
-        MauiProgram.GetService<EditorShellHost>()
-            .SetStatus("Pasted GameObject");
+        await DispatchAsync(EditorCommandBatch.Create("Paste GameObjects", commands), cancellationToken);
+        MauiProgram.GetService<EditorShellHost>().SetStatus(
+            entries.Count == 1 ? "Pasted GameObject" : $"Pasted {entries.Count} GameObjects");
     }
 
-    public async Task DuplicateAsync(
-        GameObject gameObject,
-        CancellationToken cancellationToken = default)
+    public Task DuplicateAsync(GameObject gameObject, CancellationToken cancellationToken = default)
+        => DuplicateAsync(new[] { gameObject }, cancellationToken);
+
+    public async Task DuplicateAsync(IEnumerable<GameObject> gameObjects, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(gameObject);
-        var result = await MauiProgram.GetService<ICommandDispatcher>()
-            .DispatchAsync(
-                new DuplicateGameObjectCommand(gameObject),
-                MauiProgram.GetService<IActionContextProvider>()
-                    .GetCurrentContext(
-                        new CommandOrigin(
-                            CommandOriginKind.Menu,
-                            nameof(GameObjectClipboardService))),
-                cancellationToken);
-        if (!result.Succeeded)
+        var roots = GetRoots(gameObjects);
+        await DispatchAsync(
+            EditorCommandBatch.Create("Duplicate GameObjects", roots.Select(gameObject => new DuplicateGameObjectCommand(gameObject))),
+            cancellationToken);
+        MauiProgram.GetService<EditorShellHost>().SetStatus(
+            roots.Count == 1 ? $"Duplicated {roots[0].Name}" : $"Duplicated {roots.Count} GameObjects");
+    }
+
+    static IReadOnlyList<GameObject> GetRoots(IEnumerable<GameObject> gameObjects)
+    {
+        ArgumentNullException.ThrowIfNull(gameObjects);
+        var roots = EditorDragDrop.GetSelectionRoots(gameObjects).OfType<GameObject>().ToArray();
+        if (roots.Length == 0)
         {
-            throw new InvalidOperationException(
-                result.Message ?? "Duplicate GameObject failed.");
+            throw new ArgumentException("Select at least one GameObject.", nameof(gameObjects));
         }
 
-        MauiProgram.GetService<EditorShellHost>()
-            .SetStatus($"Duplicated {gameObject.Name}");
+        return roots;
+    }
+
+    static async Task DispatchAsync(IEditorCommand command, CancellationToken cancellationToken)
+    {
+        var result = await MauiProgram.GetService<ICommandDispatcher>().DispatchAsync(
+            command,
+            MauiProgram.GetService<IActionContextProvider>().GetCurrentContext(
+                new CommandOrigin(CommandOriginKind.Menu, nameof(GameObjectClipboardService))),
+            cancellationToken);
+        if (!result.Succeeded)
+        {
+            throw new InvalidOperationException(result.Message ?? "GameObject clipboard operation failed.");
+        }
+
+        var createdIds = EditorCommandBatch.ResultValues<InstanceId>(result).ToArray();
+        if (createdIds.Length > 0)
+        {
+            MauiProgram.GetService<SelectionService>().SelectInstances(createdIds);
+        }
     }
 }

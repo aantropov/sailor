@@ -24,6 +24,18 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="MultiSelectionStateTests.cs" />
+    <Compile Include="ListSelectionPolicyTests.cs" />
+    <Compile Include="EditorCommandBatchTests.cs" />
+    <Compile Include="GameObjectClipboardCodecTests.cs" />
+    <Compile Include="EditorMultiDragDropTests.cs" />
+    <Compile Include="InspectorAggregateEditingTests.cs" />
+    <Compile Include="..\Editor\ViewModels\MaterialUniforms.cs" Link="ViewModels\MaterialUniforms.cs" />
+    <Compile Include="..\Editor\Utility\ListSelectionPolicy.cs" Link="Utility\ListSelectionPolicy.cs" />
+    <Compile Include="..\Editor\Commands\EditorCommandBatch.cs" Link="Commands\EditorCommandBatch.cs" />
+    <Compile Include="..\Editor\Utility\EditorSelectionDragPayload.cs" Link="Utility\EditorSelectionDragPayload.cs" />
+    <Compile Include="..\Editor\Services\GameObjectClipboardCodec.cs" Link="Services\GameObjectClipboardCodec.cs" />
+    <Compile Include="..\Editor\Utility\InspectorAggregateEditing.cs" Link="Utility\InspectorAggregateEditing.cs" />
     <Compile Include="GlobalUsings.cs" />
     <Compile Include="CommandContractsTests.cs" />
     <Compile Include="HistoryContractsTests.cs" />

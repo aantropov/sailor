@@ -29,7 +29,7 @@ public sealed partial class HierarchyProjectionService : ObservableObject
         _worldService.OnUpdateWorldAction += _ => Refresh();
         _selectionService.PropertyChanged += (_, args) =>
         {
-            if (args.PropertyName == nameof(SelectionService.SelectedInstanceId))
+            if (args.PropertyName == nameof(SelectionService.SelectedInstanceIds))
                 Refresh();
         };
     }
@@ -99,7 +99,7 @@ public sealed partial class HierarchyProjectionService : ObservableObject
                 ResolvePrefabRootInstanceId(x.prefab)))
             .Where(x => !string.IsNullOrWhiteSpace(x.Id));
 
-        Roots = HierarchyProjectionBuilder.Build(items, _expandedIds, _selectionService.SelectedInstanceId?.Value);
+        Roots = HierarchyProjectionBuilder.BuildSelection(items, _expandedIds, _selectionService.SelectedInstanceIds.Select(id => id.Value));
         VisibleRows = HierarchyProjectionBuilder.Flatten(Roots);
     }
 

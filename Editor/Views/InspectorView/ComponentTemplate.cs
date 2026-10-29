@@ -313,8 +313,7 @@ public partial class ComponentTemplate : DataTemplate
         {
             foreach (var property in component.OverrideProperties)
             {
-                if (property.Key is "layerTextures" or "heightmapTexture" or "materialMasks" or
-                    "sculptStamps" or "paintStamps" or "regenerate" or "flatten" or "saveVegetation")
+                    if (!InspectorPropertyPresentation.IsVisibleProperty(component.Typename.Name, property.Key))
                 {
                     continue;
                 }

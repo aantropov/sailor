@@ -908,20 +908,36 @@ namespace SailorEditor.Views
         async Task ApplyViewportAssetDropAsync(
             EditorViewportAssetDropEvent viewportEvent)
         {
-            var fileId = new FileId(viewportEvent.FileId);
-            if (!MauiProgram.GetService<AssetsService>()
-                    .Assets.TryGetValue(fileId, out var assetFile))
+            var context = CreateViewportActionContext(viewportEvent);
+            if (!SceneViewportAssetDropPayload.TryResolveFileIds(
+                    viewportEvent.FileId,
+                    context.WorkspaceEpoch ?? 0,
+                    out var fileIds))
             {
                 Console.WriteLine(
-                    $"[SceneView] Rejected viewport asset drop revision {viewportEvent.Revision}: '{viewportEvent.FileId}' is not a known asset.");
+                    $"[SceneView] Rejected viewport asset drop revision {viewportEvent.Revision}: the drag selection has expired or belongs to another workspace.");
                 return;
             }
 
+            var assets = MauiProgram.GetService<AssetsService>().Assets;
+            var droppedAssets = new List<object>(fileIds.Count);
+            foreach (var fileId in fileIds)
+            {
+                if (!assets.TryGetValue(fileId, out var assetFile) || !EditorDragDrop.IsViewportAssetDrop(assetFile))
+                {
+                    Console.WriteLine(
+                        $"[SceneView] Rejected viewport asset drop revision {viewportEvent.Revision}: '{fileId.Value}' is not a known model or prefab.");
+                    return;
+                }
+
+                droppedAssets.Add(assetFile);
+            }
+
             var result = await DispatchViewportAssetDropAsync(
-                assetFile,
+                droppedAssets.Count == 1 ? droppedAssets[0] : new EditorSelectionDragPayload(droppedAssets),
                 viewportEvent.NormalizedX,
                 viewportEvent.NormalizedY,
-                CreateViewportActionContext(viewportEvent));
+                context);
             if (!result.Succeeded)
             {
                 Console.WriteLine(
@@ -1089,9 +1105,19 @@ namespace SailorEditor.Views
                     "The dropped asset is not a model or prefab");
             }
 
-            return await commandDispatcher.DispatchAsync(
+            var result = await commandDispatcher.DispatchAsync(
                 command,
                 context);
+            if (result.Succeeded)
+            {
+                var createdIds = EditorCommandBatch.ResultValues<InstanceId>(result).ToArray();
+                if (createdIds.Length > 0)
+                {
+                    MauiProgram.GetService<SelectionService>().SelectInstances(createdIds);
+                }
+            }
+
+            return result;
         }
 
         DropGestureRecognizer CreateSceneDropGesture()
@@ -1103,7 +1129,8 @@ namespace SailorEditor.Views
                         EditorDragDrop.DragItemKey,
                         out var source) &&
                     (EditorDragDrop.IsViewportAssetDrop(source) ||
-                     source is SailorEditor.ViewModels.GameObject))
+                     source is SailorEditor.ViewModels.GameObject ||
+                     source is EditorSelectionDragPayload selection && selection.Items.All(item => item is SailorEditor.ViewModels.GameObject)))
                 {
                     e.AcceptedOperation = DataPackageOperation.Copy;
                 }

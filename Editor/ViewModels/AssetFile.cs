@@ -186,6 +186,29 @@ public partial class AssetFile : ObservableObject, ICloneable
         }
     }
 
+    internal void RebindLocation(AssetFile refreshed)
+    {
+        if (!Equals(FileId, refreshed.FileId))
+        {
+            throw new ArgumentException("Asset identity must be preserved when rebinding its location.", nameof(refreshed));
+        }
+
+        RunWithoutDirtyTracking(() =>
+        {
+            Asset = refreshed.Asset;
+            AssetInfo = refreshed.AssetInfo;
+            Id = refreshed.Id;
+            FolderId = refreshed.FolderId;
+            ProjectRootId = refreshed.ProjectRootId;
+            OwnsSourceFile = refreshed.OwnsSourceFile;
+            IsReadOnly = refreshed.IsReadOnly;
+            Filename = new FileId(refreshed.Filename.Value);
+            DisplayName = refreshed.DisplayName;
+            SetAssetPropertyValue("filename", Filename.Value);
+            originalAssetInfoNodes["filename"] = new YamlScalarNode(Filename.Value);
+        });
+    }
+
     protected virtual void SyncAssetPropertiesBeforeSave()
     {
         SetAssetPropertyValue("fileId", FileId?.Value);

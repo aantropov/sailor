@@ -13,7 +13,7 @@
               BackgroundColor="Transparent">
             <CollectionView x:Name="ContentList"
                             Margin="0,4,0,0"
-                            SelectionMode="Single"
+                            SelectionMode="None"
                             VerticalOptions="Fill"
                             HorizontalOptions="Fill" />
         </Grid>

@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using SailorEditor.Workflow;
@@ -18,6 +18,8 @@ namespace SailorEditor.Services
         int suppressRuntimeSelectionSync;
         int workspaceResetInProgress;
         int workspaceChangeInProgress;
+        IReadOnlyList<ObservableObject> inspectedItems = Array.Empty<ObservableObject>();
+        ObservableObject? inspectedItem;
 
         public event Action<InstanceId> OnSelectInstanceAction = delegate { };
         public event Action<ObservableObject> OnSelectAssetAction = delegate { };
@@ -26,19 +28,27 @@ namespace SailorEditor.Services
         {
             _selectionStore.Changed += snapshot =>
             {
-                var selectedId = InstanceId.NullInstanceId;
-                if ((snapshot.Kind is SelectionTargetKind.GameObject or
-                        SelectionTargetKind.Component) &&
-                    !string.IsNullOrWhiteSpace(snapshot.SelectedId))
-                {
-                    selectedId = new InstanceId(snapshot.SelectedId);
-                }
-                SelectedInstanceId = selectedId;
+                SelectedInstanceId = snapshot.Kind is SelectionTargetKind.GameObject or SelectionTargetKind.Component &&
+                    !string.IsNullOrWhiteSpace(snapshot.SelectedId)
+                        ? new InstanceId(snapshot.SelectedId)
+                        : InstanceId.NullInstanceId;
+                OnPropertyChanged(nameof(Snapshot));
+                OnPropertyChanged(nameof(SelectedInstanceIds));
                 SyncEditorSelectionToRuntime();
             };
         }
 
         public SelectionSnapshot Snapshot => _selectionStore.Current;
+        public IReadOnlyList<InstanceId> SelectedInstanceIds =>
+            Snapshot.Kind is SelectionTargetKind.GameObject or SelectionTargetKind.Component
+                ? Snapshot.SelectedIds.Select(id => new InstanceId(id)).ToArray()
+                : Array.Empty<InstanceId>();
+        public IReadOnlyList<ObservableObject> InspectedItems => inspectedItems;
+        public ObservableObject? InspectedItem
+        {
+            get => inspectedItem;
+            set => SetInspectedSelection(value is null ? [] : [value]);
+        }
         public long WorkspaceEpoch => Interlocked.Read(ref workspaceEpoch);
         public bool IsWorkspaceResetInProgress => Volatile.Read(ref workspaceResetInProgress) != 0;
         public bool IsWorkspaceChangeInProgress => Volatile.Read(ref workspaceChangeInProgress) != 0;
@@ -46,89 +56,64 @@ namespace SailorEditor.Services
         public void SelectInstance(InstanceId instanceId)
         {
             if (IsWorkspaceChangeInProgress)
+            {
                 return;
-
-            if (instanceId == null || instanceId.IsEmpty())
+            }
+            if (instanceId is null || instanceId.IsEmpty())
             {
                 ClearSelection();
                 return;
             }
+            var target = ResolveSceneTarget(instanceId);
+            if (target is not null)
+            {
+                SelectInstances([instanceId]);
+            }
+        }
 
-            CancelPendingSelection();
-            var worldService = MauiProgram.GetService<WorldService>();
-            ObservableObject? next = null;
-            if (worldService.TryGetGameObject(instanceId, out var gameObject))
-            {
-                next = gameObject;
-                _selectionStore.Select(instanceId.Value, SelectionTargetKind.GameObject);
-            }
-            else if (worldService.TryGetComponent(instanceId, out var component))
-            {
-                next = component;
-                _selectionStore.Select(instanceId.Value, SelectionTargetKind.Component);
-            }
-            else
+        public void SelectInstances(IEnumerable<InstanceId> instanceIds)
+        {
+            if (IsWorkspaceChangeInProgress)
             {
                 return;
             }
-
-            UpdateSelection(next, raiseInstanceAction: true, raiseAssetAction: false);
+            var targets = instanceIds.Where(id => id is not null && !id.IsEmpty())
+                .Reverse().DistinctBy(id => id.Value, StringComparer.Ordinal).Reverse()
+                .Select(ResolveSceneTarget).OfType<ObservableObject>().ToArray();
+            CancelPendingSelection();
+            if (targets.Length == 0)
+            {
+                ClearSelectionCore();
+                return;
+            }
+            var changed = SetSelectionSnapshot(targets);
+            UpdateSelection(targets, changed, raiseAssetAction: false);
         }
 
         public async void SelectObject(ObservableObject obj, bool force = false)
             => await SelectObjectAsync(obj, force);
 
-        public async Task<bool> NavigateToReferenceAsync(
-            object? reference,
-            CancellationToken cancellationToken = default)
-        {
-            if (IsWorkspaceChangeInProgress || reference is null)
-                return false;
+        public Task SelectObjectAsync(ObservableObject obj, bool force = false) =>
+            SelectObjectsAsync(obj is null ? [] : [obj], force);
 
-            reference = reference switch
-            {
-                Observable<FileId> observableFileId => observableFileId.Value,
-                Observable<InstanceId> observableInstanceId => observableInstanceId.Value,
-                ObjectPtr objectPtr when !objectPtr.FileId.IsEmpty() => objectPtr.FileId,
-                ObjectPtr objectPtr => objectPtr.InstanceId,
-                _ => reference,
-            };
-
-            var worldService = MauiProgram.GetService<WorldService>();
-            ObservableObject? target = reference switch
-            {
-                FileId fileId when !fileId.IsEmpty() =>
-                    await MauiProgram.GetService<AssetsService>()
-                        .ResolveAssetAsync(fileId, cancellationToken),
-                InstanceId instanceId when !instanceId.IsEmpty() =>
-                    ResolveSceneReferenceTarget(worldService, instanceId),
-                Component component => worldService.FindOwner(component),
-                GameObject gameObject => gameObject,
-                AssetFile assetFile => assetFile,
-                _ => null,
-            };
-
-            if (target is null)
-                return false;
-
-            await SelectObjectAsync(target);
-            return true;
-        }
-
-        public async Task SelectObjectAsync(
-            ObservableObject obj,
-            bool force = false)
+        public async Task SelectObjectsAsync(IEnumerable<ObservableObject> objects, bool force = false)
         {
             if (IsWorkspaceChangeInProgress)
+            {
                 return;
-
-            if (obj == null)
+            }
+            var targets = objects.Where(item => item is not null).Reverse()
+                .DistinctBy(item => (item.GetType(), TryGetSelectionId(item) ??
+                    System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(item).ToString()))
+                .Reverse().ToArray();
+            if (targets.Length == 0)
             {
                 ClearSelection();
                 return;
             }
-
-            if (!force && SelectedItems.Count == 1 && ReferenceEquals(SelectedItems[0], obj))
+            if (!force && pendingSelectionCancellation is null && SelectedItems.Count == targets.Length &&
+                Snapshot.SelectedIds.SequenceEqual(targets.Select(TryGetSelectionId), StringComparer.Ordinal) &&
+                SelectedItems.Zip(targets).All(pair => ReferenceEquals(pair.First, pair.Second)))
             {
                 return;
             }
@@ -138,42 +123,48 @@ namespace SailorEditor.Services
             var requestCancellation = new CancellationTokenSource();
             var previousCancellation = Interlocked.Exchange(ref pendingSelectionCancellation, requestCancellation);
             previousCancellation?.Cancel();
-            var selectionChanged = _selectionStore.Select(
-                TryGetSelectionId(obj),
-                obj is Component ? SelectionTargetKind.Component : obj is GameObject ? SelectionTargetKind.GameObject : SelectionTargetKind.Asset);
-
+            var selectionChanged = SetSelectionSnapshot(targets);
             try
             {
-                if (obj is AssetFile selectedAssetFile)
+                foreach (var asset in targets.OfType<AssetFile>())
                 {
-                    await selectedAssetFile.EnsureMetadataLoadedAsync(requestCancellation.Token);
+                    await asset.EnsureMetadataLoadedAsync(requestCancellation.Token);
                     if (!IsCurrentRequest(requestVersion, requestEpoch, requestCancellation.Token))
                     {
                         return;
                     }
-                    await selectedAssetFile.PrepareInspectorResources().WaitAsync(requestCancellation.Token);
+                    if (targets.Length == 1)
+                    {
+                        await asset.PrepareInspectorResources().WaitAsync(requestCancellation.Token);
+                        if (!IsCurrentRequest(requestVersion, requestEpoch, requestCancellation.Token))
+                        {
+                            return;
+                        }
+                    }
+                }
+                UpdateSelection(targets, selectionChanged, raiseAssetAction: true);
+                foreach (var asset in targets.OfType<AssetFile>())
+                {
+                    if (asset is ModelFile model)
+                    {
+                        await model.LoadDependentResources(requestCancellation.Token);
+                    }
+                    else
+                    {
+                        await asset.LoadDependentResources().WaitAsync(requestCancellation.Token);
+                    }
                     if (!IsCurrentRequest(requestVersion, requestEpoch, requestCancellation.Token))
                     {
                         return;
                     }
                 }
-
-                UpdateSelection(
-                    obj,
-                    raiseInstanceAction: selectionChanged && obj is GameObject or Component,
-                    raiseAssetAction: true);
-
-                if (obj is AssetFile assetFile)
+                if (targets.Any(item => item is AssetFile) &&
+                    IsCurrentRequest(requestVersion, requestEpoch, requestCancellation.Token))
                 {
-                    if (assetFile is ModelFile modelFile)
-                        await modelFile.LoadDependentResources(requestCancellation.Token);
-                    else
-                        await assetFile.LoadDependentResources().WaitAsync(requestCancellation.Token);
-                    if (IsCurrentRequest(requestVersion, requestEpoch, requestCancellation.Token) && ReferenceEquals(SelectedItem, obj))
-                    {
-                        UpdateSelection(obj, raiseInstanceAction: false, raiseAssetAction: true);
-                        OnPropertyChanged(nameof(SelectedItem));
-                    }
+                    OnPropertyChanged(nameof(InspectedItems));
+                    OnPropertyChanged(nameof(InspectedItem));
+                    OnPropertyChanged(nameof(SelectedItem));
+                    OnSelectAssetAction?.Invoke(targets[^1]);
                 }
             }
             catch (OperationCanceledException) when (requestCancellation.IsCancellationRequested)
@@ -187,6 +178,64 @@ namespace SailorEditor.Services
             }
         }
 
+        public async Task<bool> NavigateToReferenceAsync(object? reference, CancellationToken cancellationToken = default)
+        {
+            if (IsWorkspaceChangeInProgress || reference is null)
+            {
+                return false;
+            }
+            reference = reference switch
+            {
+                Observable<FileId> observableFileId => observableFileId.Value,
+                Observable<InstanceId> observableInstanceId => observableInstanceId.Value,
+                ObjectPtr objectPtr when !objectPtr.FileId.IsEmpty() => objectPtr.FileId,
+                ObjectPtr objectPtr => objectPtr.InstanceId,
+                _ => reference,
+            };
+            var worldService = MauiProgram.GetService<WorldService>();
+            ObservableObject? target = reference switch
+            {
+                FileId fileId when !fileId.IsEmpty() =>
+                    await MauiProgram.GetService<AssetsService>().ResolveAssetAsync(fileId, cancellationToken),
+                InstanceId instanceId when !instanceId.IsEmpty() => ResolveSceneReferenceTarget(worldService, instanceId),
+                Component component => worldService.FindOwner(component),
+                GameObject gameObject => gameObject,
+                AssetFile assetFile => assetFile,
+                _ => null,
+            };
+            if (target is null)
+            {
+                return false;
+            }
+            await SelectObjectAsync(target);
+            return true;
+        }
+
+        public void RebindSceneSelection()
+        {
+            if (IsWorkspaceChangeInProgress)
+            {
+                return;
+            }
+            if (Snapshot.Kind is SelectionTargetKind.GameObject or SelectionTargetKind.Component)
+            {
+                var targets = SelectedInstanceIds.Select(ResolveSceneTarget).OfType<ObservableObject>().ToArray();
+                CancelPendingSelection();
+                SetSelectionSnapshot(targets);
+                UpdateSelection(targets, raiseInstanceAction: true, raiseAssetAction: false);
+            }
+            else if (InspectedItems.Any(item => item is GameObject or Component))
+            {
+                var rebound = InspectedItems.Select(item => item switch
+                {
+                    GameObject gameObject => ResolveSceneTarget(gameObject.InstanceId),
+                    Component component => ResolveSceneTarget(component.InstanceId),
+                    _ => item,
+                }).OfType<ObservableObject>().ToArray();
+                SetInspectedSelection(rebound);
+            }
+        }
+
         public void ClearSelection()
         {
             CancelPendingSelection();
@@ -196,7 +245,7 @@ namespace SailorEditor.Services
         internal async Task RebindInspectedAssetAsync(AssetFile previous, AssetFile? replacement)
         {
             var epoch = WorkspaceEpoch;
-            if (!ReferenceEquals(InspectedItem, previous) || IsWorkspaceChangeInProgress)
+            if (!InspectedItems.Contains(previous) || IsWorkspaceChangeInProgress)
             {
                 return;
             }
@@ -204,13 +253,17 @@ namespace SailorEditor.Services
             if (replacement is not null)
             {
                 await replacement.EnsureMetadataLoadedAsync();
-                await replacement.PrepareInspectorResources();
+                if (InspectedItems.Count == 1)
+                {
+                    await replacement.PrepareInspectorResources();
+                }
                 await replacement.LoadDependentResources();
             }
-            if (requestVersion == Volatile.Read(ref inspectionRebindVersion) &&
-                epoch == WorkspaceEpoch && !IsWorkspaceChangeInProgress && ReferenceEquals(InspectedItem, previous))
+            if (requestVersion == Volatile.Read(ref inspectionRebindVersion) && epoch == WorkspaceEpoch &&
+                !IsWorkspaceChangeInProgress && InspectedItems.Contains(previous))
             {
-                InspectedItem = replacement;
+                SetInspectedSelection(InspectedItems.Select(item => ReferenceEquals(item, previous) ? replacement : item)
+                    .OfType<ObservableObject>().ToArray());
             }
         }
 
@@ -254,9 +307,11 @@ namespace SailorEditor.Services
         public void BeginWorkspaceChange()
         {
             if (Interlocked.Exchange(ref workspaceChangeInProgress, 1) != 0)
+            {
                 return;
-
+            }
             Interlocked.Increment(ref workspaceEpoch);
+            SailorEditor.Scene.SceneViewportAssetDropPayload.ResetSelections();
             CancelPendingSelection();
         }
 
@@ -277,8 +332,7 @@ namespace SailorEditor.Services
             }
         }
 
-        public void CompleteWorkspaceChange()
-            => Interlocked.Exchange(ref workspaceChangeInProgress, 0);
+        public void CompleteWorkspaceChange() => Interlocked.Exchange(ref workspaceChangeInProgress, 0);
 
         void ClearSelectionCore(bool preserveInspectedItem = false)
         {
@@ -286,9 +340,10 @@ namespace SailorEditor.Services
             SelectedItems.Clear();
             SelectedItem = null;
             SelectedInstanceId = InstanceId.NullInstanceId;
+            OnPropertyChanged(nameof(SelectedItems));
             if (!preserveInspectedItem)
             {
-                InspectedItem = null;
+                SetInspectedSelection([]);
             }
             OnSelectAssetAction?.Invoke(null);
         }
@@ -300,57 +355,84 @@ namespace SailorEditor.Services
         }
 
         bool IsCurrentRequest(int requestVersion, long requestEpoch, CancellationToken cancellationToken) =>
-            !cancellationToken.IsCancellationRequested
-            && requestVersion == Volatile.Read(ref selectionRequestVersion)
-            && requestEpoch == WorkspaceEpoch;
+            !cancellationToken.IsCancellationRequested &&
+            requestVersion == Volatile.Read(ref selectionRequestVersion) && requestEpoch == WorkspaceEpoch;
 
-        void UpdateSelection(ObservableObject obj, bool raiseInstanceAction, bool raiseAssetAction)
+        bool SetSelectionSnapshot(IReadOnlyList<ObservableObject> targets) =>
+            _selectionStore.SelectMany(targets.Select(TryGetSelectionId).OfType<string>(), targets.LastOrDefault() switch
+            {
+                GameObject => SelectionTargetKind.GameObject,
+                Component => SelectionTargetKind.Component,
+                AssetFile => SelectionTargetKind.Asset,
+                _ => SelectionTargetKind.None,
+            });
+
+        void UpdateSelection(IReadOnlyList<ObservableObject> targets, bool raiseInstanceAction, bool raiseAssetAction)
         {
             SelectedItems.Clear();
-            SelectedItems.Add(obj);
-            SelectedItem = obj;
-            InspectedItem = obj;
-
-            if (raiseInstanceAction && SelectedInstanceId is not null && !SelectedInstanceId.IsEmpty())
+            foreach (var target in targets)
+            {
+                SelectedItems.Add(target);
+            }
+            SelectedItem = targets.LastOrDefault();
+            SetInspectedSelection(targets);
+            OnPropertyChanged(nameof(SelectedItems));
+            if (raiseInstanceAction || SelectedInstanceId.IsEmpty())
+            {
                 OnSelectInstanceAction?.Invoke(SelectedInstanceId);
-            else if (SelectedInstanceId is null || SelectedInstanceId.IsEmpty())
-                OnSelectInstanceAction?.Invoke(InstanceId.NullInstanceId);
+            }
+            OnSelectAssetAction?.Invoke(raiseAssetAction ? SelectedItem : null);
+        }
 
-            OnSelectAssetAction?.Invoke(raiseAssetAction ? obj : null);
+        void SetInspectedSelection(IReadOnlyList<ObservableObject> targets)
+        {
+            if (inspectedItems.SequenceEqual(targets, ReferenceEqualityComparer.Instance))
+            {
+                return;
+            }
+            inspectedItems = Array.AsReadOnly(targets.ToArray());
+            inspectedItem = targets.LastOrDefault();
+            OnPropertyChanged(nameof(InspectedItems));
+            OnPropertyChanged(nameof(InspectedItem));
         }
 
         void SyncEditorSelectionToRuntime()
         {
-            if (Volatile.Read(ref suppressRuntimeSelectionSync) != 0)
-                return;
-
-            _ = SyncEditorSelectionToRuntimeAsync();
+            if (Volatile.Read(ref suppressRuntimeSelectionSync) == 0)
+            {
+                _ = SyncEditorSelectionToRuntimeAsync();
+            }
         }
 
         async Task SyncEditorSelectionToRuntimeAsync()
         {
             try
             {
-                await MauiProgram.GetService<EngineService>()
-                    .UpdateEditorSelectionAsync([SelectedInstanceId]);
+                await MauiProgram.GetService<EngineService>().UpdateEditorSelectionAsync(SelectedInstanceIds);
             }
             catch (Exception exception)
             {
-                Console.WriteLine(
-                    $"[SelectionService] Failed to synchronize runtime selection: {exception.Message}");
+                Console.WriteLine($"[SelectionService] Failed to synchronize runtime selection: {exception.Message}");
             }
         }
 
-        static GameObject? ResolveSceneReferenceTarget(
-            WorldService worldService,
-            InstanceId instanceId)
+        static ObservableObject? ResolveSceneTarget(InstanceId instanceId)
+        {
+            var worldService = MauiProgram.GetService<WorldService>();
+            if (worldService.TryGetGameObject(instanceId, out var gameObject))
+            {
+                return gameObject;
+            }
+            return worldService.TryGetComponent(instanceId, out var component) ? component : null;
+        }
+
+        static GameObject? ResolveSceneReferenceTarget(WorldService worldService, InstanceId instanceId)
         {
             if (worldService.TryGetGameObject(instanceId, out var gameObject))
+            {
                 return gameObject;
-
-            return worldService.TryGetComponent(instanceId, out var component)
-                ? worldService.FindOwner(component)
-                : null;
+            }
+            return worldService.TryGetComponent(instanceId, out var component) ? worldService.FindOwner(component) : null;
         }
 
         static string? TryGetSelectionId(ObservableObject obj) => obj switch
@@ -362,10 +444,7 @@ namespace SailorEditor.Services
         };
 
         [ObservableProperty]
-        private ObservableObject selectedItem;
-
-        [ObservableProperty]
-        private ObservableObject? inspectedItem;
+        private ObservableObject? selectedItem;
 
         [ObservableProperty]
         private ObservableList<INotifyPropertyChanged> selectedItems = [];

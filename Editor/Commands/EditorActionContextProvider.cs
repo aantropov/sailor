@@ -36,6 +36,7 @@ public sealed class EditorActionContextProvider(
     {
         GameObject gameObject => gameObject.InstanceId?.Value,
         Component component => component.InstanceId?.Value,
+        AssetFile asset => asset.FileId?.Value,
         _ => null,
     };
 }

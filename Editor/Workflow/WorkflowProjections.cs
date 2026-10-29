@@ -13,6 +13,23 @@ public enum SelectionTargetKind
 public sealed record SelectionSnapshot(string? SelectedId, SelectionTargetKind Kind)
 {
     public static SelectionSnapshot Empty { get; } = new(null, SelectionTargetKind.None);
+
+    public IReadOnlyList<string> SelectedIds { get; init; } =
+        string.IsNullOrWhiteSpace(SelectedId) ? Array.Empty<string>() : [SelectedId];
+
+    public bool Equals(SelectionSnapshot? other) => other is not null &&
+        Kind == other.Kind && SelectedIds.SequenceEqual(other.SelectedIds, StringComparer.Ordinal);
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Kind);
+        foreach (var id in SelectedIds)
+        {
+            hash.Add(id, StringComparer.Ordinal);
+        }
+        return hash.ToHashCode();
+    }
 }
 
 public sealed class SelectionStore
@@ -21,18 +38,26 @@ public sealed class SelectionStore
 
     public event Action<SelectionSnapshot>? Changed;
 
-    public bool Select(string? selectedId, SelectionTargetKind kind)
+    public bool Select(string? selectedId, SelectionTargetKind kind) =>
+        SelectMany(string.IsNullOrWhiteSpace(selectedId) ? [] : [selectedId], kind);
+
+    public bool SelectMany(IEnumerable<string> selectedIds, SelectionTargetKind kind)
     {
-        var next = string.IsNullOrWhiteSpace(selectedId) ? SelectionSnapshot.Empty : new SelectionSnapshot(selectedId, kind);
-        if (Equals(Current, next))
+        var ids = selectedIds.Where(id => !string.IsNullOrWhiteSpace(id))
+            .Reverse().Distinct(StringComparer.Ordinal).Reverse().ToArray();
+        var next = ids.Length == 0 ? SelectionSnapshot.Empty :
+            new SelectionSnapshot(ids[^1], kind) { SelectedIds = Array.AsReadOnly(ids) };
+        if (Current.Kind == next.Kind && Current.SelectedIds.SequenceEqual(next.SelectedIds, StringComparer.Ordinal))
+        {
             return false;
+        }
 
         Current = next;
         Changed?.Invoke(Current);
         return true;
     }
 
-    public bool Clear() => Select(null, SelectionTargetKind.None);
+    public bool Clear() => SelectMany([], SelectionTargetKind.None);
 }
 
 public sealed record HierarchySourceItem(
@@ -210,6 +235,16 @@ public static class HierarchyProjectionBuilder
 
     public static IReadOnlyList<HierarchyProjectionNode> Build(IEnumerable<HierarchySourceItem> sourceItems, ISet<string>? expandedIds, string? selectedId)
     {
+        return BuildSelection(sourceItems, expandedIds,
+            string.IsNullOrWhiteSpace(selectedId) ? [] : [selectedId]);
+    }
+
+    public static IReadOnlyList<HierarchyProjectionNode> BuildSelection(
+        IEnumerable<HierarchySourceItem> sourceItems,
+        ISet<string>? expandedIds,
+        IEnumerable<string> selectedIds)
+    {
+        var selected = selectedIds.ToHashSet(StringComparer.Ordinal);
         var items = sourceItems.ToArray();
         var itemIds = items.Select(x => x.Id).ToHashSet(StringComparer.Ordinal);
         var childrenLookup = items
@@ -219,7 +254,7 @@ public static class HierarchyProjectionBuilder
         if (roots.Length == 0 && items.Length > 0)
             roots = items.OrderBy(x => x.Label, StringComparer.Ordinal).ToArray();
 
-        return roots.Select(root => BuildNode(root, childrenLookup, expandedIds ?? new HashSet<string>(), selectedId, [])).ToArray();
+        return roots.Select(root => BuildNode(root, childrenLookup, expandedIds ?? new HashSet<string>(), selected, [])).ToArray();
     }
 
     public static IReadOnlyList<HierarchyListRow> Flatten(IReadOnlyList<HierarchyProjectionNode> roots)
@@ -234,14 +269,14 @@ public static class HierarchyProjectionBuilder
         return rows;
     }
 
-    static HierarchyProjectionNode BuildNode(HierarchySourceItem item, IReadOnlyDictionary<string, HierarchySourceItem[]> childrenLookup, ISet<string> expandedIds, string? selectedId, HashSet<string> visited)
+    static HierarchyProjectionNode BuildNode(HierarchySourceItem item, IReadOnlyDictionary<string, HierarchySourceItem[]> childrenLookup, ISet<string> expandedIds, ISet<string> selectedIds, HashSet<string> visited)
     {
         if (!visited.Add(item.Id))
         {
             return new HierarchyProjectionNode(
                 item.Id,
                 item.Label,
-                string.Equals(item.Id, selectedId, StringComparison.Ordinal),
+                selectedIds.Contains(item.Id),
                 expandedIds.Contains(item.Id),
                 Array.Empty<HierarchyProjectionNode>(),
                 item.IsPrefabLinked,
@@ -250,13 +285,13 @@ public static class HierarchyProjectionBuilder
         }
 
         var children = childrenLookup.TryGetValue(item.Id, out var childItems)
-            ? childItems.Select(child => BuildNode(child, childrenLookup, expandedIds, selectedId, new HashSet<string>(visited, StringComparer.Ordinal))).ToArray()
+            ? childItems.Select(child => BuildNode(child, childrenLookup, expandedIds, selectedIds, new HashSet<string>(visited, StringComparer.Ordinal))).ToArray()
             : Array.Empty<HierarchyProjectionNode>();
 
         return new HierarchyProjectionNode(
             item.Id,
             item.Label,
-            string.Equals(item.Id, selectedId, StringComparison.Ordinal),
+            selectedIds.Contains(item.Id),
             expandedIds.Contains(item.Id),
             children,
             item.IsPrefabLinked,
