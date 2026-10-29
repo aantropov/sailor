@@ -88,6 +88,7 @@ namespace Sailor
 	protected:
 		enum class EPreparedProxyState : uint8_t
 		{
+			Unchanged,
 			Remove,
 			Pending,
 			PendingMaterialVersion,
@@ -134,6 +135,7 @@ namespace Sailor
 		uint64_t m_spatialRevision = 0ull;
 		uint64_t m_shadowCastersRevision = 0ull;
 		uint64_t m_lastMaterialContentRevision = 0;
+		uint64_t m_lastReflectionProbeSpatialRevision = 0u;
 		uint64_t m_giMaterialRevision = 0;
 		TVector<PreparedProxyBatch> m_preparedBatchesScratch{};
 		TVector<Tasks::ITaskPtr> m_prepareTasksScratch{};

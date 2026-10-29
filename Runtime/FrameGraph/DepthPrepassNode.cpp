@@ -63,7 +63,6 @@ namespace
 		data.sphereBounds = source.sphereBounds;
 		data.materialInstance = source.materialInstance;
 		data.skeletonOffset = source.skeletonOffset;
-		data.padding = source.padding;
 		data.bakedVolumeScale = vec4(mesh.m_bakedVolumeScale, 1.0f);
 		return data;
 	}

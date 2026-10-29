@@ -112,6 +112,7 @@ glslVertex: |
     vout.color = inColor;
     vout.texcoord = inTexcoord;
     materialInstance = data.instance[instanceIndex].materialInstance;
+    reflectionProbeIndex = data.instance[instanceIndex].reflectionProbeIndex;
   #ifdef MOTIONS
     ObjectMotionData motion = data.instance[instanceIndex].motion;
     bool historyValid = motion.state.y != 0u;
@@ -510,7 +511,7 @@ glslFragment: |
     float environmentVisibility)
   {
     vec3 specularIrradiance = SampleForwardEnvironment(g_sheenEnvCubemap, g_localSheenEnvCubemap,
-      worldPosition, reflectionDirection, roughness, cosLo, ambientOcclusion, environmentVisibility);
+      worldPosition, reflectionDirection, roughness, cosLo, ambientOcclusion, environmentVisibility, true);
     float directionalAlbedo = texture(
       g_brdfSampler,
       clamp(vec2(cosLo, roughness), vec2(0.0), vec2(1.0))).b;

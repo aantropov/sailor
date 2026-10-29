@@ -164,6 +164,7 @@ void RHIPackedDrawSceneChanges::Gather(const RHIPackedDrawSceneState& current,
 					const auto& oldRecord = oldSlot->m_record;
 					bChanged = record.m_worldMatrix != oldRecord.m_worldMatrix ||
 						record.m_skeletonOffset != oldRecord.m_skeletonOffset ||
+						record.m_reflectionProbeIndex != oldRecord.m_reflectionProbeIndex ||
 						record.m_topologyRevision != oldRecord.m_topologyRevision ||
 						record.m_materialRevision != oldRecord.m_materialRevision ||
 						record.m_shadowRevision != oldRecord.m_shadowRevision ||

@@ -9,6 +9,7 @@
 #include "Math/Bounds.h"
 #include "Memory/SharedPtr.hpp"
 #include "RHI/Types.h"
+#include "RHI/Reflections.h"
 
 #include <limits>
 
@@ -58,7 +59,8 @@ namespace Sailor::RHI
 		SkeletonOffset = 1u << 8u,
 		Mobility = 1u << 9u,
 		ReplaceChunkRange = 1u << 10u,
-		ReplaceBulkRange = 1u << 11u
+		ReplaceBulkRange = 1u << 11u,
+		ReflectionProbe = 1u << 12u
 	};
 
 	using SceneChangeMask = uint32_t;
@@ -101,6 +103,7 @@ namespace Sailor::RHI
 		uint64_t m_shadowRevision = 0ull;
 		uint32_t m_skeletonOffset = (std::numeric_limits<uint32_t>::max)();
 		uint32_t m_renderFlags = 0u;
+		uint32_t m_reflectionProbeIndex = InvalidReflectionProbeIndex;
 	};
 
 	static_assert(sizeof(RHISceneInstanceRecord) <= 160u,

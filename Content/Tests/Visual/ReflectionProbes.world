@@ -1,0 +1,18 @@
+name: ReflectionProbes
+prefabs:
+  - gameObjects:
+      - name: Reflection probe component validation
+        mobilityType: Stationary
+        position: [0, 0, 0, 1]
+        rotation: [0, 0, 0, 1]
+        scale: [1, 1, 1, 1]
+        parentIndex: 4294967295
+        instanceId: 23000000000000000001
+        components: [0]
+    components:
+      - typename: Sailor::ReflectionProbeTestComponent
+        overrideProperties:
+          testName: ReflectionProbes
+          quitAfterFinish: true
+          fileId: NullFileId
+          instanceId: 23000000000040008000000000000001_23000000000000000001

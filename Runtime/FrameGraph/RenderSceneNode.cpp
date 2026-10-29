@@ -66,6 +66,7 @@ namespace
 		data.motion = ResolveMeshMotion(view, proxy, meshIndex, group, instanceIndex);
 		data.motion.m_state.z = material.m_material->GetRenderState().GetBlendMode() != EBlendMode::None;
 		data.skeletonOffset = proxy.GetSkeletonOffset();
+		data.reflectionProbeIndex = group ? InvalidReflectionProbeIndex : proxy.GetReflectionProbeIndex();
 		data.materialInstance = material.m_materialInstance;
 		data.sphereBounds = mesh.m_bounds.ToSphere().GetVec4();
 		data.bakedVolumeScale = vec4(mesh.m_bakedVolumeScale, 1.0f);
@@ -634,7 +635,7 @@ void RenderSceneNode::BuildStableArenas(const RHISceneViewSnapshot& sceneView,
 				queueTagHash,
 				proxy.GetContentRevision(),
 				std::hash<glm::mat4>{}(proxy.GetWorldMatrix()),
-				proxy.GetSkeletonOffset());
+				proxy.GetSkeletonOffset(), proxy.GetReflectionProbeIndex());
 			HashMotionHistory(rangeRevision, sceneView, proxy);
 			HashCombine(rangeRevision, proxy.m_record->m_materialRevision, proxy.m_record->m_renderFlags);
 			for (const auto& material : source->GetMaterials())
