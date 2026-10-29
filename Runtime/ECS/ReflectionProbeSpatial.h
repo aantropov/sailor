@@ -55,6 +55,7 @@ namespace Sailor
 					glm::vec3(entry.m_radius)));
 				const bool inserted = m_octree->Insert(center, extents, index);
 				check(inserted);
+				(void)inserted;
 			}
 		}
 
