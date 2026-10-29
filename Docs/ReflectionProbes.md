@@ -4,7 +4,7 @@ Add `ReflectionProbeComponent` to a GameObject. Select that object to edit the c
 
 | Property | Behavior |
 | --- | --- |
-| `reflectionMap` | Texture asset reference. Assign an asset in the Inspector using its asset picker or drag and drop. Used by `Static` mode. |
+| `reflectionMap` | Texture asset reference. Assign a texture from Content by dragging it into this Inspector field. Used by `Static` mode. |
 | `updateMode` | `Static`, `OnLoad`, `EveryFrame`, or `Interval`. |
 | `updateInterval` | Seconds between dynamic captures in `Interval` mode; default 20. |
 | `resolution` | Cubemap face size, from 16 to 512 pixels. Values round up to a supported power of two. |
