@@ -120,7 +120,7 @@ namespace Sailor::Tests { void RunLoggingWithoutAppTests(); }
 namespace Sailor::Tests { void RunAnimationShadowCommandTests(); }
 namespace Sailor::Tests { void RunWorldLifecycleCommandTests(); }
 namespace Sailor::Tests { void RunEditorMessageViewTests(); }
-namespace Sailor::Tests { void RunEditorViewportCommandTests(); }
+namespace Sailor::Tests { SAILOR_SHARED_API void RunEditorViewportCommandTests(); }
 namespace Sailor::Tests { int RunEditorSimulationTests(int argc, const char** argv); }
 
 extern "C" SAILOR_SHARED_API int32_t SailorProtocolStopLocalHost(bool bShutdownEngine) noexcept;

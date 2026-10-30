@@ -62,7 +62,7 @@ namespace
 
 namespace Sailor::Tests
 {
-	void RunEditorViewportCommandTests()
+	SAILOR_SHARED_API void RunEditorViewportCommandTests()
 	{
 		using namespace EditorViewport;
 		ImGui::SetCurrentContext(ImGuiApi::GetCurrentContext());
