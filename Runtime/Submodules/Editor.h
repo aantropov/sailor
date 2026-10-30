@@ -35,6 +35,7 @@ namespace Sailor
 	{
 		enum class ETransformOperation : uint8_t;
 		enum class ETransformSpace : uint8_t;
+		enum class ETransformPivotMode : uint8_t;
 		struct Event;
 		class EditorViewportController;
 	}
@@ -128,10 +129,12 @@ namespace Sailor
 		bool BreakPrefabLink(const class InstanceId& instanceId);
 		bool SetViewportToolState(
 			EditorViewport::ETransformOperation operation,
-			EditorViewport::ETransformSpace space);
+			EditorViewport::ETransformSpace space,
+			EditorViewport::ETransformPivotMode pivotMode);
 		void GetViewportToolState(
 			EditorViewport::ETransformOperation& outOperation,
-			EditorViewport::ETransformSpace& outSpace) const;
+			EditorViewport::ETransformSpace& outSpace,
+			EditorViewport::ETransformPivotMode& outPivotMode) const;
 
 	protected:
 

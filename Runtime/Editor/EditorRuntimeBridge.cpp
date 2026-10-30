@@ -1,3 +1,5 @@
+#include "Engine/GameObject.h"
+#include "ECS/TransformECS.h"
 #include "EditorRuntimeBridge.h"
 #include "MaterialPreview.h"
 #include "Containers/Containers.h"
@@ -916,34 +918,37 @@ bool EditorRuntime::FocusEditorCamera(const char* strInstanceId)
 		});
 }
 
-bool EditorRuntime::SetEditorViewportToolState(uint32_t operation, uint32_t space)
+bool EditorRuntime::SetEditorViewportToolState(uint32_t operation, uint32_t space, uint32_t pivotMode)
 {
 	return App::ExecuteOnEngineMainThread<bool>(
 		false,
-		[operation, space]()
+		[operation, space, pivotMode]()
 		{
 			auto editor = App::GetSubmodule<Editor>();
 			EditorViewport::ETransformOperation parsedOperation{};
 			EditorViewport::ETransformSpace parsedSpace{};
-			return editor &&
+			return editor && (pivotMode == 1 || pivotMode == 2) &&
 				TryParseViewportToolState(
 					operation,
 					space,
 					parsedOperation,
 					parsedSpace) &&
-				editor->SetViewportToolState(parsedOperation, parsedSpace);
+				editor->SetViewportToolState(parsedOperation, parsedSpace,
+					pivotMode == 1 ? EditorViewport::ETransformPivotMode::Pivot : EditorViewport::ETransformPivotMode::Center);
 		});
 }
 
 bool EditorRuntime::GetEditorViewportToolState(
 	uint32_t& outOperation,
-	uint32_t& outSpace)
+	uint32_t& outSpace,
+	uint32_t& outPivotMode)
 {
 	outOperation = 0;
 	outSpace = 0;
+	outPivotMode = 0;
 	return App::ExecuteOnEngineMainThread<bool>(
 		false,
-		[&outOperation, &outSpace]()
+		[&outOperation, &outSpace, &outPivotMode]()
 		{
 			auto editor = App::GetSubmodule<Editor>();
 			if (!editor)
@@ -953,11 +958,50 @@ bool EditorRuntime::GetEditorViewportToolState(
 
 			EditorViewport::ETransformOperation operation{};
 			EditorViewport::ETransformSpace space{};
-			editor->GetViewportToolState(operation, space);
+			EditorViewport::ETransformPivotMode pivotMode{};
+			editor->GetViewportToolState(operation, space, pivotMode);
+			outPivotMode = pivotMode == EditorViewport::ETransformPivotMode::Pivot ? 1 : 2;
 			outOperation = ToInteropOperation(operation);
 			outSpace = ToInteropSpace(space);
 			return outOperation != 0 && outSpace != 0;
 		});
+}
+
+bool EditorRuntime::RestoreEditorViewportTransform(TVector<EditorViewport::TransformChange> changes)
+{
+	return App::ExecuteOnEngineMainThread<bool>(false, [changes = std::move(changes)]()
+	{
+		auto editor = App::GetSubmodule<Editor>();
+		auto* world = editor ? editor->GetWorld() : nullptr;
+		if (!world)
+		{
+			return false;
+		}
+		// Revision and expected-after checks run together on the engine thread.
+		// A later native drag does not increment the managed revision by itself.
+		for (const auto& change : changes)
+		{
+			auto object = world->GetObjectByInstanceId(change.m_instanceId).DynamicCast<GameObject>();
+			if (!object || editor->GetManagedObjectMutationRevision(change.m_instanceId) != change.m_managedMutationRevision)
+			{
+				continue;
+			}
+			auto& component = object->GetTransformComponent();
+			const auto& current = component.GetTransform();
+			const auto& after = change.m_after;
+			if (glm::vec3(current.m_position) != glm::vec3(after.m_position) || current.m_scale != after.m_scale ||
+				std::min(glm::length(current.GetRotation() - after.GetRotation()),
+					glm::length(current.GetRotation() + after.GetRotation())) > 0.000001f)
+			{
+				continue;
+			}
+			component.SetPosition(glm::vec3(change.m_before.m_position));
+			component.SetRotation(change.m_before.GetRotation());
+			component.SetScale(change.m_before.m_scale);
+			editor->NotifyManagedObjectMutation(change.m_instanceId);
+		}
+		return true;
+	});
 }
 
 bool EditorRuntime::SetEditorSelection(TVector<InstanceId> selection)

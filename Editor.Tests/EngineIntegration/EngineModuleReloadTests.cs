@@ -47,6 +47,12 @@ public sealed class EngineModuleReloadTests(ITestOutputHelper log)
             service.OnUpdateCurrentWorldAction += publishedWorlds.Add;
             await service.StartAsync(launch, false, ["--null-audio", "--no-title-stats"]);
             Assert.Equal(EngineLifecycleState.Running, service.State);
+            var editWorldEpoch = service.EditorViewportEventEpoch;
+            Assert.True(await service.SetEditorSimulationAsync(true));
+            Assert.Equal(editWorldEpoch, service.EditorViewportEventEpoch);
+            Assert.True(await service.SetEditorSimulationAsync(false));
+            Assert.NotEqual(editWorldEpoch, service.EditorViewportEventEpoch);
+            Assert.False(await service.GetEditorSimulationStateAsync());
             Assert.Single(host.ProcessIds);
             const string initialType = "WorkspaceFixture::FixtureComponent";
             const string reloadedType = "WorkspaceFixture::ReloadedComponent";

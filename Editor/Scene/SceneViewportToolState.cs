@@ -118,7 +118,23 @@ public static class SceneViewRenderModeNames
 
 public readonly record struct SceneViewportToolState(
     EditorViewportTransformOperation Operation,
-    EditorViewportTransformSpace Space);
+    EditorViewportTransformSpace Space,
+    EditorViewportTransformPivotMode PivotMode = EditorViewportTransformPivotMode.Pivot)
+{
+    public SceneViewportToolState ToggleSpace() => this with
+    {
+        Space = Space == EditorViewportTransformSpace.Local
+            ? EditorViewportTransformSpace.World
+            : EditorViewportTransformSpace.Local
+    };
+
+    public SceneViewportToolState TogglePivotMode() => this with
+    {
+        PivotMode = PivotMode == EditorViewportTransformPivotMode.Pivot
+            ? EditorViewportTransformPivotMode.Center
+            : EditorViewportTransformPivotMode.Pivot
+    };
+}
 
 public static class SceneViewportToolShortcuts
 {
@@ -160,12 +176,7 @@ public static class SceneViewportToolShortcuts
             {
                 Operation = EditorViewportTransformOperation.Scale
             },
-            'T' => current with
-            {
-                Space = current.Space == EditorViewportTransformSpace.Local
-                    ? EditorViewportTransformSpace.World
-                    : EditorViewportTransformSpace.Local
-            },
+            'T' => current.ToggleSpace(),
             _ => current
         };
 

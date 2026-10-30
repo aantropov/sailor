@@ -67,15 +67,18 @@ public sealed class EditorViewportEventContractTests
 
             Assert.Equal(21UL, transform.Revision);
             Assert.Equal(8UL, transform.ManagedMutationRevision);
-            Assert.Equal("go-42", transform.InstanceId);
+            var change = Assert.Single(transform.Changes);
+            Assert.Equal("go-42", change.InstanceId);
+            Assert.Equal(17UL, change.ManagedMutationRevision);
+            Assert.Equal(EditorViewportTransformPivotMode.Pivot, transform.PivotMode);
             Assert.Equal(expectedOperation, transform.Operation);
             Assert.Equal(expectedSpace, transform.Space);
-            Assert.Equal(new EditorViewportVector4(0, 0, 0, 1), transform.BeforePosition);
-            Assert.Equal(new EditorViewportVector4(0, 0, 0, 1), transform.BeforeRotation);
-            Assert.Equal(new EditorViewportVector4(1, 1, 1, 0), transform.BeforeScale);
-            Assert.Equal(new EditorViewportVector4(1, 2.5f, -3, 1), transform.AfterPosition);
-            Assert.Equal(new EditorViewportVector4(0, 0.70710677f, 0, 0.70710677f), transform.AfterRotation);
-            Assert.Equal(new EditorViewportVector4(1, 2, 3, 0), transform.AfterScale);
+            Assert.Equal(new EditorViewportVector4(0, 0, 0, 1), change.BeforePosition);
+            Assert.Equal(new EditorViewportVector4(0, 0, 0, 1), change.BeforeRotation);
+            Assert.Equal(new EditorViewportVector4(1, 1, 1, 0), change.BeforeScale);
+            Assert.Equal(new EditorViewportVector4(1, 2.5f, -3, 1), change.AfterPosition);
+            Assert.Equal(new EditorViewportVector4(0, 0.70710677f, 0, 0.70710677f), change.AfterRotation);
+            Assert.Equal(new EditorViewportVector4(1, 2, 3, 0), change.AfterScale);
         }
     }
 
@@ -85,12 +88,62 @@ public sealed class EditorViewportEventContractTests
         var source = TransformPayload();
         Assert.True(EditorViewportEventContract.TryCreate(source, out var result, out var error), error);
         var transform = Assert.IsType<EditorViewportTransformEvent>(result);
+        var change = Assert.Single(transform.Changes);
 
-        source.Transform.BeforePosition.X = 99;
-        source.Transform.AfterPosition.X = 99;
+        source.Transform.Changes[0].BeforePosition.X = 99;
+        source.Transform.Changes[0].AfterPosition.X = 99;
 
-        Assert.Equal(0, transform.BeforePosition.X);
-        Assert.Equal(1, transform.AfterPosition.X);
+        Assert.Equal(0, change.BeforePosition.X);
+        Assert.Equal(1, change.AfterPosition.X);
+    }
+
+    [Fact]
+    public void GroupTransform_CopiesEveryMemberWithIndependentRevisions()
+    {
+        var source = TransformPayload();
+        var second = source.Transform.Changes[0].Clone();
+        second.InstanceId = "go-43";
+        second.ManagedMutationRevision = 29;
+        second.AfterPosition.X = 15;
+        source.Transform.Changes.Add(second);
+        source.Transform.PivotMode = ViewportTransformPivotMode.Center;
+        var transform = Assert.IsType<EditorViewportTransformEvent>(Create(source));
+        source.Transform.Changes.Clear();
+        second.AfterPosition.X = 99;
+
+        Assert.Equal(EditorViewportTransformPivotMode.Center, transform.PivotMode);
+        Assert.Equal(new[] { "go-42", "go-43" }, transform.Changes.Select(change => change.InstanceId));
+        Assert.Equal(new ulong[] { 17, 29 }, transform.Changes.Select(change => change.ManagedMutationRevision));
+        Assert.Equal(15, transform.Changes[1].AfterPosition.X);
+    }
+
+    [Fact]
+    public void GroupTransform_RejectsEmptyDuplicateOrInvalidMemberAsAWhole()
+    {
+        var empty = TransformPayload();
+        empty.Transform.Changes.Clear();
+        AssertRejected(empty, "at least one");
+
+        var duplicate = TransformPayload();
+        duplicate.Transform.Changes.Add(duplicate.Transform.Changes[0].Clone());
+        AssertRejected(duplicate, "unique");
+
+        var invalid = TransformPayload();
+        var second = invalid.Transform.Changes[0].Clone();
+        second.InstanceId = "go-43";
+        second.AfterScale.Y = float.NaN;
+        invalid.Transform.Changes.Add(second);
+        AssertRejected(invalid, "afterScale");
+    }
+
+    [Theory]
+    [InlineData(ViewportTransformPivotMode.Unspecified)]
+    [InlineData((ViewportTransformPivotMode)99)]
+    public void TransformEvent_RejectsUnsupportedPivotMode(ViewportTransformPivotMode mode)
+    {
+        var source = TransformPayload();
+        source.Transform.PivotMode = mode;
+        AssertRejected(source, "unsupported");
     }
 
     [Fact]
@@ -106,7 +159,7 @@ public sealed class EditorViewportEventContractTests
     public void TransformEvent_RejectsMissingIdentity(string instanceId)
     {
         var source = TransformPayload();
-        source.Transform.InstanceId = instanceId;
+        source.Transform.Changes[0].InstanceId = instanceId;
         AssertRejected(source, "instance id");
     }
 
@@ -127,7 +180,7 @@ public sealed class EditorViewportEventContractTests
     [Fact]
     public void TransformEvent_RejectsMissingAndNonFiniteVectors()
     {
-        (string Name, Action<ViewportTransformEvent, Vector4?> Set)[] fields =
+        (string Name, Action<ViewportTransformChange, Vector4?> Set)[] fields =
         [
             ("beforePosition", (t, v) => t.BeforePosition = v),
             ("beforeRotation", (t, v) => t.BeforeRotation = v),
@@ -146,7 +199,7 @@ public sealed class EditorViewportEventContractTests
         foreach (var field in fields)
         {
             var missing = TransformPayload();
-            field.Set(missing.Transform, null);
+            field.Set(missing.Transform.Changes[0], null);
             AssertRejected(missing, field.Name);
 
             foreach (var setComponent in components)
@@ -155,7 +208,7 @@ public sealed class EditorViewportEventContractTests
                 var source = TransformPayload();
                 var vector = new Vector4();
                 setComponent(vector, value);
-                field.Set(source.Transform, vector);
+                field.Set(source.Transform.Changes[0], vector);
                 AssertRejected(source, field.Name);
             }
         }
@@ -254,15 +307,23 @@ public sealed class EditorViewportEventContractTests
         ManagedMutationRevision = 8,
         Transform = new ViewportTransformEvent
         {
-            InstanceId = "go-42",
             Operation = ViewportTransformOperation.Rotate,
             Space = ViewportTransformSpace.Local,
-            BeforePosition = new Vector4 { W = 1 },
-            BeforeRotation = new Vector4 { W = 1 },
-            BeforeScale = new Vector4 { X = 1, Y = 1, Z = 1 },
-            AfterPosition = new Vector4 { X = 1, Y = 2.5f, Z = -3, W = 1 },
-            AfterRotation = new Vector4 { Y = 0.70710677f, W = 0.70710677f },
-            AfterScale = new Vector4 { X = 1, Y = 2, Z = 3 }
+            PivotMode = ViewportTransformPivotMode.Pivot,
+            Changes =
+            {
+                new ViewportTransformChange
+                {
+                    InstanceId = "go-42",
+                    ManagedMutationRevision = 17,
+                    BeforePosition = new Vector4 { W = 1 },
+                    BeforeRotation = new Vector4 { W = 1 },
+                    BeforeScale = new Vector4 { X = 1, Y = 1, Z = 1 },
+                    AfterPosition = new Vector4 { X = 1, Y = 2.5f, Z = -3, W = 1 },
+                    AfterRotation = new Vector4 { Y = 0.70710677f, W = 0.70710677f },
+                    AfterScale = new Vector4 { X = 1, Y = 2, Z = 3 }
+                }
+            }
         }
     };
 
@@ -325,13 +386,15 @@ public sealed class EditorViewportEventContractTests
     static EditorViewportTransformEvent Transform(ulong revision) => new(
         revision,
         0,
-        "go-1",
         EditorViewportTransformOperation.Translate,
         EditorViewportTransformSpace.World,
-        new EditorViewportVector4(0, 0, 0, 1),
-        new EditorViewportVector4(0, 0, 0, 1),
-        new EditorViewportVector4(1, 1, 1, 0),
-        new EditorViewportVector4(1, 0, 0, 1),
-        new EditorViewportVector4(0, 0, 0, 1),
-        new EditorViewportVector4(1, 1, 1, 0));
+        EditorViewportTransformPivotMode.Pivot,
+        [new EditorViewportTransformChange(
+            "go-1", 0,
+            new EditorViewportVector4(0, 0, 0, 1),
+            new EditorViewportVector4(0, 0, 0, 1),
+            new EditorViewportVector4(1, 1, 1, 0),
+            new EditorViewportVector4(1, 0, 0, 1),
+            new EditorViewportVector4(0, 0, 0, 1),
+            new EditorViewportVector4(1, 1, 1, 0))]);
 }

@@ -23,6 +23,12 @@ namespace Sailor::EditorViewport
 		Local
 	};
 
+	enum class ETransformPivotMode : uint8_t
+	{
+		Pivot = 0,
+		Center
+	};
+
 	struct SelectionEvent
 	{
 		InstanceId m_instanceId;
@@ -30,13 +36,20 @@ namespace Sailor::EditorViewport
 		bool m_bAdditive = false;
 	};
 
-	struct TransformEvent
+	struct TransformChange
 	{
 		InstanceId m_instanceId;
+		uint64_t m_managedMutationRevision = 0;
 		Math::Transform m_before;
 		Math::Transform m_after;
+	};
+
+	struct TransformEvent
+	{
+		TVector<TransformChange> m_changes;
 		ETransformOperation m_operation = ETransformOperation::Translate;
 		ETransformSpace m_space = ETransformSpace::World;
+		ETransformPivotMode m_pivotMode = ETransformPivotMode::Pivot;
 	};
 
 	struct AssetDropEvent

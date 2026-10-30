@@ -35,7 +35,8 @@ internal readonly record struct EngineProtocolVector4(
 
 internal readonly record struct EngineProtocolViewportToolState(
     ViewportTransformOperation Operation,
-    ViewportTransformSpace Space);
+    ViewportTransformSpace Space,
+    ViewportTransformPivotMode PivotMode);
 
 internal readonly record struct EngineProtocolAnimatorState(
     bool HasController,
@@ -1008,6 +1009,19 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 .ConfigureAwait(false)).Uint64Result,
             nameof(ProtocolRequest.GetEditorManagedMutationRevision)).Value;
 
+    public async Task<bool> RestoreViewportTransformAsync(
+        ViewportTransformEvent transform,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(transform);
+        return ReadBool(
+            await SendAsync(new ProtocolRequest
+            {
+                RestoreViewportTransform = transform.Clone()
+            }, cancellationToken).ConfigureAwait(false),
+            nameof(ProtocolRequest.RestoreViewportTransform));
+    }
+
     public async Task<bool> UpdateObjectAsync(
         string instanceId,
         string yamlChanges,
@@ -1337,6 +1351,7 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
         ulong viewportId,
         ViewportTransformOperation operation,
         ViewportTransformSpace space,
+        ViewportTransformPivotMode pivotMode,
         CancellationToken cancellationToken = default)
         => ReadBool(
             await SendAsync(
@@ -1346,7 +1361,8 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                         {
                             ViewportId = viewportId,
                             Operation = ValidateTransformOperation(operation),
-                            Space = ValidateTransformSpace(space)
+                            Space = ValidateTransformSpace(space),
+                            PivotMode = ValidateTransformPivotMode(pivotMode)
                         }
                     },
                     cancellationToken)
@@ -1369,7 +1385,8 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
             nameof(ProtocolRequest.GetViewportToolState));
         return new EngineProtocolViewportToolState(
             ValidateTransformOperation(result.Operation),
-            ValidateTransformSpace(result.Space));
+            ValidateTransformSpace(result.Space),
+            ValidateTransformPivotMode(result.PivotMode));
     }
 
     public Task<EngineProtocolCreationResult> InstantiatePrefabFromYamlAsync(
@@ -1715,6 +1732,17 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 nameof(space),
                 space,
                 "The viewport transform space is unsupported.");
+
+    static ViewportTransformPivotMode ValidateTransformPivotMode(
+        ViewportTransformPivotMode pivotMode)
+        => pivotMode is
+            ViewportTransformPivotMode.Pivot or
+            ViewportTransformPivotMode.Center
+            ? pivotMode
+            : throw new ArgumentOutOfRangeException(
+                nameof(pivotMode),
+                pivotMode,
+                "The viewport transform pivot mode is unsupported.");
 
     static EditorRenderMode ValidateEditorRenderMode(
         EditorRenderMode mode)

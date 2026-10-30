@@ -477,26 +477,286 @@ namespace
 		}
 	}
 
+	glm::mat4 CurrentWorld(const TObjectPtr<GameObject>& object)
+	{
+		glm::mat4 result(1.0f);
+		for (auto current = object; current; current = current->GetParent())
+		{
+			result = current->GetTransformComponent().GetTransform().Matrix() * result;
+		}
+		return result;
+	}
+
+	glm::mat4 RotateHandle(const glm::mat4& start, const glm::quat& rotation)
+	{
+		const auto center = glm::vec3(start[3]);
+		return glm::translate(glm::mat4(1.0f), center) * glm::mat4_cast(rotation) *
+			glm::translate(glm::mat4(1.0f), -center) * start;
+	}
+
+	void TestGroupTranslationTrimsRootsAndRetainsActiveChild()
+	{
+		using namespace EditorViewport;
+		BoundsTestWorld world;
+		auto parent = world.Instantiate("Selected parent");
+		auto child = world.Instantiate("Active selected child");
+		auto peer = world.Instantiate("Other root");
+		parent->GetTransformComponent().SetPosition({ 2, 0, 0 });
+		child->SetParent(parent);
+		child->GetTransformComponent().SetPosition({ 3, 0, 0 });
+		const TVector<InstanceId> selection{ peer->GetInstanceId(), parent->GetInstanceId(), child->GetInstanceId() };
+		world.SetEditorSelection(selection);
+		SelectionTransformGesture gesture;
+		Require(gesture.Begin(world, selection, ETransformOperation::Translate, ETransformSpace::World, ETransformPivotMode::Pivot, 31,
+			[&](const InstanceId& id) { return id == parent->GetInstanceId() ? 12 : 17; }), "group gesture must capture roots");
+		const auto start = gesture.GetGizmoMatrix();
+		Require(AreVectorsNear(glm::vec3(start[3]), { 5, 0, 0 }), "active child controls the pivot without being transformed twice");
+		const glm::vec3 delta(4, 2, -1);
+		Require(gesture.Apply(world, glm::translate(glm::mat4(1.0f), delta) * start), "translation must apply to every root");
+		Require(gesture.Apply(world, glm::translate(glm::mat4(1.0f), delta * 2.0f) * start), "later frames must derive from the captured start");
+		Require(AreVectorsNear(glm::vec3(CurrentWorld(parent)[3]), glm::vec3(2, 0, 0) + delta * 2.0f) &&
+			AreVectorsNear(glm::vec3(CurrentWorld(peer)[3]), delta * 2.0f) &&
+			AreVectorsNear(glm::vec3(CurrentWorld(child)[3]), glm::vec3(5, 0, 0) + delta * 2.0f) &&
+			AreVectorsNear(glm::vec3(child->GetTransformComponent().GetPosition()), { 3, 0, 0 }),
+			"roots share the world delta without drift or double-applying to selected descendants");
+		TransformEvent event;
+		Require(gesture.Complete(event) && event.m_changes.Num() == 2 && event.m_changes[0].m_instanceId == peer->GetInstanceId() &&
+			event.m_changes[1].m_instanceId == parent->GetInstanceId() && event.m_changes[1].m_managedMutationRevision == 12 &&
+			event.m_changes[0].m_after.m_position == peer->GetTransformComponent().GetTransform().m_position,
+			"one completed event must contain ordered roots and their captured object revisions");
+	}
+
+	void TestGroupCenterUsesHierarchyGeometryAndEmptyOrigins()
+	{
+		using namespace EditorViewport;
+		BoundsTestWorld world;
+		auto parent = world.Instantiate("Empty parent");
+		auto child = world.Instantiate("Offset child geometry");
+		auto peer = world.Instantiate("Peer geometry");
+		auto empty = world.Instantiate("Empty selection origin");
+		child->SetParent(parent);
+		child->GetTransformComponent().SetPosition({ 10, 0, 0 });
+		peer->GetTransformComponent().SetPosition({ 20, 0, 0 });
+		empty->GetTransformComponent().SetPosition({ 30, 0, 0 });
+		for (auto object : { child, peer })
+		{
+			auto shape = object->AddComponent<CollisionShapeComponent>();
+			shape->SetSize(glm::vec3(2));
+		}
+		world.SetEditorSelection({ parent->GetInstanceId(), peer->GetInstanceId() });
+		SelectionTransformGesture first;
+		Require(first.Begin(world, { parent->GetInstanceId(), peer->GetInstanceId() }, ETransformOperation::Rotate,
+			ETransformSpace::World, ETransformPivotMode::Center, 0) && AreVectorsNear(glm::vec3(first.GetGizmoMatrix()[3]), { 15, 0, 0 }),
+			"Center must union child geometry, excluding the empty parent's pivot when its hierarchy has geometry");
+		world.SetEditorSelection({ parent->GetInstanceId(), peer->GetInstanceId(), empty->GetInstanceId() });
+		SelectionTransformGesture second;
+		Require(second.Begin(world, { parent->GetInstanceId(), peer->GetInstanceId(), empty->GetInstanceId() }, ETransformOperation::Scale,
+			ETransformSpace::World, ETransformPivotMode::Center, 0) && AreVectorsNear(glm::vec3(second.GetGizmoMatrix()[3]), { 19.5f, 0, 0 }),
+			"an entirely empty selected hierarchy must contribute its origin, not a padded picking fallback");
+	}
+
+	void TestGroupRotationPivotCenterLocalWorld()
+	{
+		using namespace EditorViewport;
+		for (const auto pivot : { ETransformPivotMode::Pivot, ETransformPivotMode::Center })
+		{
+			for (const auto space : { ETransformSpace::World, ETransformSpace::Local })
+			{
+				BoundsTestWorld world;
+				auto a = world.Instantiate("A");
+				auto b = world.Instantiate("B active");
+				a->GetTransformComponent().SetPosition({ -4, 0, 0 });
+				b->GetTransformComponent().SetPosition({ 4, 0, 0 });
+				const auto qa = glm::angleAxis(0.6f, glm::vec3(0, 1, 0));
+				const auto qb = glm::angleAxis(glm::half_pi<float>(), glm::vec3(0, 0, 1));
+				a->GetTransformComponent().SetRotation(qa);
+				b->GetTransformComponent().SetRotation(qb);
+				world.SetEditorSelection({ a->GetInstanceId(), b->GetInstanceId() });
+				SelectionTransformGesture gesture;
+				Require(gesture.Begin(world, { a->GetInstanceId(), b->GetInstanceId() }, ETransformOperation::Rotate, space, pivot, 0),
+					"rotation must capture a group in every pivot/space mode");
+				const auto start = gesture.GetGizmoMatrix();
+				const auto basis = space == ETransformSpace::Local ? qb : glm::identity<glm::quat>();
+				const auto localDelta = glm::angleAxis(0.7f, glm::vec3(1, 0, 0));
+				const auto worldDelta = basis * localDelta * glm::inverse(basis);
+				Require(gesture.Apply(world, RotateHandle(start, worldDelta)), "group rotation must apply in the chosen basis");
+				for (auto object : { a, b })
+				{
+					const auto initial = object == a ? qa : qb;
+					const auto expected = pivot == ETransformPivotMode::Pivot && space == ETransformSpace::Local
+						? initial * localDelta : worldDelta * initial;
+					Require(AreMatricesNear(glm::mat4_cast(object->GetTransformComponent().GetTransform().GetRotation()), glm::mat4_cast(expected)),
+						"Local Pivot must rotate around each object's own axes; other modes share the handle basis");
+					const glm::vec3 oldPosition = object == a ? glm::vec3(-4, 0, 0) : glm::vec3(4, 0, 0);
+					const glm::vec3 expectedPosition = pivot == ETransformPivotMode::Pivot ? oldPosition :
+						glm::vec3(start[3]) + worldDelta * (oldPosition - glm::vec3(start[3]));
+					Require(AreVectorsNear(glm::vec3(CurrentWorld(object)[3]), expectedPosition),
+						"Pivot retains each root position; Center rotates positions around combined bounds");
+				}
+			}
+		}
+	}
+
+	void TestGroupScalePivotCenterLocalWorldAndSignedZero()
+	{
+		using namespace EditorViewport;
+		for (const auto pivot : { ETransformPivotMode::Pivot, ETransformPivotMode::Center })
+		{
+			for (const auto space : { ETransformSpace::World, ETransformSpace::Local })
+			{
+				BoundsTestWorld world;
+				auto a = world.Instantiate("Signed zero scale");
+				auto b = world.Instantiate("Active rotated root");
+				a->GetTransformComponent().SetPosition({ -4, 0, 0 });
+				b->GetTransformComponent().SetPosition({ 4, 0, 0 });
+				a->GetTransformComponent().SetScale({ -2, 0, 3, 1 });
+				b->GetTransformComponent().SetScale({ 1, 2, 3, 1 });
+				const auto qb = glm::angleAxis(glm::half_pi<float>(), glm::vec3(0, 0, 1));
+				b->GetTransformComponent().SetRotation(qb);
+				world.SetEditorSelection({ a->GetInstanceId(), b->GetInstanceId() });
+				SelectionTransformGesture gesture;
+				Require(gesture.Begin(world, { a->GetInstanceId(), b->GetInstanceId() }, ETransformOperation::Scale, space, pivot, 0),
+					"scale must accept zero and negative root scale without a singular gizmo matrix");
+				const auto start = gesture.GetGizmoMatrix();
+				const glm::vec3 factors(2, 3, 4);
+				Require(gesture.Apply(world, start * glm::scale(glm::mat4(1.0f), factors)), "group scale must preserve representable local TRS");
+				const bool individual = pivot == ETransformPivotMode::Pivot && space == ETransformSpace::Local;
+				const glm::vec3 factorsA = !individual && space == ETransformSpace::Local ? glm::vec3(3, 2, 4) : factors;
+				const glm::vec3 factorsB = !individual && space == ETransformSpace::World ? glm::vec3(3, 2, 4) : factors;
+				Require(AreVectorsNear(glm::vec3(a->GetTransformComponent().GetTransform().m_scale), glm::vec3(-2, 0, 3) * factorsA) &&
+					AreVectorsNear(glm::vec3(b->GetTransformComponent().GetTransform().m_scale), glm::vec3(1, 2, 3) * factorsB),
+					"closest-axis scale mapping must retain signed/zero authored components");
+				Require(AreMatricesNear(glm::mat4_cast(b->GetTransformComponent().GetTransform().GetRotation()), glm::mat4_cast(qb)),
+					"nonuniform scale must preserve each object's rotation instead of introducing shear");
+				const glm::mat3 basis = glm::mat3(start);
+				for (auto object : { a, b })
+				{
+					const glm::vec3 oldPosition = object == a ? glm::vec3(-4, 0, 0) : glm::vec3(4, 0, 0);
+					const glm::vec3 origin(start[3]);
+					const glm::vec3 expected = pivot == ETransformPivotMode::Pivot ? oldPosition :
+						origin + basis * (factors * (glm::transpose(basis) * (oldPosition - origin)));
+					Require(AreVectorsNear(glm::vec3(CurrentWorld(object)[3]), expected), "Center scales positions in the common basis; Pivot retains own positions");
+				}
+				gesture.Cancel(world);
+				Require(AreVectorsNear(glm::vec3(a->GetTransformComponent().GetTransform().m_scale), { -2, 0, 3 }), "cancel must restore signed and zero scales");
+			}
+		}
+	}
+
+	void TestZeroScaleRotationStillCompletesAuthoredUndo()
+	{
+		using namespace EditorViewport;
+		BoundsTestWorld world;
+		auto object = world.Instantiate("Zero scale");
+		object->GetTransformComponent().SetScale({ 0, 0, 0, 1 });
+		world.SetEditorSelection({ object->GetInstanceId() });
+		SelectionTransformGesture gesture;
+		Require(gesture.Begin(world, { object->GetInstanceId() }, ETransformOperation::Rotate, ETransformSpace::Local,
+			ETransformPivotMode::Pivot, 0), "zero-scale root must have a usable unit-scale rotation gizmo");
+		const auto start = gesture.GetGizmoMatrix();
+		Require(gesture.Apply(world, RotateHandle(start, glm::angleAxis(0.5f, glm::vec3(0, 1, 0)))), "rotation must update authored zero-scale TRS");
+		TransformEvent completed;
+		Require(gesture.Complete(completed) && completed.m_changes.Num() == 1 &&
+			std::abs(glm::dot(completed.m_changes[0].m_before.GetRotation(), completed.m_changes[0].m_after.GetRotation())) < 0.99f,
+			"a zero-scale matrix cannot hide an authored rotation change from atomic Undo history");
+	}
+
+	void TestGroupDifferentParentsAndSingularRejection()
+	{
+		using namespace EditorViewport;
+		BoundsTestWorld world;
+		auto parent = world.Instantiate("Nonuniform parent");
+		auto otherParent = world.Instantiate("Rotated parent");
+		auto a = world.Instantiate("First root");
+		auto b = world.Instantiate("Second root");
+		parent->GetTransformComponent().SetScale({ 2, 1, 1, 1 });
+		otherParent->GetTransformComponent().SetRotation(glm::angleAxis(0.4f, glm::vec3(0, 0, 1)));
+		a->SetParent(otherParent);
+		b->SetParent(parent);
+		a->GetTransformComponent().SetPosition({ -4, 0, 0 });
+		b->GetTransformComponent().SetPosition({ 4, 0, 0 });
+		const auto aBefore = CurrentWorld(a), bBefore = CurrentWorld(b);
+		const TVector<InstanceId> selection{ a->GetInstanceId(), b->GetInstanceId() };
+		world.SetEditorSelection(selection);
+		SelectionTransformGesture translate;
+		Require(translate.Begin(world, selection, ETransformOperation::Translate, ETransformSpace::World, ETransformPivotMode::Center, 0), "different parent roots must capture");
+		const auto translation = glm::translate(glm::mat4(1.0f), glm::vec3(2, 3, 4));
+		Require(translate.Apply(world, translation * translate.GetGizmoMatrix()) &&
+			AreMatricesNear(CurrentWorld(a), translation * aBefore) && AreMatricesNear(CurrentWorld(b), translation * bBefore),
+			"world translation must convert through different unchanged parents");
+		translate.Cancel(world);
+		SelectionTransformGesture rotate;
+		Require(rotate.Begin(world, selection, ETransformOperation::Rotate, ETransformSpace::World, ETransformPivotMode::Pivot, 0), "rotation must capture both roots");
+		const auto start = rotate.GetGizmoMatrix();
+		const auto deltaRotation = glm::angleAxis(0.4f, glm::vec3(0, 0, 1));
+		Require(rotate.Apply(world, RotateHandle(start, glm::angleAxis(0.3f, glm::vec3(1, 0, 0)))) &&
+			rotate.Apply(world, RotateHandle(start, deltaRotation)), "group rotation must remain usable under nonuniform parents");
+		Require(AreVectorsNear(glm::vec3(CurrentWorld(a)[3]), glm::vec3(aBefore[3])) &&
+			AreVectorsNear(glm::vec3(CurrentWorld(b)[3]), glm::vec3(bBefore[3])) &&
+			AreMatricesNear(glm::mat4_cast(b->GetTransformComponent().GetTransform().GetRotation()), glm::mat4_cast(deltaRotation)) &&
+			AreVectorsNear(glm::vec3(b->GetTransformComponent().GetTransform().m_scale), glm::vec3(1)),
+			"World Pivot rotation must author local orientation, retain own positions and preserve local scales");
+		rotate.Cancel(world);
+		Require(AreMatricesNear(CurrentWorld(a), aBefore) && AreMatricesNear(CurrentWorld(b), bBefore), "group cancellation must restore both differently parented roots");
+		parent->GetTransformComponent().SetScale({ 0, 1, 1, 1 });
+		SelectionTransformGesture singular;
+		Require(!singular.Begin(world, selection, ETransformOperation::Scale, ETransformSpace::Local, ETransformPivotMode::Pivot, 0), "singular parent inversion must reject the whole gesture safely");
+	}
+
+	void TestGroupCancellationGuardsSelectionParentsAndRevisions()
+	{
+		using namespace EditorViewport;
+		BoundsTestWorld world;
+		auto parent = world.Instantiate("Parent");
+		auto a = world.Instantiate("A");
+		auto b = world.Instantiate("B");
+		a->SetParent(parent);
+		const TVector<InstanceId> selection{ a->GetInstanceId(), b->GetInstanceId() };
+		world.SetEditorSelection(selection);
+		uint64_t objectRevision = 7;
+		const ObjectMutationRevision revision = [&](const InstanceId&) { return objectRevision; };
+		SelectionTransformGesture gesture;
+		Require(gesture.Begin(world, selection, ETransformOperation::Translate, ETransformSpace::World, ETransformPivotMode::Pivot, 3, revision), "guarded gesture must capture");
+		const auto start = gesture.GetGizmoMatrix();
+		Require(gesture.Apply(world, glm::translate(glm::mat4(1.0f), glm::vec3(3, 0, 0)) * start, revision), "guarded gesture must apply");
+		Require(!gesture.Validate(world, { b->GetInstanceId(), a->GetInstanceId() }, 3, revision) &&
+			!gesture.Validate(world, selection, 4, revision), "selection order and selection revision invalidate an old gesture");
+		parent->GetTransformComponent().SetPosition({ 2, 0, 0 });
+		Require(!gesture.Validate(world, selection, 3, revision), "an unselected ancestor mutation must invalidate captured parent matrices");
+		gesture.Cancel(world, revision);
+		Require(AreVectorsNear(glm::vec3(CurrentWorld(a)[3]), { 2, 0, 0 }) && AreVectorsNear(glm::vec3(CurrentWorld(b)[3]), { 0, 0, 0 }),
+			"cancel restores gesture locals while preserving the newer ancestor edit");
+		Require(gesture.Begin(world, selection, ETransformOperation::Translate, ETransformSpace::World, ETransformPivotMode::Pivot, 3, revision), "a fresh gesture must capture");
+		++objectRevision;
+		Require(!gesture.Validate(world, selection, 3, revision), "each root managed mutation revision guards a stale gesture");
+		gesture.Cancel(world, revision);
+	}
+
+
 	void TestTransformToolStateIsAppliedAtomically()
 	{
 		EditorViewport::EditorViewportController controller{};
 		Require(controller.GetOperation() == EditorViewport::ETransformOperation::Translate,
 			"the viewport controller must default to the translate tool");
+		Require(controller.GetPivotMode() == EditorViewport::ETransformPivotMode::Pivot,
+			"the viewport controller must default to Pivot mode");
 		Require(controller.GetSpace() == EditorViewport::ETransformSpace::World,
 			"the viewport controller must default to world space");
 		Require(controller.SetTransformToolState(
 			EditorViewport::ETransformOperation::Rotate,
-			EditorViewport::ETransformSpace::Local),
+			EditorViewport::ETransformSpace::Local,
+			EditorViewport::ETransformPivotMode::Center),
 			"a valid transform tool state must be accepted outside an active drag");
 		Require(controller.GetOperation() == EditorViewport::ETransformOperation::Rotate &&
-			controller.GetSpace() == EditorViewport::ETransformSpace::Local,
+			controller.GetSpace() == EditorViewport::ETransformSpace::Local &&
+			controller.GetPivotMode() == EditorViewport::ETransformPivotMode::Center,
 			"accepted operation and space values must be applied together");
 	}
 
 	void TestAssetDropEventUsesValidatedViewportQueue()
 	{
 		EditorViewport::EditorViewportController controller{};
-		controller.SetManagedMutationRevisions(17, 0);
+		controller.SetManagedSelectionRevision(17);
 		{
 			std::string fileId = "00000000000000ab:ignored suffix";
 			Require(controller.QueueAssetDropEvent(std::string_view(fileId).substr(0, 16), 0.25f, 0.75f),
@@ -544,7 +804,7 @@ namespace
 	void TestToolShortcutEventUsesValidatedViewportQueue()
 	{
 		EditorViewport::EditorViewportController controller{};
-		controller.SetManagedMutationRevisions(23, 0);
+		controller.SetManagedSelectionRevision(23);
 		const uint32_t supportedKeys[] = { 'Q', 'W', 'E', 'R', 'T' };
 		for (const uint32_t keyCode : supportedKeys)
 		{
@@ -757,6 +1017,13 @@ namespace
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "GroupTranslationTrimsRootsAndRetainsActiveChild", TestGroupTranslationTrimsRootsAndRetainsActiveChild },
+		{ "GroupCenterUsesHierarchyGeometryAndEmptyOrigins", TestGroupCenterUsesHierarchyGeometryAndEmptyOrigins },
+		{ "GroupRotationPivotCenterLocalWorld", TestGroupRotationPivotCenterLocalWorld },
+		{ "GroupScalePivotCenterLocalWorldAndSignedZero", TestGroupScalePivotCenterLocalWorldAndSignedZero },
+		{ "ZeroScaleRotationStillCompletesAuthoredUndo", TestZeroScaleRotationStillCompletesAuthoredUndo },
+		{ "GroupDifferentParentsAndSingularRejection", TestGroupDifferentParentsAndSingularRejection },
+		{ "GroupCancellationGuardsSelectionParentsAndRevisions", TestGroupCancellationGuardsSelectionParentsAndRevisions },
 		{ "PrimarySelectionKeepsWorldOrder", TestPrimarySelectionKeepsWorldOrder },
 		{ "PrimarySelectionTracksObjectLifetime", TestPrimarySelectionTracksObjectLifetime },
 		{ "BuildWorldRayUsesReversedZAtViewportCenter", TestBuildWorldRayUsesReversedZAtViewportCenter },

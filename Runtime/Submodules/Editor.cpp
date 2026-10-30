@@ -101,12 +101,13 @@ void Editor::SetWorld(World* world)
 	std::string diagnostic;
 	m_giProbesBakeController->Cancel(diagnostic);
 	m_giProbesBakeController->Wait();
+	CancelViewportInteraction();
 	m_world = world;
 	std::string{}.swap(m_simulationSnapshot);
 	m_managedSelectionMutationRevision = 0;
 	m_managedMutationState->m_objectRevisions.Clear();
 	m_viewportController->Reset();
-	m_viewportController->SetManagedMutationRevisions(0, 0);
+	m_viewportController->SetManagedSelectionRevision(0);
 }
 
 bool Editor::StartGIProbesBake(
@@ -144,6 +145,8 @@ bool Editor::SetSimulationEnabled(bool bEnabled)
 
 	if (bEnabled)
 	{
+		// Roll back an unfinished selection gesture before capturing the Play baseline.
+		CancelViewportInteraction();
 		std::string snapshot;
 		std::string diagnostic;
 		if (!External::TryDumpYaml(SerializeWorld(), snapshot, diagnostic) || snapshot.empty())
@@ -154,7 +157,6 @@ bool Editor::SetSimulationEnabled(bool bEnabled)
 		}
 
 		// Retain compact text, not a live YAML tree or mutable prefab baseline.
-		CancelViewportInteraction();
 		m_simulationSnapshot = std::move(snapshot);
 		m_world->SetPhysicsSimulationEnabled(true);
 		return true;
@@ -195,12 +197,7 @@ bool Editor::SetSimulationEnabled(bool bEnabled)
 		return false;
 	}
 
-	TVector<InstanceId> selection;
-	selection.Reserve(m_world->m_editorSelection.Num());
-	for (const InstanceId& instanceId : m_world->m_editorSelection)
-	{
-		selection.Add(instanceId);
-	}
+	const auto selection = m_viewportController->GetSelectionOrder(*m_world);
 
 	World* oldWorld = m_world;
 	auto restoredWorld = engineLoop->InstantiateWorld(
@@ -215,6 +212,7 @@ bool Editor::SetSimulationEnabled(bool bEnabled)
 
 	SetWorld(restoredWorld.GetRawPtr());
 	m_world->SetEditorSelection(selection);
+	m_viewportController->SetManagedSelection(selection);
 	engineLoop->ExitWorld(oldWorld);
 	engineLoop->ProcessPendingWorldExits();
 	return true;
@@ -222,6 +220,7 @@ bool Editor::SetSimulationEnabled(bool bEnabled)
 
 void Editor::NotifyManagedSelectionMutation(const TVector<InstanceId>& selection)
 {
+	CancelViewportInteraction();
 	++m_managedSelectionMutationRevision;
 	m_viewportController->SetManagedSelection(selection);
 }
@@ -230,15 +229,7 @@ void Editor::TickViewportTools()
 {
 	if (m_world)
 	{
-		uint64_t selectedObjectRevision = 0;
-		if (const auto gameObject = m_world->GetPrimaryEditorSelection())
-		{
-			selectedObjectRevision = GetManagedObjectMutationRevision(gameObject->GetInstanceId());
-		}
-
-		m_viewportController->SetManagedMutationRevisions(
-			m_managedSelectionMutationRevision,
-			selectedObjectRevision);
+		m_viewportController->SetManagedSelectionRevision(m_managedSelectionMutationRevision);
 #if defined(_WIN32)
 		if (m_pMainWindow)
 		{
@@ -265,7 +256,7 @@ void Editor::TickViewportTools()
 			}
 		}
 #endif
-		m_viewportController->Tick(*m_world);
+		m_viewportController->Tick(*m_world, [this](const InstanceId& id) { return GetManagedObjectMutationRevision(id); });
 	}
 }
 
@@ -291,7 +282,7 @@ void Editor::CancelViewportInteraction()
 {
 	if (m_world)
 	{
-		m_viewportController->CancelInteraction(*m_world);
+		m_viewportController->CancelInteraction(*m_world, [this](const InstanceId& id) { return GetManagedObjectMutationRevision(id); });
 	}
 	else
 	{
@@ -334,15 +325,17 @@ bool Editor::FocusEditorCamera(const InstanceId& instanceId)
 
 bool Editor::SetViewportToolState(
 	EditorViewport::ETransformOperation operation,
-	EditorViewport::ETransformSpace space)
+	EditorViewport::ETransformSpace space,
+	EditorViewport::ETransformPivotMode pivotMode)
 {
 	return m_viewportController &&
-		m_viewportController->SetTransformToolState(operation, space);
+		m_viewportController->SetTransformToolState(operation, space, pivotMode);
 }
 
 void Editor::GetViewportToolState(
 	EditorViewport::ETransformOperation& outOperation,
-	EditorViewport::ETransformSpace& outSpace) const
+	EditorViewport::ETransformSpace& outSpace,
+	EditorViewport::ETransformPivotMode& outPivotMode) const
 {
 	outOperation = m_viewportController
 		? m_viewportController->GetOperation()
@@ -350,6 +343,7 @@ void Editor::GetViewportToolState(
 	outSpace = m_viewportController
 		? m_viewportController->GetSpace()
 		: EditorViewport::ETransformSpace::World;
+	outPivotMode = m_viewportController ? m_viewportController->GetPivotMode() : EditorViewport::ETransformPivotMode::Pivot;
 }
 
 void Editor::PushMessage(std::string_view msg)

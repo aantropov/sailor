@@ -81,6 +81,7 @@ message ProtocolRequest {
 		UpdateMaterialPreviewRequest update_material_preview = 102;
 		MaterialPreviewSessionRequest get_material_preview = 103;
 		MaterialPreviewSessionRequest close_material_preview = 104;
+		ViewportTransformEvent restore_viewport_transform = 105;
 	}
 
 	reserved 3 to 9;
@@ -371,6 +372,7 @@ message ViewportToolStateRequest {
 	uint64 viewport_id = 1;
 	ViewportTransformOperation operation = 2;
 	ViewportTransformSpace space = 3;
+	ViewportTransformPivotMode pivot_mode = 4;
 }
 
 message SelectionRequest {
@@ -433,6 +435,7 @@ message Vector4Result {
 message ViewportToolStateResult {
 	ViewportTransformOperation operation = 1;
 	ViewportTransformSpace space = 2;
+	ViewportTransformPivotMode pivot_mode = 3;
 }
 
 message AnimatorStateResult {
@@ -460,6 +463,12 @@ enum ViewportTransformSpace {
 	VIEWPORT_TRANSFORM_SPACE_UNSPECIFIED = 0;
 	VIEWPORT_TRANSFORM_SPACE_WORLD = 1;
 	VIEWPORT_TRANSFORM_SPACE_LOCAL = 2;
+}
+
+enum ViewportTransformPivotMode {
+	VIEWPORT_TRANSFORM_PIVOT_MODE_UNSPECIFIED = 0;
+	VIEWPORT_TRANSFORM_PIVOT_MODE_PIVOT = 1;
+	VIEWPORT_TRANSFORM_PIVOT_MODE_CENTER = 2;
 }
 
 enum EditorStatsMode {
@@ -548,16 +557,23 @@ message ViewportSelectionEvent {
 	bool additive = 3;
 }
 
-message ViewportTransformEvent {
+message ViewportTransformChange {
 	string instance_id = 1;
+	uint64 managed_mutation_revision = 2;
+	Vector4 before_position = 3;
+	Vector4 before_rotation = 4;
+	Vector4 before_scale = 5;
+	Vector4 after_position = 6;
+	Vector4 after_rotation = 7;
+	Vector4 after_scale = 8;
+}
+
+message ViewportTransformEvent {
+	reserved 1, 4 to 9;
 	ViewportTransformOperation operation = 2;
 	ViewportTransformSpace space = 3;
-	Vector4 before_position = 4;
-	Vector4 before_rotation = 5;
-	Vector4 before_scale = 6;
-	Vector4 after_position = 7;
-	Vector4 after_rotation = 8;
-	Vector4 after_scale = 9;
+	repeated ViewportTransformChange changes = 10;
+	ViewportTransformPivotMode pivot_mode = 11;
 }
 
 message ViewportAssetDropEvent {

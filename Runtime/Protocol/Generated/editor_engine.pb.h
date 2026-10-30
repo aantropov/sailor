@@ -254,6 +254,9 @@ extern ViewportToolStateRequestDefaultTypeInternal _ViewportToolStateRequest_def
 class ViewportToolStateResult;
 struct ViewportToolStateResultDefaultTypeInternal;
 extern ViewportToolStateResultDefaultTypeInternal _ViewportToolStateResult_default_instance_;
+class ViewportTransformChange;
+struct ViewportTransformChangeDefaultTypeInternal;
+extern ViewportTransformChangeDefaultTypeInternal _ViewportTransformChange_default_instance_;
 class ViewportTransformEvent;
 struct ViewportTransformEventDefaultTypeInternal;
 extern ViewportTransformEventDefaultTypeInternal _ViewportTransformEvent_default_instance_;
@@ -337,6 +340,40 @@ inline const std::string& ViewportTransformSpace_Name(ViewportTransformSpace val
 inline bool ViewportTransformSpace_Parse(absl::string_view name, ViewportTransformSpace* value) {
   return ::google::protobuf::internal::ParseNamedEnum<ViewportTransformSpace>(
       ViewportTransformSpace_descriptor(), name, value);
+}
+enum ViewportTransformPivotMode : int {
+  VIEWPORT_TRANSFORM_PIVOT_MODE_UNSPECIFIED = 0,
+  VIEWPORT_TRANSFORM_PIVOT_MODE_PIVOT = 1,
+  VIEWPORT_TRANSFORM_PIVOT_MODE_CENTER = 2,
+  ViewportTransformPivotMode_INT_MIN_SENTINEL_DO_NOT_USE_ =
+      std::numeric_limits<::int32_t>::min(),
+  ViewportTransformPivotMode_INT_MAX_SENTINEL_DO_NOT_USE_ =
+      std::numeric_limits<::int32_t>::max(),
+};
+
+bool ViewportTransformPivotMode_IsValid(int value);
+extern const uint32_t ViewportTransformPivotMode_internal_data_[];
+constexpr ViewportTransformPivotMode ViewportTransformPivotMode_MIN = static_cast<ViewportTransformPivotMode>(0);
+constexpr ViewportTransformPivotMode ViewportTransformPivotMode_MAX = static_cast<ViewportTransformPivotMode>(2);
+constexpr int ViewportTransformPivotMode_ARRAYSIZE = 2 + 1;
+const ::google::protobuf::EnumDescriptor*
+ViewportTransformPivotMode_descriptor();
+template <typename T>
+const std::string& ViewportTransformPivotMode_Name(T value) {
+  static_assert(std::is_same<T, ViewportTransformPivotMode>::value ||
+                    std::is_integral<T>::value,
+                "Incorrect type passed to ViewportTransformPivotMode_Name().");
+  return ViewportTransformPivotMode_Name(static_cast<ViewportTransformPivotMode>(value));
+}
+template <>
+inline const std::string& ViewportTransformPivotMode_Name(ViewportTransformPivotMode value) {
+  return ::google::protobuf::internal::NameOfDenseEnum<ViewportTransformPivotMode_descriptor,
+                                                 0, 2>(
+      static_cast<int>(value));
+}
+inline bool ViewportTransformPivotMode_Parse(absl::string_view name, ViewportTransformPivotMode* value) {
+  return ::google::protobuf::internal::ParseNamedEnum<ViewportTransformPivotMode>(
+      ViewportTransformPivotMode_descriptor(), name, value);
 }
 enum EditorStatsMode : int {
   EDITOR_STATS_MODE_UNSPECIFIED = 0,
@@ -860,6 +897,7 @@ class ViewportToolStateResult final : public ::google::protobuf::Message
   enum : int {
     kOperationFieldNumber = 1,
     kSpaceFieldNumber = 2,
+    kPivotModeFieldNumber = 3,
   };
   // .sailor.editor.v1.ViewportTransformOperation operation = 1;
   void clear_operation() ;
@@ -881,12 +919,22 @@ class ViewportToolStateResult final : public ::google::protobuf::Message
   void _internal_set_space(::sailor::editor::v1::ViewportTransformSpace value);
 
   public:
+  // .sailor.editor.v1.ViewportTransformPivotMode pivot_mode = 3;
+  void clear_pivot_mode() ;
+  ::sailor::editor::v1::ViewportTransformPivotMode pivot_mode() const;
+  void set_pivot_mode(::sailor::editor::v1::ViewportTransformPivotMode value);
+
+  private:
+  ::sailor::editor::v1::ViewportTransformPivotMode _internal_pivot_mode() const;
+  void _internal_set_pivot_mode(::sailor::editor::v1::ViewportTransformPivotMode value);
+
+  public:
   // @@protoc_insertion_point(class_scope:sailor.editor.v1.ViewportToolStateResult)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      1, 2, 0,
+      2, 3, 0,
       0, 2>
       _table_;
 
@@ -906,6 +954,7 @@ class ViewportToolStateResult final : public ::google::protobuf::Message
                           const ViewportToolStateResult& from_msg);
     int operation_;
     int space_;
+    int pivot_mode_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
@@ -1063,6 +1112,7 @@ class ViewportToolStateRequest final : public ::google::protobuf::Message
     kViewportIdFieldNumber = 1,
     kOperationFieldNumber = 2,
     kSpaceFieldNumber = 3,
+    kPivotModeFieldNumber = 4,
   };
   // uint64 viewport_id = 1;
   void clear_viewport_id() ;
@@ -1094,12 +1144,22 @@ class ViewportToolStateRequest final : public ::google::protobuf::Message
   void _internal_set_space(::sailor::editor::v1::ViewportTransformSpace value);
 
   public:
+  // .sailor.editor.v1.ViewportTransformPivotMode pivot_mode = 4;
+  void clear_pivot_mode() ;
+  ::sailor::editor::v1::ViewportTransformPivotMode pivot_mode() const;
+  void set_pivot_mode(::sailor::editor::v1::ViewportTransformPivotMode value);
+
+  private:
+  ::sailor::editor::v1::ViewportTransformPivotMode _internal_pivot_mode() const;
+  void _internal_set_pivot_mode(::sailor::editor::v1::ViewportTransformPivotMode value);
+
+  public:
   // @@protoc_insertion_point(class_scope:sailor.editor.v1.ViewportToolStateRequest)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      2, 3, 0,
+      2, 4, 0,
       0, 2>
       _table_;
 
@@ -1120,6 +1180,7 @@ class ViewportToolStateRequest final : public ::google::protobuf::Message
     ::uint64_t viewport_id_;
     int operation_;
     int space_;
+    int pivot_mode_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
@@ -1187,7 +1248,7 @@ class ViewportToolShortcutEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportToolShortcutEvent*>(
         &_ViewportToolShortcutEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 56;
+  static constexpr int kIndexInFileMessages = 57;
   friend void swap(ViewportToolShortcutEvent& a, ViewportToolShortcutEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportToolShortcutEvent* other) {
     if (other == this) return;
@@ -2447,7 +2508,7 @@ class ViewportAssetDropEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportAssetDropEvent*>(
         &_ViewportAssetDropEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 55;
+  static constexpr int kIndexInFileMessages = 56;
   friend void swap(ViewportAssetDropEvent& a, ViewportAssetDropEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportAssetDropEvent* other) {
     if (other == this) return;
@@ -3107,7 +3168,7 @@ class UpdateMaterialPreviewRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const UpdateMaterialPreviewRequest*>(
         &_UpdateMaterialPreviewRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 64;
+  static constexpr int kIndexInFileMessages = 65;
   friend void swap(UpdateMaterialPreviewRequest& a, UpdateMaterialPreviewRequest& b) { a.Swap(&b); }
   inline void Swap(UpdateMaterialPreviewRequest* other) {
     if (other == this) return;
@@ -5009,7 +5070,7 @@ class RuntimeGIProbesState final : public ::google::protobuf::Message
     return reinterpret_cast<const RuntimeGIProbesState*>(
         &_RuntimeGIProbesState_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 62;
+  static constexpr int kIndexInFileMessages = 63;
   friend void swap(RuntimeGIProbesState& a, RuntimeGIProbesState& b) { a.Swap(&b); }
   inline void Swap(RuntimeGIProbesState* other) {
     if (other == this) return;
@@ -5385,7 +5446,7 @@ class RuntimeGIProbesSettings final : public ::google::protobuf::Message
     return reinterpret_cast<const RuntimeGIProbesSettings*>(
         &_RuntimeGIProbesSettings_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 59;
+  static constexpr int kIndexInFileMessages = 60;
   friend void swap(RuntimeGIProbesSettings& a, RuntimeGIProbesSettings& b) { a.Swap(&b); }
   inline void Swap(RuntimeGIProbesSettings* other) {
     if (other == this) return;
@@ -5683,7 +5744,7 @@ class RuntimeGIProbesPreviewRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const RuntimeGIProbesPreviewRequest*>(
         &_RuntimeGIProbesPreviewRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 60;
+  static constexpr int kIndexInFileMessages = 61;
   friend void swap(RuntimeGIProbesPreviewRequest& a, RuntimeGIProbesPreviewRequest& b) { a.Swap(&b); }
   inline void Swap(RuntimeGIProbesPreviewRequest* other) {
     if (other == this) return;
@@ -5873,7 +5934,7 @@ class RuntimeGIProbesPreviewBudgetRequest final : public ::google::protobuf::Mes
     return reinterpret_cast<const RuntimeGIProbesPreviewBudgetRequest*>(
         &_RuntimeGIProbesPreviewBudgetRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 63;
+  static constexpr int kIndexInFileMessages = 64;
   friend void swap(RuntimeGIProbesPreviewBudgetRequest& a, RuntimeGIProbesPreviewBudgetRequest& b) { a.Swap(&b); }
   inline void Swap(RuntimeGIProbesPreviewBudgetRequest* other) {
     if (other == this) return;
@@ -6063,7 +6124,7 @@ class RuntimeGIProbesPauseRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const RuntimeGIProbesPauseRequest*>(
         &_RuntimeGIProbesPauseRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 61;
+  static constexpr int kIndexInFileMessages = 62;
   friend void swap(RuntimeGIProbesPauseRequest& a, RuntimeGIProbesPauseRequest& b) { a.Swap(&b); }
   inline void Swap(RuntimeGIProbesPauseRequest* other) {
     if (other == this) return;
@@ -7545,7 +7606,7 @@ class MaterialPreviewSessionRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const MaterialPreviewSessionRequest*>(
         &_MaterialPreviewSessionRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 65;
+  static constexpr int kIndexInFileMessages = 66;
   friend void swap(MaterialPreviewSessionRequest& a, MaterialPreviewSessionRequest& b) { a.Swap(&b); }
   inline void Swap(MaterialPreviewSessionRequest* other) {
     if (other == this) return;
@@ -7747,7 +7808,7 @@ class MaterialPreviewResult final : public ::google::protobuf::Message
     return reinterpret_cast<const MaterialPreviewResult*>(
         &_MaterialPreviewResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 66;
+  static constexpr int kIndexInFileMessages = 67;
   friend void swap(MaterialPreviewResult& a, MaterialPreviewResult& b) { a.Swap(&b); }
   inline void Swap(MaterialPreviewResult* other) {
     if (other == this) return;
@@ -13061,31 +13122,31 @@ class AddComponentRequest final : public ::google::protobuf::Message
 };
 // -------------------------------------------------------------------
 
-class ViewportTransformEvent final : public ::google::protobuf::Message
-/* @@protoc_insertion_point(class_definition:sailor.editor.v1.ViewportTransformEvent) */ {
+class ViewportTransformChange final : public ::google::protobuf::Message
+/* @@protoc_insertion_point(class_definition:sailor.editor.v1.ViewportTransformChange) */ {
  public:
-  inline ViewportTransformEvent() : ViewportTransformEvent(nullptr) {}
-  ~ViewportTransformEvent() PROTOBUF_FINAL;
+  inline ViewportTransformChange() : ViewportTransformChange(nullptr) {}
+  ~ViewportTransformChange() PROTOBUF_FINAL;
 
 #if defined(PROTOBUF_CUSTOM_VTABLE)
-  void operator delete(ViewportTransformEvent* msg, std::destroying_delete_t) {
+  void operator delete(ViewportTransformChange* msg, std::destroying_delete_t) {
     SharedDtor(*msg);
-    ::google::protobuf::internal::SizedDelete(msg, sizeof(ViewportTransformEvent));
+    ::google::protobuf::internal::SizedDelete(msg, sizeof(ViewportTransformChange));
   }
 #endif
 
   template <typename = void>
-  explicit PROTOBUF_CONSTEXPR ViewportTransformEvent(
+  explicit PROTOBUF_CONSTEXPR ViewportTransformChange(
       ::google::protobuf::internal::ConstantInitialized);
 
-  inline ViewportTransformEvent(const ViewportTransformEvent& from) : ViewportTransformEvent(nullptr, from) {}
-  inline ViewportTransformEvent(ViewportTransformEvent&& from) noexcept
-      : ViewportTransformEvent(nullptr, std::move(from)) {}
-  inline ViewportTransformEvent& operator=(const ViewportTransformEvent& from) {
+  inline ViewportTransformChange(const ViewportTransformChange& from) : ViewportTransformChange(nullptr, from) {}
+  inline ViewportTransformChange(ViewportTransformChange&& from) noexcept
+      : ViewportTransformChange(nullptr, std::move(from)) {}
+  inline ViewportTransformChange& operator=(const ViewportTransformChange& from) {
     CopyFrom(from);
     return *this;
   }
-  inline ViewportTransformEvent& operator=(ViewportTransformEvent&& from) noexcept {
+  inline ViewportTransformChange& operator=(ViewportTransformChange&& from) noexcept {
     if (this == &from) return *this;
     if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
       InternalSwap(&from);
@@ -13113,16 +13174,16 @@ class ViewportTransformEvent final : public ::google::protobuf::Message
   static const ::google::protobuf::Reflection* GetReflection() {
     return default_instance().GetMetadata().reflection;
   }
-  static const ViewportTransformEvent& default_instance() {
+  static const ViewportTransformChange& default_instance() {
     return *internal_default_instance();
   }
-  static inline const ViewportTransformEvent* internal_default_instance() {
-    return reinterpret_cast<const ViewportTransformEvent*>(
-        &_ViewportTransformEvent_default_instance_);
+  static inline const ViewportTransformChange* internal_default_instance() {
+    return reinterpret_cast<const ViewportTransformChange*>(
+        &_ViewportTransformChange_default_instance_);
   }
   static constexpr int kIndexInFileMessages = 54;
-  friend void swap(ViewportTransformEvent& a, ViewportTransformEvent& b) { a.Swap(&b); }
-  inline void Swap(ViewportTransformEvent* other) {
+  friend void swap(ViewportTransformChange& a, ViewportTransformChange& b) { a.Swap(&b); }
+  inline void Swap(ViewportTransformChange* other) {
     if (other == this) return;
     if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
       InternalSwap(other);
@@ -13130,7 +13191,7 @@ class ViewportTransformEvent final : public ::google::protobuf::Message
       ::google::protobuf::internal::GenericSwap(this, other);
     }
   }
-  void UnsafeArenaSwap(ViewportTransformEvent* other) {
+  void UnsafeArenaSwap(ViewportTransformChange* other) {
     if (other == this) return;
     ABSL_DCHECK(GetArena() == other->GetArena());
     InternalSwap(other);
@@ -13138,13 +13199,13 @@ class ViewportTransformEvent final : public ::google::protobuf::Message
 
   // implements Message ----------------------------------------------
 
-  ViewportTransformEvent* New(::google::protobuf::Arena* arena = nullptr) const {
-    return ::google::protobuf::Message::DefaultConstruct<ViewportTransformEvent>(arena);
+  ViewportTransformChange* New(::google::protobuf::Arena* arena = nullptr) const {
+    return ::google::protobuf::Message::DefaultConstruct<ViewportTransformChange>(arena);
   }
   using ::google::protobuf::Message::CopyFrom;
-  void CopyFrom(const ViewportTransformEvent& from);
+  void CopyFrom(const ViewportTransformChange& from);
   using ::google::protobuf::Message::MergeFrom;
-  void MergeFrom(const ViewportTransformEvent& from) { ViewportTransformEvent::MergeImpl(*this, from); }
+  void MergeFrom(const ViewportTransformChange& from) { ViewportTransformChange::MergeImpl(*this, from); }
 
   private:
   static void MergeImpl(
@@ -13181,18 +13242,18 @@ class ViewportTransformEvent final : public ::google::protobuf::Message
   private:
   void SharedCtor(::google::protobuf::Arena* arena);
   static void SharedDtor(MessageLite& self);
-  void InternalSwap(ViewportTransformEvent* other);
+  void InternalSwap(ViewportTransformChange* other);
  private:
   template <typename T>
   friend ::absl::string_view(
       ::google::protobuf::internal::GetAnyMessageName)();
-  static ::absl::string_view FullMessageName() { return "sailor.editor.v1.ViewportTransformEvent"; }
+  static ::absl::string_view FullMessageName() { return "sailor.editor.v1.ViewportTransformChange"; }
 
  protected:
-  explicit ViewportTransformEvent(::google::protobuf::Arena* arena);
-  ViewportTransformEvent(::google::protobuf::Arena* arena, const ViewportTransformEvent& from);
-  ViewportTransformEvent(::google::protobuf::Arena* arena, ViewportTransformEvent&& from) noexcept
-      : ViewportTransformEvent(arena) {
+  explicit ViewportTransformChange(::google::protobuf::Arena* arena);
+  ViewportTransformChange(::google::protobuf::Arena* arena, const ViewportTransformChange& from);
+  ViewportTransformChange(::google::protobuf::Arena* arena, ViewportTransformChange&& from) noexcept
+      : ViewportTransformChange(arena) {
     *this = ::std::move(from);
   }
   const ::google::protobuf::internal::ClassData* GetClassData() const PROTOBUF_FINAL;
@@ -13208,14 +13269,13 @@ class ViewportTransformEvent final : public ::google::protobuf::Message
   // accessors -------------------------------------------------------
   enum : int {
     kInstanceIdFieldNumber = 1,
-    kBeforePositionFieldNumber = 4,
-    kBeforeRotationFieldNumber = 5,
-    kBeforeScaleFieldNumber = 6,
-    kAfterPositionFieldNumber = 7,
-    kAfterRotationFieldNumber = 8,
-    kAfterScaleFieldNumber = 9,
-    kOperationFieldNumber = 2,
-    kSpaceFieldNumber = 3,
+    kBeforePositionFieldNumber = 3,
+    kBeforeRotationFieldNumber = 4,
+    kBeforeScaleFieldNumber = 5,
+    kAfterPositionFieldNumber = 6,
+    kAfterRotationFieldNumber = 7,
+    kAfterScaleFieldNumber = 8,
+    kManagedMutationRevisionFieldNumber = 2,
   };
   // string instance_id = 1;
   void clear_instance_id() ;
@@ -13233,7 +13293,7 @@ class ViewportTransformEvent final : public ::google::protobuf::Message
   std::string* _internal_mutable_instance_id();
 
   public:
-  // .sailor.editor.v1.Vector4 before_position = 4;
+  // .sailor.editor.v1.Vector4 before_position = 3;
   bool has_before_position() const;
   void clear_before_position() ;
   const ::sailor::editor::v1::Vector4& before_position() const;
@@ -13248,7 +13308,7 @@ class ViewportTransformEvent final : public ::google::protobuf::Message
   ::sailor::editor::v1::Vector4* _internal_mutable_before_position();
 
   public:
-  // .sailor.editor.v1.Vector4 before_rotation = 5;
+  // .sailor.editor.v1.Vector4 before_rotation = 4;
   bool has_before_rotation() const;
   void clear_before_rotation() ;
   const ::sailor::editor::v1::Vector4& before_rotation() const;
@@ -13263,7 +13323,7 @@ class ViewportTransformEvent final : public ::google::protobuf::Message
   ::sailor::editor::v1::Vector4* _internal_mutable_before_rotation();
 
   public:
-  // .sailor.editor.v1.Vector4 before_scale = 6;
+  // .sailor.editor.v1.Vector4 before_scale = 5;
   bool has_before_scale() const;
   void clear_before_scale() ;
   const ::sailor::editor::v1::Vector4& before_scale() const;
@@ -13278,7 +13338,7 @@ class ViewportTransformEvent final : public ::google::protobuf::Message
   ::sailor::editor::v1::Vector4* _internal_mutable_before_scale();
 
   public:
-  // .sailor.editor.v1.Vector4 after_position = 7;
+  // .sailor.editor.v1.Vector4 after_position = 6;
   bool has_after_position() const;
   void clear_after_position() ;
   const ::sailor::editor::v1::Vector4& after_position() const;
@@ -13293,7 +13353,7 @@ class ViewportTransformEvent final : public ::google::protobuf::Message
   ::sailor::editor::v1::Vector4* _internal_mutable_after_position();
 
   public:
-  // .sailor.editor.v1.Vector4 after_rotation = 8;
+  // .sailor.editor.v1.Vector4 after_rotation = 7;
   bool has_after_rotation() const;
   void clear_after_rotation() ;
   const ::sailor::editor::v1::Vector4& after_rotation() const;
@@ -13308,7 +13368,7 @@ class ViewportTransformEvent final : public ::google::protobuf::Message
   ::sailor::editor::v1::Vector4* _internal_mutable_after_rotation();
 
   public:
-  // .sailor.editor.v1.Vector4 after_scale = 9;
+  // .sailor.editor.v1.Vector4 after_scale = 8;
   bool has_after_scale() const;
   void clear_after_scale() ;
   const ::sailor::editor::v1::Vector4& after_scale() const;
@@ -13323,33 +13383,23 @@ class ViewportTransformEvent final : public ::google::protobuf::Message
   ::sailor::editor::v1::Vector4* _internal_mutable_after_scale();
 
   public:
-  // .sailor.editor.v1.ViewportTransformOperation operation = 2;
-  void clear_operation() ;
-  ::sailor::editor::v1::ViewportTransformOperation operation() const;
-  void set_operation(::sailor::editor::v1::ViewportTransformOperation value);
+  // uint64 managed_mutation_revision = 2;
+  void clear_managed_mutation_revision() ;
+  ::uint64_t managed_mutation_revision() const;
+  void set_managed_mutation_revision(::uint64_t value);
 
   private:
-  ::sailor::editor::v1::ViewportTransformOperation _internal_operation() const;
-  void _internal_set_operation(::sailor::editor::v1::ViewportTransformOperation value);
+  ::uint64_t _internal_managed_mutation_revision() const;
+  void _internal_set_managed_mutation_revision(::uint64_t value);
 
   public:
-  // .sailor.editor.v1.ViewportTransformSpace space = 3;
-  void clear_space() ;
-  ::sailor::editor::v1::ViewportTransformSpace space() const;
-  void set_space(::sailor::editor::v1::ViewportTransformSpace value);
-
-  private:
-  ::sailor::editor::v1::ViewportTransformSpace _internal_space() const;
-  void _internal_set_space(::sailor::editor::v1::ViewportTransformSpace value);
-
-  public:
-  // @@protoc_insertion_point(class_scope:sailor.editor.v1.ViewportTransformEvent)
+  // @@protoc_insertion_point(class_scope:sailor.editor.v1.ViewportTransformChange)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      4, 9, 6,
-      67, 2>
+      3, 8, 6,
+      68, 2>
       _table_;
 
   friend class ::google::protobuf::MessageLite;
@@ -13365,7 +13415,7 @@ class ViewportTransformEvent final : public ::google::protobuf::Message
                           ::google::protobuf::Arena* arena);
     inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
                           ::google::protobuf::Arena* arena, const Impl_& from,
-                          const ViewportTransformEvent& from_msg);
+                          const ViewportTransformChange& from_msg);
     ::google::protobuf::internal::HasBits<1> _has_bits_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     ::google::protobuf::internal::ArenaStringPtr instance_id_;
@@ -13375,8 +13425,7 @@ class ViewportTransformEvent final : public ::google::protobuf::Message
     ::sailor::editor::v1::Vector4* after_position_;
     ::sailor::editor::v1::Vector4* after_rotation_;
     ::sailor::editor::v1::Vector4* after_scale_;
-    int operation_;
-    int space_;
+    ::uint64_t managed_mutation_revision_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -15281,6 +15330,239 @@ class AnimatorParameterRequest final : public ::google::protobuf::Message
 };
 // -------------------------------------------------------------------
 
+class ViewportTransformEvent final : public ::google::protobuf::Message
+/* @@protoc_insertion_point(class_definition:sailor.editor.v1.ViewportTransformEvent) */ {
+ public:
+  inline ViewportTransformEvent() : ViewportTransformEvent(nullptr) {}
+  ~ViewportTransformEvent() PROTOBUF_FINAL;
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+  void operator delete(ViewportTransformEvent* msg, std::destroying_delete_t) {
+    SharedDtor(*msg);
+    ::google::protobuf::internal::SizedDelete(msg, sizeof(ViewportTransformEvent));
+  }
+#endif
+
+  template <typename = void>
+  explicit PROTOBUF_CONSTEXPR ViewportTransformEvent(
+      ::google::protobuf::internal::ConstantInitialized);
+
+  inline ViewportTransformEvent(const ViewportTransformEvent& from) : ViewportTransformEvent(nullptr, from) {}
+  inline ViewportTransformEvent(ViewportTransformEvent&& from) noexcept
+      : ViewportTransformEvent(nullptr, std::move(from)) {}
+  inline ViewportTransformEvent& operator=(const ViewportTransformEvent& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline ViewportTransformEvent& operator=(ViewportTransformEvent&& from) noexcept {
+    if (this == &from) return *this;
+    if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance);
+  }
+  inline ::google::protobuf::UnknownFieldSet* mutable_unknown_fields()
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.mutable_unknown_fields<::google::protobuf::UnknownFieldSet>();
+  }
+
+  static const ::google::protobuf::Descriptor* descriptor() {
+    return GetDescriptor();
+  }
+  static const ::google::protobuf::Descriptor* GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  static const ::google::protobuf::Reflection* GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  static const ViewportTransformEvent& default_instance() {
+    return *internal_default_instance();
+  }
+  static inline const ViewportTransformEvent* internal_default_instance() {
+    return reinterpret_cast<const ViewportTransformEvent*>(
+        &_ViewportTransformEvent_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages = 55;
+  friend void swap(ViewportTransformEvent& a, ViewportTransformEvent& b) { a.Swap(&b); }
+  inline void Swap(ViewportTransformEvent* other) {
+    if (other == this) return;
+    if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
+      InternalSwap(other);
+    } else {
+      ::google::protobuf::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(ViewportTransformEvent* other) {
+    if (other == this) return;
+    ABSL_DCHECK(GetArena() == other->GetArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  ViewportTransformEvent* New(::google::protobuf::Arena* arena = nullptr) const {
+    return ::google::protobuf::Message::DefaultConstruct<ViewportTransformEvent>(arena);
+  }
+  using ::google::protobuf::Message::CopyFrom;
+  void CopyFrom(const ViewportTransformEvent& from);
+  using ::google::protobuf::Message::MergeFrom;
+  void MergeFrom(const ViewportTransformEvent& from) { ViewportTransformEvent::MergeImpl(*this, from); }
+
+  private:
+  static void MergeImpl(
+      ::google::protobuf::MessageLite& to_msg,
+      const ::google::protobuf::MessageLite& from_msg);
+
+  public:
+  bool IsInitialized() const {
+    return true;
+  }
+  ABSL_ATTRIBUTE_REINITIALIZES void Clear() PROTOBUF_FINAL;
+  #if defined(PROTOBUF_CUSTOM_VTABLE)
+  private:
+  static ::size_t ByteSizeLong(const ::google::protobuf::MessageLite& msg);
+  static ::uint8_t* _InternalSerialize(
+      const MessageLite& msg, ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream);
+
+  public:
+  ::size_t ByteSizeLong() const { return ByteSizeLong(*this); }
+  ::uint8_t* _InternalSerialize(
+      ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream) const {
+    return _InternalSerialize(*this, target, stream);
+  }
+  #else   // PROTOBUF_CUSTOM_VTABLE
+  ::size_t ByteSizeLong() const final;
+  ::uint8_t* _InternalSerialize(
+      ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream) const final;
+  #endif  // PROTOBUF_CUSTOM_VTABLE
+  int GetCachedSize() const { return _impl_._cached_size_.Get(); }
+
+  private:
+  void SharedCtor(::google::protobuf::Arena* arena);
+  static void SharedDtor(MessageLite& self);
+  void InternalSwap(ViewportTransformEvent* other);
+ private:
+  template <typename T>
+  friend ::absl::string_view(
+      ::google::protobuf::internal::GetAnyMessageName)();
+  static ::absl::string_view FullMessageName() { return "sailor.editor.v1.ViewportTransformEvent"; }
+
+ protected:
+  explicit ViewportTransformEvent(::google::protobuf::Arena* arena);
+  ViewportTransformEvent(::google::protobuf::Arena* arena, const ViewportTransformEvent& from);
+  ViewportTransformEvent(::google::protobuf::Arena* arena, ViewportTransformEvent&& from) noexcept
+      : ViewportTransformEvent(arena) {
+    *this = ::std::move(from);
+  }
+  const ::google::protobuf::internal::ClassData* GetClassData() const PROTOBUF_FINAL;
+  static void* PlacementNew_(const void*, void* mem,
+                             ::google::protobuf::Arena* arena);
+  static constexpr auto InternalNewImpl_();
+  static const ::google::protobuf::internal::ClassDataFull _class_data_;
+
+ public:
+  ::google::protobuf::Metadata GetMetadata() const;
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+  enum : int {
+    kChangesFieldNumber = 10,
+    kOperationFieldNumber = 2,
+    kSpaceFieldNumber = 3,
+    kPivotModeFieldNumber = 11,
+  };
+  // repeated .sailor.editor.v1.ViewportTransformChange changes = 10;
+  int changes_size() const;
+  private:
+  int _internal_changes_size() const;
+
+  public:
+  void clear_changes() ;
+  ::sailor::editor::v1::ViewportTransformChange* mutable_changes(int index);
+  ::google::protobuf::RepeatedPtrField<::sailor::editor::v1::ViewportTransformChange>* mutable_changes();
+
+  private:
+  const ::google::protobuf::RepeatedPtrField<::sailor::editor::v1::ViewportTransformChange>& _internal_changes() const;
+  ::google::protobuf::RepeatedPtrField<::sailor::editor::v1::ViewportTransformChange>* _internal_mutable_changes();
+  public:
+  const ::sailor::editor::v1::ViewportTransformChange& changes(int index) const;
+  ::sailor::editor::v1::ViewportTransformChange* add_changes();
+  const ::google::protobuf::RepeatedPtrField<::sailor::editor::v1::ViewportTransformChange>& changes() const;
+  // .sailor.editor.v1.ViewportTransformOperation operation = 2;
+  void clear_operation() ;
+  ::sailor::editor::v1::ViewportTransformOperation operation() const;
+  void set_operation(::sailor::editor::v1::ViewportTransformOperation value);
+
+  private:
+  ::sailor::editor::v1::ViewportTransformOperation _internal_operation() const;
+  void _internal_set_operation(::sailor::editor::v1::ViewportTransformOperation value);
+
+  public:
+  // .sailor.editor.v1.ViewportTransformSpace space = 3;
+  void clear_space() ;
+  ::sailor::editor::v1::ViewportTransformSpace space() const;
+  void set_space(::sailor::editor::v1::ViewportTransformSpace value);
+
+  private:
+  ::sailor::editor::v1::ViewportTransformSpace _internal_space() const;
+  void _internal_set_space(::sailor::editor::v1::ViewportTransformSpace value);
+
+  public:
+  // .sailor.editor.v1.ViewportTransformPivotMode pivot_mode = 11;
+  void clear_pivot_mode() ;
+  ::sailor::editor::v1::ViewportTransformPivotMode pivot_mode() const;
+  void set_pivot_mode(::sailor::editor::v1::ViewportTransformPivotMode value);
+
+  private:
+  ::sailor::editor::v1::ViewportTransformPivotMode _internal_pivot_mode() const;
+  void _internal_set_pivot_mode(::sailor::editor::v1::ViewportTransformPivotMode value);
+
+  public:
+  // @@protoc_insertion_point(class_scope:sailor.editor.v1.ViewportTransformEvent)
+ private:
+  class _Internal;
+  friend class ::google::protobuf::internal::TcParser;
+  static const ::google::protobuf::internal::TcParseTable<
+      1, 4, 1,
+      0, 2>
+      _table_;
+
+  friend class ::google::protobuf::MessageLite;
+  friend class ::google::protobuf::Arena;
+  template <typename T>
+  friend class ::google::protobuf::Arena::InternalHelper;
+  using InternalArenaConstructable_ = void;
+  using DestructorSkippable_ = void;
+  struct Impl_ {
+    inline explicit constexpr Impl_(
+        ::google::protobuf::internal::ConstantInitialized) noexcept;
+    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
+                          ::google::protobuf::Arena* arena);
+    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
+                          ::google::protobuf::Arena* arena, const Impl_& from,
+                          const ViewportTransformEvent& from_msg);
+    ::google::protobuf::RepeatedPtrField< ::sailor::editor::v1::ViewportTransformChange > changes_;
+    int operation_;
+    int space_;
+    int pivot_mode_;
+    ::google::protobuf::internal::CachedSize _cached_size_;
+    PROTOBUF_TSAN_DECLARE_MEMBER
+  };
+  union { Impl_ _impl_; };
+  friend struct ::TableStruct_editor_5fengine_2eproto;
+};
+// -------------------------------------------------------------------
+
 class ViewportEvent final : public ::google::protobuf::Message
 /* @@protoc_insertion_point(class_definition:sailor.editor.v1.ViewportEvent) */ {
  public:
@@ -15347,7 +15629,7 @@ class ViewportEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportEvent*>(
         &_ViewportEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 57;
+  static constexpr int kIndexInFileMessages = 58;
   friend void swap(ViewportEvent& a, ViewportEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportEvent* other) {
     if (other == this) return;
@@ -15712,6 +15994,7 @@ class ProtocolRequest final : public ::google::protobuf::Message
     kUpdateMaterialPreview = 102,
     kGetMaterialPreview = 103,
     kCloseMaterialPreview = 104,
+    kRestoreViewportTransform = 105,
     COMMAND_NOT_SET = 0,
   };
   static inline const ProtocolRequest* internal_default_instance() {
@@ -15876,6 +16159,7 @@ class ProtocolRequest final : public ::google::protobuf::Message
     kUpdateMaterialPreviewFieldNumber = 102,
     kGetMaterialPreviewFieldNumber = 103,
     kCloseMaterialPreviewFieldNumber = 104,
+    kRestoreViewportTransformFieldNumber = 105,
   };
   // uint64 request_id = 2;
   void clear_request_id() ;
@@ -17208,6 +17492,25 @@ class ProtocolRequest final : public ::google::protobuf::Message
   ::sailor::editor::v1::MaterialPreviewSessionRequest* _internal_mutable_close_material_preview();
 
   public:
+  // .sailor.editor.v1.ViewportTransformEvent restore_viewport_transform = 105;
+  bool has_restore_viewport_transform() const;
+  private:
+  bool _internal_has_restore_viewport_transform() const;
+
+  public:
+  void clear_restore_viewport_transform() ;
+  const ::sailor::editor::v1::ViewportTransformEvent& restore_viewport_transform() const;
+  PROTOBUF_NODISCARD ::sailor::editor::v1::ViewportTransformEvent* release_restore_viewport_transform();
+  ::sailor::editor::v1::ViewportTransformEvent* mutable_restore_viewport_transform();
+  void set_allocated_restore_viewport_transform(::sailor::editor::v1::ViewportTransformEvent* value);
+  void unsafe_arena_set_allocated_restore_viewport_transform(::sailor::editor::v1::ViewportTransformEvent* value);
+  ::sailor::editor::v1::ViewportTransformEvent* unsafe_arena_release_restore_viewport_transform();
+
+  private:
+  const ::sailor::editor::v1::ViewportTransformEvent& _internal_restore_viewport_transform() const;
+  ::sailor::editor::v1::ViewportTransformEvent* _internal_mutable_restore_viewport_transform();
+
+  public:
   void clear_command();
   CommandCase command_case() const;
   // @@protoc_insertion_point(class_scope:sailor.editor.v1.ProtocolRequest)
@@ -17282,11 +17585,12 @@ class ProtocolRequest final : public ::google::protobuf::Message
   void set_has_update_material_preview();
   void set_has_get_material_preview();
   void set_has_close_material_preview();
+  void set_has_restore_viewport_transform();
   inline bool has_command() const;
   inline void clear_has_command();
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      1, 71, 69,
+      1, 72, 70,
       0, 15>
       _table_;
 
@@ -17378,6 +17682,7 @@ class ProtocolRequest final : public ::google::protobuf::Message
       ::sailor::editor::v1::UpdateMaterialPreviewRequest* update_material_preview_;
       ::sailor::editor::v1::MaterialPreviewSessionRequest* get_material_preview_;
       ::sailor::editor::v1::MaterialPreviewSessionRequest* close_material_preview_;
+      ::sailor::editor::v1::ViewportTransformEvent* restore_viewport_transform_;
     } command_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     ::uint32_t _oneof_case_[1];
@@ -17447,7 +17752,7 @@ class ViewportEventBatchResult final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportEventBatchResult*>(
         &_ViewportEventBatchResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 58;
+  static constexpr int kIndexInFileMessages = 59;
   friend void swap(ViewportEventBatchResult& a, ViewportEventBatchResult& b) { a.Swap(&b); }
   inline void Swap(ViewportEventBatchResult* other) {
     if (other == this) return;
@@ -23743,6 +24048,85 @@ inline ::sailor::editor::v1::MaterialPreviewSessionRequest* ProtocolRequest::_in
 inline ::sailor::editor::v1::MaterialPreviewSessionRequest* ProtocolRequest::mutable_close_material_preview() ABSL_ATTRIBUTE_LIFETIME_BOUND {
   ::sailor::editor::v1::MaterialPreviewSessionRequest* _msg = _internal_mutable_close_material_preview();
   // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolRequest.close_material_preview)
+  return _msg;
+}
+
+// .sailor.editor.v1.ViewportTransformEvent restore_viewport_transform = 105;
+inline bool ProtocolRequest::has_restore_viewport_transform() const {
+  return command_case() == kRestoreViewportTransform;
+}
+inline bool ProtocolRequest::_internal_has_restore_viewport_transform() const {
+  return command_case() == kRestoreViewportTransform;
+}
+inline void ProtocolRequest::set_has_restore_viewport_transform() {
+  _impl_._oneof_case_[0] = kRestoreViewportTransform;
+}
+inline void ProtocolRequest::clear_restore_viewport_transform() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (command_case() == kRestoreViewportTransform) {
+    if (GetArena() == nullptr) {
+      delete _impl_.command_.restore_viewport_transform_;
+    } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
+      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.command_.restore_viewport_transform_);
+    }
+    clear_has_command();
+  }
+}
+inline ::sailor::editor::v1::ViewportTransformEvent* ProtocolRequest::release_restore_viewport_transform() {
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.ProtocolRequest.restore_viewport_transform)
+  if (command_case() == kRestoreViewportTransform) {
+    clear_has_command();
+    auto* temp = _impl_.command_.restore_viewport_transform_;
+    if (GetArena() != nullptr) {
+      temp = ::google::protobuf::internal::DuplicateIfNonNull(temp);
+    }
+    _impl_.command_.restore_viewport_transform_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline const ::sailor::editor::v1::ViewportTransformEvent& ProtocolRequest::_internal_restore_viewport_transform() const {
+  return command_case() == kRestoreViewportTransform ? *_impl_.command_.restore_viewport_transform_ : reinterpret_cast<::sailor::editor::v1::ViewportTransformEvent&>(::sailor::editor::v1::_ViewportTransformEvent_default_instance_);
+}
+inline const ::sailor::editor::v1::ViewportTransformEvent& ProtocolRequest::restore_viewport_transform() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ProtocolRequest.restore_viewport_transform)
+  return _internal_restore_viewport_transform();
+}
+inline ::sailor::editor::v1::ViewportTransformEvent* ProtocolRequest::unsafe_arena_release_restore_viewport_transform() {
+  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.ProtocolRequest.restore_viewport_transform)
+  if (command_case() == kRestoreViewportTransform) {
+    clear_has_command();
+    auto* temp = _impl_.command_.restore_viewport_transform_;
+    _impl_.command_.restore_viewport_transform_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline void ProtocolRequest::unsafe_arena_set_allocated_restore_viewport_transform(::sailor::editor::v1::ViewportTransformEvent* value) {
+  // We rely on the oneof clear method to free the earlier contents
+  // of this oneof. We can directly use the pointer we're given to
+  // set the new value.
+  clear_command();
+  if (value) {
+    set_has_restore_viewport_transform();
+    _impl_.command_.restore_viewport_transform_ = value;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ProtocolRequest.restore_viewport_transform)
+}
+inline ::sailor::editor::v1::ViewportTransformEvent* ProtocolRequest::_internal_mutable_restore_viewport_transform() {
+  if (command_case() != kRestoreViewportTransform) {
+    clear_command();
+    set_has_restore_viewport_transform();
+    _impl_.command_.restore_viewport_transform_ =
+        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::ViewportTransformEvent>(GetArena());
+  }
+  return _impl_.command_.restore_viewport_transform_;
+}
+inline ::sailor::editor::v1::ViewportTransformEvent* ProtocolRequest::mutable_restore_viewport_transform() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::sailor::editor::v1::ViewportTransformEvent* _msg = _internal_mutable_restore_viewport_transform();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolRequest.restore_viewport_transform)
   return _msg;
 }
 
@@ -30297,6 +30681,28 @@ inline void ViewportToolStateRequest::_internal_set_space(::sailor::editor::v1::
   _impl_.space_ = value;
 }
 
+// .sailor.editor.v1.ViewportTransformPivotMode pivot_mode = 4;
+inline void ViewportToolStateRequest::clear_pivot_mode() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.pivot_mode_ = 0;
+}
+inline ::sailor::editor::v1::ViewportTransformPivotMode ViewportToolStateRequest::pivot_mode() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportToolStateRequest.pivot_mode)
+  return _internal_pivot_mode();
+}
+inline void ViewportToolStateRequest::set_pivot_mode(::sailor::editor::v1::ViewportTransformPivotMode value) {
+  _internal_set_pivot_mode(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.ViewportToolStateRequest.pivot_mode)
+}
+inline ::sailor::editor::v1::ViewportTransformPivotMode ViewportToolStateRequest::_internal_pivot_mode() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return static_cast<::sailor::editor::v1::ViewportTransformPivotMode>(_impl_.pivot_mode_);
+}
+inline void ViewportToolStateRequest::_internal_set_pivot_mode(::sailor::editor::v1::ViewportTransformPivotMode value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.pivot_mode_ = value;
+}
+
 // -------------------------------------------------------------------
 
 // SelectionRequest
@@ -31117,6 +31523,28 @@ inline void ViewportToolStateResult::_internal_set_space(::sailor::editor::v1::V
   _impl_.space_ = value;
 }
 
+// .sailor.editor.v1.ViewportTransformPivotMode pivot_mode = 3;
+inline void ViewportToolStateResult::clear_pivot_mode() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.pivot_mode_ = 0;
+}
+inline ::sailor::editor::v1::ViewportTransformPivotMode ViewportToolStateResult::pivot_mode() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportToolStateResult.pivot_mode)
+  return _internal_pivot_mode();
+}
+inline void ViewportToolStateResult::set_pivot_mode(::sailor::editor::v1::ViewportTransformPivotMode value) {
+  _internal_set_pivot_mode(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.ViewportToolStateResult.pivot_mode)
+}
+inline ::sailor::editor::v1::ViewportTransformPivotMode ViewportToolStateResult::_internal_pivot_mode() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return static_cast<::sailor::editor::v1::ViewportTransformPivotMode>(_impl_.pivot_mode_);
+}
+inline void ViewportToolStateResult::_internal_set_pivot_mode(::sailor::editor::v1::ViewportTransformPivotMode value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.pivot_mode_ = value;
+}
+
 // -------------------------------------------------------------------
 
 // AnimatorStateResult
@@ -31625,55 +32053,657 @@ inline void ViewportSelectionEvent::_internal_set_additive(bool value) {
 
 // -------------------------------------------------------------------
 
-// ViewportTransformEvent
+// ViewportTransformChange
 
 // string instance_id = 1;
-inline void ViewportTransformEvent::clear_instance_id() {
+inline void ViewportTransformChange::clear_instance_id() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.instance_id_.ClearToEmpty();
 }
-inline const std::string& ViewportTransformEvent::instance_id() const
+inline const std::string& ViewportTransformChange::instance_id() const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportTransformEvent.instance_id)
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportTransformChange.instance_id)
   return _internal_instance_id();
 }
 template <typename Arg_, typename... Args_>
-inline PROTOBUF_ALWAYS_INLINE void ViewportTransformEvent::set_instance_id(Arg_&& arg,
+inline PROTOBUF_ALWAYS_INLINE void ViewportTransformChange::set_instance_id(Arg_&& arg,
                                                      Args_... args) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.instance_id_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
-  // @@protoc_insertion_point(field_set:sailor.editor.v1.ViewportTransformEvent.instance_id)
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.ViewportTransformChange.instance_id)
 }
-inline std::string* ViewportTransformEvent::mutable_instance_id() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+inline std::string* ViewportTransformChange::mutable_instance_id() ABSL_ATTRIBUTE_LIFETIME_BOUND {
   std::string* _s = _internal_mutable_instance_id();
-  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ViewportTransformEvent.instance_id)
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ViewportTransformChange.instance_id)
   return _s;
 }
-inline const std::string& ViewportTransformEvent::_internal_instance_id() const {
+inline const std::string& ViewportTransformChange::_internal_instance_id() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return _impl_.instance_id_.Get();
 }
-inline void ViewportTransformEvent::_internal_set_instance_id(const std::string& value) {
+inline void ViewportTransformChange::_internal_set_instance_id(const std::string& value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.instance_id_.Set(value, GetArena());
 }
-inline std::string* ViewportTransformEvent::_internal_mutable_instance_id() {
+inline std::string* ViewportTransformChange::_internal_mutable_instance_id() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   return _impl_.instance_id_.Mutable( GetArena());
 }
-inline std::string* ViewportTransformEvent::release_instance_id() {
+inline std::string* ViewportTransformChange::release_instance_id() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  // @@protoc_insertion_point(field_release:sailor.editor.v1.ViewportTransformEvent.instance_id)
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.ViewportTransformChange.instance_id)
   return _impl_.instance_id_.Release();
 }
-inline void ViewportTransformEvent::set_allocated_instance_id(std::string* value) {
+inline void ViewportTransformChange::set_allocated_instance_id(std::string* value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.instance_id_.SetAllocated(value, GetArena());
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.instance_id_.IsDefault()) {
     _impl_.instance_id_.Set("", GetArena());
   }
-  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.ViewportTransformEvent.instance_id)
+  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.ViewportTransformChange.instance_id)
 }
+
+// uint64 managed_mutation_revision = 2;
+inline void ViewportTransformChange::clear_managed_mutation_revision() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.managed_mutation_revision_ = ::uint64_t{0u};
+}
+inline ::uint64_t ViewportTransformChange::managed_mutation_revision() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportTransformChange.managed_mutation_revision)
+  return _internal_managed_mutation_revision();
+}
+inline void ViewportTransformChange::set_managed_mutation_revision(::uint64_t value) {
+  _internal_set_managed_mutation_revision(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.ViewportTransformChange.managed_mutation_revision)
+}
+inline ::uint64_t ViewportTransformChange::_internal_managed_mutation_revision() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.managed_mutation_revision_;
+}
+inline void ViewportTransformChange::_internal_set_managed_mutation_revision(::uint64_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.managed_mutation_revision_ = value;
+}
+
+// .sailor.editor.v1.Vector4 before_position = 3;
+inline bool ViewportTransformChange::has_before_position() const {
+  bool value = (_impl_._has_bits_[0] & 0x00000001u) != 0;
+  PROTOBUF_ASSUME(!value || _impl_.before_position_ != nullptr);
+  return value;
+}
+inline void ViewportTransformChange::clear_before_position() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.before_position_ != nullptr) _impl_.before_position_->Clear();
+  _impl_._has_bits_[0] &= ~0x00000001u;
+}
+inline const ::sailor::editor::v1::Vector4& ViewportTransformChange::_internal_before_position() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  const ::sailor::editor::v1::Vector4* p = _impl_.before_position_;
+  return p != nullptr ? *p : reinterpret_cast<const ::sailor::editor::v1::Vector4&>(::sailor::editor::v1::_Vector4_default_instance_);
+}
+inline const ::sailor::editor::v1::Vector4& ViewportTransformChange::before_position() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportTransformChange.before_position)
+  return _internal_before_position();
+}
+inline void ViewportTransformChange::unsafe_arena_set_allocated_before_position(::sailor::editor::v1::Vector4* value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (GetArena() == nullptr) {
+    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.before_position_);
+  }
+  _impl_.before_position_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
+  if (value != nullptr) {
+    _impl_._has_bits_[0] |= 0x00000001u;
+  } else {
+    _impl_._has_bits_[0] &= ~0x00000001u;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ViewportTransformChange.before_position)
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::release_before_position() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+
+  _impl_._has_bits_[0] &= ~0x00000001u;
+  ::sailor::editor::v1::Vector4* released = _impl_.before_position_;
+  _impl_.before_position_ = nullptr;
+  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
+    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
+    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    if (GetArena() == nullptr) {
+      delete old;
+    }
+  } else {
+    if (GetArena() != nullptr) {
+      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    }
+  }
+  return released;
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::unsafe_arena_release_before_position() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.ViewportTransformChange.before_position)
+
+  _impl_._has_bits_[0] &= ~0x00000001u;
+  ::sailor::editor::v1::Vector4* temp = _impl_.before_position_;
+  _impl_.before_position_ = nullptr;
+  return temp;
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::_internal_mutable_before_position() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.before_position_ == nullptr) {
+    auto* p = ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::Vector4>(GetArena());
+    _impl_.before_position_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(p);
+  }
+  return _impl_.before_position_;
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::mutable_before_position() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  _impl_._has_bits_[0] |= 0x00000001u;
+  ::sailor::editor::v1::Vector4* _msg = _internal_mutable_before_position();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ViewportTransformChange.before_position)
+  return _msg;
+}
+inline void ViewportTransformChange::set_allocated_before_position(::sailor::editor::v1::Vector4* value) {
+  ::google::protobuf::Arena* message_arena = GetArena();
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (message_arena == nullptr) {
+    delete (_impl_.before_position_);
+  }
+
+  if (value != nullptr) {
+    ::google::protobuf::Arena* submessage_arena = (value)->GetArena();
+    if (message_arena != submessage_arena) {
+      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
+    }
+    _impl_._has_bits_[0] |= 0x00000001u;
+  } else {
+    _impl_._has_bits_[0] &= ~0x00000001u;
+  }
+
+  _impl_.before_position_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
+  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.ViewportTransformChange.before_position)
+}
+
+// .sailor.editor.v1.Vector4 before_rotation = 4;
+inline bool ViewportTransformChange::has_before_rotation() const {
+  bool value = (_impl_._has_bits_[0] & 0x00000002u) != 0;
+  PROTOBUF_ASSUME(!value || _impl_.before_rotation_ != nullptr);
+  return value;
+}
+inline void ViewportTransformChange::clear_before_rotation() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.before_rotation_ != nullptr) _impl_.before_rotation_->Clear();
+  _impl_._has_bits_[0] &= ~0x00000002u;
+}
+inline const ::sailor::editor::v1::Vector4& ViewportTransformChange::_internal_before_rotation() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  const ::sailor::editor::v1::Vector4* p = _impl_.before_rotation_;
+  return p != nullptr ? *p : reinterpret_cast<const ::sailor::editor::v1::Vector4&>(::sailor::editor::v1::_Vector4_default_instance_);
+}
+inline const ::sailor::editor::v1::Vector4& ViewportTransformChange::before_rotation() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportTransformChange.before_rotation)
+  return _internal_before_rotation();
+}
+inline void ViewportTransformChange::unsafe_arena_set_allocated_before_rotation(::sailor::editor::v1::Vector4* value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (GetArena() == nullptr) {
+    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.before_rotation_);
+  }
+  _impl_.before_rotation_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
+  if (value != nullptr) {
+    _impl_._has_bits_[0] |= 0x00000002u;
+  } else {
+    _impl_._has_bits_[0] &= ~0x00000002u;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ViewportTransformChange.before_rotation)
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::release_before_rotation() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+
+  _impl_._has_bits_[0] &= ~0x00000002u;
+  ::sailor::editor::v1::Vector4* released = _impl_.before_rotation_;
+  _impl_.before_rotation_ = nullptr;
+  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
+    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
+    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    if (GetArena() == nullptr) {
+      delete old;
+    }
+  } else {
+    if (GetArena() != nullptr) {
+      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    }
+  }
+  return released;
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::unsafe_arena_release_before_rotation() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.ViewportTransformChange.before_rotation)
+
+  _impl_._has_bits_[0] &= ~0x00000002u;
+  ::sailor::editor::v1::Vector4* temp = _impl_.before_rotation_;
+  _impl_.before_rotation_ = nullptr;
+  return temp;
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::_internal_mutable_before_rotation() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.before_rotation_ == nullptr) {
+    auto* p = ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::Vector4>(GetArena());
+    _impl_.before_rotation_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(p);
+  }
+  return _impl_.before_rotation_;
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::mutable_before_rotation() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  _impl_._has_bits_[0] |= 0x00000002u;
+  ::sailor::editor::v1::Vector4* _msg = _internal_mutable_before_rotation();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ViewportTransformChange.before_rotation)
+  return _msg;
+}
+inline void ViewportTransformChange::set_allocated_before_rotation(::sailor::editor::v1::Vector4* value) {
+  ::google::protobuf::Arena* message_arena = GetArena();
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (message_arena == nullptr) {
+    delete (_impl_.before_rotation_);
+  }
+
+  if (value != nullptr) {
+    ::google::protobuf::Arena* submessage_arena = (value)->GetArena();
+    if (message_arena != submessage_arena) {
+      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
+    }
+    _impl_._has_bits_[0] |= 0x00000002u;
+  } else {
+    _impl_._has_bits_[0] &= ~0x00000002u;
+  }
+
+  _impl_.before_rotation_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
+  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.ViewportTransformChange.before_rotation)
+}
+
+// .sailor.editor.v1.Vector4 before_scale = 5;
+inline bool ViewportTransformChange::has_before_scale() const {
+  bool value = (_impl_._has_bits_[0] & 0x00000004u) != 0;
+  PROTOBUF_ASSUME(!value || _impl_.before_scale_ != nullptr);
+  return value;
+}
+inline void ViewportTransformChange::clear_before_scale() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.before_scale_ != nullptr) _impl_.before_scale_->Clear();
+  _impl_._has_bits_[0] &= ~0x00000004u;
+}
+inline const ::sailor::editor::v1::Vector4& ViewportTransformChange::_internal_before_scale() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  const ::sailor::editor::v1::Vector4* p = _impl_.before_scale_;
+  return p != nullptr ? *p : reinterpret_cast<const ::sailor::editor::v1::Vector4&>(::sailor::editor::v1::_Vector4_default_instance_);
+}
+inline const ::sailor::editor::v1::Vector4& ViewportTransformChange::before_scale() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportTransformChange.before_scale)
+  return _internal_before_scale();
+}
+inline void ViewportTransformChange::unsafe_arena_set_allocated_before_scale(::sailor::editor::v1::Vector4* value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (GetArena() == nullptr) {
+    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.before_scale_);
+  }
+  _impl_.before_scale_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
+  if (value != nullptr) {
+    _impl_._has_bits_[0] |= 0x00000004u;
+  } else {
+    _impl_._has_bits_[0] &= ~0x00000004u;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ViewportTransformChange.before_scale)
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::release_before_scale() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+
+  _impl_._has_bits_[0] &= ~0x00000004u;
+  ::sailor::editor::v1::Vector4* released = _impl_.before_scale_;
+  _impl_.before_scale_ = nullptr;
+  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
+    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
+    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    if (GetArena() == nullptr) {
+      delete old;
+    }
+  } else {
+    if (GetArena() != nullptr) {
+      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    }
+  }
+  return released;
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::unsafe_arena_release_before_scale() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.ViewportTransformChange.before_scale)
+
+  _impl_._has_bits_[0] &= ~0x00000004u;
+  ::sailor::editor::v1::Vector4* temp = _impl_.before_scale_;
+  _impl_.before_scale_ = nullptr;
+  return temp;
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::_internal_mutable_before_scale() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.before_scale_ == nullptr) {
+    auto* p = ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::Vector4>(GetArena());
+    _impl_.before_scale_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(p);
+  }
+  return _impl_.before_scale_;
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::mutable_before_scale() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  _impl_._has_bits_[0] |= 0x00000004u;
+  ::sailor::editor::v1::Vector4* _msg = _internal_mutable_before_scale();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ViewportTransformChange.before_scale)
+  return _msg;
+}
+inline void ViewportTransformChange::set_allocated_before_scale(::sailor::editor::v1::Vector4* value) {
+  ::google::protobuf::Arena* message_arena = GetArena();
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (message_arena == nullptr) {
+    delete (_impl_.before_scale_);
+  }
+
+  if (value != nullptr) {
+    ::google::protobuf::Arena* submessage_arena = (value)->GetArena();
+    if (message_arena != submessage_arena) {
+      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
+    }
+    _impl_._has_bits_[0] |= 0x00000004u;
+  } else {
+    _impl_._has_bits_[0] &= ~0x00000004u;
+  }
+
+  _impl_.before_scale_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
+  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.ViewportTransformChange.before_scale)
+}
+
+// .sailor.editor.v1.Vector4 after_position = 6;
+inline bool ViewportTransformChange::has_after_position() const {
+  bool value = (_impl_._has_bits_[0] & 0x00000008u) != 0;
+  PROTOBUF_ASSUME(!value || _impl_.after_position_ != nullptr);
+  return value;
+}
+inline void ViewportTransformChange::clear_after_position() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.after_position_ != nullptr) _impl_.after_position_->Clear();
+  _impl_._has_bits_[0] &= ~0x00000008u;
+}
+inline const ::sailor::editor::v1::Vector4& ViewportTransformChange::_internal_after_position() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  const ::sailor::editor::v1::Vector4* p = _impl_.after_position_;
+  return p != nullptr ? *p : reinterpret_cast<const ::sailor::editor::v1::Vector4&>(::sailor::editor::v1::_Vector4_default_instance_);
+}
+inline const ::sailor::editor::v1::Vector4& ViewportTransformChange::after_position() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportTransformChange.after_position)
+  return _internal_after_position();
+}
+inline void ViewportTransformChange::unsafe_arena_set_allocated_after_position(::sailor::editor::v1::Vector4* value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (GetArena() == nullptr) {
+    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.after_position_);
+  }
+  _impl_.after_position_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
+  if (value != nullptr) {
+    _impl_._has_bits_[0] |= 0x00000008u;
+  } else {
+    _impl_._has_bits_[0] &= ~0x00000008u;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ViewportTransformChange.after_position)
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::release_after_position() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+
+  _impl_._has_bits_[0] &= ~0x00000008u;
+  ::sailor::editor::v1::Vector4* released = _impl_.after_position_;
+  _impl_.after_position_ = nullptr;
+  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
+    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
+    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    if (GetArena() == nullptr) {
+      delete old;
+    }
+  } else {
+    if (GetArena() != nullptr) {
+      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    }
+  }
+  return released;
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::unsafe_arena_release_after_position() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.ViewportTransformChange.after_position)
+
+  _impl_._has_bits_[0] &= ~0x00000008u;
+  ::sailor::editor::v1::Vector4* temp = _impl_.after_position_;
+  _impl_.after_position_ = nullptr;
+  return temp;
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::_internal_mutable_after_position() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.after_position_ == nullptr) {
+    auto* p = ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::Vector4>(GetArena());
+    _impl_.after_position_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(p);
+  }
+  return _impl_.after_position_;
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::mutable_after_position() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  _impl_._has_bits_[0] |= 0x00000008u;
+  ::sailor::editor::v1::Vector4* _msg = _internal_mutable_after_position();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ViewportTransformChange.after_position)
+  return _msg;
+}
+inline void ViewportTransformChange::set_allocated_after_position(::sailor::editor::v1::Vector4* value) {
+  ::google::protobuf::Arena* message_arena = GetArena();
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (message_arena == nullptr) {
+    delete (_impl_.after_position_);
+  }
+
+  if (value != nullptr) {
+    ::google::protobuf::Arena* submessage_arena = (value)->GetArena();
+    if (message_arena != submessage_arena) {
+      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
+    }
+    _impl_._has_bits_[0] |= 0x00000008u;
+  } else {
+    _impl_._has_bits_[0] &= ~0x00000008u;
+  }
+
+  _impl_.after_position_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
+  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.ViewportTransformChange.after_position)
+}
+
+// .sailor.editor.v1.Vector4 after_rotation = 7;
+inline bool ViewportTransformChange::has_after_rotation() const {
+  bool value = (_impl_._has_bits_[0] & 0x00000010u) != 0;
+  PROTOBUF_ASSUME(!value || _impl_.after_rotation_ != nullptr);
+  return value;
+}
+inline void ViewportTransformChange::clear_after_rotation() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.after_rotation_ != nullptr) _impl_.after_rotation_->Clear();
+  _impl_._has_bits_[0] &= ~0x00000010u;
+}
+inline const ::sailor::editor::v1::Vector4& ViewportTransformChange::_internal_after_rotation() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  const ::sailor::editor::v1::Vector4* p = _impl_.after_rotation_;
+  return p != nullptr ? *p : reinterpret_cast<const ::sailor::editor::v1::Vector4&>(::sailor::editor::v1::_Vector4_default_instance_);
+}
+inline const ::sailor::editor::v1::Vector4& ViewportTransformChange::after_rotation() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportTransformChange.after_rotation)
+  return _internal_after_rotation();
+}
+inline void ViewportTransformChange::unsafe_arena_set_allocated_after_rotation(::sailor::editor::v1::Vector4* value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (GetArena() == nullptr) {
+    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.after_rotation_);
+  }
+  _impl_.after_rotation_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
+  if (value != nullptr) {
+    _impl_._has_bits_[0] |= 0x00000010u;
+  } else {
+    _impl_._has_bits_[0] &= ~0x00000010u;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ViewportTransformChange.after_rotation)
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::release_after_rotation() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+
+  _impl_._has_bits_[0] &= ~0x00000010u;
+  ::sailor::editor::v1::Vector4* released = _impl_.after_rotation_;
+  _impl_.after_rotation_ = nullptr;
+  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
+    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
+    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    if (GetArena() == nullptr) {
+      delete old;
+    }
+  } else {
+    if (GetArena() != nullptr) {
+      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    }
+  }
+  return released;
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::unsafe_arena_release_after_rotation() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.ViewportTransformChange.after_rotation)
+
+  _impl_._has_bits_[0] &= ~0x00000010u;
+  ::sailor::editor::v1::Vector4* temp = _impl_.after_rotation_;
+  _impl_.after_rotation_ = nullptr;
+  return temp;
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::_internal_mutable_after_rotation() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.after_rotation_ == nullptr) {
+    auto* p = ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::Vector4>(GetArena());
+    _impl_.after_rotation_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(p);
+  }
+  return _impl_.after_rotation_;
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::mutable_after_rotation() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  _impl_._has_bits_[0] |= 0x00000010u;
+  ::sailor::editor::v1::Vector4* _msg = _internal_mutable_after_rotation();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ViewportTransformChange.after_rotation)
+  return _msg;
+}
+inline void ViewportTransformChange::set_allocated_after_rotation(::sailor::editor::v1::Vector4* value) {
+  ::google::protobuf::Arena* message_arena = GetArena();
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (message_arena == nullptr) {
+    delete (_impl_.after_rotation_);
+  }
+
+  if (value != nullptr) {
+    ::google::protobuf::Arena* submessage_arena = (value)->GetArena();
+    if (message_arena != submessage_arena) {
+      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
+    }
+    _impl_._has_bits_[0] |= 0x00000010u;
+  } else {
+    _impl_._has_bits_[0] &= ~0x00000010u;
+  }
+
+  _impl_.after_rotation_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
+  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.ViewportTransformChange.after_rotation)
+}
+
+// .sailor.editor.v1.Vector4 after_scale = 8;
+inline bool ViewportTransformChange::has_after_scale() const {
+  bool value = (_impl_._has_bits_[0] & 0x00000020u) != 0;
+  PROTOBUF_ASSUME(!value || _impl_.after_scale_ != nullptr);
+  return value;
+}
+inline void ViewportTransformChange::clear_after_scale() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.after_scale_ != nullptr) _impl_.after_scale_->Clear();
+  _impl_._has_bits_[0] &= ~0x00000020u;
+}
+inline const ::sailor::editor::v1::Vector4& ViewportTransformChange::_internal_after_scale() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  const ::sailor::editor::v1::Vector4* p = _impl_.after_scale_;
+  return p != nullptr ? *p : reinterpret_cast<const ::sailor::editor::v1::Vector4&>(::sailor::editor::v1::_Vector4_default_instance_);
+}
+inline const ::sailor::editor::v1::Vector4& ViewportTransformChange::after_scale() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportTransformChange.after_scale)
+  return _internal_after_scale();
+}
+inline void ViewportTransformChange::unsafe_arena_set_allocated_after_scale(::sailor::editor::v1::Vector4* value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (GetArena() == nullptr) {
+    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.after_scale_);
+  }
+  _impl_.after_scale_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
+  if (value != nullptr) {
+    _impl_._has_bits_[0] |= 0x00000020u;
+  } else {
+    _impl_._has_bits_[0] &= ~0x00000020u;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ViewportTransformChange.after_scale)
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::release_after_scale() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+
+  _impl_._has_bits_[0] &= ~0x00000020u;
+  ::sailor::editor::v1::Vector4* released = _impl_.after_scale_;
+  _impl_.after_scale_ = nullptr;
+  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
+    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
+    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    if (GetArena() == nullptr) {
+      delete old;
+    }
+  } else {
+    if (GetArena() != nullptr) {
+      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    }
+  }
+  return released;
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::unsafe_arena_release_after_scale() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.ViewportTransformChange.after_scale)
+
+  _impl_._has_bits_[0] &= ~0x00000020u;
+  ::sailor::editor::v1::Vector4* temp = _impl_.after_scale_;
+  _impl_.after_scale_ = nullptr;
+  return temp;
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::_internal_mutable_after_scale() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.after_scale_ == nullptr) {
+    auto* p = ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::Vector4>(GetArena());
+    _impl_.after_scale_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(p);
+  }
+  return _impl_.after_scale_;
+}
+inline ::sailor::editor::v1::Vector4* ViewportTransformChange::mutable_after_scale() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  _impl_._has_bits_[0] |= 0x00000020u;
+  ::sailor::editor::v1::Vector4* _msg = _internal_mutable_after_scale();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ViewportTransformChange.after_scale)
+  return _msg;
+}
+inline void ViewportTransformChange::set_allocated_after_scale(::sailor::editor::v1::Vector4* value) {
+  ::google::protobuf::Arena* message_arena = GetArena();
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (message_arena == nullptr) {
+    delete (_impl_.after_scale_);
+  }
+
+  if (value != nullptr) {
+    ::google::protobuf::Arena* submessage_arena = (value)->GetArena();
+    if (message_arena != submessage_arena) {
+      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
+    }
+    _impl_._has_bits_[0] |= 0x00000020u;
+  } else {
+    _impl_._has_bits_[0] &= ~0x00000020u;
+  }
+
+  _impl_.after_scale_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
+  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.ViewportTransformChange.after_scale)
+}
+
+// -------------------------------------------------------------------
+
+// ViewportTransformEvent
 
 // .sailor.editor.v1.ViewportTransformOperation operation = 2;
 inline void ViewportTransformEvent::clear_operation() {
@@ -31719,580 +32749,75 @@ inline void ViewportTransformEvent::_internal_set_space(::sailor::editor::v1::Vi
   _impl_.space_ = value;
 }
 
-// .sailor.editor.v1.Vector4 before_position = 4;
-inline bool ViewportTransformEvent::has_before_position() const {
-  bool value = (_impl_._has_bits_[0] & 0x00000001u) != 0;
-  PROTOBUF_ASSUME(!value || _impl_.before_position_ != nullptr);
-  return value;
+// repeated .sailor.editor.v1.ViewportTransformChange changes = 10;
+inline int ViewportTransformEvent::_internal_changes_size() const {
+  return _internal_changes().size();
 }
-inline void ViewportTransformEvent::clear_before_position() {
+inline int ViewportTransformEvent::changes_size() const {
+  return _internal_changes_size();
+}
+inline void ViewportTransformEvent::clear_changes() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.before_position_ != nullptr) _impl_.before_position_->Clear();
-  _impl_._has_bits_[0] &= ~0x00000001u;
+  _impl_.changes_.Clear();
 }
-inline const ::sailor::editor::v1::Vector4& ViewportTransformEvent::_internal_before_position() const {
+inline ::sailor::editor::v1::ViewportTransformChange* ViewportTransformEvent::mutable_changes(int index)
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ViewportTransformEvent.changes)
+  return _internal_mutable_changes()->Mutable(index);
+}
+inline ::google::protobuf::RepeatedPtrField<::sailor::editor::v1::ViewportTransformChange>* ViewportTransformEvent::mutable_changes()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_mutable_list:sailor.editor.v1.ViewportTransformEvent.changes)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _internal_mutable_changes();
+}
+inline const ::sailor::editor::v1::ViewportTransformChange& ViewportTransformEvent::changes(int index) const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportTransformEvent.changes)
+  return _internal_changes().Get(index);
+}
+inline ::sailor::editor::v1::ViewportTransformChange* ViewportTransformEvent::add_changes() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  ::sailor::editor::v1::ViewportTransformChange* _add = _internal_mutable_changes()->Add();
+  // @@protoc_insertion_point(field_add:sailor.editor.v1.ViewportTransformEvent.changes)
+  return _add;
+}
+inline const ::google::protobuf::RepeatedPtrField<::sailor::editor::v1::ViewportTransformChange>& ViewportTransformEvent::changes() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:sailor.editor.v1.ViewportTransformEvent.changes)
+  return _internal_changes();
+}
+inline const ::google::protobuf::RepeatedPtrField<::sailor::editor::v1::ViewportTransformChange>&
+ViewportTransformEvent::_internal_changes() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
-  const ::sailor::editor::v1::Vector4* p = _impl_.before_position_;
-  return p != nullptr ? *p : reinterpret_cast<const ::sailor::editor::v1::Vector4&>(::sailor::editor::v1::_Vector4_default_instance_);
+  return _impl_.changes_;
 }
-inline const ::sailor::editor::v1::Vector4& ViewportTransformEvent::before_position() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportTransformEvent.before_position)
-  return _internal_before_position();
-}
-inline void ViewportTransformEvent::unsafe_arena_set_allocated_before_position(::sailor::editor::v1::Vector4* value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (GetArena() == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.before_position_);
-  }
-  _impl_.before_position_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
-  if (value != nullptr) {
-    _impl_._has_bits_[0] |= 0x00000001u;
-  } else {
-    _impl_._has_bits_[0] &= ~0x00000001u;
-  }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ViewportTransformEvent.before_position)
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::release_before_position() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-
-  _impl_._has_bits_[0] &= ~0x00000001u;
-  ::sailor::editor::v1::Vector4* released = _impl_.before_position_;
-  _impl_.before_position_ = nullptr;
-  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
-    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
-    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    if (GetArena() == nullptr) {
-      delete old;
-    }
-  } else {
-    if (GetArena() != nullptr) {
-      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    }
-  }
-  return released;
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::unsafe_arena_release_before_position() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  // @@protoc_insertion_point(field_release:sailor.editor.v1.ViewportTransformEvent.before_position)
-
-  _impl_._has_bits_[0] &= ~0x00000001u;
-  ::sailor::editor::v1::Vector4* temp = _impl_.before_position_;
-  _impl_.before_position_ = nullptr;
-  return temp;
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::_internal_mutable_before_position() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.before_position_ == nullptr) {
-    auto* p = ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::Vector4>(GetArena());
-    _impl_.before_position_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(p);
-  }
-  return _impl_.before_position_;
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::mutable_before_position() ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  _impl_._has_bits_[0] |= 0x00000001u;
-  ::sailor::editor::v1::Vector4* _msg = _internal_mutable_before_position();
-  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ViewportTransformEvent.before_position)
-  return _msg;
-}
-inline void ViewportTransformEvent::set_allocated_before_position(::sailor::editor::v1::Vector4* value) {
-  ::google::protobuf::Arena* message_arena = GetArena();
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (message_arena == nullptr) {
-    delete (_impl_.before_position_);
-  }
-
-  if (value != nullptr) {
-    ::google::protobuf::Arena* submessage_arena = (value)->GetArena();
-    if (message_arena != submessage_arena) {
-      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
-    }
-    _impl_._has_bits_[0] |= 0x00000001u;
-  } else {
-    _impl_._has_bits_[0] &= ~0x00000001u;
-  }
-
-  _impl_.before_position_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
-  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.ViewportTransformEvent.before_position)
-}
-
-// .sailor.editor.v1.Vector4 before_rotation = 5;
-inline bool ViewportTransformEvent::has_before_rotation() const {
-  bool value = (_impl_._has_bits_[0] & 0x00000002u) != 0;
-  PROTOBUF_ASSUME(!value || _impl_.before_rotation_ != nullptr);
-  return value;
-}
-inline void ViewportTransformEvent::clear_before_rotation() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.before_rotation_ != nullptr) _impl_.before_rotation_->Clear();
-  _impl_._has_bits_[0] &= ~0x00000002u;
-}
-inline const ::sailor::editor::v1::Vector4& ViewportTransformEvent::_internal_before_rotation() const {
+inline ::google::protobuf::RepeatedPtrField<::sailor::editor::v1::ViewportTransformChange>*
+ViewportTransformEvent::_internal_mutable_changes() {
   ::google::protobuf::internal::TSanRead(&_impl_);
-  const ::sailor::editor::v1::Vector4* p = _impl_.before_rotation_;
-  return p != nullptr ? *p : reinterpret_cast<const ::sailor::editor::v1::Vector4&>(::sailor::editor::v1::_Vector4_default_instance_);
-}
-inline const ::sailor::editor::v1::Vector4& ViewportTransformEvent::before_rotation() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportTransformEvent.before_rotation)
-  return _internal_before_rotation();
-}
-inline void ViewportTransformEvent::unsafe_arena_set_allocated_before_rotation(::sailor::editor::v1::Vector4* value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (GetArena() == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.before_rotation_);
-  }
-  _impl_.before_rotation_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
-  if (value != nullptr) {
-    _impl_._has_bits_[0] |= 0x00000002u;
-  } else {
-    _impl_._has_bits_[0] &= ~0x00000002u;
-  }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ViewportTransformEvent.before_rotation)
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::release_before_rotation() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-
-  _impl_._has_bits_[0] &= ~0x00000002u;
-  ::sailor::editor::v1::Vector4* released = _impl_.before_rotation_;
-  _impl_.before_rotation_ = nullptr;
-  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
-    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
-    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    if (GetArena() == nullptr) {
-      delete old;
-    }
-  } else {
-    if (GetArena() != nullptr) {
-      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    }
-  }
-  return released;
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::unsafe_arena_release_before_rotation() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  // @@protoc_insertion_point(field_release:sailor.editor.v1.ViewportTransformEvent.before_rotation)
-
-  _impl_._has_bits_[0] &= ~0x00000002u;
-  ::sailor::editor::v1::Vector4* temp = _impl_.before_rotation_;
-  _impl_.before_rotation_ = nullptr;
-  return temp;
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::_internal_mutable_before_rotation() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.before_rotation_ == nullptr) {
-    auto* p = ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::Vector4>(GetArena());
-    _impl_.before_rotation_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(p);
-  }
-  return _impl_.before_rotation_;
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::mutable_before_rotation() ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  _impl_._has_bits_[0] |= 0x00000002u;
-  ::sailor::editor::v1::Vector4* _msg = _internal_mutable_before_rotation();
-  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ViewportTransformEvent.before_rotation)
-  return _msg;
-}
-inline void ViewportTransformEvent::set_allocated_before_rotation(::sailor::editor::v1::Vector4* value) {
-  ::google::protobuf::Arena* message_arena = GetArena();
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (message_arena == nullptr) {
-    delete (_impl_.before_rotation_);
-  }
-
-  if (value != nullptr) {
-    ::google::protobuf::Arena* submessage_arena = (value)->GetArena();
-    if (message_arena != submessage_arena) {
-      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
-    }
-    _impl_._has_bits_[0] |= 0x00000002u;
-  } else {
-    _impl_._has_bits_[0] &= ~0x00000002u;
-  }
-
-  _impl_.before_rotation_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
-  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.ViewportTransformEvent.before_rotation)
+  return &_impl_.changes_;
 }
 
-// .sailor.editor.v1.Vector4 before_scale = 6;
-inline bool ViewportTransformEvent::has_before_scale() const {
-  bool value = (_impl_._has_bits_[0] & 0x00000004u) != 0;
-  PROTOBUF_ASSUME(!value || _impl_.before_scale_ != nullptr);
-  return value;
-}
-inline void ViewportTransformEvent::clear_before_scale() {
+// .sailor.editor.v1.ViewportTransformPivotMode pivot_mode = 11;
+inline void ViewportTransformEvent::clear_pivot_mode() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.before_scale_ != nullptr) _impl_.before_scale_->Clear();
-  _impl_._has_bits_[0] &= ~0x00000004u;
+  _impl_.pivot_mode_ = 0;
 }
-inline const ::sailor::editor::v1::Vector4& ViewportTransformEvent::_internal_before_scale() const {
+inline ::sailor::editor::v1::ViewportTransformPivotMode ViewportTransformEvent::pivot_mode() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportTransformEvent.pivot_mode)
+  return _internal_pivot_mode();
+}
+inline void ViewportTransformEvent::set_pivot_mode(::sailor::editor::v1::ViewportTransformPivotMode value) {
+  _internal_set_pivot_mode(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.ViewportTransformEvent.pivot_mode)
+}
+inline ::sailor::editor::v1::ViewportTransformPivotMode ViewportTransformEvent::_internal_pivot_mode() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
-  const ::sailor::editor::v1::Vector4* p = _impl_.before_scale_;
-  return p != nullptr ? *p : reinterpret_cast<const ::sailor::editor::v1::Vector4&>(::sailor::editor::v1::_Vector4_default_instance_);
+  return static_cast<::sailor::editor::v1::ViewportTransformPivotMode>(_impl_.pivot_mode_);
 }
-inline const ::sailor::editor::v1::Vector4& ViewportTransformEvent::before_scale() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportTransformEvent.before_scale)
-  return _internal_before_scale();
-}
-inline void ViewportTransformEvent::unsafe_arena_set_allocated_before_scale(::sailor::editor::v1::Vector4* value) {
+inline void ViewportTransformEvent::_internal_set_pivot_mode(::sailor::editor::v1::ViewportTransformPivotMode value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (GetArena() == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.before_scale_);
-  }
-  _impl_.before_scale_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
-  if (value != nullptr) {
-    _impl_._has_bits_[0] |= 0x00000004u;
-  } else {
-    _impl_._has_bits_[0] &= ~0x00000004u;
-  }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ViewportTransformEvent.before_scale)
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::release_before_scale() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-
-  _impl_._has_bits_[0] &= ~0x00000004u;
-  ::sailor::editor::v1::Vector4* released = _impl_.before_scale_;
-  _impl_.before_scale_ = nullptr;
-  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
-    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
-    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    if (GetArena() == nullptr) {
-      delete old;
-    }
-  } else {
-    if (GetArena() != nullptr) {
-      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    }
-  }
-  return released;
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::unsafe_arena_release_before_scale() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  // @@protoc_insertion_point(field_release:sailor.editor.v1.ViewportTransformEvent.before_scale)
-
-  _impl_._has_bits_[0] &= ~0x00000004u;
-  ::sailor::editor::v1::Vector4* temp = _impl_.before_scale_;
-  _impl_.before_scale_ = nullptr;
-  return temp;
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::_internal_mutable_before_scale() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.before_scale_ == nullptr) {
-    auto* p = ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::Vector4>(GetArena());
-    _impl_.before_scale_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(p);
-  }
-  return _impl_.before_scale_;
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::mutable_before_scale() ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  _impl_._has_bits_[0] |= 0x00000004u;
-  ::sailor::editor::v1::Vector4* _msg = _internal_mutable_before_scale();
-  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ViewportTransformEvent.before_scale)
-  return _msg;
-}
-inline void ViewportTransformEvent::set_allocated_before_scale(::sailor::editor::v1::Vector4* value) {
-  ::google::protobuf::Arena* message_arena = GetArena();
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (message_arena == nullptr) {
-    delete (_impl_.before_scale_);
-  }
-
-  if (value != nullptr) {
-    ::google::protobuf::Arena* submessage_arena = (value)->GetArena();
-    if (message_arena != submessage_arena) {
-      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
-    }
-    _impl_._has_bits_[0] |= 0x00000004u;
-  } else {
-    _impl_._has_bits_[0] &= ~0x00000004u;
-  }
-
-  _impl_.before_scale_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
-  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.ViewportTransformEvent.before_scale)
-}
-
-// .sailor.editor.v1.Vector4 after_position = 7;
-inline bool ViewportTransformEvent::has_after_position() const {
-  bool value = (_impl_._has_bits_[0] & 0x00000008u) != 0;
-  PROTOBUF_ASSUME(!value || _impl_.after_position_ != nullptr);
-  return value;
-}
-inline void ViewportTransformEvent::clear_after_position() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.after_position_ != nullptr) _impl_.after_position_->Clear();
-  _impl_._has_bits_[0] &= ~0x00000008u;
-}
-inline const ::sailor::editor::v1::Vector4& ViewportTransformEvent::_internal_after_position() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  const ::sailor::editor::v1::Vector4* p = _impl_.after_position_;
-  return p != nullptr ? *p : reinterpret_cast<const ::sailor::editor::v1::Vector4&>(::sailor::editor::v1::_Vector4_default_instance_);
-}
-inline const ::sailor::editor::v1::Vector4& ViewportTransformEvent::after_position() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportTransformEvent.after_position)
-  return _internal_after_position();
-}
-inline void ViewportTransformEvent::unsafe_arena_set_allocated_after_position(::sailor::editor::v1::Vector4* value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (GetArena() == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.after_position_);
-  }
-  _impl_.after_position_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
-  if (value != nullptr) {
-    _impl_._has_bits_[0] |= 0x00000008u;
-  } else {
-    _impl_._has_bits_[0] &= ~0x00000008u;
-  }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ViewportTransformEvent.after_position)
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::release_after_position() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-
-  _impl_._has_bits_[0] &= ~0x00000008u;
-  ::sailor::editor::v1::Vector4* released = _impl_.after_position_;
-  _impl_.after_position_ = nullptr;
-  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
-    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
-    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    if (GetArena() == nullptr) {
-      delete old;
-    }
-  } else {
-    if (GetArena() != nullptr) {
-      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    }
-  }
-  return released;
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::unsafe_arena_release_after_position() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  // @@protoc_insertion_point(field_release:sailor.editor.v1.ViewportTransformEvent.after_position)
-
-  _impl_._has_bits_[0] &= ~0x00000008u;
-  ::sailor::editor::v1::Vector4* temp = _impl_.after_position_;
-  _impl_.after_position_ = nullptr;
-  return temp;
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::_internal_mutable_after_position() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.after_position_ == nullptr) {
-    auto* p = ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::Vector4>(GetArena());
-    _impl_.after_position_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(p);
-  }
-  return _impl_.after_position_;
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::mutable_after_position() ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  _impl_._has_bits_[0] |= 0x00000008u;
-  ::sailor::editor::v1::Vector4* _msg = _internal_mutable_after_position();
-  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ViewportTransformEvent.after_position)
-  return _msg;
-}
-inline void ViewportTransformEvent::set_allocated_after_position(::sailor::editor::v1::Vector4* value) {
-  ::google::protobuf::Arena* message_arena = GetArena();
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (message_arena == nullptr) {
-    delete (_impl_.after_position_);
-  }
-
-  if (value != nullptr) {
-    ::google::protobuf::Arena* submessage_arena = (value)->GetArena();
-    if (message_arena != submessage_arena) {
-      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
-    }
-    _impl_._has_bits_[0] |= 0x00000008u;
-  } else {
-    _impl_._has_bits_[0] &= ~0x00000008u;
-  }
-
-  _impl_.after_position_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
-  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.ViewportTransformEvent.after_position)
-}
-
-// .sailor.editor.v1.Vector4 after_rotation = 8;
-inline bool ViewportTransformEvent::has_after_rotation() const {
-  bool value = (_impl_._has_bits_[0] & 0x00000010u) != 0;
-  PROTOBUF_ASSUME(!value || _impl_.after_rotation_ != nullptr);
-  return value;
-}
-inline void ViewportTransformEvent::clear_after_rotation() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.after_rotation_ != nullptr) _impl_.after_rotation_->Clear();
-  _impl_._has_bits_[0] &= ~0x00000010u;
-}
-inline const ::sailor::editor::v1::Vector4& ViewportTransformEvent::_internal_after_rotation() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  const ::sailor::editor::v1::Vector4* p = _impl_.after_rotation_;
-  return p != nullptr ? *p : reinterpret_cast<const ::sailor::editor::v1::Vector4&>(::sailor::editor::v1::_Vector4_default_instance_);
-}
-inline const ::sailor::editor::v1::Vector4& ViewportTransformEvent::after_rotation() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportTransformEvent.after_rotation)
-  return _internal_after_rotation();
-}
-inline void ViewportTransformEvent::unsafe_arena_set_allocated_after_rotation(::sailor::editor::v1::Vector4* value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (GetArena() == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.after_rotation_);
-  }
-  _impl_.after_rotation_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
-  if (value != nullptr) {
-    _impl_._has_bits_[0] |= 0x00000010u;
-  } else {
-    _impl_._has_bits_[0] &= ~0x00000010u;
-  }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ViewportTransformEvent.after_rotation)
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::release_after_rotation() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-
-  _impl_._has_bits_[0] &= ~0x00000010u;
-  ::sailor::editor::v1::Vector4* released = _impl_.after_rotation_;
-  _impl_.after_rotation_ = nullptr;
-  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
-    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
-    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    if (GetArena() == nullptr) {
-      delete old;
-    }
-  } else {
-    if (GetArena() != nullptr) {
-      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    }
-  }
-  return released;
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::unsafe_arena_release_after_rotation() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  // @@protoc_insertion_point(field_release:sailor.editor.v1.ViewportTransformEvent.after_rotation)
-
-  _impl_._has_bits_[0] &= ~0x00000010u;
-  ::sailor::editor::v1::Vector4* temp = _impl_.after_rotation_;
-  _impl_.after_rotation_ = nullptr;
-  return temp;
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::_internal_mutable_after_rotation() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.after_rotation_ == nullptr) {
-    auto* p = ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::Vector4>(GetArena());
-    _impl_.after_rotation_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(p);
-  }
-  return _impl_.after_rotation_;
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::mutable_after_rotation() ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  _impl_._has_bits_[0] |= 0x00000010u;
-  ::sailor::editor::v1::Vector4* _msg = _internal_mutable_after_rotation();
-  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ViewportTransformEvent.after_rotation)
-  return _msg;
-}
-inline void ViewportTransformEvent::set_allocated_after_rotation(::sailor::editor::v1::Vector4* value) {
-  ::google::protobuf::Arena* message_arena = GetArena();
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (message_arena == nullptr) {
-    delete (_impl_.after_rotation_);
-  }
-
-  if (value != nullptr) {
-    ::google::protobuf::Arena* submessage_arena = (value)->GetArena();
-    if (message_arena != submessage_arena) {
-      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
-    }
-    _impl_._has_bits_[0] |= 0x00000010u;
-  } else {
-    _impl_._has_bits_[0] &= ~0x00000010u;
-  }
-
-  _impl_.after_rotation_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
-  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.ViewportTransformEvent.after_rotation)
-}
-
-// .sailor.editor.v1.Vector4 after_scale = 9;
-inline bool ViewportTransformEvent::has_after_scale() const {
-  bool value = (_impl_._has_bits_[0] & 0x00000020u) != 0;
-  PROTOBUF_ASSUME(!value || _impl_.after_scale_ != nullptr);
-  return value;
-}
-inline void ViewportTransformEvent::clear_after_scale() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.after_scale_ != nullptr) _impl_.after_scale_->Clear();
-  _impl_._has_bits_[0] &= ~0x00000020u;
-}
-inline const ::sailor::editor::v1::Vector4& ViewportTransformEvent::_internal_after_scale() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  const ::sailor::editor::v1::Vector4* p = _impl_.after_scale_;
-  return p != nullptr ? *p : reinterpret_cast<const ::sailor::editor::v1::Vector4&>(::sailor::editor::v1::_Vector4_default_instance_);
-}
-inline const ::sailor::editor::v1::Vector4& ViewportTransformEvent::after_scale() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportTransformEvent.after_scale)
-  return _internal_after_scale();
-}
-inline void ViewportTransformEvent::unsafe_arena_set_allocated_after_scale(::sailor::editor::v1::Vector4* value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (GetArena() == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.after_scale_);
-  }
-  _impl_.after_scale_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
-  if (value != nullptr) {
-    _impl_._has_bits_[0] |= 0x00000020u;
-  } else {
-    _impl_._has_bits_[0] &= ~0x00000020u;
-  }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ViewportTransformEvent.after_scale)
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::release_after_scale() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-
-  _impl_._has_bits_[0] &= ~0x00000020u;
-  ::sailor::editor::v1::Vector4* released = _impl_.after_scale_;
-  _impl_.after_scale_ = nullptr;
-  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
-    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
-    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    if (GetArena() == nullptr) {
-      delete old;
-    }
-  } else {
-    if (GetArena() != nullptr) {
-      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    }
-  }
-  return released;
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::unsafe_arena_release_after_scale() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  // @@protoc_insertion_point(field_release:sailor.editor.v1.ViewportTransformEvent.after_scale)
-
-  _impl_._has_bits_[0] &= ~0x00000020u;
-  ::sailor::editor::v1::Vector4* temp = _impl_.after_scale_;
-  _impl_.after_scale_ = nullptr;
-  return temp;
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::_internal_mutable_after_scale() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.after_scale_ == nullptr) {
-    auto* p = ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::Vector4>(GetArena());
-    _impl_.after_scale_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(p);
-  }
-  return _impl_.after_scale_;
-}
-inline ::sailor::editor::v1::Vector4* ViewportTransformEvent::mutable_after_scale() ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  _impl_._has_bits_[0] |= 0x00000020u;
-  ::sailor::editor::v1::Vector4* _msg = _internal_mutable_after_scale();
-  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ViewportTransformEvent.after_scale)
-  return _msg;
-}
-inline void ViewportTransformEvent::set_allocated_after_scale(::sailor::editor::v1::Vector4* value) {
-  ::google::protobuf::Arena* message_arena = GetArena();
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (message_arena == nullptr) {
-    delete (_impl_.after_scale_);
-  }
-
-  if (value != nullptr) {
-    ::google::protobuf::Arena* submessage_arena = (value)->GetArena();
-    if (message_arena != submessage_arena) {
-      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
-    }
-    _impl_._has_bits_[0] |= 0x00000020u;
-  } else {
-    _impl_._has_bits_[0] &= ~0x00000020u;
-  }
-
-  _impl_.after_scale_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
-  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.ViewportTransformEvent.after_scale)
+  _impl_.pivot_mode_ = value;
 }
 
 // -------------------------------------------------------------------
@@ -34085,6 +34610,12 @@ struct is_proto_enum<::sailor::editor::v1::ViewportTransformSpace> : std::true_t
 template <>
 inline const EnumDescriptor* GetEnumDescriptor<::sailor::editor::v1::ViewportTransformSpace>() {
   return ::sailor::editor::v1::ViewportTransformSpace_descriptor();
+}
+template <>
+struct is_proto_enum<::sailor::editor::v1::ViewportTransformPivotMode> : std::true_type {};
+template <>
+inline const EnumDescriptor* GetEnumDescriptor<::sailor::editor::v1::ViewportTransformPivotMode>() {
+  return ::sailor::editor::v1::ViewportTransformPivotMode_descriptor();
 }
 template <>
 struct is_proto_enum<::sailor::editor::v1::EditorStatsMode> : std::true_type {};

@@ -56,7 +56,8 @@ public sealed class SceneViewportInteractionTests
     {
         var current = new SceneViewportToolState(
             EditorViewportTransformOperation.Scale,
-            EditorViewportTransformSpace.World);
+            EditorViewportTransformSpace.World,
+            EditorViewportTransformPivotMode.Center);
 
         Assert.True(SceneViewportToolShortcuts.TryApply(
             shortcut,
@@ -66,6 +67,7 @@ public sealed class SceneViewportInteractionTests
             out var next));
         Assert.Equal(expectedOperation, next.Operation);
         Assert.Equal(current.Space, next.Space);
+        Assert.Equal(current.PivotMode, next.PivotMode);
         Assert.False(SceneViewportToolShortcuts.TryApply(
             shortcut,
             isPressed: true,
@@ -80,7 +82,8 @@ public sealed class SceneViewportInteractionTests
     {
         var world = new SceneViewportToolState(
             EditorViewportTransformOperation.Translate,
-            EditorViewportTransformSpace.World);
+            EditorViewportTransformSpace.World,
+            EditorViewportTransformPivotMode.Center);
 
         Assert.True(SceneViewportToolShortcuts.TryApply(
             'T',
@@ -89,6 +92,8 @@ public sealed class SceneViewportInteractionTests
             world,
             out var local));
         Assert.Equal(EditorViewportTransformSpace.Local, local.Space);
+        Assert.Equal(world.PivotMode, local.PivotMode);
+        Assert.Equal(world.Operation, local.Operation);
         Assert.True(SceneViewportToolShortcuts.TryApply(
             'T',
             isPressed: true,
@@ -96,6 +101,35 @@ public sealed class SceneViewportInteractionTests
             local,
             out var restored));
         Assert.Equal(EditorViewportTransformSpace.World, restored.Space);
+        Assert.Equal(world, restored);
+    }
+
+    [Fact]
+    public void ToolState_DefaultsToSelectWorldAndPivot()
+    {
+        var state = SceneViewportToolShortcuts.Default;
+
+        Assert.Equal(EditorViewportTransformOperation.Select, state.Operation);
+        Assert.Equal(EditorViewportTransformSpace.World, state.Space);
+        Assert.Equal(EditorViewportTransformPivotMode.Pivot, state.PivotMode);
+    }
+
+    [Theory]
+    [InlineData(EditorViewportTransformSpace.Local)]
+    [InlineData(EditorViewportTransformSpace.World)]
+    public void ToolState_TogglesPivotWithoutChangingOperationOrSpace(
+        EditorViewportTransformSpace space)
+    {
+        var pivot = new SceneViewportToolState(
+            EditorViewportTransformOperation.Rotate,
+            space);
+
+        var center = pivot.TogglePivotMode();
+
+        Assert.Equal(EditorViewportTransformPivotMode.Center, center.PivotMode);
+        Assert.Equal(pivot.Space, center.Space);
+        Assert.Equal(pivot.Operation, center.Operation);
+        Assert.Equal(pivot, center.TogglePivotMode());
     }
 
     [Fact]

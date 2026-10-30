@@ -1,6 +1,7 @@
 #include "EditorEngineProtocolInternal.h"
 
 #include "Memory/UniquePtr.hpp"
+#include "Math/Math.h"
 #include "Editor/EditorRuntimeBridge.h"
 #include "Editor/EditorViewportEvent.h"
 #include "Editor/MaterialPreview.h"
@@ -21,6 +22,7 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 	using sailor::editor::v1::ViewportEvent;
 	using sailor::editor::v1::ViewportTransformOperation;
 	using sailor::editor::v1::ViewportTransformSpace;
+	using sailor::editor::v1::ViewportTransformPivotMode;
 
 	static bool TryGetSceneViewRenderMode(EditorRenderMode protocolMode, Sailor::RHI::ESceneViewRenderMode& outMode)
 	{
@@ -203,19 +205,26 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			else if constexpr (std::is_same_v<T, EditorViewport::TransformEvent>)
 			{
 				auto* transform = output.mutable_transform();
-				transform->set_instance_id(value.m_instanceId.ToString());
 				transform->set_operation(ToProtocolOperation(value.m_operation));
 				transform->set_space(ToProtocolSpace(value.m_space));
-				const auto& beforeRotation = value.m_before.GetRotation();
-				const auto& afterRotation = value.m_after.GetRotation();
-				WriteVector4(*transform->mutable_before_position(), value.m_before.m_position);
-				WriteVector4(*transform->mutable_before_rotation(),
-					{ beforeRotation.x, beforeRotation.y, beforeRotation.z, beforeRotation.w });
-				WriteVector4(*transform->mutable_before_scale(), value.m_before.m_scale);
-				WriteVector4(*transform->mutable_after_position(), value.m_after.m_position);
-				WriteVector4(*transform->mutable_after_rotation(),
-					{ afterRotation.x, afterRotation.y, afterRotation.z, afterRotation.w });
-				WriteVector4(*transform->mutable_after_scale(), value.m_after.m_scale);
+				transform->set_pivot_mode(value.m_pivotMode == EditorViewport::ETransformPivotMode::Pivot
+					? sailor::editor::v1::VIEWPORT_TRANSFORM_PIVOT_MODE_PIVOT : sailor::editor::v1::VIEWPORT_TRANSFORM_PIVOT_MODE_CENTER);
+				for (const auto& change : value.m_changes)
+				{
+					auto* outputChange = transform->add_changes();
+					outputChange->set_instance_id(change.m_instanceId.ToString());
+					outputChange->set_managed_mutation_revision(change.m_managedMutationRevision);
+					const auto& beforeRotation = change.m_before.GetRotation();
+					const auto& afterRotation = change.m_after.GetRotation();
+					WriteVector4(*outputChange->mutable_before_position(), change.m_before.m_position);
+					WriteVector4(*outputChange->mutable_before_rotation(),
+						{ beforeRotation.x, beforeRotation.y, beforeRotation.z, beforeRotation.w });
+					WriteVector4(*outputChange->mutable_before_scale(), change.m_before.m_scale);
+					WriteVector4(*outputChange->mutable_after_position(), change.m_after.m_position);
+					WriteVector4(*outputChange->mutable_after_rotation(),
+						{ afterRotation.x, afterRotation.y, afterRotation.z, afterRotation.w });
+					WriteVector4(*outputChange->mutable_after_scale(), change.m_after.m_scale);
+				}
 			}
 		}, event.m_payload);
 	}
@@ -279,7 +288,8 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 
 		uint32_t operation = 0;
 		uint32_t space = 0;
-		if (!Sailor::EditorRuntime::GetEditorViewportToolState(operation, space))
+		uint32_t pivotMode = 0;
+		if (!Sailor::EditorRuntime::GetEditorViewportToolState(operation, space, pivotMode))
 		{
 			SetError(response, "Failed to read the viewport tool state.");
 			return;
@@ -289,6 +299,42 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 		auto* result = response.mutable_viewport_tool_state_result();
 		result->set_operation(static_cast<ViewportTransformOperation>(operation));
 		result->set_space(static_cast<ViewportTransformSpace>(space));
+		result->set_pivot_mode(static_cast<ViewportTransformPivotMode>(pivotMode));
+	}
+
+	static bool TryReadTransform(const Vector4& position, const Vector4& rotation, const Vector4& scale, Math::Transform& outValue)
+	{
+		const glm::vec4 p(position.x(), position.y(), position.z(), position.w());
+		const glm::vec4 q(rotation.x(), rotation.y(), rotation.z(), rotation.w());
+		const glm::vec4 s(scale.x(), scale.y(), scale.z(), scale.w());
+		if (!Math::AllFinite(p) || !Math::AllFinite(q) || !Math::AllFinite(s) || glm::length(q) <= 0.000001f)
+		{
+			return false;
+		}
+		outValue = Math::Transform(p, glm::quat(q.w, q.x, q.y, q.z), s);
+		return true;
+	}
+
+	static void DispatchRestoreViewportTransform(const sailor::editor::v1::ViewportTransformEvent& request, ProtocolResponse& response)
+	{
+		TVector<EditorViewport::TransformChange> changes{};
+		TVector<InstanceId> ids{};
+		for (const auto& value : request.changes())
+		{
+			EditorViewport::TransformChange change{};
+			change.m_instanceId = InstanceId(value.instance_id());
+			change.m_managedMutationRevision = value.managed_mutation_revision();
+			if (!change.m_instanceId.IsGameObjectId() || ids.Contains(change.m_instanceId) ||
+				!TryReadTransform(value.before_position(), value.before_rotation(), value.before_scale(), change.m_before) ||
+				!TryReadTransform(value.after_position(), value.after_rotation(), value.after_scale(), change.m_after))
+			{
+				SetError(response, "The viewport transform rollback contains invalid or duplicate changes.");
+				return;
+			}
+			ids.Add(change.m_instanceId);
+			changes.Add(std::move(change));
+		}
+		SetBoolResult(response, !changes.IsEmpty() && Sailor::EditorRuntime::RestoreEditorViewportTransform(std::move(changes)));
 	}
 
 	bool DispatchViewportCommand(const ProtocolRequest& request,
@@ -477,13 +523,17 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			break;
 		}
 
+		case ProtocolRequest::kRestoreViewportTransform:
+			DispatchRestoreViewportTransform(request.restore_viewport_transform(), response);
+			break;
+
 		case ProtocolRequest::kSetViewportToolState:
 		{
 			const auto& state = request.set_viewport_tool_state();
 			SetBoolResult(response,
 				state.viewport_id() != 0 &&
 					Sailor::EditorRuntime::SetEditorViewportToolState(
-						static_cast<uint32_t>(state.operation()), static_cast<uint32_t>(state.space())));
+						static_cast<uint32_t>(state.operation()), static_cast<uint32_t>(state.space()), static_cast<uint32_t>(state.pivot_mode())));
 			break;
 		}
 

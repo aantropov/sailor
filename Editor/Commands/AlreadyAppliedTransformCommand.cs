@@ -148,3 +148,50 @@ public sealed class AlreadyAppliedTransformCommand : IUndoableEditorCommand
             ? CommandResult.Success()
             : CommandResult.Failure("The viewport transform could not be committed to the engine.");
 }
+
+public sealed class AlreadyAppliedTransformGroupCommand : IUndoableEditorCommand
+{
+    readonly IUndoableEditorCommand command;
+    Func<CancellationToken, Task<bool>>? validateInitialState;
+
+    public AlreadyAppliedTransformGroupCommand(
+        string description,
+        IReadOnlyList<AlreadyAppliedTransformCommand> changes,
+        Func<CancellationToken, Task<bool>> validateInitialState)
+    {
+        ArgumentNullException.ThrowIfNull(validateInitialState);
+        command = (IUndoableEditorCommand)EditorCommandBatch.Create(description, changes);
+        this.validateInitialState = validateInitialState;
+    }
+
+    public string Name => nameof(AlreadyAppliedTransformGroupCommand);
+    public string Description => command.Description;
+    public IHistoryMergePolicy? MergePolicy => null;
+    public bool CanExecute(ActionContext context) => command.CanExecute(context);
+
+    public async Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default)
+    {
+        if (validateInitialState is null)
+        {
+            return await command.ExecuteAsync(context, cancellationToken);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!await validateInitialState(cancellationToken))
+        {
+            return CommandResult.Failure("The completed viewport group transform was superseded by a newer mutation.");
+        }
+
+        // Native already applied the whole group. Finish its local projection
+        // before cancellation can trigger compensation of only part of it.
+        var result = await command.ExecuteAsync(context, CancellationToken.None);
+        if (result.Succeeded)
+        {
+            validateInitialState = null;
+        }
+        return result;
+    }
+
+    public ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
+        => command.UndoAsync(context, cancellationToken);
+}
