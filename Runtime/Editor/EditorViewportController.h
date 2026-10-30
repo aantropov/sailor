@@ -81,6 +81,7 @@ namespace Sailor
 			SAILOR_API void Reset();
 			SAILOR_API void CancelPointerInteraction();
 			SAILOR_API void CancelInteraction(World& world);
+			SAILOR_API void SetManagedSelection(const TVector<InstanceId>& selection);
 			SAILOR_API bool PullEvent(Event& outEvent);
 			SAILOR_API bool QueueAssetDropEvent(
 				std::string_view fileId,
@@ -111,7 +112,8 @@ namespace Sailor
 			void CompleteActiveTransform(World& world);
 			void TickTransformGizmo(World& world, TObjectPtr<GameObject> selectedObject);
 			void TickSelection(World& world);
-			void QueueSelectionEvent(const InstanceId& selectedInstanceId);
+			void ApplySelectionPick(World& world, const InstanceId& pickedInstanceId, bool bAdditive);
+			void QueueSelectionEvent(const InstanceId& selectedInstanceId, bool bAdditive);
 			void QueueTransformEvent(
 				const InstanceId& instanceId,
 				const Math::Transform& beforeTransform,
@@ -125,6 +127,7 @@ namespace Sailor
 			bool m_wasUsingGizmo = false;
 			bool m_gizmoSubmittedThisFrame = false;
 			bool m_selectionClickArmed = false;
+			bool m_selectionClickAdditive = false;
 			bool m_gizmoConsumedClick = false;
 			glm::vec2 m_selectionClickStart{};
 
@@ -139,6 +142,7 @@ namespace Sailor
 			uint64_t m_dragManagedObjectMutationRevision = 0;
 			int32_t m_lastTickFrame = -1;
 			TVector<Event> m_pendingEvents{};
+			TVector<InstanceId> m_selectionOrder{};
 		};
 	}
 }

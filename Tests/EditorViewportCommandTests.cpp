@@ -162,6 +162,65 @@ namespace Sailor::Tests
 		std::cout << "Viewport events: protobuf selection, real pick/drag, ordered typed queue and undo/redo passed\n";
 
 		object->GetTransformComponent().SetPosition({ 0, 0, -10 });
+		auto first = world->Instantiate("Shift selection A");
+		auto second = world->Instantiate("Shift selection B");
+		const auto firstId = first->GetInstanceId();
+		const auto secondId = second->GetInstanceId();
+		SelectThroughProtocol({ secondId, firstId });
+		frame(center, false);
+		for (uint32_t click = 0; click < 3; ++click)
+		{
+			io.AddKeyEvent(ImGuiMod_Shift, true);
+			frame(center, true);
+			io.AddKeyEvent(ImGuiMod_Shift, false);
+			frame(center, false);
+		}
+		io.AddKeyEvent(ImGuiMod_Shift, true);
+		frame({ 1, 1 }, false);
+		frame({ 1, 1 }, true);
+		frame({ 1, 1 }, false);
+		io.AddKeyEvent(ImGuiMod_Shift, false);
+		frame(center, false);
+		frame(center, true);
+		io.AddKeyEvent(ImGuiMod_Shift, true);
+		frame(center, false);
+		events = EditorRuntime::PullEditorViewportEvents(8);
+		Require(events.Num() == 5, "rapid native Shift clicks must each produce an ordered selection snapshot");
+		for (uint32_t click = 0; click < 5; ++click)
+		{
+			const auto* snapshot = std::get_if<SelectionEvent>(&events[click].m_payload);
+			Require(snapshot, "the queued native click must remain a selection event");
+			const auto& ids = snapshot->m_selectedInstanceIds;
+			if (click < 4)
+			{
+				const size_t expectedSize = click == 1 ? 2 : 3;
+				Require(snapshot->m_bAdditive && ids.Num() == expectedSize && ids[0] == secondId && ids[1] == firstId,
+					"Shift selection must preserve managed B,A order and the modifier captured on press after Shift is released");
+				if (expectedSize == 3)
+				{
+					Require(ids[2] == id, "a new or re-added pick must remain the last primary in its retained snapshot");
+				}
+			}
+			else
+			{
+				Require(!snapshot->m_bAdditive && ids.Num() == 1 && ids[0] == id,
+					"a plain press must replace selection even when Shift becomes held before release");
+			}
+		}
+		Require(!std::get<SelectionEvent>(events[3].m_payload).m_instanceId,
+			"Shift-empty must retain the full group while reporting that no object was hit");
+		Require(world->IsEditorSelected(id) && !world->IsEditorSelected(firstId) && !world->IsEditorSelected(secondId),
+			"the last normal native click must replace the actual world selection");
+		io.AddKeyEvent(ImGuiMod_Shift, false);
+		frame(center, true);
+		SelectThroughProtocol({ secondId, firstId });
+		frame(center, false);
+		Require(EditorRuntime::PullEditorViewportEvents(8).IsEmpty(),
+			"a managed selection mutation must cancel an older native click before it can publish a stale pick");
+		world->DestroyImmediate(first);
+		world->DestroyImmediate(second);
+		std::cout << "Viewport Shift selection: captured press modifier, full ordered snapshots, rapid toggle/remove/re-add, empty pick and stale click cancellation passed\n";
+
 		Require(EditorRuntime::SetEditorSelection({ id }) && EditorRuntime::SetEditorViewportToolState(2, 2) &&
 			EditorRuntime::SetEditorSimulationEnabled(true), "the real drag fixture must enter simulation");
 		const auto savedPosition = object->GetTransformComponent().GetPosition();

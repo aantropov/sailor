@@ -179,7 +179,15 @@ namespace Sailor::Protocol::EditorEngineProtocolCommands
 			if constexpr (std::is_same_v<T, EditorViewport::SelectionEvent>)
 			{
 				auto* selection = output.mutable_selection();
-				if (value.m_instanceId) selection->set_selected_instance_id(value.m_instanceId.ToString());
+				if (value.m_instanceId)
+				{
+					selection->set_selected_instance_id(value.m_instanceId.ToString());
+				}
+				for (const auto& instanceId : value.m_selectedInstanceIds)
+				{
+					selection->add_selected_instance_ids(instanceId.ToString());
+				}
+				selection->set_additive(value.m_bAdditive);
 			}
 			else if constexpr (std::is_same_v<T, EditorViewport::AssetDropEvent>)
 			{

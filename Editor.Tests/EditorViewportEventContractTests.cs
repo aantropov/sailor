@@ -22,6 +22,27 @@ public sealed class EditorViewportEventContractTests
         Assert.Equal(17UL, selection.Revision);
         Assert.Equal(5UL, selection.ManagedMutationRevision);
         Assert.Equal(instanceId, selection.SelectedInstanceId);
+        Assert.Empty(selection.SelectedInstanceIds);
+        Assert.False(selection.Additive);
+    }
+
+    [Fact]
+    public void SelectionEvent_RetainsOrderedGroupAndCapturedModifierIndependentlyOfLaterPayloadChanges()
+    {
+        var source = new ViewportEvent
+        {
+            Revision = 18,
+            ManagedMutationRevision = 6,
+            Selection = new ViewportSelectionEvent { SelectedInstanceId = "C", Additive = true }
+        };
+        source.Selection.SelectedInstanceIds.Add(new[] { "B", "A", "C" });
+        var selection = Assert.IsType<EditorViewportSelectionEvent>(Create(source));
+        source.Selection.SelectedInstanceIds.Clear();
+        source.Selection.Additive = false;
+
+        Assert.Equal(new[] { "B", "A", "C" }, selection.SelectedInstanceIds);
+        Assert.True(selection.Additive);
+        Assert.Equal("C", selection.SelectedInstanceId);
     }
 
     [Theory]
@@ -262,7 +283,7 @@ public sealed class EditorViewportEventContractTests
     {
         var gate = new EditorViewportEventRevisionGate();
         var revisionSeven =
-            new EditorViewportSelectionEvent(7, 0, "go-1");
+            new EditorViewportSelectionEvent(7, 0, "go-1", ["go-1"]);
         var revisionEight = Transform(8);
 
         Assert.True(gate.TryAccept(revisionSeven));
@@ -277,7 +298,7 @@ public sealed class EditorViewportEventContractTests
         gate.Reset();
         Assert.Null(gate.LastAcceptedRevision);
         Assert.False(gate.IsCurrent(revisionEight));
-        Assert.True(gate.TryAccept(new EditorViewportSelectionEvent(0, 0, string.Empty)));
+        Assert.True(gate.TryAccept(new EditorViewportSelectionEvent(0, 0, string.Empty, [])));
     }
 
     [Fact]

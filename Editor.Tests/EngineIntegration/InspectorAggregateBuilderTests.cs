@@ -72,6 +72,54 @@ public sealed class InspectorAggregateBuilderTests
     }
 
     [Fact]
+    public async Task GameObjectTemplateAdapter_UsesMixedAxesAndAddsComponentsForTheWholeGroup()
+    {
+        var world = new WorldService();
+        var first = AddGameObject(world, "first");
+        var second = AddGameObject(world, "second");
+        first.Position = new Vec4 { X = -2, Y = 1, Z = 3 };
+        second.Position = new Vec4 { X = 2, Y = 1, Z = 9 };
+        first.MobilityType = "Stationary";
+        second.MobilityType = "Dynamic";
+        var targets = new List<string>();
+        world.AddComponentOperation = (target, _, _) =>
+        {
+            targets.Add(target.InstanceId.Value);
+            return Task.FromResult(true);
+        };
+        SailorEditor.Views.AddComponentDialogPage.Choose = _ => Task.FromResult<string?>("Test::Added");
+        try
+        {
+            var model = new InspectorAggregateBuilder(world, null!, new EngineTypes()).Build([first, second]);
+            var adapter = new AggregateGameObjectInspector(model);
+            Assert.True(model.IsGameObjectSelection);
+            Assert.Equal("*", Assert.IsType<InspectorAggregateField>(adapter.Position.X).DisplayValue);
+            Assert.Equal("1", Assert.IsType<InspectorAggregateField>(adapter.Position.Y).DisplayValue);
+            Assert.Equal("*", adapter.MobilityType);
+            Assert.Contains("*", adapter.MobilityTypes);
+            adapter.MobilityType = "*";
+            Assert.False(adapter.HasPendingInspectorChanges);
+
+            adapter.Position.Y = 2.25f;
+            await adapter.AddComponentFromInspectorAsync();
+
+            Assert.Equal(new[] { "first", "second" }, targets);
+            Assert.Equal(-2f, first.Position.X);
+            Assert.Equal(2f, second.Position.X);
+            Assert.Equal(2.25f, first.Position.Y);
+            Assert.Equal(2.25f, second.Position.Y);
+            Assert.Equal(3f, first.Position.Z);
+            Assert.Equal(9f, second.Position.Z);
+            Assert.Equal("Stationary", first.MobilityType);
+            Assert.Equal("Dynamic", second.MobilityType);
+        }
+        finally
+        {
+            SailorEditor.Views.AddComponentDialogPage.Choose = _ => Task.FromResult<string?>(null);
+        }
+    }
+
+    [Fact]
     public async Task NestedRecordEdit_ClonesEachPropertyAndPreservesOtherPerTargetValues()
     {
         var world = new WorldService();

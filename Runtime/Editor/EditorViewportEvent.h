@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Engine/InstanceId.h"
+#include "Containers/Vector.h"
 #include "Math/Transform.h"
 
 #include <string>
@@ -25,6 +26,8 @@ namespace Sailor::EditorViewport
 	struct SelectionEvent
 	{
 		InstanceId m_instanceId;
+		TVector<InstanceId> m_selectedInstanceIds;
+		bool m_bAdditive = false;
 	};
 
 	struct TransformEvent

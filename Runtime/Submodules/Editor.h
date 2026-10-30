@@ -64,7 +64,7 @@ namespace Sailor
 		void TickViewportTools();
 		void CancelViewportInteraction();
 		bool PullViewportEvent(EditorViewport::Event& outEvent);
-		void NotifyManagedSelectionMutation() { ++m_managedSelectionMutationRevision; }
+		void NotifyManagedSelectionMutation(const TVector<InstanceId>& selection);
 		uint64_t GetManagedSelectionMutationRevision() const { return m_managedSelectionMutationRevision; }
 		void NotifyManagedObjectMutation(const InstanceId& instanceId);
 		uint64_t GetManagedObjectMutationRevision(const InstanceId& instanceId) const;

@@ -269,17 +269,36 @@ namespace SailorEditor.Services
 
         public void ApplyRuntimeSelection(InstanceId? instanceId)
         {
+            ApplyRuntimeSelectionSnapshot(instanceId is null || instanceId.IsEmpty() ? [] : [instanceId]);
+        }
+
+        public void ApplyRuntimeSelectionSnapshot(IEnumerable<InstanceId> instanceIds, bool preserveInspectedItem = true)
+        {
+            if (IsWorkspaceChangeInProgress)
+            {
+                return;
+            }
+            var ids = instanceIds.ToArray();
+            if (ids.Length != 0)
+            {
+                var worldService = MauiProgram.GetService<WorldService>();
+                if (ids.Any(id => id is null || id.IsEmpty() || !worldService.TryGetGameObject(id, out _)))
+                {
+                    return;
+                }
+            }
+
             Interlocked.Increment(ref suppressRuntimeSelectionSync);
             try
             {
-                if (instanceId is null || instanceId.IsEmpty())
+                if (ids.Length == 0)
                 {
                     CancelPendingSelection();
-                    ClearSelectionCore(preserveInspectedItem: true);
+                    ClearSelectionCore(preserveInspectedItem);
                 }
                 else
                 {
-                    SelectInstance(instanceId);
+                    SelectInstances(ids);
                 }
             }
             finally

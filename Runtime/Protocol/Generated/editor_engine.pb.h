@@ -1464,8 +1464,32 @@ class ViewportSelectionEvent final : public ::google::protobuf::Message
 
   // accessors -------------------------------------------------------
   enum : int {
+    kSelectedInstanceIdsFieldNumber = 2,
     kSelectedInstanceIdFieldNumber = 1,
+    kAdditiveFieldNumber = 3,
   };
+  // repeated string selected_instance_ids = 2;
+  int selected_instance_ids_size() const;
+  private:
+  int _internal_selected_instance_ids_size() const;
+
+  public:
+  void clear_selected_instance_ids() ;
+  const std::string& selected_instance_ids(int index) const;
+  std::string* mutable_selected_instance_ids(int index);
+  template <typename Arg_ = const std::string&, typename... Args_>
+  void set_selected_instance_ids(int index, Arg_&& value, Args_... args);
+  std::string* add_selected_instance_ids();
+  template <typename Arg_ = const std::string&, typename... Args_>
+  void add_selected_instance_ids(Arg_&& value, Args_... args);
+  const ::google::protobuf::RepeatedPtrField<std::string>& selected_instance_ids() const;
+  ::google::protobuf::RepeatedPtrField<std::string>* mutable_selected_instance_ids();
+
+  private:
+  const ::google::protobuf::RepeatedPtrField<std::string>& _internal_selected_instance_ids() const;
+  ::google::protobuf::RepeatedPtrField<std::string>* _internal_mutable_selected_instance_ids();
+
+  public:
   // string selected_instance_id = 1;
   void clear_selected_instance_id() ;
   const std::string& selected_instance_id() const;
@@ -1482,13 +1506,23 @@ class ViewportSelectionEvent final : public ::google::protobuf::Message
   std::string* _internal_mutable_selected_instance_id();
 
   public:
+  // bool additive = 3;
+  void clear_additive() ;
+  bool additive() const;
+  void set_additive(bool value);
+
+  private:
+  bool _internal_additive() const;
+  void _internal_set_additive(bool value);
+
+  public:
   // @@protoc_insertion_point(class_scope:sailor.editor.v1.ViewportSelectionEvent)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      0, 1, 0,
-      68, 2>
+      2, 3, 0,
+      89, 2>
       _table_;
 
   friend class ::google::protobuf::MessageLite;
@@ -1505,7 +1539,9 @@ class ViewportSelectionEvent final : public ::google::protobuf::Message
     inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
                           ::google::protobuf::Arena* arena, const Impl_& from,
                           const ViewportSelectionEvent& from_msg);
+    ::google::protobuf::RepeatedPtrField<std::string> selected_instance_ids_;
     ::google::protobuf::internal::ArenaStringPtr selected_instance_id_;
+    bool additive_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
@@ -31499,6 +31535,92 @@ inline void ViewportSelectionEvent::set_allocated_selected_instance_id(std::stri
     _impl_.selected_instance_id_.Set("", GetArena());
   }
   // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.ViewportSelectionEvent.selected_instance_id)
+}
+
+// repeated string selected_instance_ids = 2;
+inline int ViewportSelectionEvent::_internal_selected_instance_ids_size() const {
+  return _internal_selected_instance_ids().size();
+}
+inline int ViewportSelectionEvent::selected_instance_ids_size() const {
+  return _internal_selected_instance_ids_size();
+}
+inline void ViewportSelectionEvent::clear_selected_instance_ids() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.selected_instance_ids_.Clear();
+}
+inline std::string* ViewportSelectionEvent::add_selected_instance_ids() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  std::string* _s = _internal_mutable_selected_instance_ids()->Add();
+  // @@protoc_insertion_point(field_add_mutable:sailor.editor.v1.ViewportSelectionEvent.selected_instance_ids)
+  return _s;
+}
+inline const std::string& ViewportSelectionEvent::selected_instance_ids(int index) const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportSelectionEvent.selected_instance_ids)
+  return _internal_selected_instance_ids().Get(index);
+}
+inline std::string* ViewportSelectionEvent::mutable_selected_instance_ids(int index)
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ViewportSelectionEvent.selected_instance_ids)
+  return _internal_mutable_selected_instance_ids()->Mutable(index);
+}
+template <typename Arg_, typename... Args_>
+inline void ViewportSelectionEvent::set_selected_instance_ids(int index, Arg_&& value, Args_... args) {
+  ::google::protobuf::internal::AssignToString(
+      *_internal_mutable_selected_instance_ids()->Mutable(index),
+      std::forward<Arg_>(value), args... );
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.ViewportSelectionEvent.selected_instance_ids)
+}
+template <typename Arg_, typename... Args_>
+inline void ViewportSelectionEvent::add_selected_instance_ids(Arg_&& value, Args_... args) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  ::google::protobuf::internal::AddToRepeatedPtrField(*_internal_mutable_selected_instance_ids(),
+                               std::forward<Arg_>(value),
+                               args... );
+  // @@protoc_insertion_point(field_add:sailor.editor.v1.ViewportSelectionEvent.selected_instance_ids)
+}
+inline const ::google::protobuf::RepeatedPtrField<std::string>&
+ViewportSelectionEvent::selected_instance_ids() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:sailor.editor.v1.ViewportSelectionEvent.selected_instance_ids)
+  return _internal_selected_instance_ids();
+}
+inline ::google::protobuf::RepeatedPtrField<std::string>*
+ViewportSelectionEvent::mutable_selected_instance_ids() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_mutable_list:sailor.editor.v1.ViewportSelectionEvent.selected_instance_ids)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _internal_mutable_selected_instance_ids();
+}
+inline const ::google::protobuf::RepeatedPtrField<std::string>&
+ViewportSelectionEvent::_internal_selected_instance_ids() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.selected_instance_ids_;
+}
+inline ::google::protobuf::RepeatedPtrField<std::string>*
+ViewportSelectionEvent::_internal_mutable_selected_instance_ids() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.selected_instance_ids_;
+}
+
+// bool additive = 3;
+inline void ViewportSelectionEvent::clear_additive() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.additive_ = false;
+}
+inline bool ViewportSelectionEvent::additive() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportSelectionEvent.additive)
+  return _internal_additive();
+}
+inline void ViewportSelectionEvent::set_additive(bool value) {
+  _internal_set_additive(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.ViewportSelectionEvent.additive)
+}
+inline bool ViewportSelectionEvent::_internal_additive() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.additive_;
+}
+inline void ViewportSelectionEvent::_internal_set_additive(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.additive_ = value;
 }
 
 // -------------------------------------------------------------------

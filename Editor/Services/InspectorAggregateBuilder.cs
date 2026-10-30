@@ -98,7 +98,7 @@ sealed class InspectorAggregateBuilder(WorldService world, AssetsService assets,
                 }, cancellationToken);
             })
         ]));
-        return new AggregateInspectorModel(selected.Count, sections);
+        return new AggregateInspectorModel(selected.Count, sections) { IsGameObjectSelection = true };
     }
 
     InspectorAggregateSection BuildComponents(IReadOnlyList<Component> components, int? occurrence = null)
@@ -157,7 +157,7 @@ sealed class InspectorAggregateBuilder(WorldService world, AssetsService assets,
             }, token)),
             new("Reset to Defaults", token => ForEach("Reset to Defaults", world.ResetComponentToDefaultsAsync, token)),
             new("Remove Component", token => ForEach("Remove Component", world.RemoveComponentAsync, token))
-        ]);
+        ], IsComponent: true);
     }
 
     AggregateInspectorModel BuildAssets(IReadOnlyList<AssetFile> selected)

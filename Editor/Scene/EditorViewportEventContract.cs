@@ -30,7 +30,9 @@ public abstract record EditorViewportEvent(ulong Revision, ulong ManagedMutation
 public sealed record EditorViewportSelectionEvent(
     ulong Revision,
     ulong ManagedMutationRevision,
-    string SelectedInstanceId)
+    string SelectedInstanceId,
+    IReadOnlyList<string> SelectedInstanceIds,
+    bool Additive = false)
     : EditorViewportEvent(Revision, ManagedMutationRevision);
 
 public sealed record EditorViewportTransformEvent(
@@ -82,7 +84,9 @@ public static class EditorViewportEventContract
                 viewportEvent = new EditorViewportSelectionEvent(
                     source.Revision,
                     source.ManagedMutationRevision,
-                    source.Selection.SelectedInstanceId);
+                    source.Selection.SelectedInstanceId,
+                    Array.AsReadOnly(source.Selection.SelectedInstanceIds.ToArray()),
+                    source.Selection.Additive);
                 return true;
 
             case ViewportEvent.PayloadOneofCase.Transform:

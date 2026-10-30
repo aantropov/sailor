@@ -220,6 +220,12 @@ bool Editor::SetSimulationEnabled(bool bEnabled)
 	return true;
 }
 
+void Editor::NotifyManagedSelectionMutation(const TVector<InstanceId>& selection)
+{
+	++m_managedSelectionMutationRevision;
+	m_viewportController->SetManagedSelection(selection);
+}
+
 void Editor::TickViewportTools()
 {
 	if (m_world)

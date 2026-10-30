@@ -435,6 +435,7 @@ void EditorViewportController::Reset()
 	m_wasUsingGizmo = false;
 	m_gizmoSubmittedThisFrame = false;
 	m_selectionClickArmed = false;
+	m_selectionClickAdditive = false;
 	m_gizmoConsumedClick = false;
 	m_selectionClickStart = {};
 	m_dragInstanceId = InstanceId::Invalid;
@@ -443,12 +444,14 @@ void EditorViewportController::Reset()
 	m_dragManagedObjectMutationRevision = 0;
 	m_lastTickFrame = -1;
 	m_pendingEvents.Clear();
+	m_selectionOrder.Clear();
 	ResetImGuizmoInteractionState();
 }
 
 void EditorViewportController::CancelPointerInteraction()
 {
 	m_selectionClickArmed = false;
+	m_selectionClickAdditive = false;
 	m_gizmoConsumedClick = false;
 }
 
@@ -833,11 +836,12 @@ void EditorViewportController::TickSelection(World& world)
 		ImGui::IsAnyItemHovered() ||
 		ImGui::IsAnyItemActive();
 	const bool bNavigatingViewport = ImGui::IsMouseDown(ImGuiMouseButton_Right);
-	const bool bHasModifiers = io.KeyShift || io.KeyCtrl || io.KeyAlt || io.KeySuper;
+	const bool bHasModifiers = io.KeyCtrl || io.KeyAlt || io.KeySuper;
 
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 	{
 		m_selectionClickStart = pointer;
+		m_selectionClickAdditive = io.KeyShift;
 		m_gizmoConsumedClick = bGizmoOwnsPointer || bEditorUiOwnsPointer;
 		m_selectionClickArmed = CanBeginSelectionGesture(
 			bHasModifiers,
@@ -868,6 +872,7 @@ void EditorViewportController::TickSelection(World& world)
 		!m_gizmoConsumedClick &&
 		!bNavigatingViewport &&
 		!bHasModifiers;
+	const bool bAdditive = m_selectionClickAdditive;
 	CancelPointerInteraction();
 	if (!bShouldPick || io.DisplaySize.x <= 0.0f || io.DisplaySize.y <= 0.0f)
 	{
@@ -909,20 +914,60 @@ void EditorViewportController::TickSelection(World& world)
 
 	InstanceId selectedInstanceId{};
 	float distance = std::numeric_limits<float>::max();
-	TVector<InstanceId> selection{};
-	if (TryPickNearest(ray, candidates, selectedInstanceId, distance))
-	{
-		selection.Add(selectedInstanceId);
-	}
-
-	world.SetEditorSelection(selection);
-	QueueSelectionEvent(selectedInstanceId);
+	TryPickNearest(ray, candidates, selectedInstanceId, distance);
+	ApplySelectionPick(world, selectedInstanceId, bAdditive);
 }
 
-void EditorViewportController::QueueSelectionEvent(const InstanceId& selectedInstanceId)
+void EditorViewportController::SetManagedSelection(const TVector<InstanceId>& selection)
+{
+	CancelPointerInteraction();
+	m_selectionOrder.Clear();
+	for (const auto& instanceId : selection)
+	{
+		if (instanceId)
+		{
+			const auto gameObjectId = instanceId.GameObjectId();
+			m_selectionOrder.Remove(gameObjectId);
+			m_selectionOrder.Add(gameObjectId);
+		}
+	}
+}
+
+void EditorViewportController::ApplySelectionPick(World& world, const InstanceId& pickedInstanceId, bool bAdditive)
+{
+	if (!bAdditive)
+	{
+		m_selectionOrder.Clear();
+	}
+	else
+	{
+		m_selectionOrder.RemoveAll([&world](const InstanceId& id) { return !world.IsEditorSelected(id); });
+		for (const auto& gameObject : std::as_const(world).GetGameObjects())
+		{
+			const auto& id = gameObject->GetInstanceId();
+			if (world.IsEditorSelected(id) && !m_selectionOrder.Contains(id))
+			{
+				m_selectionOrder.Add(id);
+			}
+		}
+	}
+
+	if (pickedInstanceId)
+	{
+		if (!bAdditive || !m_selectionOrder.Remove(pickedInstanceId))
+		{
+			m_selectionOrder.Add(pickedInstanceId);
+		}
+	}
+
+	world.SetEditorSelection(m_selectionOrder);
+	QueueSelectionEvent(pickedInstanceId, bAdditive);
+}
+
+void EditorViewportController::QueueSelectionEvent(const InstanceId& selectedInstanceId, bool bAdditive)
 {
 	m_pendingEvents.Add(Event{ ++m_eventRevision, m_managedSelectionMutationRevision,
-		SelectionEvent{ selectedInstanceId } });
+		SelectionEvent{ selectedInstanceId, m_selectionOrder, bAdditive } });
 }
 
 void EditorViewportController::QueueTransformEvent(

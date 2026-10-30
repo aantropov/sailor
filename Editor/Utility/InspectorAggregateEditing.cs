@@ -345,7 +345,8 @@ public sealed record InspectorAggregateAction(string Name, Func<CancellationToke
 public sealed record InspectorAggregateSection(
     string Name,
     IReadOnlyList<InspectorAggregateField> Fields,
-    IReadOnlyList<InspectorAggregateAction>? Actions = null);
+    IReadOnlyList<InspectorAggregateAction>? Actions = null,
+    bool IsComponent = false);
 
 public sealed class AggregateInspectorModel : ObservableObject, IInspectorEditable
 {
@@ -377,6 +378,7 @@ public sealed class AggregateInspectorModel : ObservableObject, IInspectorEditab
     public event Action? CommitStateChanged;
     public string DisplayName => $"{Count} selected";
     public bool IsAssetSelection { get; }
+    public bool IsGameObjectSelection { get; init; }
     public bool IsDirty => isDirty() || Sections.SelectMany(section => section.Fields)
         .Any(property => property.HasPendingInspectorChanges);
     public IReadOnlyList<InspectorAggregateSection> Sections { get; }
@@ -437,6 +439,106 @@ public sealed class AggregateInspectorModel : ObservableObject, IInspectorEditab
             {
                 yield return child;
             }
+        }
+    }
+}
+
+public sealed class AggregateGameObjectInspector : ObservableObject, IInspectorEditable
+{
+    readonly AggregateInspectorModel model;
+    readonly InspectorAggregateField mobility;
+
+    public AggregateGameObjectInspector(AggregateInspectorModel model)
+    {
+        this.model = model;
+        var transform = model.Sections.Single(section => section.Name == "Transform");
+        Position = new InspectorAggregateVectorBinding(transform.Fields.Single(property => property.Name == "Position"));
+        Rotation = new InspectorAggregateVectorBinding(transform.Fields.Single(property => property.Name == "Rotation"));
+        Scale = new InspectorAggregateVectorBinding(transform.Fields.Single(property => property.Name == "Scale"));
+        mobility = transform.Fields.Single(property => property.Name == "MobilityType");
+        mobility.Changed += () =>
+        {
+            OnPropertyChanged(nameof(MobilityType));
+            OnPropertyChanged(nameof(MobilityTypes));
+        };
+    }
+
+    public InspectorAggregateVectorBinding Position { get; }
+    public InspectorAggregateVectorBinding Rotation { get; }
+    public InspectorAggregateVectorBinding Scale { get; }
+    public IReadOnlyList<InspectorAggregateSection> Components => model.Sections.Where(section => section.IsComponent).ToArray();
+    public IList<string> MobilityTypes => mobility.IsMixed ? ["*", .. mobility.Choices] : mobility.Choices;
+    public string MobilityType
+    {
+        get => mobility.ChoiceValue;
+        set
+        {
+            if (string.Equals(value, mobility.ChoiceValue, StringComparison.Ordinal))
+            {
+                return;
+            }
+            mobility.SetChoice(value);
+            if (mobility.HasPendingInspectorChanges)
+            {
+                _ = CommitMobilitySafelyAsync();
+            }
+        }
+    }
+    public bool HasPendingInspectorChanges => model.HasPendingInspectorChanges;
+    public bool HasInFlightInspectorCommit => model.HasInFlightInspectorCommit;
+    public Task<bool> CommitInspectorChangesAsync(CancellationToken cancellationToken = default)
+        => model.CommitInspectorChangesAsync(cancellationToken);
+
+    public async Task AddComponentFromInspectorAsync()
+    {
+        if (await model.CommitInspectorChangesAsync())
+        {
+            await model.Sections.Single(section => section.Name == "Components").Actions!
+                .Single(action => action.Name == "Add Component").Execute(CancellationToken.None);
+        }
+    }
+
+    async Task CommitMobilitySafelyAsync()
+    {
+        try
+        {
+            await model.CommitInspectorChangesAsync();
+        }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine($"Aggregate mobility edit failed: {error}");
+        }
+    }
+}
+
+public sealed class InspectorAggregateVectorBinding : ObservableObject
+{
+    readonly IReadOnlyDictionary<string, InspectorAggregateField> properties;
+
+    public InspectorAggregateVectorBinding(InspectorAggregateField vector)
+    {
+        properties = vector.Children.ToDictionary(property => property.Name, StringComparer.Ordinal);
+        foreach (var property in properties.Values)
+        {
+            property.Changed += () => OnPropertyChanged(property.Name);
+        }
+    }
+
+    public object X { get => Get(nameof(X)); set => Set(nameof(X), value); }
+    public object Y { get => Get(nameof(Y)); set => Set(nameof(Y), value); }
+    public object Z { get => Get(nameof(Z)); set => Set(nameof(Z), value); }
+    public object W { get => Get(nameof(W)); set => Set(nameof(W), value); }
+    public object Yaw { get => Get(nameof(Yaw)); set => Set(nameof(Yaw), value); }
+    public object Pitch { get => Get(nameof(Pitch)); set => Set(nameof(Pitch), value); }
+    public object Roll { get => Get(nameof(Roll)); set => Set(nameof(Roll), value); }
+
+    object Get(string name) => properties[name];
+
+    void Set(string name, object value)
+    {
+        if (value is float number && float.IsFinite(number))
+        {
+            properties[name].SetDraft(number);
         }
     }
 }

@@ -788,10 +788,14 @@ namespace SailorEditor.Views
 
         async Task ApplyViewportSelectionAsync(EditorViewportSelectionEvent viewportEvent)
         {
+            var selectionWorkspaceEpoch = MauiProgram.GetService<SelectionService>().WorkspaceEpoch;
+            var inputEpoch = nativeViewportInputQueue.Epoch;
             var isManagedRevisionCurrent =
                 await engineService.IsEditorViewportSelectionEventCurrentAsync(
                     viewportEvent.ManagedMutationRevision);
             if (!isManagedRevisionCurrent ||
+                selectionWorkspaceEpoch != MauiProgram.GetService<SelectionService>().WorkspaceEpoch ||
+                inputEpoch != nativeViewportInputQueue.Epoch ||
                 !viewportEventRevisionGate.IsCurrent(viewportEvent))
             {
                 Console.WriteLine($"[SceneView] Rejected stale viewport selection revision {viewportEvent.Revision} after a newer managed mutation.");
@@ -809,28 +813,31 @@ namespace SailorEditor.Views
                 await engineService.IsEditorViewportSelectionEventCurrentAsync(
                     viewportEvent.ManagedMutationRevision);
             if (!isManagedRevisionCurrent ||
+                selectionWorkspaceEpoch != MauiProgram.GetService<SelectionService>().WorkspaceEpoch ||
+                inputEpoch != nativeViewportInputQueue.Epoch ||
                 !viewportEventRevisionGate.IsCurrent(viewportEvent))
             {
                 Console.WriteLine($"[SceneView] Rejected viewport selection revision {viewportEvent.Revision} after committing pending Inspector changes.");
                 return;
             }
 
-            InstanceId? selectedId = null;
-            if (!string.IsNullOrEmpty(viewportEvent.SelectedInstanceId))
+            var selectedIds = new List<InstanceId>(viewportEvent.SelectedInstanceIds.Count);
+            foreach (var selectedInstanceId in viewportEvent.SelectedInstanceIds)
             {
-                var candidate = new InstanceId(viewportEvent.SelectedInstanceId);
+                var candidate = new InstanceId(selectedInstanceId);
                 if (candidate.IsEmpty() || !worldService.TryGetGameObject(candidate, out _))
                 {
-                    Console.WriteLine($"[SceneView] Rejected viewport selection revision {viewportEvent.Revision}: '{viewportEvent.SelectedInstanceId}' is not a live GameObject.");
+                    Console.WriteLine($"[SceneView] Rejected viewport selection revision {viewportEvent.Revision}: '{selectedInstanceId}' is not a live GameObject.");
                     return;
                 }
 
-                selectedId = candidate;
+                selectedIds.Add(candidate);
             }
 
             var result = await commandDispatcher.DispatchAsync(
-                new ApplyRuntimeSelectionCommand(selectedId),
-                CreateViewportActionContext(viewportEvent));
+                new ApplyRuntimeSelectionSnapshotCommand(selectedIds,
+                    preserveInspectedItem: !viewportEvent.Additive || string.IsNullOrEmpty(viewportEvent.SelectedInstanceId)),
+                CreateViewportActionContext(viewportEvent) with { WorkspaceEpoch = selectionWorkspaceEpoch });
             if (!result.Succeeded)
             {
                 Console.WriteLine($"[SceneView] Viewport selection revision {viewportEvent.Revision} failed: {result.Message}");

@@ -991,7 +991,8 @@ namespace
 		using namespace Sailor::EditorViewport;
 		TViewportEventSource source{
 			{
-				Event{ 42, 9, SelectionEvent{ Sailor::InstanceId("Duck-123") } },
+				Event{ 42, 9, SelectionEvent{ Sailor::InstanceId("Duck-123"),
+					{ Sailor::InstanceId("Other-456"), Sailor::InstanceId("Duck-123") }, true } },
 				Event{ 43, 10, SelectionEvent{} }
 			}
 		};
@@ -1037,7 +1038,10 @@ namespace
 			event.revision() == 42 &&
 			event.managed_mutation_revision() == 9 &&
 			event.has_selection() &&
-			event.selection().selected_instance_id() == "Duck-123",
+			event.selection().selected_instance_id() == "Duck-123" &&
+			event.selection().selected_instance_ids_size() == 2 &&
+			event.selection().selected_instance_ids(0) == "Other-456" &&
+			event.selection().selected_instance_ids(1) == "Duck-123" && event.selection().additive(),
 			"the first typed selection event must preserve its identity and revisions");
 		Require(source.m_nextEvent == 1, "the source must respect the requested capacity");
 
@@ -1050,7 +1054,8 @@ namespace
 		const auto& nextBatch = next.viewport_event_batch_result();
 		Require(next.success() && next.has_viewport_event_batch_result() && nextBatch.events_size() == 1 &&
 			nextBatch.events(0).revision() == 43 && nextBatch.events(0).managed_mutation_revision() == 10 &&
-			nextBatch.events(0).has_selection() && nextBatch.events(0).selection().selected_instance_id().empty(),
+			nextBatch.events(0).has_selection() && nextBatch.events(0).selection().selected_instance_id().empty() &&
+			nextBatch.events(0).selection().selected_instance_ids().empty() && !nextBatch.events(0).selection().additive(),
 			"selection clear must follow selection and retain its data after releasing the source and wire buffer");
 		TProtocolBuffer emptyBuffer;
 		const auto empty = RequireProtocolResponse(request, emptyBuffer, dependencies);

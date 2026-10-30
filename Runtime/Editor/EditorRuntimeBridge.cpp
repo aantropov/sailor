@@ -972,7 +972,7 @@ bool EditorRuntime::SetEditorSelection(TVector<InstanceId> selection)
 			}
 
 			world->SetEditorSelection(selection);
-			editor->NotifyManagedSelectionMutation();
+			editor->NotifyManagedSelectionMutation(selection);
 			return true;
 		});
 }

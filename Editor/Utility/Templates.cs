@@ -19,7 +19,7 @@ using SailorEditor.Views;
 using SailorEditor.Controls;
 using System;
 namespace SailorEditor.Helpers;
-static class Templates
+static partial class Templates
 {
     static void CommitInspectorBindingContext(object? bindingContext)
     {
@@ -138,7 +138,8 @@ static class Templates
         List<string> enumValues,
         Expression<Func<TBinding, string>> getter,
         Action<TBinding, string> setter,
-        Func<string, string> displayName = null)
+        Func<string, string> displayName = null,
+        bool observeContext = false)
     {
         var picker = new Picker
         {
@@ -169,6 +170,33 @@ static class Templates
         }
 
         picker.BindingContextChanged += (sender, _) => RefreshSelectedItem();
+        if (observeContext)
+        {
+            INotifyPropertyChanged? observed = null;
+            void OnValueChanged(object? sender, PropertyChangedEventArgs args) => RefreshSelectedItem();
+            void ObserveContext()
+            {
+                if (observed is not null)
+                {
+                    observed.PropertyChanged -= OnValueChanged;
+                }
+                observed = picker.BindingContext as INotifyPropertyChanged;
+                if (observed is not null)
+                {
+                    observed.PropertyChanged += OnValueChanged;
+                }
+            }
+            picker.BindingContextChanged += (_, _) => ObserveContext();
+            picker.Loaded += (_, _) => ObserveContext();
+            picker.Unloaded += (_, _) =>
+            {
+                if (observed is not null)
+                {
+                    observed.PropertyChanged -= OnValueChanged;
+                    observed = null;
+                }
+            };
+        }
         picker.SelectedIndexChanged += (sender, _) =>
         {
             if (bUpdating || picker.BindingContext is not TBinding context)

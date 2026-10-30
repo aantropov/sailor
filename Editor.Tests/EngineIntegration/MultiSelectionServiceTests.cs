@@ -63,6 +63,74 @@ public sealed class MultiSelectionServiceTests : IDisposable
     }
 
     [Fact]
+    public void NativeSelectionSnapshotPreservesTheWholeOrderedGroupAndPrimary()
+    {
+        var first = Add("first");
+        var second = Add("second");
+        var third = Add("third");
+        selection.SelectInstances([first.InstanceId]);
+
+        selection.ApplyRuntimeSelectionSnapshot([second.InstanceId, first.InstanceId, third.InstanceId]);
+
+        Assert.Equal(new[] { "second", "first", "third" }, selection.Snapshot.SelectedIds);
+        Assert.Same(third, selection.SelectedItem);
+        Assert.Equal(new ObservableObject[] { second, first, third }, selection.InspectedItems);
+    }
+
+    [Fact]
+    public void LatestNativeSnapshotContainsEveryRapidShiftClickWithoutNeedingIntermediateEvents()
+    {
+        var first = Add("first");
+        var second = Add("second");
+        var third = Add("third");
+        selection.SelectInstances([first.InstanceId]);
+
+        // The first native result can be superseded before the UI observes it.
+        selection.ApplyRuntimeSelectionSnapshot([first.InstanceId, second.InstanceId, third.InstanceId]);
+        Assert.Equal(new[] { "first", "second", "third" }, selection.Snapshot.SelectedIds);
+
+        selection.ApplyRuntimeSelectionSnapshot([third.InstanceId, second.InstanceId]);
+        Assert.Equal(new[] { "third", "second" }, selection.Snapshot.SelectedIds);
+        Assert.Same(second, selection.SelectedItem);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void EmptyNativeSnapshotHonorsInspectorRetention(bool preserveInspectedItem)
+    {
+        var first = Add("first");
+        var second = Add("second");
+        selection.SelectInstances([first.InstanceId, second.InstanceId]);
+
+        selection.ApplyRuntimeSelectionSnapshot([], preserveInspectedItem);
+
+        Assert.Empty(selection.SelectedInstanceIds);
+        Assert.Empty(selection.SelectedItems);
+        if (preserveInspectedItem)
+        {
+            Assert.Equal(new ObservableObject[] { first, second }, selection.InspectedItems);
+        }
+        else
+        {
+            Assert.Empty(selection.InspectedItems);
+        }
+    }
+
+    [Fact]
+    public void NativeSnapshotContainingRemovedObjectDoesNotPartiallyReplaceSelection()
+    {
+        var first = Add("first");
+        var second = Add("second");
+        selection.SelectInstances([first.InstanceId]);
+
+        selection.ApplyRuntimeSelectionSnapshot([second.InstanceId, new InstanceId("removed")]);
+
+        Assert.Equal(new[] { "first" }, selection.Snapshot.SelectedIds);
+        Assert.Same(first, selection.InspectedItem);
+    }
+
+    [Fact]
     public async Task NewSceneGroupSupersedesAnAssetGroupThatIsStillLoading()
     {
         var first = new DelayedAsset { FileId = new("asset-a"), IsMetadataLoaded = true };
