@@ -1,3 +1,4 @@
+using CommunityToolkit.Mvvm.ComponentModel;
 using SailorEditor.Commands;
 using SailorEditor.Panels;
 using SailorEditor.Services;
@@ -22,8 +23,10 @@ namespace SailorEditor.Views
         readonly GameObjectClipboardService gameObjectClipboardService;
         readonly ObservableCollection<HierarchyListRow> visibleRows = [];
         readonly Dictionary<string, GameObject> gameObjectsById = new(StringComparer.Ordinal);
-        bool suppressSelectionChanged;
-        int projectionRevision;
+        readonly SelectionService selectionService;
+        readonly HashSet<Border> rowBorders = [];
+        string? selectionAnchorId;
+        long hierarchyWorkspaceEpoch;
 
         public HierarchyView()
         {
@@ -37,12 +40,18 @@ namespace SailorEditor.Views
                 MauiProgram.GetService<GameObjectClipboardService>();
 
             HierarchyList.ItemsSource = visibleRows;
-            HierarchyList.SelectionChanged += OnHierarchySelectionChanged;
 
             service.OnUpdateWorldAction += PopulateHierarchyView;
 
-            var selectionViewModel = MauiProgram.GetService<SelectionService>();
-            selectionViewModel.OnSelectInstanceAction += SelectInstance;
+            selectionService = MauiProgram.GetService<SelectionService>();
+            selectionService.OnSelectInstanceAction += SelectInstance;
+            selectionService.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(SelectionService.SelectedInstanceIds))
+                {
+                    ApplyProjection(service.Current);
+                }
+            };
 
             var rootDropGesture = new DropGestureRecognizer();
             rootDropGesture.DragOver += (_, e) => e.AcceptedOperation = DataPackageOperation.Copy;
@@ -66,61 +75,51 @@ namespace SailorEditor.Views
 
         void SelectInstance(InstanceId id)
         {
-            suppressSelectionChanged = true;
-            try
+            if (id is not null && !id.IsEmpty())
             {
-                if (id == null || id.IsEmpty())
-                {
-                    HierarchyList.SelectedItem = null;
-                    return;
-                }
-
+                selectionAnchorId ??= id.Value;
                 projectionService.EnsureVisible(id);
-                ApplyProjection(service.Current);
-                HierarchyList.SelectedItem = visibleRows.FirstOrDefault(row => string.Equals(row.InstanceId, id.Value, StringComparison.Ordinal));
             }
-            finally
-            {
-                suppressSelectionChanged = false;
-            }
+            ApplyProjection(service.Current);
         }
 
-        async void OnHierarchySelectionChanged(object? sender, SelectionChangedEventArgs args)
-            => await ExecuteHierarchyActionAsync(
-                () => SelectHierarchyRowAsync(
-                    args.CurrentSelection.FirstOrDefault()
-                        as HierarchyListRow,
-                    updateCollectionSelection: false),
-                "Select GameObject");
-
         async Task SelectHierarchyRowAsync(
-            HierarchyListRow? row,
-            bool updateCollectionSelection)
+            HierarchyListRow row,
+            bool preserveSelected = false,
+            bool useModifiers = true)
         {
-            if (suppressSelectionChanged)
+            if (!gameObjectsById.ContainsKey(row.InstanceId))
             {
                 return;
             }
 
-            if (row == null)
-            {
-                return;
-            }
+            var modifiers = useModifiers ? EditorInputModifiers.Current : default;
+            var selection = ListSelectionPolicy.Select(
+                visibleRows.Select(item => item.InstanceId).ToArray(),
+                selectionService.SelectedItems.OfType<GameObject>()
+                    .Select(item => item.InstanceId.Value),
+                row.InstanceId,
+                selectionAnchorId,
+                modifiers.Shift,
+                modifiers.Additive,
+                preserveSelected);
+            selectionAnchorId = selection.AnchorId;
+            await selectionService.SelectObjectsAsync(selection.SelectedIds
+                .Where(gameObjectsById.ContainsKey)
+                .Select(id => (ObservableObject)gameObjectsById[id]));
+            ApplyProjection(service.Current);
+        }
 
-            if (updateCollectionSelection)
+        IReadOnlyList<GameObject> GetSelectedGameObjects(GameObject? contextItem = null, bool rootsOnly = false)
+        {
+            var selected = selectionService.SelectedItems.OfType<GameObject>().ToArray();
+            if (contextItem is not null && !selected.Any(item => item.InstanceId.Equals(contextItem.InstanceId)))
             {
-                SetHierarchySelection(row);
+                selected = [contextItem];
             }
-
-            if (!gameObjectsById.TryGetValue(row.InstanceId, out var gameObject))
-            {
-                return;
-            }
-
-            var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
-            var contextProvider = MauiProgram.GetService<IActionContextProvider>();
-            var context = contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(HierarchyView)));
-            await dispatcher.DispatchAsync(new SelectObjectCommand(selectedObject: gameObject), context);
+            return rootsOnly
+                ? EditorDragDrop.GetSelectionRoots(selected).OfType<GameObject>().ToArray()
+                : selected;
         }
 
         async void OnHierarchyRootDrop(object? sender, DropEventArgs e)
@@ -146,7 +145,7 @@ namespace SailorEditor.Views
 
             if (!EditorDragDrop.TryCreateSceneDropCommand(source, target, out var command) || command is null)
             {
-                if (source is GameObject)
+                if (source is GameObject or EditorSelectionDragPayload)
                 {
                     e.Handled = true;
                 }
@@ -154,7 +153,16 @@ namespace SailorEditor.Views
             }
 
             e.Handled = true;
-            await dispatcher.DispatchAsync(command, context);
+            var result = await dispatcher.DispatchAsync(command, context);
+            if (!result.Succeeded)
+            {
+                throw new InvalidOperationException(result.Message ?? "Drop hierarchy items failed.");
+            }
+            var createdIds = EditorCommandBatch.ResultValues<InstanceId>(result).ToArray();
+            if (createdIds.Length > 0)
+            {
+                selectionService.SelectInstances(createdIds);
+            }
         }
 
         void ToggleRowExpansion(HierarchyListRow row)
@@ -178,18 +186,12 @@ namespace SailorEditor.Views
         {
             using var perfScope = EditorPerf.Scope("HierarchyView.ApplyProjection");
 
-            var revision = unchecked(++projectionRevision);
+            if (hierarchyWorkspaceEpoch != projectionService.WorkspaceEpoch)
+            {
+                hierarchyWorkspaceEpoch = projectionService.WorkspaceEpoch;
+                selectionAnchorId = null;
+            }
             var desiredRows = projectionService.VisibleRows;
-            var desiredSelectedRow = desiredRows.FirstOrDefault(row => row.IsSelected);
-            var currentSelectedRow = HierarchyList.SelectedItem as HierarchyListRow;
-            var preservesCurrentSelection = currentSelectedRow is not null &&
-                desiredSelectedRow is not null &&
-                currentSelectedRow == desiredSelectedRow &&
-                visibleRows.Any(row => ReferenceEquals(row, currentSelectedRow));
-
-            if (!preservesCurrentSelection && currentSelectedRow is not null)
-                SetHierarchySelection(null);
-
             gameObjectsById.Clear();
             foreach (var gameObject in world.Prefabs
                 .SelectMany(prefab => prefab.GameObjects)
@@ -197,46 +199,31 @@ namespace SailorEditor.Views
             {
                 gameObjectsById[gameObject.InstanceId!.Value] = gameObject;
             }
+            if (selectionAnchorId is not null && !gameObjectsById.ContainsKey(selectionAnchorId))
+            {
+                selectionAnchorId = selectionService.SelectedInstanceIds.LastOrDefault()?.Value;
+            }
 
             HierarchyRowReconciler.Reconcile(visibleRows, desiredRows);
             UpdateRootDropOverlay();
-
-            var selectedRow = desiredSelectedRow is null
-                ? null
-                : visibleRows.FirstOrDefault(row => string.Equals(
-                    row.InstanceId,
-                    desiredSelectedRow.InstanceId,
-                    StringComparison.Ordinal));
-            if (ReferenceEquals(HierarchyList.SelectedItem, selectedRow))
-                return;
-
-            var selectedId = selectedRow?.InstanceId;
-            HierarchyList.Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(1), () =>
+            foreach (var border in rowBorders)
             {
-                if (revision != projectionRevision)
-                    return;
-
-                var currentProjectionSelection = string.IsNullOrWhiteSpace(selectedId)
-                    ? null
-                    : visibleRows.FirstOrDefault(row => string.Equals(
-                        row.InstanceId,
-                        selectedId,
-                        StringComparison.Ordinal));
-                SetHierarchySelection(currentProjectionSelection);
-            });
+                UpdateRowHighlight(border);
+            }
         }
 
-        void SetHierarchySelection(HierarchyListRow? row)
+        void UpdateRowHighlight(Border border)
         {
-            suppressSelectionChanged = true;
-            try
+            if (border.BindingContext is not HierarchyListRow row)
             {
-                HierarchyList.SelectedItem = row;
+                return;
             }
-            finally
-            {
-                suppressSelectionChanged = false;
-            }
+            var selected = selectionService.SelectedInstanceIds.Any(id =>
+                string.Equals(id.Value, row.InstanceId, StringComparison.Ordinal));
+            border.BackgroundColor = selected ? Color.FromArgb("#334C6FFF") : Colors.Transparent;
+            border.Stroke = Color.FromArgb("#779DDB");
+            border.StrokeThickness = selected && string.Equals(
+                selectionService.SelectedInstanceId?.Value, row.InstanceId, StringComparison.Ordinal) ? 1 : 0;
         }
 
         DropGestureRecognizer CreateRootDropGesture()
@@ -330,7 +317,13 @@ namespace SailorEditor.Views
                 {
                     if (border.BindingContext is HierarchyListRow row && gameObjectsById.TryGetValue(row.InstanceId, out var gameObject))
                     {
-                        e.Data.Properties[EditorDragDrop.DragItemKey] = gameObject;
+                        if (!GetSelectedGameObjects().Any(item => item.InstanceId.Equals(gameObject.InstanceId)))
+                        {
+                            selectionAnchorId = row.InstanceId;
+                            selectionService.SelectInstances([gameObject.InstanceId]);
+                        }
+                        e.Data.Properties[EditorDragDrop.DragItemKey] =
+                            EditorDragDrop.CreateSelectionPayload(GetSelectedGameObjects(), gameObject);
                     }
                 };
                 border.GestureRecognizers.Add(dragGesture);
@@ -361,8 +354,7 @@ namespace SailorEditor.Views
                     {
                         _ = ExecuteHierarchyActionAsync(
                             () => SelectHierarchyRowAsync(
-                                row,
-                                updateCollectionSelection: true),
+                                row),
                             "Select GameObject");
                     }
                 };
@@ -381,7 +373,8 @@ namespace SailorEditor.Views
                             {
                                 await SelectHierarchyRowAsync(
                                     row,
-                                    updateCollectionSelection: true);
+                                    preserveSelected: true,
+                                    useModifiers: false);
                                 await FocusGameObjectAsync(row);
                             },
                             "Focus GameObject");
@@ -389,12 +382,25 @@ namespace SailorEditor.Views
                 };
                 border.GestureRecognizers.Add(focusGesture);
 
+                var contextTap = new TapGestureRecognizer { Buttons = ButtonsMask.Secondary };
+                contextTap.Tapped += (_, _) =>
+                {
+                    if (border.BindingContext is HierarchyListRow row)
+                    {
+                        _ = ExecuteHierarchyActionAsync(
+                        () => SelectHierarchyRowAsync(row, preserveSelected: true, useModifiers: false),
+                        "Select GameObjects");
+                    }
+                };
+                border.GestureRecognizers.Add(contextTap);
+                rowBorders.Add(border);
+
                 border.BindingContextChanged += (_, _) =>
                 {
                     if (border.BindingContext is HierarchyListRow row)
                     {
                         rowLayout.Margin = new Thickness(row.Depth * IndentWidth, 0, 0, 0);
-                        border.BackgroundColor = row.IsSelected ? Color.FromArgb("#334C6FFF") : Colors.Transparent;
+                        UpdateRowHighlight(border);
 
                         if (gameObjectsById.TryGetValue(row.InstanceId, out var gameObject))
                         {
@@ -449,6 +455,18 @@ namespace SailorEditor.Views
             {
                 new EditorContextMenuItem
                 {
+                    Text = "Copy",
+                    KeyboardAccelerators = CreateKeyboardAccelerators("C"),
+                    Command = CreateContextMenuCommand(() => CopyGameObjectsAsync(gameObject), "Copy GameObjects")
+                },
+                new EditorContextMenuItem
+                {
+                    Text = "Paste",
+                    KeyboardAccelerators = CreateKeyboardAccelerators("V"),
+                    Command = CreateContextMenuCommand(PasteGameObjectAsync, "Paste GameObjects")
+                },
+                new EditorContextMenuItem
+                {
                     Text = "New GameObject",
                     Command = CreateContextMenuCommand(
                         () => service.CreateGameObjectAsync(gameObject),
@@ -458,7 +476,7 @@ namespace SailorEditor.Views
                 {
                     Text = "Rename",
                     Command = CreateContextMenuCommand(
-                        () => RenameGameObject(gameObject),
+                        () => RenameGameObjectsAsync(gameObject),
                         "Rename GameObject")
                 },
                 new EditorContextMenuItem
@@ -473,7 +491,7 @@ namespace SailorEditor.Views
                     Text = "Remove",
                     IsDestructive = true,
                     Command = CreateContextMenuCommand(
-                        () => service.RemoveGameObjectAsync(gameObject),
+                        () => RemoveGameObjectsAsync(gameObject),
                         "Remove GameObject")
                 }
             };
@@ -534,20 +552,6 @@ namespace SailorEditor.Views
                 }
             ];
 
-        GameObject? GetSelectedGameObject()
-        {
-            if (HierarchyList.SelectedItem is not HierarchyListRow row)
-            {
-                return null;
-            }
-
-            return gameObjectsById.TryGetValue(
-                row.InstanceId,
-                out var gameObject)
-                ? gameObject
-                : null;
-        }
-
         async Task CommitPendingInspectorChangesAsync()
         {
             if (!await inspectorPendingEditCoordinator
@@ -558,16 +562,17 @@ namespace SailorEditor.Views
             }
         }
 
-        async Task CopySelectedGameObjectAsync()
+        Task CopySelectedGameObjectAsync() => CopyGameObjectsAsync(null);
+
+        async Task CopyGameObjectsAsync(GameObject? contextItem)
         {
-            var gameObject = GetSelectedGameObject();
-            if (gameObject is null)
+            var selected = GetSelectedGameObjects(contextItem, rootsOnly: true);
+            if (selected.Count == 0)
             {
                 return;
             }
-
             await CommitPendingInspectorChangesAsync();
-            await gameObjectClipboardService.CopyAsync(gameObject);
+            await gameObjectClipboardService.CopyAsync(selected);
         }
 
         async Task PasteGameObjectAsync()
@@ -578,8 +583,29 @@ namespace SailorEditor.Views
 
         async Task DuplicateGameObjectAsync(GameObject gameObject)
         {
+            var selected = GetSelectedGameObjects(gameObject, rootsOnly: true);
             await CommitPendingInspectorChangesAsync();
-            await gameObjectClipboardService.DuplicateAsync(gameObject);
+            await gameObjectClipboardService.DuplicateAsync(selected);
+        }
+
+        async Task RemoveGameObjectsAsync(GameObject contextItem)
+        {
+            var selected = GetSelectedGameObjects(contextItem, rootsOnly: true);
+            await CommitPendingInspectorChangesAsync();
+            await DispatchGroupAsync("Remove GameObjects", selected.Select(item =>
+                (IEditorCommand)new DestroyGameObjectCommand(item)));
+        }
+
+        async Task DispatchGroupAsync(string description, IEnumerable<IEditorCommand> commands)
+        {
+            var context = MauiProgram.GetService<IActionContextProvider>().GetCurrentContext(
+                new CommandOrigin(CommandOriginKind.Menu, nameof(HierarchyView)));
+            var result = await MauiProgram.GetService<ICommandDispatcher>().DispatchAsync(
+                EditorCommandBatch.Create(description, commands), context);
+            if (!result.Succeeded)
+            {
+                throw new InvalidOperationException(result.Message ?? description + " failed.");
+            }
         }
 
         static Command CreateContextMenuCommand(
@@ -741,23 +767,27 @@ namespace SailorEditor.Views
             }
         }
 
-        async Task RenameGameObject(GameObject gameObject)
+        async Task RenameGameObjectsAsync(GameObject contextItem)
         {
-            var newName = await Application.Current.MainPage.DisplayPromptAsync(
-                "Rename GameObject",
-                "New name",
-                "OK",
-                "Cancel",
-                initialValue: gameObject.Name);
-
-            if (string.IsNullOrWhiteSpace(newName))
+            var selected = GetSelectedGameObjects(contextItem);
+            await CommitPendingInspectorChangesAsync();
+            var commands = new List<IEditorCommand>();
+            foreach (var gameObject in selected)
             {
-                return;
+                var newName = await Application.Current.MainPage.DisplayPromptAsync(
+                    "Rename GameObject", $"New name for {gameObject.Name}", "OK", "Cancel", initialValue: gameObject.Name);
+                if (string.IsNullOrWhiteSpace(newName))
+                {
+                    return;
+                }
+                var before = EditorYaml.SerializeGameObject(gameObject);
+                var clone = (GameObject)gameObject.Clone();
+                clone.Name = newName.Trim();
+                commands.Add(new UpdateGameObjectCommand(gameObject, before,
+                    EditorYaml.SerializeGameObject(clone), $"Rename {gameObject.Name}"));
             }
-
-            await service.RenameGameObjectAsync(
-                gameObject,
-                newName.Trim());
+            await DispatchGroupAsync("Rename GameObjects", commands);
         }
+
     }
 }

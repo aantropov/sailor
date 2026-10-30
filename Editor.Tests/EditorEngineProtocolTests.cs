@@ -132,11 +132,19 @@ public sealed class EditorEngineProtocolTests
             ManagedMutationRevision = 5,
             Transform = new ViewportTransformEvent
             {
-                InstanceId = "game-object",
                 Operation = ViewportTransformOperation.Rotate,
                 Space = ViewportTransformSpace.Local,
-                BeforeRotation = new Vector4 { W = 1.0f },
-                AfterRotation = new Vector4 { Y = 0.70710677f, W = 0.70710677f }
+                PivotMode = ViewportTransformPivotMode.Center,
+                Changes =
+                {
+                    new ViewportTransformChange
+                    {
+                        InstanceId = "game-object",
+                        ManagedMutationRevision = 11,
+                        BeforeRotation = new Vector4 { W = 1.0f },
+                        AfterRotation = new Vector4 { Y = 0.70710677f, W = 0.70710677f }
+                    }
+                }
             }
         });
 
@@ -147,7 +155,10 @@ public sealed class EditorEngineProtocolTests
         Assert.Equal(ViewportEvent.PayloadOneofCase.Transform, viewportEvent.PayloadCase);
         Assert.Equal(ViewportTransformOperation.Rotate, viewportEvent.Transform.Operation);
         Assert.Equal(ViewportTransformSpace.Local, viewportEvent.Transform.Space);
-        Assert.Equal(0.70710677f, viewportEvent.Transform.AfterRotation.Y);
+        Assert.Equal(ViewportTransformPivotMode.Center, viewportEvent.Transform.PivotMode);
+        var change = Assert.Single(viewportEvent.Transform.Changes);
+        Assert.Equal(11UL, change.ManagedMutationRevision);
+        Assert.Equal(0.70710677f, change.AfterRotation.Y);
     }
 
     [Fact]

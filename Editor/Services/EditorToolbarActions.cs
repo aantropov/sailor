@@ -1,7 +1,7 @@
 using SailorEditor.Commands;
 using SailorEditor.Panels;
 using SailorEditor.Shell;
-using SailorEditor.ViewModels;
+using SailorEditor.Workflow;
 
 namespace SailorEditor.Services
 {
@@ -37,16 +37,10 @@ namespace SailorEditor.Services
                 return;
             }
 
-            var selectionService = MauiProgram.GetService<SelectionService>();
-            var selected = selectionService.SelectedItem;
-
-            if (selected is IInspectorEditable editable && editable.HasPendingInspectorChanges)
+            if (!await CommitSelectionAsync())
             {
-                if (!await editable.CommitInspectorChangesAsync())
-                {
-                    await DisplayStatus("Save Scene", "Inspector changes could not be committed.");
-                    return;
-                }
+                await DisplayStatus("Save Scene", "Inspector changes could not be committed.");
+                return;
             }
 
             var result = await MauiProgram.GetService<WorldService>().SaveCurrentWorldAsync();
@@ -110,6 +104,12 @@ namespace SailorEditor.Services
             }
 
             var launchContext = engineService.GetLaunchContext();
+            if (!await CommitSelectionAsync(cancellationToken))
+            {
+                await DisplayStatus(debug ? "Debug" : "Play", "Inspector changes could not be committed.");
+                return;
+            }
+
             var world =
                 await engineService.SerializeCurrentWorldAsync(
                     cancellationToken).ConfigureAwait(false);
@@ -137,12 +137,7 @@ namespace SailorEditor.Services
                 var enable = !nativeState;
                 if (enable)
                 {
-                    var selected = MauiProgram
-                        .GetService<SelectionService>()
-                        .SelectedItem;
-                    if (selected is IInspectorEditable editable &&
-                        editable.HasPendingInspectorChanges &&
-                        !await editable.CommitInspectorChangesAsync())
+                    if (!await CommitSelectionAsync(cancellationToken))
                     {
                         await DisplayStatus(
                             "Simulate",
@@ -199,6 +194,26 @@ namespace SailorEditor.Services
         public async Task OpenSettingsAsync()
         {
             await MauiProgram.GetService<EditorShellHost>().OpenPanelAsync(KnownPanelTypes.Settings);
+        }
+
+        static async Task<bool> CommitSelectionAsync(CancellationToken cancellationToken = default)
+        {
+            if (!await MauiProgram.GetService<InspectorPendingEditCoordinator>()
+                    .CommitPendingChangesAsync(cancellationToken))
+            {
+                return false;
+            }
+
+            var selectedItems = MauiProgram.GetService<SelectionService>().SelectedItems.ToArray();
+            foreach (var selected in selectedItems)
+            {
+                if (!await InspectorSaveCommitGate.CommitSelectedAsync(selected, cancellationToken))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         static Task DisplayStatus(string title, string message)

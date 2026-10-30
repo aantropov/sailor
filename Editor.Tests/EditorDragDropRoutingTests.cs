@@ -7,6 +7,7 @@ using SailorEditor;
 
 namespace Editor.Tests;
 
+[Collection("Editor drag/drop")]
 public sealed class EditorDragDropRoutingTests
 {
     [Fact]
@@ -200,6 +201,7 @@ public sealed class EditorDragDropRoutingTests
     {
         var prefab = new PrefabFile { FileId = new FileId("{PREFAB}") };
         var target = new GameObject { InstanceId = new InstanceId("go-target") };
+        RegisterTarget(target);
 
         var resolved = EditorDragDrop.TryCreateSceneDropCommand(prefab, target, out var command);
 
@@ -236,6 +238,7 @@ public sealed class EditorDragDropRoutingTests
         {
             InstanceId = new InstanceId("go-target")
         };
+        RegisterTarget(target);
 
         var resolved = EditorDragDrop.TryCreateSceneDropCommand(
             model,
@@ -246,6 +249,14 @@ public sealed class EditorDragDropRoutingTests
         Assert.IsType<CreateModelGameObjectCommand>(command);
         Assert.IsAssignableFrom<IUndoableEditorCommand>(command);
         Assert.Equal("Duck", EditorDragDrop.ResolveAssetObjectName(model));
+    }
+
+    static void RegisterTarget(GameObject target)
+    {
+        var world = MauiProgram.GetService<SailorEditor.Services.WorldService>();
+        world.Current.Prefabs.Clear();
+        world.Current.Prefabs.Add(new SailorEditor.Services.PrefabState());
+        world.Current.Prefabs[0].GameObjects.Add(target);
     }
 
     [Fact]

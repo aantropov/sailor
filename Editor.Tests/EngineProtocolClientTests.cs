@@ -1251,7 +1251,9 @@ public sealed class EngineProtocolClientTests
                                     Operation =
                                         ViewportTransformOperation.Rotate,
                                     Space =
-                                        ViewportTransformSpace.Local
+                                        ViewportTransformSpace.Local,
+                                    PivotMode =
+                                        ViewportTransformPivotMode.Center
                                 }),
                     _ => Success(
                         request,
@@ -1277,11 +1279,13 @@ public sealed class EngineProtocolClientTests
         Assert.True(await client.SetViewportToolStateAsync(
             1,
             ViewportTransformOperation.Scale,
-            ViewportTransformSpace.World));
+            ViewportTransformSpace.World,
+            ViewportTransformPivotMode.Pivot));
         Assert.Equal(
             new EngineProtocolViewportToolState(
                 ViewportTransformOperation.Rotate,
-                ViewportTransformSpace.Local),
+                ViewportTransformSpace.Local,
+                ViewportTransformPivotMode.Center),
             await client.GetViewportToolStateAsync(1));
 
         Assert.Collection(
@@ -1324,6 +1328,9 @@ public sealed class EngineProtocolClientTests
                 Assert.Equal(
                     ViewportTransformSpace.World,
                     request.SetViewportToolState.Space);
+                Assert.Equal(
+                    ViewportTransformPivotMode.Pivot,
+                    request.SetViewportToolState.PivotMode);
             },
             request => Assert.Equal(
                 ProtocolRequest.CommandOneofCase.GetViewportToolState,
@@ -1339,6 +1346,124 @@ public sealed class EngineProtocolClientTests
                 EngineProtocolInvocationKind.Interactive
             ],
             lanes);
+    }
+
+    [Theory]
+    [InlineData(ViewportTransformPivotMode.Pivot)]
+    [InlineData(ViewportTransformPivotMode.Center)]
+    public async Task ViewportToolState_PreservesExplicitPivotMode(
+        ViewportTransformPivotMode pivotMode)
+    {
+        ViewportToolStateRequest? state = null;
+        var client = CreateClient(request =>
+        {
+            if (request.CommandCase == ProtocolRequest.CommandOneofCase.SetViewportToolState)
+            {
+                state = request.SetViewportToolState;
+                return Success(request, response => response.BoolResult = new BoolResult { Value = true });
+            }
+
+            Assert.NotNull(state);
+            return Success(request, response => response.ViewportToolStateResult = new ViewportToolStateResult
+            {
+                Operation = state.Operation,
+                Space = state.Space,
+                PivotMode = state.PivotMode
+            });
+        });
+
+        Assert.True(await client.SetViewportToolStateAsync(
+            1,
+            ViewportTransformOperation.Rotate,
+            ViewportTransformSpace.Local,
+            pivotMode));
+
+        Assert.Equal(
+            new EngineProtocolViewportToolState(
+                ViewportTransformOperation.Rotate,
+                ViewportTransformSpace.Local,
+                pivotMode),
+            await client.GetViewportToolStateAsync(1));
+    }
+
+    [Fact]
+    public async Task RestoreViewportTransform_PreservesTypedGroupSnapshotsAndCapturedRevisions()
+    {
+        ProtocolRequest? captured = null;
+        var client = CreateClient(request =>
+        {
+            captured = request;
+            return Success(request, response => response.BoolResult = new BoolResult { Value = true });
+        });
+        var transform = new ViewportTransformEvent
+        {
+            Operation = ViewportTransformOperation.Translate,
+            Space = ViewportTransformSpace.World,
+            PivotMode = ViewportTransformPivotMode.Center
+        };
+        foreach (var (id, revision, x) in new[] { ("go-left", 11UL, -2f), ("go-right", 17UL, 2f) })
+        {
+            transform.Changes.Add(new ViewportTransformChange
+            {
+                InstanceId = id,
+                ManagedMutationRevision = revision,
+                BeforePosition = new Vector4 { X = x, W = 1 },
+                BeforeRotation = new Vector4 { W = 1 },
+                BeforeScale = new Vector4 { X = 2, Y = 3, Z = 4, W = 1 },
+                AfterPosition = new Vector4 { X = x, Y = 2.25f, W = 1 },
+                AfterRotation = new Vector4 { W = 1 },
+                AfterScale = new Vector4 { X = 2, Y = 3, Z = 4, W = 1 }
+            });
+        }
+        var expected = transform.Clone();
+
+        Assert.True(await client.RestoreViewportTransformAsync(transform));
+
+        Assert.NotNull(captured);
+        Assert.Equal(ProtocolRequest.CommandOneofCase.RestoreViewportTransform, captured.CommandCase);
+        Assert.Equal(expected, captured.RestoreViewportTransform);
+        transform.Changes[0].AfterPosition.Y = 999;
+        transform.Changes[1].ManagedMutationRevision = 999;
+        Assert.Equal(expected, captured.RestoreViewportTransform);
+    }
+
+    [Theory]
+    [InlineData(ViewportTransformPivotMode.Unspecified)]
+    [InlineData((ViewportTransformPivotMode)99)]
+    public async Task ViewportToolState_RejectsInvalidPivotModeBeforeSending(
+        ViewportTransformPivotMode pivotMode)
+    {
+        var invokeCount = 0;
+        var client = CreateClient(request =>
+        {
+            invokeCount++;
+            return Success(request, response => response.BoolResult = new BoolResult { Value = true });
+        });
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => client.SetViewportToolStateAsync(
+            1,
+            ViewportTransformOperation.Translate,
+            ViewportTransformSpace.World,
+            pivotMode));
+        Assert.Equal(0, invokeCount);
+    }
+
+    [Theory]
+    [InlineData(ViewportTransformPivotMode.Unspecified)]
+    [InlineData((ViewportTransformPivotMode)99)]
+    public async Task ViewportToolState_RejectsInvalidReturnedPivotMode(
+        ViewportTransformPivotMode pivotMode)
+    {
+        var client = CreateClient(request => Success(
+            request,
+            response => response.ViewportToolStateResult = new ViewportToolStateResult
+            {
+                Operation = ViewportTransformOperation.Translate,
+                Space = ViewportTransformSpace.World,
+                PivotMode = pivotMode
+            }));
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => client.GetViewportToolStateAsync(1));
     }
 
     [Theory]

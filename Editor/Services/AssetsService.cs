@@ -1,4 +1,4 @@
-﻿using SailorEditor.Utility;
+using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using SailorEngine;
 using YamlDotNet.RepresentationModel;
@@ -28,6 +28,9 @@ namespace SailorEditor.Services
         readonly object _watcherLock = new();
         readonly List<FileSystemWatcher> _contentWatchers = [];
         readonly SemaphoreSlim _assetSaveLock = new(1, 1);
+        readonly object _assetReloadBatchLock = new();
+        int _assetSaveBatchDepth;
+        bool _assetReloadPending;
         readonly SemaphoreSlim _folderLoadLock = new(1, 1);
         readonly AssetCacheIndexStore _assetCacheIndexStore = new();
         Task _assetCacheIndexLoadTask = Task.CompletedTask;
@@ -68,12 +71,25 @@ namespace SailorEditor.Services
             {
                 return;
             }
+            lock (_assetReloadBatchLock)
+            {
+                if (_assetSaveBatchDepth != 0)
+                {
+                    _assetReloadPending = true;
+                    return;
+                }
+            }
+            await RefreshAfterAssetReloadAsync(completion);
+        }
 
+        async Task RefreshAfterAssetReloadAsync(AssetReloadCompletion completion)
+        {
             try
             {
                 var selectionService = MauiProgram.GetService<SelectionService>();
                 var selection = selectionService.Snapshot;
-                var inspectedAsset = selectionService.InspectedItem as AssetFile;
+                var selectedAssets = selectionService.SelectedItems.OfType<AssetFile>().ToArray();
+                var inspectedAssets = selectionService.InspectedItems.OfType<AssetFile>().ToArray();
                 var workspaceEpoch = WorkspaceEpoch;
                 await RefreshAsync();
                 await MainThread.InvokeOnMainThreadAsync(async () =>
@@ -84,14 +100,18 @@ namespace SailorEditor.Services
                         return;
                     }
 
-                    if (selection.Kind == SelectionTargetKind.Asset && selection.SelectedId is not null)
+                    if (selection.Kind == SelectionTargetKind.Asset)
                     {
-                        RestoreSelectedAsset(selectionService, new FileId(selection.SelectedId));
+                        await RestoreSelectedAssetsAsync(selectionService, selection.SelectedIds, selectedAssets);
                     }
-                    else if (inspectedAsset is not null)
+                    else
                     {
-                        await selectionService.RebindInspectedAssetAsync(inspectedAsset,
-                            Assets.TryGetValue(inspectedAsset.FileId, out var refreshed) ? refreshed : null);
+                        foreach (var inspectedAsset in inspectedAssets)
+                        {
+                            await selectionService.RebindInspectedAssetAsync(inspectedAsset,
+                                Assets.TryGetValue(inspectedAsset.FileId, out var refreshed)
+                                    ? PreservePendingAssetEdits(inspectedAsset, refreshed) : null);
+                        }
                     }
                 });
             }
@@ -99,6 +119,49 @@ namespace SailorEditor.Services
             {
                 Console.WriteLine(
                     $"[AssetsService] Failed to refresh after asset reload generation {completion.Generation}: {exception.Message}");
+            }
+        }
+
+        public async Task<bool> SaveAssetsAsync(IReadOnlyList<AssetFile> assets, CancellationToken cancellationToken = default)
+        {
+            var epoch = WorkspaceEpoch;
+            var targets = assets.DistinctBy(asset => asset.FileId.Value, StringComparer.Ordinal).ToArray();
+            if (targets.Any(asset => !CanModifyAsset(asset)))
+            {
+                return false;
+            }
+            lock (_assetReloadBatchLock)
+            {
+                ++_assetSaveBatchDepth;
+            }
+            try
+            {
+                foreach (var asset in targets)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (epoch != WorkspaceEpoch || !await SaveAssetAsync(asset, cancellationToken))
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            finally
+            {
+                bool refresh;
+                lock (_assetReloadBatchLock)
+                {
+                    --_assetSaveBatchDepth;
+                    refresh = _assetSaveBatchDepth == 0 && _assetReloadPending;
+                    if (refresh)
+                    {
+                        _assetReloadPending = false;
+                    }
+                }
+                if (refresh && epoch == WorkspaceEpoch)
+                {
+                    await RefreshAfterAssetReloadAsync(new AssetReloadCompletion(0, true));
+                }
             }
         }
 
@@ -1070,8 +1133,10 @@ namespace SailorEditor.Services
             string? successfulFolderSelectionPath = null)
         {
             var selectionService = MauiProgram.GetService<SelectionService>();
-            var selectedAssetId = (selectionService.SelectedItem as AssetFile)?.FileId;
-            var inspectedAsset = selectionService.InspectedItem as AssetFile;
+            var selectedAssets = selectionService.SelectedItems.OfType<AssetFile>().ToArray();
+            var selectedAssetIds = selectionService.Snapshot.Kind == SelectionTargetKind.Asset
+                ? selectionService.Snapshot.SelectedIds.ToArray() : Array.Empty<string>();
+            var inspectedAssets = selectionService.InspectedItems.OfType<AssetFile>().ToArray();
             ProjectContentFileOperationResult result;
 
             lock (_watcherLock)
@@ -1131,10 +1196,10 @@ namespace SailorEditor.Services
                 }
                 else
                 {
-                    RestoreSelectedAsset(selectionService, selectedAssetId);
-                    if (selectedAssetId is null && inspectedAsset is not null)
+                    _ = RestoreSelectedAssetsAsync(selectionService, selectedAssetIds, selectedAssets);
+                    if (selectedAssetIds.Length == 0)
                     {
-                        _ = RestoreInspectedAssetAsync(selectionService, inspectedAsset);
+                        _ = RestoreInspectedAssetsAsync(selectionService, inspectedAssets);
                     }
                 }
             }
@@ -1180,31 +1245,55 @@ namespace SailorEditor.Services
             }
         }
 
-        void RestoreSelectedAsset(SelectionService selectionService, FileId? selectedAssetId)
+        static AssetFile PreservePendingAssetEdits(AssetFile original, AssetFile refreshed)
         {
-            if (selectedAssetId is null || selectedAssetId.IsEmpty())
-                return;
-
-            if (Assets.TryGetValue(selectedAssetId, out var refreshedAsset))
+            if (!original.IsDirty)
             {
-                selectionService.SelectObject(refreshedAsset, force: true);
+                return refreshed;
             }
-            else
-            {
-                selectionService.ClearSelection();
-            }
+            original.RebindLocation(refreshed);
+            return original;
         }
 
-        async Task RestoreInspectedAssetAsync(SelectionService selectionService, AssetFile inspectedAsset)
+        async Task RestoreSelectedAssetsAsync(SelectionService selectionService, IReadOnlyList<string> selectedAssetIds, IReadOnlyList<AssetFile> originals)
         {
-            try
+            if (selectedAssetIds.Count == 0)
             {
-                await selectionService.RebindInspectedAssetAsync(inspectedAsset,
-                    Assets.TryGetValue(inspectedAsset.FileId, out var refreshed) ? refreshed : null);
+                return;
             }
-            catch (Exception exception)
+            var selection = selectionService.Snapshot;
+            if (selection.Kind != SelectionTargetKind.Asset ||
+                !selection.SelectedIds.SequenceEqual(selectedAssetIds, StringComparer.Ordinal))
             {
-                Console.Error.WriteLine($"Could not refresh inspected asset {inspectedAsset.FileId}: {exception.Message}");
+                return;
+            }
+            var previousById = originals.ToDictionary(asset => asset.FileId.Value, StringComparer.Ordinal);
+            var replacements = selectedAssetIds.Select(id =>
+            {
+                if (!Assets.TryGetValue(new FileId(id), out var asset))
+                {
+                    return null;
+                }
+                return previousById.TryGetValue(id, out var original)
+                    ? PreservePendingAssetEdits(original, asset) : asset;
+            }).OfType<AssetFile>().Cast<CommunityToolkit.Mvvm.ComponentModel.ObservableObject>().ToArray();
+            await selectionService.SelectObjectsAsync(replacements, force: true);
+        }
+
+        async Task RestoreInspectedAssetsAsync(SelectionService selectionService, IReadOnlyList<AssetFile> inspectedAssets)
+        {
+            foreach (var inspectedAsset in inspectedAssets)
+            {
+                try
+                {
+                    await selectionService.RebindInspectedAssetAsync(inspectedAsset,
+                        Assets.TryGetValue(inspectedAsset.FileId, out var refreshed)
+                            ? PreservePendingAssetEdits(inspectedAsset, refreshed) : null);
+                }
+                catch (Exception exception)
+                {
+                    Console.Error.WriteLine($"Could not refresh inspected asset {inspectedAsset.FileId}: {exception.Message}");
+                }
             }
         }
 

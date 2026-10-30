@@ -224,7 +224,7 @@ namespace SailorEditor.Services
                 cancellationToken);
             if (result.Succeeded)
             {
-                MauiProgram.GetService<SelectionService>().ClearSelection();
+                MauiProgram.GetService<SelectionService>().RebindSceneSelection();
             }
 
             return result.Succeeded;
@@ -291,9 +291,9 @@ namespace SailorEditor.Services
                         CommandOriginKind.UI,
                         nameof(RemoveComponentAsync))),
                 cancellationToken);
-            if (result.Succeeded && ReferenceEquals(MauiProgram.GetService<SelectionService>().SelectedItem, component))
+            if (result.Succeeded)
             {
-                MauiProgram.GetService<SelectionService>().ClearSelection();
+                MauiProgram.GetService<SelectionService>().RebindSceneSelection();
             }
 
             return result.Succeeded;
@@ -339,16 +339,22 @@ namespace SailorEditor.Services
                     Error: "Stop simulation before saving the scene.");
             }
 
-            var selectedItem = MauiProgram
-                .GetService<SelectionService>()
-                .SelectedItem;
-            if (!await InspectorSaveCommitGate.CommitSelectedAsync(
-                    selectedItem,
-                    cancellationToken))
+            var selection = MauiProgram.GetService<SelectionService>();
+            if (!await MauiProgram.GetService<InspectorPendingEditCoordinator>()
+                    .CommitPendingChangesAsync(cancellationToken))
             {
                 return new SceneSaveResult(
                     SceneSaveOutcome.Failed,
                     Error: "Pending Inspector changes could not be committed before saving the scene.");
+            }
+            foreach (var selectedItem in selection.InspectedItems.ToArray())
+            {
+                if (!await InspectorSaveCommitGate.CommitSelectedAsync(selectedItem, cancellationToken))
+                {
+                    return new SceneSaveResult(
+                        SceneSaveOutcome.Failed,
+                        Error: "Pending Inspector changes could not be committed before saving the scene.");
+                }
             }
 
             var assetsService = MauiProgram.GetService<AssetsService>();
@@ -950,31 +956,7 @@ namespace SailorEditor.Services
 
         void RefreshSelection()
         {
-            var selectionService = MauiProgram.GetService<SelectionService>();
-            var selectedItem = selectionService.SelectedItem;
-
-            if (selectedItem is GameObject selectedGameObject)
-            {
-                if (TryGetGameObject(selectedGameObject.InstanceId, out var refreshedGameObject))
-                {
-                    selectionService.SelectObject(refreshedGameObject, force: true);
-                }
-                else
-                {
-                    selectionService.ClearSelection();
-                }
-            }
-            else if (selectedItem is Component selectedComponent)
-            {
-                if (TryGetComponent(selectedComponent.InstanceId, out var refreshedComponent))
-                {
-                    selectionService.SelectObject(refreshedComponent, force: true);
-                }
-                else
-                {
-                    selectionService.ClearSelection();
-                }
-            }
+            MauiProgram.GetService<SelectionService>().RebindSceneSelection();
         }
 
         void MoveSubHierarchyToPrefab(GameObject root, Prefab targetPrefab)

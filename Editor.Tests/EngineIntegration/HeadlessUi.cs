@@ -90,7 +90,7 @@ namespace SailorEditor.Services
         public void PublishUpdate() => OnUpdateWorldAction?.Invoke(null);
         public IEnumerable<SailorEditor.ViewModels.Component> GetComponents(SailorEditor.ViewModels.GameObject gameObject)
             => Components.Values.Where(component => component.Owner == gameObject);
-        public long WorkspaceEpoch => throw new NotSupportedException();
+        public long WorkspaceEpoch { get; set; }
         public bool TryPopulateWorld(string yaml, long epoch) => throw new NotSupportedException();
         public object CreatePrefabFromSubHierarchy(SailorEditor.ViewModels.GameObject root,
             out List<SailorEngine.InstanceId> externalReferences) => throw new NotSupportedException();
@@ -100,6 +100,18 @@ namespace SailorEditor.Services
             out SailorEditor.ViewModels.Component component) => Components.TryGetValue(id.Value, out component!);
         public SailorEditor.ViewModels.GameObject FindOwner(SailorEditor.ViewModels.Component component)
             => component.Owner!;
+        public Func<SailorEditor.ViewModels.GameObject, string, CancellationToken, Task<bool>> AddComponentOperation { get; set; } = (_, _, _) => Task.FromResult(true);
+        public Func<SailorEditor.ViewModels.Component, CancellationToken, Task<bool>> ResetComponentOperation { get; set; } = (_, _) => Task.FromResult(true);
+        public Func<SailorEditor.ViewModels.Component, CancellationToken, Task<bool>> RemoveComponentOperation { get; set; } = (_, _) => Task.FromResult(true);
+        public Task<bool> AddComponentAsync(SailorEditor.ViewModels.GameObject gameObject, string typeName, CancellationToken token = default) => AddComponentOperation(gameObject, typeName, token);
+        public Task<bool> ResetComponentToDefaultsAsync(SailorEditor.ViewModels.Component component, CancellationToken token = default) => ResetComponentOperation(component, token);
+        public Task<bool> RemoveComponentAsync(SailorEditor.ViewModels.Component component, CancellationToken token = default) => RemoveComponentOperation(component, token);
+    }
+
+    public sealed class ComponentClipboardService
+    {
+        public Func<SailorEditor.ViewModels.Component, CancellationToken, Task> PasteOperation { get; set; } = (_, _) => Task.CompletedTask;
+        public Task PasteValuesAsync(SailorEditor.ViewModels.Component component, CancellationToken token = default) => PasteOperation(component, token);
     }
 }
 
@@ -111,7 +123,16 @@ namespace SailorEditor.ViewModels
         public Task<bool> LoadDependentResources(CancellationToken token)
             => base.LoadDependentResources().WaitAsync(token);
     }
-    public sealed class TextureFile : AssetFile;
+    public sealed class TextureFile : AssetFile
+    {
+        public string Filtration { get; set; } = "Linear";
+        public string Format { get; set; } = "R8G8B8A8_SRGB";
+        public string Clamping { get; set; } = "Repeat";
+        public bool ShouldGenerateMips { get; set; }
+        public bool ShouldSupportStorageBinding { get; set; }
+        public bool ShouldKeepCpuBuffers { get; set; }
+        public string SamplerReduction { get; set; } = "Average";
+    }
     public sealed class MaterialFile : AssetFile;
     public sealed class ShaderFile : AssetFile;
     public sealed class AnimationFile : AssetFile;
@@ -125,17 +146,62 @@ namespace SailorEditor.ViewModels
     public sealed class FrameGraphFile : AssetFile;
     public sealed class LandscapeVegetationFile : AssetFile;
     public sealed class GIProbesFile : AssetFile;
-    public sealed class GameObject : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
+    public sealed class GameObject : CommunityToolkit.Mvvm.ComponentModel.ObservableObject, IInspectorEditable
     {
         public string Name { get; set; } = "Test object";
         public SailorEngine.InstanceId InstanceId { get; set; } = new("test-object");
+        public Vec4 Position { get; set; } = new();
+        public Rotation Rotation { get; set; } = new();
+        public Vec4 Scale { get; set; } = new();
+        public string MobilityType { get; set; } = "Stationary";
+        public Func<CancellationToken, Task<bool>> Commit { get; set; } = _ => Task.FromResult(true);
+        public bool HasPendingInspectorChanges { get; private set; }
+        public bool HasInFlightInspectorCommit => false;
+        public async Task<bool> CommitInspectorChangesAsync(CancellationToken cancellationToken = default)
+        {
+            var succeeded = await Commit(cancellationToken);
+            if (succeeded)
+            {
+                HasPendingInspectorChanges = false;
+            }
+            return succeeded;
+        }
     }
-    public sealed class Component : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
+    public sealed class Component : CommunityToolkit.Mvvm.ComponentModel.ObservableObject, IInspectorEditable
     {
         public SailorEngine.InstanceId InstanceId { get; set; } = new("test-component");
         public string DisplayName { get; set; } = "Test component";
         public SailorEngine.ComponentType? Typename { get; set; }
         public GameObject? Owner { get; set; }
+        public bool IsUndefined { get; set; }
+        public SailorEditor.Utility.ObservableDictionary<string, CommunityToolkit.Mvvm.ComponentModel.ObservableObject> OverrideProperties { get; } = [];
+        public Func<CancellationToken, Task<bool>> Commit { get; set; } = _ => Task.FromResult(true);
+        public bool HasPendingInspectorChanges { get; private set; }
+        public bool HasInFlightInspectorCommit => false;
+        public async Task<bool> CommitInspectorChangesAsync(CancellationToken cancellationToken = default)
+        {
+            var succeeded = await Commit(cancellationToken);
+            if (succeeded)
+            {
+                HasPendingInspectorChanges = false;
+            }
+            return succeeded;
+        }
+        public Task<bool> ApplyInspectorBatchAsync(Action mutation, CancellationToken cancellationToken = default)
+        {
+            mutation();
+            HasPendingInspectorChanges = true;
+            return CommitInspectorChangesAsync(cancellationToken);
+        }
+    }
+}
+
+namespace SailorEditor.Views
+{
+    public static class AddComponentDialogPage
+    {
+        public static Func<IEnumerable<string>, Task<string?>> Choose { get; set; } = _ => Task.FromResult<string?>(null);
+        public static Task<string?> ShowAsync(IEnumerable<string> names) => Choose(names);
     }
 }
 

@@ -51,6 +51,11 @@
             </HorizontalStackLayout>
         </VerticalStackLayout>
 
+        <HorizontalStackLayout x:Name="AggregateAssetActions" Spacing="10" IsVisible="False">
+            <Button Text="Save" AutomationId="InspectorSaveSelection" Clicked="OnSaveSelectionClicked" />
+            <Button Text="Revert" AutomationId="InspectorRevertSelection" Clicked="OnRevertSelectionClicked" />
+        </HorizontalStackLayout>
+
         <HorizontalStackLayout x:Name="PrefabActions" Spacing="8" IsVisible="False">
             <Button Text="Apply prefab" Clicked="OnApplyPrefabClicked" />
             <Button Text="Select Prefab" Clicked="OnSelectPrefabClicked" />

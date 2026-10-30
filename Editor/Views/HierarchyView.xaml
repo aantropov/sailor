@@ -8,7 +8,7 @@
 
             <CollectionView x:Name="HierarchyList"
                             Margin="4"
-                            SelectionMode="Single"
+                            SelectionMode="None"
                             VerticalOptions="Fill"
                             HorizontalOptions="Fill" />
 

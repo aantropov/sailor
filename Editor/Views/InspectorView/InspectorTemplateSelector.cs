@@ -1,4 +1,5 @@
 ﻿using SailorEditor.ViewModels;
+using SailorEditor.Utility;
 
 namespace SailorEditor;
 public class InspectorTemplateSelector : DataTemplateSelector
@@ -15,11 +16,13 @@ public class InspectorTemplateSelector : DataTemplateSelector
     public DataTemplate AnimationControllerFileTemplate { get; set; }
     public DataTemplate AnimationSetFileTemplate { get; set; }
     public DataTemplate GameObjectTemplate { get; set; }
+    public DataTemplate AggregateInspectorTemplate { get; set; }
 
     protected override DataTemplate OnSelectTemplate(object item, BindableObject container)
     {
         DataTemplate template = item switch
         {
+            AggregateInspectorModel => AggregateInspectorTemplate,
             TextureFile => TextureFileTemplate,
             ShaderFile => ShaderFileTemplate,
             ShaderLibraryFile => ShaderLibraryFileTemplate,

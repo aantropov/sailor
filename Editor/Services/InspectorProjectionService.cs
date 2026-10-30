@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using SailorEditor.Commands;
 using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using SailorEditor.Workflow;
@@ -11,6 +12,8 @@ public sealed partial class InspectorProjectionService : ObservableObject
     readonly WorldService _worldService;
     long _workspaceEpoch;
     long _resetGeneration;
+    bool _refreshDeferred;
+    AggregateInspectorModel? _observedAggregate;
 
     public long WorkspaceEpoch => Interlocked.Read(ref _workspaceEpoch);
     public long ResetGeneration => Interlocked.Read(ref _resetGeneration);
@@ -29,7 +32,7 @@ public sealed partial class InspectorProjectionService : ObservableObject
 
         _selectionService.PropertyChanged += (_, args) =>
         {
-            if (args.PropertyName == nameof(SelectionService.InspectedItem))
+            if (args.PropertyName is nameof(SelectionService.InspectedItem) or nameof(SelectionService.InspectedItems))
             {
                 Refresh();
             }
@@ -43,6 +46,12 @@ public sealed partial class InspectorProjectionService : ObservableObject
     {
         using var perfScope = EditorPerf.Scope("InspectorProjectionService.Refresh");
         var suppressCommit = _selectionService.IsWorkspaceResetInProgress;
+        if (!suppressCommit && SelectedItem is AggregateInspectorModel { HasInFlightInspectorCommit: true })
+        {
+            _refreshDeferred = true;
+            return;
+        }
+        _refreshDeferred = false;
         if (suppressCommit)
         {
             Interlocked.Increment(ref _resetGeneration);
@@ -51,7 +60,16 @@ public sealed partial class InspectorProjectionService : ObservableObject
 
         try
         {
-            SelectedItem = ResolveSelectedItem();
+            var inspectedItems = ResolveInspectedItems();
+            SelectedItem = inspectedItems.Count > 1
+                ? new InspectorAggregateBuilder(
+                    _worldService,
+                    MauiProgram.GetService<AssetsService>(),
+                    MauiProgram.GetService<EngineService>().EngineTypes,
+                    MauiProgram.GetService<ITransactionScopeFactory>(),
+                    MauiProgram.GetService<IActionContextProvider>()).Build(inspectedItems)
+                : inspectedItems.FirstOrDefault();
+            ObserveAggregate(SelectedItem as AggregateInspectorModel);
             Current = SelectedItem switch
             {
                 GameObject gameObject => InspectorProjectionBuilder.Build(
@@ -86,6 +104,8 @@ public sealed partial class InspectorProjectionService : ObservableObject
         IsWorkspaceResetInProgress = true;
         try
         {
+            _refreshDeferred = false;
+            ObserveAggregate(null);
             SelectedItem = null;
             Current = InspectorProjection.Empty;
             OnPropertyChanged(nameof(SelectedItem));
@@ -97,28 +117,59 @@ public sealed partial class InspectorProjectionService : ObservableObject
         }
     }
 
-    object? ResolveSelectedItem()
+    void ObserveAggregate(AggregateInspectorModel? aggregate)
     {
-        var inspectedItem = _selectionService.InspectedItem;
-        var selectedInstanceId = inspectedItem switch
+        if (_observedAggregate is not null)
         {
-            GameObject gameObject => gameObject.InstanceId,
-            Component component => component.InstanceId,
-            _ => null
-        };
-        if (selectedInstanceId is not null && !selectedInstanceId.IsEmpty())
-        {
-            if (_worldService.TryGetGameObject(selectedInstanceId, out var gameObject))
-                return gameObject;
-
-            if (_worldService.TryGetComponent(selectedInstanceId, out var component))
-                return component;
-
-            _selectionService.InspectedItem = null;
-            return null;
+            _observedAggregate.CommitStateChanged -= OnAggregateCommitStateChanged;
         }
+        _observedAggregate = aggregate;
+        if (_observedAggregate is not null)
+        {
+            _observedAggregate.CommitStateChanged += OnAggregateCommitStateChanged;
+        }
+    }
 
-        return inspectedItem;
+    void OnAggregateCommitStateChanged()
+    {
+        if (_refreshDeferred && _observedAggregate is { HasInFlightInspectorCommit: false })
+        {
+            Refresh();
+        }
+    }
+
+    IReadOnlyList<ObservableObject> ResolveInspectedItems()
+    {
+        var result = new List<ObservableObject>();
+        foreach (var inspectedItem in _selectionService.InspectedItems)
+        {
+            var selectedInstanceId = inspectedItem switch
+            {
+                GameObject gameObject => gameObject.InstanceId,
+                Component component => component.InstanceId,
+                _ => null
+            };
+            if (selectedInstanceId is not null && !selectedInstanceId.IsEmpty())
+            {
+                if (_worldService.TryGetGameObject(selectedInstanceId, out var gameObject))
+                {
+                    result.Add(gameObject);
+                }
+                else if (_worldService.TryGetComponent(selectedInstanceId, out var component))
+                {
+                    result.Add(component);
+                }
+            }
+            else
+            {
+                result.Add(inspectedItem);
+            }
+        }
+        if (result.Count == 0 && _selectionService.InspectedItems.Count != 0)
+        {
+            _selectionService.InspectedItem = null;
+        }
+        return result;
     }
 
     GameObject? ResolveOwner(Component component) => _worldService.FindOwner(component);

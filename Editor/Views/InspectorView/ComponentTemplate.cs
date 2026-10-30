@@ -38,6 +38,14 @@ public partial class ComponentTemplate : DataTemplate
             {
                 animatorRuntimeTimer?.Stop();
                 animatorRuntimeTimer = null;
+                if (props.BindingContext is InspectorAggregateSection aggregate)
+                {
+                    props.Children.Clear();
+                    props.RowDefinitions.Clear();
+                    props.GestureRecognizers.Clear();
+                    BuildAggregateSection(props, aggregate);
+                    return;
+                }
                 if (((Grid)sender).BindingContext is not Component component)
                 {
                     props.Children.Clear();
@@ -51,68 +59,9 @@ public partial class ComponentTemplate : DataTemplate
 
                 props.GestureRecognizers.Clear();
 
-                var header = new Grid
-                {
-                    HorizontalOptions = LayoutOptions.Fill,
-                    MinimumWidthRequest = 0,
-                    ColumnDefinitions =
-                    {
-                        new ColumnDefinition { Width = GridLength.Auto },
-                        new ColumnDefinition { Width = GridLength.Star }
-                    },
-                    ColumnSpacing = Templates.InspectorFieldSpacing
-                };
-
-                var compactButton = new Button
-                {
-                    Text = "-",
-                    WidthRequest = 24,
-                    HeightRequest = 24,
-                    Padding = new Thickness(0),
-                    Margin = new Thickness(0),
-                    BackgroundColor = Colors.Transparent,
-                    BorderWidth = 0,
-                    MinimumHeightRequest = 24,
-                    MinimumWidthRequest = 24
-                };
-
-                var nameLabel = new Label { Text = "DisplayName", VerticalOptions = LayoutOptions.Center, HorizontalTextAlignment = TextAlignment.Start, FontAttributes = FontAttributes.Bold };
-                nameLabel.Behaviors.Add(new DisplayNameBehavior());
-                nameLabel.Text = component.IsUndefined
-                    ? $"{component.Typename.Name} (Undefined)"
-                    : FormatComponentTypeName(component.Typename.Name);
-
-                var dragGesture = new DragGestureRecognizer();
-                dragGesture.DragStarting += (dragSender, dragArgs) =>
-                {
-                    dragArgs.Data.Properties[EditorDragDrop.DragItemKey] = component;
-                };
-                nameLabel.GestureRecognizers.Add(dragGesture);
-
                 var worldService = MauiProgram.GetService<WorldService>();
                 var clipboardService = MauiProgram.GetService<ComponentClipboardService>();
-                var contextMenuService = MauiProgram.GetService<EditorContextMenuService>();
                 var componentKey = component.InstanceId?.ToString() ?? component.GetHashCode().ToString();
-                var isCompact = CompactComponents.Contains(componentKey);
-
-                compactButton.Text = isCompact ? "+" : "-";
-                compactButton.Clicked += (buttonSender, clickArgs) =>
-                {
-                    if (CompactComponents.Contains(componentKey))
-                    {
-                        CompactComponents.Remove(componentKey);
-                    }
-                    else
-                    {
-                        CompactComponents.Add(componentKey);
-                    }
-
-                    if (props.BindingContext is Component reboundComponent)
-                    {
-                        props.BindingContext = null;
-                        props.BindingContext = reboundComponent;
-                    }
-                };
 
                 var contextItems = new[]
                 {
@@ -151,22 +100,9 @@ public partial class ComponentTemplate : DataTemplate
                     contextItems = [contextItems[^1]];
                 }
 
-                var flyout = contextMenuService.CreateFlyout(contextItems);
-                FlyoutBase.SetContextFlyout(props, flyout);
-                FlyoutBase.SetContextFlyout(
-                    header,
-                    contextMenuService.CreateFlyout(contextItems));
-                FlyoutBase.SetContextFlyout(
-                    nameLabel,
-                    contextMenuService.CreateFlyout(contextItems));
-                FlyoutBase.SetContextFlyout(
-                    compactButton,
-                    contextMenuService.CreateFlyout(contextItems));
-
-                header.Add(compactButton, 0, 0);
-                header.Add(nameLabel, 1, 0);
-                Templates.AddGridRow(props, header, GridLength.Auto);
-                Grid.SetColumnSpan(header, props.ColumnDefinitions.Count);
+                var isCompact = AddComponentHeader(props,
+                    component.IsUndefined ? $"{component.Typename.Name} (Undefined)" : FormatComponentTypeName(component.Typename.Name),
+                    componentKey, contextItems, component);
 
                 if (isCompact)
                 {
@@ -225,6 +161,90 @@ public partial class ComponentTemplate : DataTemplate
 
             return props;
         };
+    }
+
+    static bool AddComponentHeader(Grid props, string title, string componentKey,
+        EditorContextMenuItem[] contextItems, object? dragItem = null)
+    {
+        var header = new Grid
+        {
+            HorizontalOptions = LayoutOptions.Fill,
+            MinimumWidthRequest = 0,
+            ColumnDefinitions = { new(GridLength.Auto), new(GridLength.Star) },
+            ColumnSpacing = Templates.InspectorFieldSpacing
+        };
+        var compactButton = new Button
+        {
+            Text = "-",
+            WidthRequest = 24,
+            HeightRequest = 24,
+            Padding = new Thickness(0),
+            Margin = new Thickness(0),
+            BackgroundColor = Colors.Transparent,
+            BorderWidth = 0,
+            MinimumHeightRequest = 24,
+            MinimumWidthRequest = 24
+        };
+        var nameLabel = new Label
+        {
+            Text = title,
+            VerticalOptions = LayoutOptions.Center,
+            HorizontalTextAlignment = TextAlignment.Start,
+            FontAttributes = FontAttributes.Bold
+        };
+        nameLabel.Behaviors.Add(new DisplayNameBehavior());
+        if (dragItem is not null)
+        {
+            var dragGesture = new DragGestureRecognizer();
+            dragGesture.DragStarting += (_, args) => args.Data.Properties[EditorDragDrop.DragItemKey] = dragItem;
+            nameLabel.GestureRecognizers.Add(dragGesture);
+        }
+        var isCompact = CompactComponents.Contains(componentKey);
+        compactButton.Text = isCompact ? "+" : "-";
+        compactButton.Clicked += (_, _) =>
+        {
+            if (!CompactComponents.Remove(componentKey))
+            {
+                CompactComponents.Add(componentKey);
+            }
+            var context = props.BindingContext;
+            props.BindingContext = null;
+            props.BindingContext = context;
+        };
+        var contextMenuService = MauiProgram.GetService<EditorContextMenuService>();
+        foreach (var target in new View[] { props, header, nameLabel, compactButton })
+        {
+            FlyoutBase.SetContextFlyout(target, contextMenuService.CreateFlyout(contextItems));
+        }
+        header.Add(compactButton, 0, 0);
+        header.Add(nameLabel, 1, 0);
+        Templates.AddGridRow(props, header, GridLength.Auto);
+        Grid.SetColumnSpan(header, props.ColumnDefinitions.Count);
+        return isCompact;
+    }
+
+    static void BuildAggregateSection(Grid props, InspectorAggregateSection section)
+    {
+        var contextItems = (section.Actions ?? []).Select(action => new EditorContextMenuItem
+        {
+            Text = action.Name,
+            Command = CreateContextMenuCommand(async () =>
+            {
+                if (!await MauiProgram.GetService<Workflow.InspectorPendingEditCoordinator>().CommitPendingChangesAsync())
+                {
+                    return;
+                }
+                await action.Execute(CancellationToken.None);
+                MauiProgram.GetService<InspectorProjectionService>().Refresh();
+            }, action.Name)
+        }).ToArray();
+        if (AddComponentHeader(props, section.Name, "aggregate:" + section.Name, contextItems))
+        {
+            return;
+        }
+        var fields = CreateAggregateFieldsGrid(section.Fields);
+        Templates.AddGridRow(props, fields, GridLength.Auto);
+        Grid.SetColumnSpan(fields, props.ColumnDefinitions.Count);
     }
 
     static IDispatcherTimer AddAnimatorRuntimeControls(Grid props, Component component)
@@ -313,8 +333,7 @@ public partial class ComponentTemplate : DataTemplate
         {
             foreach (var property in component.OverrideProperties)
             {
-                if (property.Key is "layerTextures" or "heightmapTexture" or "materialMasks" or
-                    "sculptStamps" or "paintStamps" or "regenerate" or "flatten" or "saveVegetation")
+                    if (!InspectorPropertyPresentation.IsVisibleProperty(component.Typename.Name, property.Key))
                 {
                     continue;
                 }

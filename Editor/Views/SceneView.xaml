@@ -51,12 +51,24 @@
                         Clicked="OnScaleToolClicked" />
                 <Button x:Name="TransformSpaceButton"
                         Text="T  World"
+                        AutomationProperties.Name="Transform Local or World axes"
+                        ToolTipProperties.Text="Toggle Local/World transform axes (T)"
                         HeightRequest="26"
                         MinimumHeightRequest="26"
                         Padding="7,0"
                         FontSize="11"
                         CornerRadius="3"
                         Clicked="OnTransformSpaceClicked" />
+                <Button x:Name="TransformPivotModeButton"
+                        Text="Pivot"
+                        AutomationProperties.Name="Transform Pivot or Center"
+                        ToolTipProperties.Text="Rotate and scale around each object's Pivot or the selection's Center"
+                        HeightRequest="26"
+                        MinimumHeightRequest="26"
+                        Padding="7,0"
+                        FontSize="11"
+                        CornerRadius="3"
+                        Clicked="OnTransformPivotModeClicked" />
                 </HorizontalStackLayout>
 
                 <HorizontalStackLayout Grid.Column="1"

@@ -102,6 +102,22 @@ public sealed class ApplyRuntimeSelectionCommand(InstanceId? instanceId) : IEdit
     }
 }
 
+public sealed class ApplyRuntimeSelectionSnapshotCommand(
+    IEnumerable<InstanceId> instanceIds,
+    bool preserveInspectedItem = true) : IEditorCommand
+{
+    readonly InstanceId[] selection = instanceIds.Select(id => new InstanceId(id.Value)).ToArray();
+
+    public string Name => nameof(ApplyRuntimeSelectionSnapshotCommand);
+    public bool CanExecute(ActionContext context) => true;
+
+    public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default)
+    {
+        MauiProgram.GetService<SelectionService>().ApplyRuntimeSelectionSnapshot(selection, preserveInspectedItem);
+        return Task.FromResult(CommandResult.Success());
+    }
+}
+
 public sealed class UpdateGameObjectCommand : IHistoryCoalescibleCommand
 {
     readonly InstanceId _instanceId;

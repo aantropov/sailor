@@ -79,6 +79,9 @@ add_executable(EditorEngineProtocolTests
 # Generated messages belong to SailorLib. Run typed assertions there without
 # exporting protobuf classes or registering their descriptors in another module.
 target_sources(SailorLib PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/EditorEngineProtocolTests.cpp")
+# Viewport interactions must use the engine's ImGuizmo state and internal editor
+# mutations. Export only the test entry point across the Windows DLL boundary.
+target_sources(SailorLib PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/EditorViewportCommandTests.cpp")
 
 # Keep this executable wire-only. Compiling editor_engine.pb.cc here as well
 # as inside SailorLib registers the same descriptors twice when both modules
@@ -368,7 +371,6 @@ add_executable(VulkanSubmissionTests
     MaterialPreviewCommandTests.cpp
     AudioCommandTests.cpp
     LogCommandTests.cpp
-    EditorViewportCommandTests.cpp
     EditorSimulationTests.cpp
     ModelLodCommandTests.cpp
     LandscapeCommandTests.cpp

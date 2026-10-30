@@ -9,6 +9,109 @@ namespace SailorEditor;
 
 public partial class ComponentTemplate
 {
+    internal static View CreateReflectedValueEditor(InspectorAggregateField property)
+    {
+        View editor;
+        if (property.ValueType == typeof(ObjectPtr))
+        {
+            var pointer = property.Value as ObjectPtr;
+            var name = property.SupportedAssetType is not null || pointer is not null && !pointer.FileId.IsEmpty()
+                ? nameof(ObjectPtr.FileId)
+                : nameof(ObjectPtr.InstanceId);
+            editor = CreateReflectedValueEditor(property.Children.Single(child => child.Name == name));
+        }
+        else if (property.ValueType == typeof(Vec2))
+        {
+            editor = Templates.Vec2Editor(property);
+        }
+        else if (property.ValueType == typeof(Vec3))
+        {
+            editor = Templates.Vec3Editor(property);
+        }
+        else if (property.ValueType == typeof(Vec4) || property.ValueType == typeof(Quat))
+        {
+            editor = Templates.Vec4Editor(property);
+        }
+        else if (property.ValueType == typeof(Rotation))
+        {
+            editor = Templates.RotationEditor(property);
+        }
+        else if (property.Actions.Count != 0)
+        {
+            editor = Templates.ListEditor(property, CreateReflectedValueEditor, action => RunAggregateActionAsync(property, action));
+        }
+        else if (property.Children.Count != 0)
+        {
+            editor = CreateAggregateFieldsGrid(property.Children);
+        }
+        else if (property.Choices.Length != 0)
+        {
+            editor = Templates.EnumPicker(property);
+        }
+        else
+        {
+            editor = property.ValueType switch
+            {
+                var type when type == typeof(float) => Templates.FloatEditor(property),
+                var type when type == typeof(int) => Templates.IntEditor(property),
+                var type when type == typeof(uint) => Templates.UIntEditor(property),
+                var type when type == typeof(bool) => Templates.BoolEditor(property),
+                var type when type == typeof(string) => Templates.StringEditor(property),
+                var type when type == typeof(FileId) => Templates.FileIdEditor(property),
+                var type when type == typeof(InstanceId) => Templates.InstanceIdEditor(property),
+                _ => new Label { Text = property.DisplayValue, LineBreakMode = LineBreakMode.WordWrap }
+            };
+        }
+        editor.IsEnabled = !property.IsReadOnly;
+        return editor;
+    }
+
+    internal static Grid CreateAggregateFieldsGrid(IEnumerable<InspectorAggregateField> properties, double? labelWidth = null)
+    {
+        var grid = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(labelWidth is { } width ? new GridLength(width) : GridLength.Star),
+                new ColumnDefinition(labelWidth is null ? new GridLength(2, GridUnitType.Star) : GridLength.Star)
+            },
+            ColumnSpacing = Templates.InspectorFieldSpacing,
+            RowSpacing = 4,
+            MinimumWidthRequest = 0,
+            HorizontalOptions = LayoutOptions.Fill
+        };
+        foreach (var property in properties)
+        {
+            var editor = CreateReflectedValueEditor(property);
+            var inline = property.ValueType == typeof(Vec2) || property.ValueType == typeof(Vec3) ||
+                property.ValueType == typeof(Vec4) || property.ValueType == typeof(Quat) ||
+                property.ValueType == typeof(Rotation) || property.ValueType == typeof(ObjectPtr);
+            if (inline || property.Children.Count == 0 && property.Actions.Count == 0)
+            {
+                Templates.AddGridRowWithLabel(grid, property.Name, editor, GridLength.Auto);
+                continue;
+            }
+            var heading = new Label { Text = property.Name + (property.IsMixed ? " *" : string.Empty), FontAttributes = FontAttributes.Bold };
+            Templates.AttachAggregateActions(heading, property.Actions.Where(action => action.Name is "Add" or "Clear"),
+                action => RunAggregateActionAsync(property, action));
+            Templates.AddGridRow(grid, heading, GridLength.Auto);
+            Grid.SetColumnSpan(heading, grid.ColumnDefinitions.Count);
+            Templates.AddGridRow(grid, editor, GridLength.Auto);
+            Grid.SetColumnSpan(editor, grid.ColumnDefinitions.Count);
+        }
+        return grid;
+    }
+
+    internal static async Task RunAggregateActionAsync(IInspectorEditable editable, InspectorAggregateAction action)
+    {
+        if (!await editable.CommitInspectorChangesAsync())
+        {
+            return;
+        }
+        await action.Execute(CancellationToken.None);
+        MauiProgram.GetService<Services.InspectorProjectionService>().Refresh();
+    }
+
     static View CreateReflectedValueEditor(
         Component component, EngineTypes engineTypes, PropertyBase propertyDescriptor,
         ObservableObject value, string ownerType, string propertyName)

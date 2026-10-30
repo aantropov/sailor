@@ -28,6 +28,7 @@
             <local:AnimationControllerFileTemplate x:Key="AnimationControllerFileTemplate" />
             <local:AnimationSetFileTemplate x:Key="AnimationSetFileTemplate" />
             <local:GameObjectTemplate x:Key="GameObjectTemplate" />
+            <local:AggregateInspectorTemplate x:Key="AggregateInspectorTemplate" />
 
             <local:InspectorTemplateSelector x:Key="InspectorTemplateSelector"
                                           ComponentTemplate="{StaticResource ComponentTemplate}"
@@ -41,6 +42,7 @@
                                           AnimationControllerFileTemplate="{StaticResource AnimationControllerFileTemplate}"
                                           AnimationSetFileTemplate="{StaticResource AnimationSetFileTemplate}"
                                           ShaderLibraryFileTemplate="{StaticResource ShaderLibraryFileTemplate}"
+                                          AggregateInspectorTemplate="{StaticResource AggregateInspectorTemplate}"
                                           GameObjectTemplate ="{StaticResource GameObjectTemplate}"/>
         </ResourceDictionary>
     </ContentView.Resources>

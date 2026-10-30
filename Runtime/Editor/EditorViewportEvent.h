@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Engine/InstanceId.h"
+#include "Containers/Vector.h"
 #include "Math/Transform.h"
 
 #include <string>
@@ -22,18 +23,33 @@ namespace Sailor::EditorViewport
 		Local
 	};
 
+	enum class ETransformPivotMode : uint8_t
+	{
+		Pivot = 0,
+		Center
+	};
+
 	struct SelectionEvent
 	{
 		InstanceId m_instanceId;
+		TVector<InstanceId> m_selectedInstanceIds;
+		bool m_bAdditive = false;
+	};
+
+	struct TransformChange
+	{
+		InstanceId m_instanceId;
+		uint64_t m_managedMutationRevision = 0;
+		Math::Transform m_before;
+		Math::Transform m_after;
 	};
 
 	struct TransformEvent
 	{
-		InstanceId m_instanceId;
-		Math::Transform m_before;
-		Math::Transform m_after;
+		TVector<TransformChange> m_changes;
 		ETransformOperation m_operation = ETransformOperation::Translate;
 		ETransformSpace m_space = ETransformSpace::World;
+		ETransformPivotMode m_pivotMode = ETransformPivotMode::Pivot;
 	};
 
 	struct AssetDropEvent

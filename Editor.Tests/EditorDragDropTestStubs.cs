@@ -28,6 +28,7 @@ namespace SailorEditor.ViewModels
     public sealed class AssetFolder
     {
         public int Id { get; set; }
+        public string FullPath { get; set; } = string.Empty;
         public bool IsReadOnly { get; set; }
     }
 
@@ -145,11 +146,13 @@ namespace SailorEditor.Commands
         public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default) => Task.FromResult(CommandResult.Success());
     }
 
-    public sealed class ReparentGameObjectCommand(SailorEditor.ViewModels.GameObject child, SailorEditor.ViewModels.GameObject? newParent, bool keepWorldTransform = true) : IEditorCommand
+    public sealed class ReparentGameObjectCommand(SailorEditor.ViewModels.GameObject child, SailorEditor.ViewModels.GameObject? newParent, bool keepWorldTransform = true) : IUndoableEditorCommand
     {
         public string Name => nameof(ReparentGameObjectCommand);
+        public string Description => "Reparent GameObject";
         public bool CanExecute(ActionContext context) => true;
         public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default) => Task.FromResult(CommandResult.Success());
+        public ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default) => ValueTask.FromResult(CommandResult.Success());
     }
 }
 

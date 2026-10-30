@@ -33,8 +33,15 @@ namespace SailorEditor.Views
         readonly ObservableCollection<ContentListRow> visibleRows = [];
         readonly HashSet<int> expandedFolderIds = [];
         readonly Dictionary<string, object> rowModelsById = new(StringComparer.Ordinal);
+        readonly SelectionService selectionService;
+        readonly HashSet<Border> rowBorders = [];
+        readonly List<string> selectedContentIds = [];
         bool isRootExpanded = true;
-        bool suppressSelectionChanged;
+        int contentSelectionRequests;
+        int contentSelectionVersion;
+        bool selectingContent => contentSelectionRequests > 0;
+        string? selectionAnchorId;
+        long contentWorkspaceEpoch;
 
         public ContentFolderView()
         {
@@ -53,7 +60,6 @@ namespace SailorEditor.Views
             }
 
             ContentList.ItemsSource = visibleRows;
-            ContentList.SelectionChanged += OnContentSelectionChanged;
             ContentList.ItemTemplate = CreateItemTemplate();
 
             var rootDropGesture = new DropGestureRecognizer();
@@ -66,106 +72,159 @@ namespace SailorEditor.Views
 
             contentStore.ProjectionChanged += PopulateRows;
 
-            var selectionViewModel = MauiProgram.GetService<SelectionService>();
-            selectionViewModel.OnSelectAssetAction += SelectAssetFile;
+            selectionService = MauiProgram.GetService<SelectionService>();
+            selectionService.OnSelectAssetAction += SelectAssetFile;
+            selectionService.PropertyChanged += (_, args) =>
+            {
+                if (!selectingContent && args.PropertyName == nameof(SelectionService.SelectedItem))
+                {
+                    SynchronizeAssetSelection();
+                    PopulateRows(contentStore.Projection);
+                }
+            };
 
             PopulateRows(contentStore.Projection);
         }
 
         async void SelectAssetFile(ObservableObject obj)
         {
+            if (selectingContent)
+            {
+                return;
+            }
+            SynchronizeAssetSelection();
             if (obj is not AssetFile file || file.FileId is null || file.FileId.IsEmpty())
             {
-                contentStore.SelectAsset(null);
-                suppressSelectionChanged = true;
-                try
-                {
-                    ContentList.SelectedItem = null;
-                }
-                finally
-                {
-                    suppressSelectionChanged = false;
-                }
+                PopulateRows(contentStore.Projection);
                 return;
             }
 
             try
             {
                 var resolved = await service.ResolveAssetAsync(file.FileId);
-                var selected = MauiProgram.GetService<SelectionService>()
-                    .SelectedItem as AssetFile;
-                if (resolved is null ||
-                    selected?.FileId is null ||
-                    !selected.FileId.Equals(file.FileId))
+                var selected = selectionService.SelectedItem as AssetFile;
+                if (resolved is null || selected?.FileId is null || !selected.FileId.Equals(file.FileId))
                 {
                     return;
                 }
-
                 EnsureFolderVisible(resolved.FolderId);
                 contentStore.SelectAsset(resolved);
+                PopulateRows(contentStore.Projection);
             }
             catch (Exception exception)
             {
-                Console.WriteLine(
-                    $"[ContentFolderView] Failed to reveal asset '{file.FileId}': {exception.Message}");
+                Console.WriteLine($"[ContentFolderView] Failed to reveal asset '{file.FileId}': {exception.Message}");
             }
         }
 
-        void OnContentSelectionChanged(object sender, SelectionChangedEventArgs args)
+        void SynchronizeAssetSelection()
         {
-            if (suppressSelectionChanged)
+            var assets = selectionService.SelectedItems.OfType<AssetFile>().ToArray();
+            var previousAssets = selectedContentIds.Where(rowModelsById.ContainsKey)
+                .Select(id => rowModelsById[id]).OfType<AssetFile>()
+                .Select(asset => asset.FileId.Value).ToHashSet(StringComparer.Ordinal);
+            var keepFolders = selectionService.SelectedItems.All(item => item is AssetFile) &&
+                previousAssets.SetEquals(assets.Select(asset => asset.FileId.Value));
+            if (keepFolders)
             {
+                for (var index = 0; index < selectedContentIds.Count; index++)
+                {
+                    var previousId = selectedContentIds[index];
+                    if (rowModelsById.TryGetValue(previousId, out var model) && model is AssetFile oldAsset)
+                    {
+                        var asset = assets.FirstOrDefault(item => item.FileId.Equals(oldAsset.FileId));
+                        if (asset is not null)
+                        {
+                            selectedContentIds[index] = AssetRowId(GetAssetPath(asset));
+                            if (selectionAnchorId == previousId)
+                            {
+                                selectionAnchorId = selectedContentIds[index];
+                            }
+                        }
+                    }
+                }
                 return;
             }
-
-            if (args.CurrentSelection.FirstOrDefault() is not ContentListRow row ||
-                !rowModelsById.TryGetValue(row.Id, out var model))
-            {
-                return;
-            }
-
-            RunContentUiAction(
-                () => SelectRow(row, false),
-                "Select Content item");
+            selectedContentIds.Clear();
+            selectedContentIds.AddRange(assets.Select(asset => AssetRowId(GetAssetPath(asset)))
+                .Distinct(StringComparer.Ordinal));
+            selectionAnchorId ??= selectedContentIds.LastOrDefault();
         }
 
-        async Task SelectRow(ContentListRow row, bool updateCollectionSelection)
+        async Task SelectRow(ContentListRow row, bool preserveSelected = false, bool useModifiers = true)
         {
             if (!rowModelsById.TryGetValue(row.Id, out var model))
             {
                 return;
             }
-
-            if (updateCollectionSelection)
+            var modifiers = useModifiers ? EditorInputModifiers.Current : default;
+            var selection = ListSelectionPolicy.Select(
+                visibleRows.Select(item => item.Id).ToArray(), selectedContentIds, row.Id,
+                selectionAnchorId, modifiers.Shift, modifiers.Additive, preserveSelected);
+            selectionAnchorId = selection.AnchorId;
+            selectedContentIds.Clear();
+            selectedContentIds.AddRange(selection.SelectedIds);
+            var requestVersion = ++contentSelectionVersion;
+            var selectedAssets = GetSelectedContentModels().OfType<ObservableObject>().ToArray();
+            contentSelectionRequests++;
+            try
             {
-                suppressSelectionChanged = true;
-                try
+                await selectionService.SelectObjectsAsync(selectedAssets);
+                if (requestVersion != contentSelectionVersion)
                 {
-                    ContentList.SelectedItem = row;
+                    return;
                 }
-                finally
+                if (!selectionService.SelectedItems.OfType<AssetFile>().Select(asset => asset.FileId.Value)
+                    .SequenceEqual(selectedAssets.OfType<AssetFile>().Select(asset => asset.FileId.Value)) ||
+                    selectionService.SelectedItems.Any(item => item is not AssetFile))
                 {
-                    suppressSelectionChanged = false;
+                    SynchronizeAssetSelection();
+                    return;
+                }
+                if (selection.PrimaryId is not null && rowModelsById.TryGetValue(selection.PrimaryId, out var primary))
+                {
+                    switch (primary)
+                    {
+                        case AssetFile assetFile:
+                            contentStore.SelectAsset(assetFile);
+                            break;
+                        case AssetFolder folder:
+                            contentStore.SelectFolder(folder.Id);
+                            break;
+                        case ProjectContentFolderItem:
+                            contentStore.SelectFolder(null);
+                            break;
+                    }
                 }
             }
-
-            switch (model)
+            finally
             {
-                case AssetFile assetFile:
-                    MauiProgram.GetService<SelectionService>().SelectObject(assetFile, force: true);
-                    contentStore.SelectAsset(assetFile);
-                    await dispatcher.DispatchAsync(
-                        new OpenAssetCommand(assetFile),
-                        contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(ContentFolderView))));
-                    break;
-                case AssetFolder folder:
-                    contentStore.SelectFolder(folder.Id);
-                    break;
-                case ProjectContentFolderItem:
-                    contentStore.SelectFolder(null);
-                    break;
+                contentSelectionRequests--;
+                PopulateRows(contentStore.Projection);
             }
         }
+
+        IReadOnlyList<object> GetSelectedContentModels(object? contextItem = null, bool rootsOnly = false)
+        {
+            var dirtyAssets = selectionService.SelectedItems.OfType<AssetFile>().Where(asset => asset.IsDirty)
+                .ToDictionary(asset => asset.FileId.Value, StringComparer.Ordinal);
+            var selected = selectedContentIds.Where(rowModelsById.ContainsKey)
+                .Select(id => rowModelsById[id])
+                .Select(item => item is AssetFile asset && dirtyAssets.TryGetValue(asset.FileId.Value, out var dirty)
+                    ? dirty : item).ToArray();
+            if (contextItem is not null && !selected.Any(item => ContentIdentity(item) == ContentIdentity(contextItem)))
+            {
+                selected = [contextItem];
+            }
+            return rootsOnly ? EditorDragDrop.GetSelectionRoots(selected) : selected;
+        }
+
+        static string ContentIdentity(object model) => model switch
+        {
+            AssetFile asset => AssetRowId(GetAssetPath(asset)),
+            AssetFolder folder => FolderRowId(folder.Id),
+            _ => RootRowId
+        };
 
         async Task HandleContentDrop(DropEventArgs e, object target)
         {
@@ -194,6 +253,14 @@ namespace SailorEditor.Views
                 return;
             }
 
+            var sourceItems = source is EditorSelectionDragPayload selectedPayload ? selectedPayload.Items : [source];
+            var movingContent = sourceItems.All(item => item is AssetFile or AssetFolder);
+            var originalSelection = movingContent ? GetSelectedContentModels(sourceItems[^1]) : [];
+            var originalWorkspaceEpoch = selectionService.WorkspaceEpoch;
+            var originalAnchor = selectionAnchorId is not null && rowModelsById.TryGetValue(selectionAnchorId, out var anchor)
+                ? anchor : null;
+            var folderPaths = sourceItems.OfType<AssetFolder>().ToDictionary(folder => folder.FullPath,
+                folder => Path.Combine(service.GetFolderPath(target as AssetFolder), folder.Name), ProjectContentPathPolicy.PathComparer);
             e.Handled = true;
             await Task.Yield();
 
@@ -211,7 +278,7 @@ namespace SailorEditor.Views
                 }
             }
 
-            if (command is CreatePrefabAssetCommand)
+            if (source is GameObject || source is EditorSelectionDragPayload payload && payload.Items.Any(item => item is GameObject))
             {
                 if (!await inspectorPendingEditCoordinator
                         .CommitPendingChangesAsync())
@@ -228,7 +295,7 @@ namespace SailorEditor.Views
                         target,
                         out command,
                         out _) ||
-                    command is not CreatePrefabAssetCommand)
+                    command is null)
                 {
                     await Application.Current.MainPage.DisplayAlert(
                         "Drop failed",
@@ -240,6 +307,26 @@ namespace SailorEditor.Views
 
             var context = contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.DragDrop, nameof(ContentFolderView)));
             var result = await dispatcher.DispatchAsync(command, context);
+            if (movingContent)
+            {
+                await RestoreContentSelectionAsync(originalSelection, originalAnchor, folderPaths, originalWorkspaceEpoch);
+            }
+            else
+            {
+                var createdAssets = new List<ObservableObject>();
+                foreach (var id in EnumerateCreatedAssetIds(result.Value))
+                {
+                    var asset = await service.ResolveAssetAsync(id);
+                    if (asset is not null)
+                    {
+                        createdAssets.Add(asset);
+                    }
+                }
+                if (createdAssets.Count > 0)
+                {
+                    await selectionService.SelectObjectsAsync(createdAssets);
+                }
+            }
             if (!result.Succeeded)
             {
                 await Application.Current.MainPage.DisplayAlert(
@@ -252,18 +339,19 @@ namespace SailorEditor.Views
         ContentDropOperation GetContentDropOperation(DragEventArgs e, object target)
         {
             if (!e.Data.Properties.TryGetValue(EditorDragDrop.DragItemKey, out var source) ||
-                !EditorDragDrop.TryCreateContentDropCommand(source, target, out var command, out _))
+                !EditorDragDrop.TryCreateContentDropCommand(source, target, out _, out _))
             {
                 return ContentDropOperation.None;
             }
-
-            return command switch
+            var items = source is EditorSelectionDragPayload selection ? selection.Items : [source];
+            var operations = items.Select(item => item switch
             {
-                MoveAssetCommand when source is AssetFile assetFile && service.CanMoveAsset(assetFile, target as AssetFolder) => ContentDropOperation.Move,
-                MoveFolderCommand when source is AssetFolder assetFolder && service.CanMoveFolder(assetFolder, target as AssetFolder) => ContentDropOperation.Move,
-                CreatePrefabAssetCommand => ContentDropOperation.Copy,
+                AssetFile asset when service.CanMoveAsset(asset, target as AssetFolder) => ContentDropOperation.Move,
+                AssetFolder folder when service.CanMoveFolder(folder, target as AssetFolder) => ContentDropOperation.Move,
+                GameObject => ContentDropOperation.Copy,
                 _ => ContentDropOperation.None
-            };
+            }).Distinct().ToArray();
+            return operations.Length == 1 ? operations[0] : ContentDropOperation.None;
         }
 
         void ApplyContentDropOperation(DragEventArgs e, object target)
@@ -325,7 +413,9 @@ namespace SailorEditor.Views
                 {
                     var saveResult = await worldService.SaveCurrentWorldAsync(confirmExisting: false);
                     if (saveResult.Outcome == SceneSaveOutcome.Cancelled)
+                    {
                         return;
+                    }
                     if (!saveResult.Succeeded)
                     {
                         await page.DisplayAlert("Save failed", saveResult.Error ?? "Unable to save the current world asset.", "OK");
@@ -340,94 +430,228 @@ namespace SailorEditor.Views
             }
         }
 
-        async Task RenameAsset(AssetFile assetFile)
+        async Task<CommandResult> DispatchContentGroupAsync(string description, IEnumerable<IEditorCommand> commands, bool throwOnFailure = true)
         {
-            var newName = await Application.Current.MainPage.DisplayPromptAsync(
-                "Rename asset",
-                "New asset name",
-                "OK",
-                "Cancel",
-                initialValue: assetFile.Asset?.Name ?? assetFile.DisplayName);
-
-            if (string.IsNullOrWhiteSpace(newName))
+            if (!await inspectorPendingEditCoordinator.CommitPendingChangesAsync())
             {
-                return;
+                throw new InvalidOperationException("Pending Inspector changes could not be committed.");
             }
+            var result = await dispatcher.DispatchAsync(EditorCommandBatch.Create(description, commands),
+                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Menu, nameof(ContentFolderView))));
+            if (!result.Succeeded && throwOnFailure)
+            {
+                throw new InvalidOperationException(result.Message ?? description + " failed.");
+            }
+            return result;
+        }
 
-            var result = await dispatcher.DispatchAsync(
-                new RenameAssetCommand(assetFile, newName),
-                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(RenameAsset))));
+        bool CanRenameSelection(object contextItem) => GetSelectedContentModels(contextItem, rootsOnly: true)
+            .All(item => item switch
+            {
+                AssetFile asset => service.CanRenameAsset(asset),
+                AssetFolder folder => service.CanModifyFolder(folder),
+                _ => false
+            });
 
+        bool CanDeleteSelection(object contextItem) => GetSelectedContentModels(contextItem, rootsOnly: true)
+            .All(item => item switch
+            {
+                AssetFile asset => service.CanModifyAsset(asset),
+                AssetFolder folder => service.CanModifyFolder(folder),
+                _ => false
+            });
+
+        bool CanDuplicateSelection(object contextItem) => GetSelectedContentModels(contextItem, rootsOnly: true)
+            .All(item => item is AssetFile asset && service.CanDuplicateAsset(asset));
+
+        async Task DuplicateSelectedContentAsync(object contextItem)
+        {
+            var selected = GetSelectedContentModels(contextItem, rootsOnly: true);
+            if (!CanDuplicateSelection(contextItem))
+            {
+                throw new InvalidOperationException("The selection contains items that cannot be duplicated.");
+            }
+            var result = await DispatchContentGroupAsync("Duplicate Content items", selected.OfType<AssetFile>()
+                .Select(asset => (IEditorCommand)new DuplicateAssetCommand(asset)), throwOnFailure: false);
+            var created = new List<ObservableObject>();
+            foreach (var id in EnumerateCreatedAssetIds(result.Value))
+            {
+                var asset = await service.ResolveAssetAsync(id);
+                if (asset is not null)
+                {
+                    created.Add(asset);
+                }
+            }
+            if (created.Count > 0)
+            {
+                await selectionService.SelectObjectsAsync(created);
+            }
             if (!result.Succeeded)
             {
-                await Application.Current.MainPage.DisplayAlert(
-                    "Rename failed",
-                    result.Message ?? "Asset with this name already exists or the name is invalid.",
-                    "OK");
+                throw new InvalidOperationException(result.Message ?? "Duplicate Content items failed.");
             }
         }
 
-        async Task DeleteAsset(AssetFile assetFile)
+        static IEnumerable<FileId> EnumerateCreatedAssetIds(object? value)
         {
+            if (value is FileId id)
+            {
+                yield return id;
+            }
+            else if (value is string text && !string.IsNullOrWhiteSpace(text))
+            {
+                yield return new FileId(text);
+            }
+            else if (value is IEnumerable<CommandResult> results)
+            {
+                foreach (var result in results.Where(result => result.Succeeded))
+                {
+                    foreach (var created in EnumerateCreatedAssetIds(result.Value))
+                    {
+                        yield return created;
+                    }
+                }
+            }
+        }
+
+        async Task RenameSelectedContentAsync(object contextItem)
+        {
+            var originalSelection = GetSelectedContentModels(contextItem);
+            var originalWorkspaceEpoch = selectionService.WorkspaceEpoch;
+            var originalAnchor = selectionAnchorId is not null && rowModelsById.TryGetValue(selectionAnchorId, out var anchor)
+                ? anchor : null;
+            var folderPaths = new Dictionary<string, string>(ProjectContentPathPolicy.PathComparer);
+            var commands = new List<IEditorCommand>();
+            foreach (var item in GetSelectedContentModels(contextItem, rootsOnly: true))
+            {
+                var name = item switch { AssetFile asset => asset.DisplayName, AssetFolder folder => folder.Name, _ => null };
+                if (name is null)
+                {
+                    throw new InvalidOperationException("The selected root cannot be renamed.");
+                }
+                var newName = await Application.Current.MainPage.DisplayPromptAsync(
+                    "Rename Content item", $"New name for {name}", "OK", "Cancel", initialValue: name);
+                if (string.IsNullOrWhiteSpace(newName))
+                {
+                    return;
+                }
+                if (item is AssetFolder renamedFolder)
+                {
+                    folderPaths[renamedFolder.FullPath] = Path.Combine(Path.GetDirectoryName(renamedFolder.FullPath)!, newName);
+                }
+                commands.Add(item switch
+                {
+                    AssetFile asset => new RenameAssetCommand(asset, newName),
+                    AssetFolder folder => new RenameFolderCommand(folder, newName),
+                    _ => throw new InvalidOperationException("The selected item cannot be renamed.")
+                });
+            }
+            try
+            {
+                await DispatchContentGroupAsync("Rename Content items", commands);
+            }
+            finally
+            {
+                await RestoreContentSelectionAsync(originalSelection, originalAnchor, folderPaths, originalWorkspaceEpoch);
+            }
+        }
+
+        async Task RestoreContentSelectionAsync(
+            IReadOnlyList<object> originalSelection,
+            object? originalAnchor,
+            IReadOnlyDictionary<string, string> folderPaths,
+            long originalWorkspaceEpoch)
+        {
+            if (selectionService.WorkspaceEpoch != originalWorkspaceEpoch)
+            {
+                return;
+            }
+            async Task<object?> ResolveAsync(object? item)
+            {
+                if (item is AssetFile asset)
+                {
+                    return await ProjectContentSelectionRestorePolicy.ResolveAssetAsync(service, asset, folderPaths);
+                }
+                if (item is AssetFolder folder)
+                {
+                    var path = folder.FullPath;
+                    foreach (var mapping in folderPaths)
+                    {
+                        if (ProjectContentPathPolicy.IsInsideRoot(mapping.Key, path))
+                        {
+                            path = ProjectContentFolderRebindPolicy.CreatePlan(path, mapping.Key, mapping.Value,
+                                ProjectContentFolderMutationKind.MoveOrRename).SuccessPath!;
+                            break;
+                        }
+                    }
+                    return await service.ResolveFolderAsync(path) ?? await service.ResolveFolderAsync(folder.FullPath);
+                }
+                return item is ProjectContentFolderItem ? contentStore.Projection.Root : null;
+            }
+            var models = new List<object>();
+            foreach (var original in originalSelection)
+            {
+                var resolved = await ResolveAsync(original);
+                if (selectionService.WorkspaceEpoch != originalWorkspaceEpoch)
+                {
+                    return;
+                }
+                if (resolved is not null)
+                {
+                    models.Add(resolved);
+                }
+            }
+            var liveAnchor = await ResolveAsync(originalAnchor);
+            if (selectionService.WorkspaceEpoch != originalWorkspaceEpoch)
+            {
+                return;
+            }
+            selectedContentIds.Clear();
+            selectedContentIds.AddRange(models.Select(ContentIdentity));
+            selectionAnchorId = liveAnchor is null ? selectedContentIds.LastOrDefault() : ContentIdentity(liveAnchor);
+            contentSelectionRequests++;
+            try
+            {
+                await selectionService.SelectObjectsAsync(models.OfType<ObservableObject>());
+                switch (models.LastOrDefault())
+                {
+                    case AssetFile asset:
+                        contentStore.SelectAsset(asset);
+                        break;
+                    case AssetFolder folder:
+                        contentStore.SelectFolder(folder.Id);
+                        break;
+                }
+            }
+            finally
+            {
+                contentSelectionRequests--;
+                PopulateRows(contentStore.Projection);
+            }
+        }
+
+        async Task DeleteSelectedContentAsync(object contextItem)
+        {
+            var selected = GetSelectedContentModels(contextItem, rootsOnly: true);
+            var names = selected.Select(item => item switch
+            {
+                AssetFile asset => asset.DisplayName,
+                AssetFolder folder => folder.Name,
+                _ => throw new InvalidOperationException("The selected root cannot be deleted.")
+            });
             var confirmed = await Application.Current.MainPage.DisplayAlert(
-                "Delete asset group",
-                $"Delete {assetFile.DisplayName}, its source file, and all related .asset metadata?",
-                "Delete",
-                "Cancel");
-
+                "Delete Content items", $"Delete {string.Join(", ", names)}, including source files, related metadata and folder contents?",
+                "Delete", "Cancel");
             if (!confirmed)
-                return;
-
-            var result = await dispatcher.DispatchAsync(
-                new DeleteAssetCommand(assetFile),
-                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(DeleteAsset))));
-
-            if (!result.Succeeded)
-            {
-                await Application.Current.MainPage.DisplayAlert("Delete failed", result.Message ?? "Unable to delete asset.", "OK");
-            }
-        }
-
-        async Task DuplicateAsset(AssetFile assetFile)
-        {
-            var result = await dispatcher.DispatchAsync(
-                new DuplicateAssetCommand(assetFile),
-                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(DuplicateAsset))));
-
-            if (!result.Succeeded)
-            {
-                await Application.Current.MainPage.DisplayAlert(
-                    "Duplicate failed",
-                    result.Message ?? "Unable to duplicate the asset group.",
-                    "OK");
-            }
-        }
-
-        async Task RenameFolder(AssetFolder folder)
-        {
-            var newName = await Application.Current.MainPage.DisplayPromptAsync(
-                "Rename folder",
-                "New folder name",
-                "OK",
-                "Cancel",
-                initialValue: folder.Name);
-
-            if (string.IsNullOrWhiteSpace(newName))
             {
                 return;
             }
-
-            var result = await dispatcher.DispatchAsync(
-                new RenameFolderCommand(folder, newName),
-                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(RenameFolder))));
-
-            if (!result.Succeeded)
+            await DispatchContentGroupAsync("Delete Content items", selected.Select(item => item switch
             {
-                await Application.Current.MainPage.DisplayAlert(
-                    "Rename folder failed",
-                    result.Message ?? "Unable to rename the folder.",
-                    "OK");
-            }
+                AssetFile asset => (IEditorCommand)new DeleteAssetCommand(asset),
+                AssetFolder folder => new DeleteFolderCommand(folder),
+                _ => throw new InvalidOperationException("The selected item cannot be deleted.")
+            }));
         }
 
         async Task CreateFolder(AssetFolder? parentFolder)
@@ -491,30 +715,6 @@ namespace SailorEditor.Views
             }
         }
 
-        async Task DeleteFolder(AssetFolder folder)
-        {
-            var confirmed = await Application.Current.MainPage.DisplayAlert(
-                "Delete folder",
-                $"Delete {folder.Name} and all of its contents?",
-                "Delete",
-                "Cancel");
-
-            if (!confirmed)
-                return;
-
-            var result = await dispatcher.DispatchAsync(
-                new DeleteFolderCommand(folder),
-                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(DeleteFolder))));
-
-            if (!result.Succeeded)
-            {
-                await Application.Current.MainPage.DisplayAlert(
-                    "Delete folder failed",
-                    result.Message ?? "Unable to delete the folder.",
-                    "OK");
-            }
-        }
-
         async Task ToggleFolder(ContentListRow row)
         {
             if (row.Id == RootRowId)
@@ -544,7 +744,69 @@ namespace SailorEditor.Views
 
         void PopulateRows(ProjectContentProjection projection)
         {
+            if (contentWorkspaceEpoch != contentStore.WorkspaceEpoch)
+            {
+                contentWorkspaceEpoch = contentStore.WorkspaceEpoch;
+                selectedContentIds.Clear();
+                selectionAnchorId = null;
+            }
+            var selectedAssetIds = selectedContentIds.Where(rowModelsById.ContainsKey)
+                .Select(id => (Id: id, Model: rowModelsById[id])).Where(item => item.Model is AssetFile)
+                .ToDictionary(item => item.Id, item => ((AssetFile)item.Model).FileId.Value, StringComparer.Ordinal);
+            var selectedFolderPaths = selectedContentIds.Where(rowModelsById.ContainsKey)
+                .Select(id => (Id: id, Model: rowModelsById[id])).Where(item => item.Model is AssetFolder)
+                .ToDictionary(item => item.Id, item => ((AssetFolder)item.Model).FullPath, StringComparer.Ordinal);
+            var anchorFolderPath = selectionAnchorId is not null && rowModelsById.TryGetValue(selectionAnchorId, out var anchorModel) &&
+                anchorModel is AssetFolder anchorFolder ? anchorFolder.FullPath : null;
             rowModelsById.Clear();
+            rowModelsById[RootRowId] = projection.Root;
+            foreach (var folder in service.Folders)
+            {
+                rowModelsById[FolderRowId(folder.Id)] = folder;
+            }
+            foreach (var asset in service.Files)
+            {
+                rowModelsById[AssetRowId(GetAssetPath(asset))] = asset;
+            }
+            for (var index = 0; index < selectedContentIds.Count; index++)
+            {
+                var previousId = selectedContentIds[index];
+                if (selectedAssetIds.TryGetValue(previousId, out var fileId))
+                {
+                    var liveAsset = service.Files.FirstOrDefault(asset => asset.FileId?.Value == fileId);
+                    if (liveAsset is not null)
+                    {
+                        selectedContentIds[index] = AssetRowId(GetAssetPath(liveAsset));
+                        if (selectionAnchorId == previousId)
+                        {
+                            selectionAnchorId = selectedContentIds[index];
+                        }
+                    }
+                }
+                else if (selectedFolderPaths.TryGetValue(previousId, out var path))
+                {
+                    var liveFolder = service.Folders.FirstOrDefault(folder =>
+                        string.Equals(folder.FullPath, path, ProjectContentPathPolicy.PathComparison));
+                    if (liveFolder is not null)
+                    {
+                        selectedContentIds[index] = FolderRowId(liveFolder.Id);
+                    }
+                }
+            }
+            if (anchorFolderPath is not null)
+            {
+                var liveAnchor = service.Folders.FirstOrDefault(folder =>
+                    string.Equals(folder.FullPath, anchorFolderPath, ProjectContentPathPolicy.PathComparison));
+                if (liveAnchor is not null)
+                {
+                    selectionAnchorId = FolderRowId(liveAnchor.Id);
+                }
+            }
+            selectedContentIds.RemoveAll(id => !rowModelsById.ContainsKey(id));
+            if (selectionAnchorId is not null && !rowModelsById.ContainsKey(selectionAnchorId))
+            {
+                selectionAnchorId = selectedContentIds.LastOrDefault();
+            }
 
             var foldersById = service.Folders.ToDictionary(x => x.Id);
             var assetsByFolder = service.Files
@@ -566,7 +828,7 @@ namespace SailorEditor.Views
                     "folder_open_24.png",
                     HasChildren(foldersByParent, assetsByFolder, -1),
                     isRootExpanded,
-                    IsSelectedRoot(projection)));
+                    selectedContentIds.Contains(RootRowId)));
 
                 if (isRootExpanded)
                 {
@@ -578,41 +840,23 @@ namespace SailorEditor.Views
                 AppendChildren(rows, foldersByParent, assetsByFolder, foldersById, -1, projection.TopLevelDepth, projection);
             }
 
-            var desiredSelectedRow = rows.FirstOrDefault(
-                row => row.IsSelected);
-            var currentSelectedRow =
-                ContentList.SelectedItem as ContentListRow;
-            var preservesCurrentSelection =
-                currentSelectedRow is not null &&
-                desiredSelectedRow is not null &&
-                string.Equals(
-                    currentSelectedRow.Id,
-                    desiredSelectedRow.Id,
-                    StringComparison.Ordinal) &&
-                EqualityComparer<ContentListRow>.Default.Equals(
-                    currentSelectedRow,
-                    desiredSelectedRow) &&
-                visibleRows.Contains(currentSelectedRow);
-            suppressSelectionChanged = true;
-            try
+            ContentRowReconciler.Reconcile(visibleRows, rows, row => row.Id);
+            foreach (var border in rowBorders)
             {
-                if (!preservesCurrentSelection &&
-                    currentSelectedRow is not null)
-                {
-                    ContentList.SelectedItem = null;
-                }
+                UpdateRowHighlight(border);
+            }
+        }
 
-                ContentRowReconciler.Reconcile(
-                    visibleRows,
-                    rows,
-                    row => row.Id);
-                ContentList.SelectedItem =
-                    visibleRows.FirstOrDefault(row => row.IsSelected);
-            }
-            finally
+        void UpdateRowHighlight(Border border)
+        {
+            if (border.BindingContext is not ContentListRow row)
             {
-                suppressSelectionChanged = false;
+                return;
             }
+            var selected = selectedContentIds.Contains(row.Id);
+            border.BackgroundColor = selected ? Color.FromArgb("#334C6FFF") : Colors.Transparent;
+            border.Stroke = Color.FromArgb("#779DDB");
+            border.StrokeThickness = selected && selectedContentIds.LastOrDefault() == row.Id ? 1 : 0;
         }
 
         void AppendChildren(
@@ -639,9 +883,7 @@ namespace SailorEditor.Views
                         HasChildren(foldersByParent, assetsByFolder, folder.Id) ||
                             (!folder.IsLoaded && folder.HasChildren),
                         isExpanded,
-                        projection.State.SelectedAssetPath is null
-                            && projection.State.SelectedAssetFileId is null
-                            && projection.State.CurrentFolderId == folder.Id));
+                        selectedContentIds.Contains(id)));
 
                     if (isExpanded)
                     {
@@ -664,7 +906,7 @@ namespace SailorEditor.Views
                         GetAssetIcon(asset),
                         false,
                         false,
-                        string.Equals(projection.State.SelectedAssetPath, assetPath, ProjectContentPathPolicy.PathComparison)));
+                        selectedContentIds.Contains(id)));
                 }
             }
         }
@@ -741,11 +983,17 @@ namespace SailorEditor.Views
                         switch (model)
                         {
                             case AssetFile assetFile:
-                                e.Data.Properties[EditorDragDrop.DragItemKey] = assetFile;
+                                PrepareDragSelection(row);
+                                var assetPayload = EditorDragDrop.CreateSelectionPayload(GetSelectedContentModels(), assetFile);
+                                e.Data.Properties[EditorDragDrop.DragItemKey] = assetPayload;
 #if WINDOWS
-                                if (EditorDragDrop.IsViewportAssetDrop(assetFile) &&
+                                IEnumerable<AssetFile> viewportAssets = assetPayload is EditorSelectionDragPayload selection
+                                    ? selection.Items.OfType<AssetFile>()
+                                    : [assetFile];
+                                if (EditorDragDrop.IsViewportAssetDrop(assetPayload) &&
                                     SceneViewportAssetDropPayload.TryCreate(
-                                        assetFile.FileId,
+                                        viewportAssets.Select(asset => asset.FileId),
+                                        selectionService.WorkspaceEpoch,
                                         out var payload))
                                 {
                                     e.Data.Text = payload;
@@ -753,7 +1001,9 @@ namespace SailorEditor.Views
 #endif
                                 return;
                             case AssetFolder folder when service.CanModifyFolder(folder):
-                                e.Data.Properties[EditorDragDrop.DragItemKey] = folder;
+                                PrepareDragSelection(row);
+                                e.Data.Properties[EditorDragDrop.DragItemKey] =
+                                    EditorDragDrop.CreateSelectionPayload(GetSelectedContentModels(), folder);
                                 return;
                         }
                     }
@@ -793,7 +1043,7 @@ namespace SailorEditor.Views
                     if (border.BindingContext is ContentListRow row)
                     {
                         RunContentUiAction(
-                            () => SelectRow(row, true),
+                            () => SelectRow(row),
                             "Select Content item");
                     }
                 };
@@ -829,22 +1079,43 @@ namespace SailorEditor.Views
                 {
                     if (border.BindingContext is ContentListRow row && rowModelsById.TryGetValue(row.Id, out var model))
                     {
-                        ShowContextMenu(model);
+                        RunContentUiAction(async () =>
+                        {
+                            await SelectRow(row, preserveSelected: true, useModifiers: false);
+                            ShowContextMenu(model);
+                        }, "Select Content items");
                     }
                 };
                 border.GestureRecognizers.Add(contextTap);
 
+                rowBorders.Add(border);
                 border.BindingContextChanged += (_, _) =>
                 {
                     if (border.BindingContext is ContentListRow row)
                     {
                         rowLayout.Margin = new Thickness(row.Depth * IndentWidth, 0, 0, 0);
-                        border.BackgroundColor = row.IsSelected ? Color.FromArgb("#334C6FFF") : Colors.Transparent;
+                        UpdateRowHighlight(border);
                     }
                 };
 
                 return border;
             });
+        }
+
+        void PrepareDragSelection(ContentListRow row)
+        {
+            if (selectedContentIds.Contains(row.Id))
+            {
+                return;
+            }
+            selectedContentIds.Clear();
+            selectedContentIds.Add(row.Id);
+            selectionAnchorId = row.Id;
+            foreach (var border in rowBorders)
+            {
+                UpdateRowHighlight(border);
+            }
+            RunContentUiAction(() => SelectRow(row, preserveSelected: true, useModifiers: false), "Select Content item");
         }
 
         void ShowContextMenu(object model)
@@ -870,8 +1141,9 @@ namespace SailorEditor.Views
                     items.Add(new EditorContextMenuItem
                     {
                         Text = "Duplicate",
+                        IsEnabled = CanDuplicateSelection(assetFile),
                         Command = CreateContentContextMenuCommand(
-                            () => DuplicateAsset(assetFile),
+                            () => DuplicateSelectedContentAsync(assetFile),
                             "Duplicate asset")
                     });
                 }
@@ -882,8 +1154,9 @@ namespace SailorEditor.Views
                     items.Add(new EditorContextMenuItem
                     {
                         Text = "Rename",
+                        IsEnabled = CanRenameSelection(assetFile),
                         Command = CreateContentContextMenuCommand(
-                            () => RenameAsset(assetFile),
+                            () => RenameSelectedContentAsync(assetFile),
                             "Rename asset")
                     });
                 }
@@ -894,8 +1167,9 @@ namespace SailorEditor.Views
                     {
                         Text = "Delete",
                         IsDestructive = true,
+                        IsEnabled = CanDeleteSelection(assetFile),
                         Command = CreateContentContextMenuCommand(
-                            () => DeleteAsset(assetFile),
+                            () => DeleteSelectedContentAsync(assetFile),
                             "Delete asset")
                     });
                 }
@@ -949,16 +1223,18 @@ namespace SailorEditor.Views
                     items.Add(new EditorContextMenuItem
                     {
                         Text = "Rename",
+                        IsEnabled = CanRenameSelection(folder),
                         Command = CreateContentContextMenuCommand(
-                            () => RenameFolder(folder),
+                            () => RenameSelectedContentAsync(folder),
                             "Rename folder")
                     });
                     items.Add(new EditorContextMenuItem
                     {
                         Text = "Delete",
                         IsDestructive = true,
+                        IsEnabled = CanDeleteSelection(folder),
                         Command = CreateContentContextMenuCommand(
-                            () => DeleteFolder(folder),
+                            () => DeleteSelectedContentAsync(folder),
                             "Delete folder")
                     });
                 }
@@ -1112,11 +1388,6 @@ namespace SailorEditor.Views
                 currentFolderId = folder.ParentFolderId;
             }
         }
-
-        static bool IsSelectedRoot(ProjectContentProjection projection)
-            => projection.State.SelectedAssetPath is null
-                && projection.State.SelectedAssetFileId is null
-                && projection.State.CurrentFolderId is null;
 
         static bool HasChildren(
             IReadOnlyDictionary<int, AssetFolder[]> foldersByParent,

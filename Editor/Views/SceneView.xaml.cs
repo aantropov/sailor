@@ -55,6 +55,7 @@ namespace SailorEditor.Views
         readonly UnifiedSettingsStore settingsStore;
         readonly GraphicsSettingsService graphicsSettingsService;
         readonly NativeViewportInputQueue nativeViewportInputQueue;
+        Task viewportEventQueue = Task.CompletedTask;
         readonly object viewportToolStateLock = new();
         readonly SemaphoreSlim viewportToolStateGate = new(1, 1);
         readonly SemaphoreSlim graphicsSettingsGate = new(1, 1);
@@ -744,15 +745,33 @@ namespace SailorEditor.Views
                 : Colors.Transparent;
         }
 
-        async void OnEditorViewportEvents(IReadOnlyList<EditorViewportEvent> viewportEvents)
+        void OnEditorViewportEvents(IReadOnlyList<EditorViewportEvent> viewportEvents)
         {
             if (!isRunning)
             {
                 return;
             }
+            viewportEventQueue = ProcessViewportEventsAsync(
+                viewportEventQueue, viewportEvents, engineService.Generation, engineService.EditorViewportEventEpoch,
+                MauiProgram.GetService<SelectionService>().WorkspaceEpoch);
+        }
 
+        async Task ProcessViewportEventsAsync(
+            Task previous, IReadOnlyList<EditorViewportEvent> viewportEvents, long generation, long documentEpoch, long workspaceEpoch)
+        {
+            await previous;
+            if (!isRunning || generation != engineService.Generation || documentEpoch != engineService.EditorViewportEventEpoch ||
+                workspaceEpoch != MauiProgram.GetService<SelectionService>().WorkspaceEpoch)
+            {
+                return;
+            }
             foreach (var viewportEvent in viewportEvents)
             {
+                if (!isRunning || generation != engineService.Generation || documentEpoch != engineService.EditorViewportEventEpoch ||
+                workspaceEpoch != MauiProgram.GetService<SelectionService>().WorkspaceEpoch)
+                {
+                    return;
+                }
                 if (!viewportEventRevisionGate.TryAccept(viewportEvent))
                 {
                     continue;
@@ -788,10 +807,14 @@ namespace SailorEditor.Views
 
         async Task ApplyViewportSelectionAsync(EditorViewportSelectionEvent viewportEvent)
         {
+            var selectionWorkspaceEpoch = MauiProgram.GetService<SelectionService>().WorkspaceEpoch;
+            var inputEpoch = nativeViewportInputQueue.Epoch;
             var isManagedRevisionCurrent =
                 await engineService.IsEditorViewportSelectionEventCurrentAsync(
                     viewportEvent.ManagedMutationRevision);
             if (!isManagedRevisionCurrent ||
+                selectionWorkspaceEpoch != MauiProgram.GetService<SelectionService>().WorkspaceEpoch ||
+                inputEpoch != nativeViewportInputQueue.Epoch ||
                 !viewportEventRevisionGate.IsCurrent(viewportEvent))
             {
                 Console.WriteLine($"[SceneView] Rejected stale viewport selection revision {viewportEvent.Revision} after a newer managed mutation.");
@@ -809,28 +832,31 @@ namespace SailorEditor.Views
                 await engineService.IsEditorViewportSelectionEventCurrentAsync(
                     viewportEvent.ManagedMutationRevision);
             if (!isManagedRevisionCurrent ||
+                selectionWorkspaceEpoch != MauiProgram.GetService<SelectionService>().WorkspaceEpoch ||
+                inputEpoch != nativeViewportInputQueue.Epoch ||
                 !viewportEventRevisionGate.IsCurrent(viewportEvent))
             {
                 Console.WriteLine($"[SceneView] Rejected viewport selection revision {viewportEvent.Revision} after committing pending Inspector changes.");
                 return;
             }
 
-            InstanceId? selectedId = null;
-            if (!string.IsNullOrEmpty(viewportEvent.SelectedInstanceId))
+            var selectedIds = new List<InstanceId>(viewportEvent.SelectedInstanceIds.Count);
+            foreach (var selectedInstanceId in viewportEvent.SelectedInstanceIds)
             {
-                var candidate = new InstanceId(viewportEvent.SelectedInstanceId);
+                var candidate = new InstanceId(selectedInstanceId);
                 if (candidate.IsEmpty() || !worldService.TryGetGameObject(candidate, out _))
                 {
-                    Console.WriteLine($"[SceneView] Rejected viewport selection revision {viewportEvent.Revision}: '{viewportEvent.SelectedInstanceId}' is not a live GameObject.");
+                    Console.WriteLine($"[SceneView] Rejected viewport selection revision {viewportEvent.Revision}: '{selectedInstanceId}' is not a live GameObject.");
                     return;
                 }
 
-                selectedId = candidate;
+                selectedIds.Add(candidate);
             }
 
             var result = await commandDispatcher.DispatchAsync(
-                new ApplyRuntimeSelectionCommand(selectedId),
-                CreateViewportActionContext(viewportEvent));
+                new ApplyRuntimeSelectionSnapshotCommand(selectedIds,
+                    preserveInspectedItem: !viewportEvent.Additive || string.IsNullOrEmpty(viewportEvent.SelectedInstanceId)),
+                CreateViewportActionContext(viewportEvent) with { WorkspaceEpoch = selectionWorkspaceEpoch });
             if (!result.Succeeded)
             {
                 Console.WriteLine($"[SceneView] Viewport selection revision {viewportEvent.Revision} failed: {result.Message}");
@@ -839,66 +865,83 @@ namespace SailorEditor.Views
 
         async Task ApplyViewportTransformAsync(EditorViewportTransformEvent viewportEvent)
         {
-            var isManagedRevisionCurrent =
-                await engineService.IsEditorViewportTransformEventCurrentAsync(
-                    viewportEvent.InstanceId,
-                    viewportEvent.ManagedMutationRevision);
-            if (!isManagedRevisionCurrent ||
-                !viewportEventRevisionGate.IsCurrent(viewportEvent))
-            {
-                Console.WriteLine($"[SceneView] Rejected stale viewport transform revision {viewportEvent.Revision} after a newer managed mutation.");
-                return;
-            }
+            var workspaceEpoch = MauiProgram.GetService<SelectionService>().WorkspaceEpoch;
+            var generation = engineService.Generation;
+            var documentEpoch = engineService.EditorViewportEventEpoch;
+            bool IsDocumentCurrent() =>
+                workspaceEpoch == MauiProgram.GetService<SelectionService>().WorkspaceEpoch &&
+                generation == engineService.Generation && documentEpoch == engineService.EditorViewportEventEpoch;
 
-            if (!await inspectorPendingEditCoordinator
-                    .CommitPendingChangesAsync())
+            var pendingInspectorCommitted = await inspectorPendingEditCoordinator.CommitPendingChangesAsync();
+            if (!pendingInspectorCommitted)
             {
                 Console.WriteLine($"[SceneView] Rejected viewport transform revision {viewportEvent.Revision}: pending Inspector changes could not be committed.");
+            }
+
+            if (!IsDocumentCurrent())
+            {
                 return;
             }
 
-            isManagedRevisionCurrent =
-                await engineService.IsEditorViewportTransformEventCurrentAsync(
-                    viewportEvent.InstanceId,
-                    viewportEvent.ManagedMutationRevision);
-            if (!isManagedRevisionCurrent ||
-                !viewportEventRevisionGate.IsCurrent(viewportEvent))
+            var commands = new List<AlreadyAppliedTransformCommand>(viewportEvent.Changes.Count);
+            foreach (var change in viewportEvent.Changes)
             {
-                Console.WriteLine($"[SceneView] Rejected viewport transform revision {viewportEvent.Revision} after committing pending Inspector changes.");
+                var instanceId = new InstanceId(change.InstanceId);
+                if (instanceId.IsEmpty() || !worldService.TryGetGameObject(instanceId, out var gameObject))
+                {
+                    continue;
+                }
+
+                var structure = CaptureGameObjectStructure(gameObject);
+                var beforeYaml = EditorYaml.SerializeGameObject(CreateTransformSnapshot(
+                    structure, change.BeforePosition, change.BeforeRotation, change.BeforeScale));
+                var afterYaml = EditorYaml.SerializeGameObject(CreateTransformSnapshot(
+                    structure, change.AfterPosition, change.AfterRotation, change.AfterScale));
+                if (!string.Equals(beforeYaml, afterYaml, StringComparison.Ordinal))
+                {
+                    commands.Add(new AlreadyAppliedTransformCommand(
+                        change.InstanceId, beforeYaml, afterYaml, viewportTransformTarget,
+                        $"{viewportEvent.Operation} {gameObject.Name}"));
+                }
+            }
+            if (commands.Count == 0)
+            {
                 return;
             }
 
-            var instanceId = new InstanceId(viewportEvent.InstanceId);
-            if (instanceId.IsEmpty() || !worldService.TryGetGameObject(instanceId, out var gameObject))
+            async Task<bool> ValidateInitialStateAsync(CancellationToken cancellationToken)
             {
-                Console.WriteLine($"[SceneView] Rejected viewport transform revision {viewportEvent.Revision}: '{viewportEvent.InstanceId}' is not a live GameObject.");
-                return;
-            }
+                if (!IsDocumentCurrent())
+                {
+                    return false;
+                }
+                var allCurrent = pendingInspectorCommitted && viewportEvent.Changes.All(change =>
+                    worldService.TryGetGameObject(new InstanceId(change.InstanceId), out _));
+                foreach (var change in viewportEvent.Changes)
+                {
+                    allCurrent &= await engineService.IsEditorViewportTransformEventCurrentAsync(
+                        change.InstanceId, change.ManagedMutationRevision);
+                }
+                if (!IsDocumentCurrent())
+                {
+                    return false;
+                }
+                if (allCurrent)
+                {
+                    return true;
+                }
 
-            var structure = CaptureGameObjectStructure(gameObject);
-            var beforeYaml = EditorYaml.SerializeGameObject(CreateTransformSnapshot(
-                structure,
-                viewportEvent.BeforePosition,
-                viewportEvent.BeforeRotation,
-                viewportEvent.BeforeScale));
-            var afterYaml = EditorYaml.SerializeGameObject(CreateTransformSnapshot(
-                structure,
-                viewportEvent.AfterPosition,
-                viewportEvent.AfterRotation,
-                viewportEvent.AfterScale));
-            if (string.Equals(beforeYaml, afterYaml, StringComparison.Ordinal))
-            {
-                return;
+                // Keep newer edits and gestures; native restores only members
+                // whose revision and final local pose still match this gesture.
+                await engineService.RestoreEditorViewportTransformAsync(viewportEvent, CancellationToken.None);
+                await engineService.RefreshCurrentWorldAsync(CancellationToken.None);
+                return false;
             }
 
             var result = await commandDispatcher.DispatchAsync(
-                new AlreadyAppliedTransformCommand(
-                    viewportEvent.InstanceId,
-                    beforeYaml,
-                    afterYaml,
-                    viewportTransformTarget,
-                    $"{viewportEvent.Operation} {gameObject.Name}"),
-                CreateViewportActionContext(viewportEvent));
+                new AlreadyAppliedTransformGroupCommand(
+                    $"{viewportEvent.Operation} {commands.Count} objects", commands, ValidateInitialStateAsync),
+                CreateViewportActionContext(viewportEvent) with { WorkspaceEpoch = workspaceEpoch });
             if (!result.Succeeded)
             {
                 Console.WriteLine($"[SceneView] Viewport transform revision {viewportEvent.Revision} failed: {result.Message}");
@@ -908,20 +951,36 @@ namespace SailorEditor.Views
         async Task ApplyViewportAssetDropAsync(
             EditorViewportAssetDropEvent viewportEvent)
         {
-            var fileId = new FileId(viewportEvent.FileId);
-            if (!MauiProgram.GetService<AssetsService>()
-                    .Assets.TryGetValue(fileId, out var assetFile))
+            var context = CreateViewportActionContext(viewportEvent);
+            if (!SceneViewportAssetDropPayload.TryResolveFileIds(
+                    viewportEvent.FileId,
+                    context.WorkspaceEpoch ?? 0,
+                    out var fileIds))
             {
                 Console.WriteLine(
-                    $"[SceneView] Rejected viewport asset drop revision {viewportEvent.Revision}: '{viewportEvent.FileId}' is not a known asset.");
+                    $"[SceneView] Rejected viewport asset drop revision {viewportEvent.Revision}: the drag selection has expired or belongs to another workspace.");
                 return;
             }
 
+            var assets = MauiProgram.GetService<AssetsService>().Assets;
+            var droppedAssets = new List<object>(fileIds.Count);
+            foreach (var fileId in fileIds)
+            {
+                if (!assets.TryGetValue(fileId, out var assetFile) || !EditorDragDrop.IsViewportAssetDrop(assetFile))
+                {
+                    Console.WriteLine(
+                        $"[SceneView] Rejected viewport asset drop revision {viewportEvent.Revision}: '{fileId.Value}' is not a known model or prefab.");
+                    return;
+                }
+
+                droppedAssets.Add(assetFile);
+            }
+
             var result = await DispatchViewportAssetDropAsync(
-                assetFile,
+                droppedAssets.Count == 1 ? droppedAssets[0] : new EditorSelectionDragPayload(droppedAssets),
                 viewportEvent.NormalizedX,
                 viewportEvent.NormalizedY,
-                CreateViewportActionContext(viewportEvent));
+                context);
             if (!result.Succeeded)
             {
                 Console.WriteLine(
@@ -975,6 +1034,7 @@ namespace SailorEditor.Views
         static GameObjectStructure CaptureGameObjectStructure(SailorEditor.ViewModels.GameObject gameObject) => new(
             gameObject.Name,
             gameObject.InstanceId.Value,
+            gameObject.MobilityType,
             gameObject.ParentIndex,
             new List<int>(gameObject.ComponentIndices ?? []));
 
@@ -986,6 +1046,7 @@ namespace SailorEditor.Views
         {
             Name = structure.Name,
             InstanceId = new InstanceId(structure.InstanceId),
+            MobilityType = structure.MobilityType,
             ParentIndex = structure.ParentIndex,
             ComponentIndices = new List<int>(structure.ComponentIndices),
             Position = ToVec4(position),
@@ -996,6 +1057,7 @@ namespace SailorEditor.Views
         readonly record struct GameObjectStructure(
             string Name,
             string InstanceId,
+            string MobilityType,
             uint ParentIndex,
             IReadOnlyList<int> ComponentIndices);
 
@@ -1089,9 +1151,19 @@ namespace SailorEditor.Views
                     "The dropped asset is not a model or prefab");
             }
 
-            return await commandDispatcher.DispatchAsync(
+            var result = await commandDispatcher.DispatchAsync(
                 command,
                 context);
+            if (result.Succeeded)
+            {
+                var createdIds = EditorCommandBatch.ResultValues<InstanceId>(result).ToArray();
+                if (createdIds.Length > 0)
+                {
+                    MauiProgram.GetService<SelectionService>().SelectInstances(createdIds);
+                }
+            }
+
+            return result;
         }
 
         DropGestureRecognizer CreateSceneDropGesture()
@@ -1103,7 +1175,8 @@ namespace SailorEditor.Views
                         EditorDragDrop.DragItemKey,
                         out var source) &&
                     (EditorDragDrop.IsViewportAssetDrop(source) ||
-                     source is SailorEditor.ViewModels.GameObject))
+                     source is SailorEditor.ViewModels.GameObject ||
+                     source is EditorSelectionDragPayload selection && selection.Items.All(item => item is SailorEditor.ViewModels.GameObject)))
                 {
                     e.AcceptedOperation = DataPackageOperation.Copy;
                 }
@@ -1146,16 +1219,12 @@ namespace SailorEditor.Views
 
         void OnTransformSpaceClicked(object sender, EventArgs e)
         {
-            var current = GetViewportToolState();
-            QueueViewportToolState(
-                current with
-                {
-                    Space =
-                        current.Space ==
-                        EditorViewportTransformSpace.Local
-                            ? EditorViewportTransformSpace.World
-                            : EditorViewportTransformSpace.Local
-                });
+            QueueViewportToolState(GetViewportToolState().ToggleSpace());
+        }
+
+        void OnTransformPivotModeClicked(object sender, EventArgs e)
+        {
+            QueueViewportToolState(GetViewportToolState().TogglePivotMode());
         }
 
         void QueueViewportToolState(SceneViewportToolState state)
@@ -1202,6 +1271,7 @@ namespace SailorEditor.Views
                 if (!await engineService.SetViewportToolStateAsync(
                         state.Operation,
                         state.Space,
+                        state.PivotMode,
                         cancellationToken))
                 {
                     return false;
@@ -1292,6 +1362,11 @@ namespace SailorEditor.Views
                 state.Space == EditorViewportTransformSpace.Local
                     ? "T  Local"
                     : "T  World";
+            TransformPivotModeButton.BackgroundColor = inactiveColor;
+            TransformPivotModeButton.Text =
+                state.PivotMode == EditorViewportTransformPivotMode.Center
+                    ? "Center"
+                    : "Pivot";
         }
 
         static async Task ExecuteSceneUiActionAsync(

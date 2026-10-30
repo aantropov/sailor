@@ -12,6 +12,42 @@ public static class EditorDragDrop
 {
     public const string DragItemKey = "DragItem";
 
+    public static object CreateSelectionPayload(IEnumerable<object> selectedItems, object draggedItem)
+    {
+        ArgumentNullException.ThrowIfNull(selectedItems);
+        ArgumentNullException.ThrowIfNull(draggedItem);
+        var selection = selectedItems.ToArray();
+        if (!selection.Any(item => IsSameItem(item, draggedItem)))
+        {
+            return draggedItem;
+        }
+
+        var roots = GetSelectionRoots(selection);
+        return roots.Count switch
+        {
+            0 => draggedItem,
+            1 => roots[0],
+            _ => new EditorSelectionDragPayload(roots)
+        };
+    }
+
+    public static IReadOnlyList<object> GetSelectionRoots(IEnumerable<object> selectedItems)
+    {
+        ArgumentNullException.ThrowIfNull(selectedItems);
+        var unique = new List<object>();
+        foreach (var item in selectedItems)
+        {
+            if (item is not null && !unique.Any(candidate => IsSameItem(candidate, item)))
+            {
+                unique.Add(item);
+            }
+        }
+
+        return unique.Where(item => !unique.Any(candidate =>
+                !IsSameItem(item, candidate) && IsCoveredBy(item, candidate)))
+            .ToArray();
+    }
+
     public static bool TryResolveAssetFileId(object? droppedItem, Type? supportedType, Func<FileId, AssetFile?> assetLookup, out FileId? fileId)
     {
         fileId = droppedItem switch
@@ -22,24 +58,77 @@ public static class EditorDragDrop
         };
 
         if (fileId is null)
+        {
             return false;
+        }
 
         var resolvedAsset = assetLookup(fileId);
         if (resolvedAsset is null)
+        {
             return false;
+        }
 
         if (supportedType is not null && !supportedType.IsInstanceOfType(resolvedAsset))
+        {
             return false;
+        }
 
         return true;
     }
 
     public static bool TryCreateSceneDropCommand(object? source, GameObject? target, out IEditorCommand? command)
     {
+        if (source is EditorSelectionDragPayload payload)
+        {
+            command = null;
+            var groupTarget = target is not null ? ResolveCurrentGameObject(target) : null;
+            if (target is not null && groupTarget is null)
+            {
+                return false;
+            }
+
+            var commands = new List<IEditorCommand>();
+            foreach (var item in GetSelectionRoots(payload.Items))
+            {
+                if (item is GameObject gameObject)
+                {
+                    var current = ResolveCurrentGameObject(gameObject);
+                    if (current is null || IsInvalidSceneDestination(current, groupTarget))
+                    {
+                        return false;
+                    }
+
+                    if (!CanReparent(current, groupTarget))
+                    {
+                        continue;
+                    }
+                }
+
+                if (!TryCreateSceneDropCommand(item, groupTarget, out var childCommand))
+                {
+                    return false;
+                }
+
+                commands.Add(childCommand!);
+            }
+
+            if (commands.Count == 0)
+            {
+                return false;
+            }
+
+            command = EditorCommandBatch.Create("Drop selected objects", commands);
+            return true;
+        }
+
         var currentSource = source is GameObject sourceGameObject ? ResolveCurrentGameObject(sourceGameObject) : null;
         var currentTarget = target is not null ? ResolveCurrentGameObject(target) : null;
 
         command = null;
+        if (target is not null && currentTarget is null)
+        {
+            return false;
+        }
 
         if (source is GameObject && currentSource is not null && CanReparent(currentSource, currentTarget))
         {
@@ -77,6 +166,23 @@ public static class EditorDragDrop
             return false;
         }
 
+        if (source is EditorSelectionDragPayload payload)
+        {
+            var commands = new List<IEditorCommand>();
+            foreach (var item in payload.Items)
+            {
+                if (!TryCreateViewportDropCommand(item, worldPosition, out var childCommand))
+                {
+                    return false;
+                }
+
+                commands.Add(childCommand!);
+            }
+
+            command = EditorCommandBatch.Create("Instantiate selected assets", commands);
+            return true;
+        }
+
         if (TryResolvePrefabAsset(source, out var prefab))
         {
             command = new InstantiatePrefabAssetCommand(
@@ -98,13 +204,46 @@ public static class EditorDragDrop
     }
 
     public static bool IsViewportAssetDrop(object? source) =>
+        source is EditorSelectionDragPayload payload
+            ? payload.Items.All(IsViewportAssetDrop)
+            :
         TryResolvePrefabAsset(source, out _) ||
         TryResolveModelAsset(source, out _);
 
     public static bool TryCreateContentDropCommand(object? source, object? target, out IEditorCommand? command, out bool requiresConfirmation)
     {
         requiresConfirmation = false;
+        if (source is EditorSelectionDragPayload payload)
+        {
+            command = null;
+            if (target is PrefabFile)
+            {
+                return false;
+            }
+
+            var commands = new List<IEditorCommand>();
+            foreach (var item in GetSelectionRoots(payload.Items))
+            {
+                if (!TryCreateContentDropCommand(item, target, out var childCommand, out _))
+                {
+                    return false;
+                }
+
+                commands.Add(childCommand!);
+            }
+
+            command = EditorCommandBatch.Create("Move selected content", commands);
+            return true;
+        }
+
         var currentSource = source is GameObject gameObject ? ResolveCurrentGameObject(gameObject) : null;
+
+        if (source is AssetFolder movingFolder && target is AssetFolder destination &&
+            (IsSameItem(movingFolder, destination) || IsCoveredBy(destination, movingFolder)))
+        {
+            command = null;
+            return false;
+        }
 
         command = source switch
         {
@@ -119,7 +258,9 @@ public static class EditorDragDrop
         };
 
         if (command is null)
+        {
             return false;
+        }
 
         requiresConfirmation = target is PrefabFile;
         return true;
@@ -133,7 +274,9 @@ public static class EditorDragDrop
     static GameObject? ResolveCurrentGameObject(GameObject gameObject)
     {
         if (gameObject.InstanceId is null || gameObject.InstanceId.IsEmpty())
+        {
             return gameObject;
+        }
 
         var world = MauiProgram.GetService<WorldService>();
         return world.TryGetGameObject(gameObject.InstanceId, out var current) ? current : null;
@@ -143,7 +286,9 @@ public static class EditorDragDrop
     {
         prefab = null;
         if (source is not AssetFile assetFile || assetFile.FileId is null || assetFile.FileId.IsEmpty())
+        {
             return false;
+        }
 
         if (assetFile is PrefabFile)
         {
@@ -248,14 +393,21 @@ public static class EditorDragDrop
                 .ResolveParentInstanceId(source) is not null;
         }
 
-        if (ReferenceEquals(source, target) || HasSameInstanceId(source, target))
+        if (IsInvalidSceneDestination(source, target))
+        {
             return false;
+        }
 
         if (HasSameParent(source, target))
+        {
             return false;
+        }
 
-        return !IsDescendantOf(target, source);
+        return true;
     }
+
+    static bool IsInvalidSceneDestination(GameObject source, GameObject? target)
+        => target is not null && (IsSameItem(source, target) || IsDescendantOf(target, source));
 
     static bool HasSameParent(GameObject source, GameObject target)
     {
@@ -277,20 +429,75 @@ public static class EditorDragDrop
     static bool IsDescendantOf(GameObject? candidate, GameObject parent)
     {
         if (candidate is null)
-            return false;
-
-        if (candidate.PrefabIndex != parent.PrefabIndex)
-            return false;
-
-        var prefab = MauiProgram.GetService<Services.WorldService>().Current.Prefabs[candidate.PrefabIndex];
-        var current = candidate;
-        while (current.ParentIndex != uint.MaxValue)
         {
-            current = prefab.GameObjects[(int)current.ParentIndex];
-            if (ReferenceEquals(current, parent) || HasSameInstanceId(current, parent))
+            return false;
+        }
+
+        var world = MauiProgram.GetService<WorldService>();
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        var current = candidate;
+        while (world.ResolveParentInstanceId(current) is { } parentId && visited.Add(parentId.Value))
+        {
+            if (parent.InstanceId is not null &&
+                string.Equals(parentId.Value, parent.InstanceId.Value, StringComparison.Ordinal))
+            {
                 return true;
+            }
+
+            if (!world.TryGetGameObject(parentId, out var resolved) || resolved is null)
+            {
+                break;
+            }
+
+            current = resolved;
         }
 
         return false;
+    }
+
+    static bool IsSameItem(object left, object right)
+    {
+        if (ReferenceEquals(left, right))
+        {
+            return true;
+        }
+
+        return (left, right) switch
+        {
+            (GameObject first, GameObject second) => HasSameInstanceId(first, second),
+            (AssetFolder first, AssetFolder second) =>
+                !string.IsNullOrWhiteSpace(first.FullPath) && !string.IsNullOrWhiteSpace(second.FullPath)
+                    ? ProjectContentPathPolicy.IsSamePath(first.FullPath, second.FullPath)
+                    : first.Id == second.Id,
+            (AssetFile first, AssetFile second) =>
+                first.Asset is not null && second.Asset is not null
+                    ? ProjectContentPathPolicy.IsSamePath(first.Asset.FullName, second.Asset.FullName)
+                    : first.FileId is not null && !first.FileId.IsEmpty() && second.FileId is not null &&
+                        string.Equals(first.FileId.Value, second.FileId.Value, StringComparison.Ordinal),
+            _ => false
+        };
+    }
+
+    static bool IsCoveredBy(object item, object ancestor)
+    {
+        if (item is GameObject gameObject && ancestor is GameObject parent)
+        {
+            return IsDescendantOf(gameObject, parent);
+        }
+
+        if (ancestor is not AssetFolder folder || string.IsNullOrWhiteSpace(folder.FullPath))
+        {
+            return false;
+        }
+
+        var itemPath = item switch
+        {
+            AssetFolder child => child.FullPath,
+            AssetFile asset => asset.Asset?.FullName,
+            _ => null
+        };
+        return !string.IsNullOrWhiteSpace(itemPath) &&
+            !ProjectContentPathPolicy.IsSamePath(folder.FullPath, itemPath) &&
+            ProjectContentPathPolicy.IsInsideRoot(folder.FullPath, itemPath);
     }
 }

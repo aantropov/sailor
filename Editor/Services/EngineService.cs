@@ -199,6 +199,7 @@ namespace SailorEditor.Services
         public EngineLifecycleState State => (EngineLifecycleState)Volatile.Read(ref lifecycleState);
         public bool IsRunning => State == EngineLifecycleState.Running;
         public long Generation => Volatile.Read(ref engineGeneration);
+        public long EditorViewportEventEpoch => editorViewportEventEpoch.Current;
         public int LastExitCode => Volatile.Read(ref lastExitCode);
 
         public Exception? LastFailure
@@ -600,6 +601,44 @@ namespace SailorEditor.Services
                 EditorManagedMutationKind.ObjectTransform,
                 instanceId,
                 managedMutationRevision);
+
+        public Task<bool> RestoreEditorViewportTransformAsync(
+            EditorViewportTransformEvent viewportEvent,
+            CancellationToken cancellationToken = default)
+        {
+            var transform = new ViewportTransformEvent
+            {
+                Operation = ToProtocolOperation(viewportEvent.Operation),
+                Space = ToProtocolSpace(viewportEvent.Space),
+                PivotMode = ToProtocolPivotMode(viewportEvent.PivotMode)
+            };
+            foreach (var change in viewportEvent.Changes)
+            {
+                transform.Changes.Add(new ViewportTransformChange
+                {
+                    InstanceId = change.InstanceId,
+                    ManagedMutationRevision = change.ManagedMutationRevision,
+                    BeforePosition = ToProtocolVector(change.BeforePosition),
+                    BeforeRotation = ToProtocolVector(change.BeforeRotation),
+                    BeforeScale = ToProtocolVector(change.BeforeScale),
+                    AfterPosition = ToProtocolVector(change.AfterPosition),
+                    AfterRotation = ToProtocolVector(change.AfterRotation),
+                    AfterScale = ToProtocolVector(change.AfterScale)
+                });
+            }
+            return InvokeRunningInteropAsync(
+                token => protocolClient.RestoreViewportTransformAsync(transform, token),
+                invalidateQueuedWorldSnapshots: true,
+                cancellationToken);
+        }
+
+        static Protocol.Generated.Vector4 ToProtocolVector(EditorViewportVector4 value) => new()
+        {
+            X = value.X,
+            Y = value.Y,
+            Z = value.Z,
+            W = value.W
+        };
 
         async Task<bool> IsEditorViewportEventCurrentAsync(
             EditorManagedMutationKind kind,
@@ -1604,6 +1643,7 @@ namespace SailorEditor.Services
                     !await SetViewportToolStateAsync(
                             toolState.Operation,
                             toolState.Space,
+                            toolState.PivotMode,
                             CancellationToken.None)
                         .ConfigureAwait(false))
                 {
@@ -2959,12 +2999,14 @@ namespace SailorEditor.Services
         public Task<bool> SetViewportToolStateAsync(
             EditorViewportTransformOperation operation,
             EditorViewportTransformSpace space,
+            EditorViewportTransformPivotMode pivotMode,
             CancellationToken cancellationToken = default)
             => InvokeRunningInteropAsync(
                 token => protocolClient.SetViewportToolStateAsync(
                     SceneViewportId,
                     ToProtocolOperation(operation),
                     ToProtocolSpace(space),
+                    ToProtocolPivotMode(pivotMode),
                     token),
                 cancellationToken: cancellationToken);
 
@@ -3484,7 +3526,8 @@ namespace SailorEditor.Services
             return succeeded
                 ? new SceneViewportToolState(
                     FromProtocolOperation(state.Operation),
-                    FromProtocolSpace(state.Space))
+                    FromProtocolSpace(state.Space),
+                    FromProtocolPivotMode(state.PivotMode))
                 : null;
         }
 
@@ -3514,6 +3557,17 @@ namespace SailorEditor.Services
                 _ => throw new ArgumentOutOfRangeException(nameof(space))
             };
 
+        static ViewportTransformPivotMode ToProtocolPivotMode(
+            EditorViewportTransformPivotMode pivotMode)
+            => pivotMode switch
+            {
+                EditorViewportTransformPivotMode.Pivot =>
+                    ViewportTransformPivotMode.Pivot,
+                EditorViewportTransformPivotMode.Center =>
+                    ViewportTransformPivotMode.Center,
+                _ => throw new ArgumentOutOfRangeException(nameof(pivotMode))
+            };
+
         static EditorViewportTransformOperation FromProtocolOperation(
             ViewportTransformOperation operation)
             => operation switch
@@ -3540,6 +3594,18 @@ namespace SailorEditor.Services
                     EditorViewportTransformSpace.Local,
                 _ => throw new EngineProtocolException(
                     $"Unsupported viewport transform space '{space}'.")
+            };
+
+        static EditorViewportTransformPivotMode FromProtocolPivotMode(
+            ViewportTransformPivotMode pivotMode)
+            => pivotMode switch
+            {
+                ViewportTransformPivotMode.Pivot =>
+                    EditorViewportTransformPivotMode.Pivot,
+                ViewportTransformPivotMode.Center =>
+                    EditorViewportTransformPivotMode.Center,
+                _ => throw new EngineProtocolException(
+                    $"Unsupported viewport transform pivot mode '{pivotMode}'.")
             };
 
         public Task<InstanceId?> InstantiatePrefabFromYamlAsync(
@@ -3670,12 +3736,20 @@ namespace SailorEditor.Services
             CancellationToken cancellationToken = default)
         {
             var result = await InvokeRunningInteropAsync(
-                token => protocolClient.SetEditorSimulationAsync(
-                    enabled,
-                    token),
+                async token =>
+                {
+                    var succeeded = await protocolClient.SetEditorSimulationAsync(enabled, token).ConfigureAwait(false);
+                    if (succeeded && !enabled)
+                    {
+                        editorViewportEventEpoch.Advance();
+                    }
+                    return succeeded;
+                },
                 cancellationToken: cancellationToken).ConfigureAwait(false);
             if (result)
+            {
                 PublishEditorSimulationState(enabled);
+            }
             return result;
         }
 

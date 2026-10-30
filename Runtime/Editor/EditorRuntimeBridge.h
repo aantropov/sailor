@@ -21,9 +21,10 @@ namespace Sailor::EditorRuntime
 		float& outWorldY,
 		float& outWorldZ);
 	SAILOR_API bool FocusEditorCamera(const char* strInstanceId);
-	SAILOR_API bool SetEditorViewportToolState(uint32_t operation, uint32_t space);
-	SAILOR_API bool GetEditorViewportToolState(uint32_t& outOperation, uint32_t& outSpace);
+	SAILOR_API bool SetEditorViewportToolState(uint32_t operation, uint32_t space, uint32_t pivotMode = 1);
+	SAILOR_API bool GetEditorViewportToolState(uint32_t& outOperation, uint32_t& outSpace, uint32_t& outPivotMode);
 	SAILOR_API bool SetEditorSelection(TVector<InstanceId> selection);
+	SAILOR_API bool RestoreEditorViewportTransform(TVector<EditorViewport::TransformChange> changes);
 
 	SAILOR_API void SetEditorRenderTargetSize(uint32_t width, uint32_t height);
 	// True means applied. Busy/resize-deferred updates return false and retain

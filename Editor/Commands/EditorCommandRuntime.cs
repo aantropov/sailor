@@ -803,6 +803,7 @@ public sealed class CompoundEditorCommand(string description, IReadOnlyList<IUnd
             return faultResult;
 
         var executedCommands = new List<IUndoableEditorCommand>(commands.Count);
+        var results = new List<CommandResult>(commands.Count);
         try
         {
             foreach (var command in commands)
@@ -818,6 +819,7 @@ public sealed class CompoundEditorCommand(string description, IReadOnlyList<IUnd
                 }
 
                 executedCommands.Add(command);
+                results.Add(result);
             }
         }
         catch (Exception exception)
@@ -833,7 +835,7 @@ public sealed class CompoundEditorCommand(string description, IReadOnlyList<IUnd
             throw;
         }
 
-        return CommandResult.Success();
+        return CommandResult.Success(value: results.AsReadOnly());
     }
 
     public async ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default)

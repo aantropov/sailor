@@ -991,7 +991,8 @@ namespace
 		using namespace Sailor::EditorViewport;
 		TViewportEventSource source{
 			{
-				Event{ 42, 9, SelectionEvent{ Sailor::InstanceId("Duck-123") } },
+				Event{ 42, 9, SelectionEvent{ Sailor::InstanceId("Duck-123"),
+					{ Sailor::InstanceId("Other-456"), Sailor::InstanceId("Duck-123") }, true } },
 				Event{ 43, 10, SelectionEvent{} }
 			}
 		};
@@ -1037,7 +1038,10 @@ namespace
 			event.revision() == 42 &&
 			event.managed_mutation_revision() == 9 &&
 			event.has_selection() &&
-			event.selection().selected_instance_id() == "Duck-123",
+			event.selection().selected_instance_id() == "Duck-123" &&
+			event.selection().selected_instance_ids_size() == 2 &&
+			event.selection().selected_instance_ids(0) == "Other-456" &&
+			event.selection().selected_instance_ids(1) == "Duck-123" && event.selection().additive(),
 			"the first typed selection event must preserve its identity and revisions");
 		Require(source.m_nextEvent == 1, "the source must respect the requested capacity");
 
@@ -1050,7 +1054,8 @@ namespace
 		const auto& nextBatch = next.viewport_event_batch_result();
 		Require(next.success() && next.has_viewport_event_batch_result() && nextBatch.events_size() == 1 &&
 			nextBatch.events(0).revision() == 43 && nextBatch.events(0).managed_mutation_revision() == 10 &&
-			nextBatch.events(0).has_selection() && nextBatch.events(0).selection().selected_instance_id().empty(),
+			nextBatch.events(0).has_selection() && nextBatch.events(0).selection().selected_instance_id().empty() &&
+			nextBatch.events(0).selection().selected_instance_ids().empty() && !nextBatch.events(0).selection().additive(),
 			"selection clear must follow selection and retain its data after releasing the source and wire buffer");
 		TProtocolBuffer emptyBuffer;
 		const auto empty = RequireProtocolResponse(request, emptyBuffer, dependencies);
@@ -1078,7 +1083,7 @@ namespace
 		{
 			for (auto space : { ETransformSpace::World, ETransformSpace::Local })
 			{
-				TViewportEventSource source{ { Event{ 51, 12, TransformEvent{ id, before, after, operation, space } } } };
+				TViewportEventSource source{ { Event{ 51, 12, TransformEvent{ { TransformChange{ id, 17, before, after }, TransformChange{ Sailor::InstanceId("Other-456"), 23, after, before } }, operation, space, ETransformPivotMode::Center } } } };
 				Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
 				dependencies.m_context = &source;
 				dependencies.m_lifecycleGate = &gate;
@@ -1093,15 +1098,19 @@ namespace
 				Require(event.has_transform() && event.revision() == 51 && event.managed_mutation_revision() == 12,
 					"transform event must retain its kind, order and mutation revisions");
 				const auto& transform = event.transform();
-				const std::array vectors{ &transform.before_position(), &transform.before_rotation(), &transform.before_scale(),
-					&transform.after_position(), &transform.after_rotation(), &transform.after_scale() };
+				Require(transform.changes_size() == 2 && transform.changes(0).managed_mutation_revision() == 17 &&
+					transform.changes(1).instance_id() == "Other-456" && transform.changes(1).managed_mutation_revision() == 23 &&
+					transform.pivot_mode() == Proto::VIEWPORT_TRANSFORM_PIVOT_MODE_CENTER, "group change order, revisions and pivot mode must survive transport");
+				const auto& change = transform.changes(0);
+				const std::array vectors{ &change.before_position(), &change.before_rotation(), &change.before_scale(),
+					&change.after_position(), &change.after_rotation(), &change.after_scale() };
 				for (size_t i = 0; i < vectors.size(); ++i)
 				{
 					const auto& value = *vectors[i];
 					Require(glm::vec4(value.x(), value.y(), value.z(), value.w()) == expected[i],
 						"transform vectors must retain all before/after XYZW values");
 				}
-				Require(transform.instance_id() == id.ToString() &&
+				Require(change.instance_id() == id.ToString() &&
 					transform.operation() == static_cast<uint32_t>(operation) + 1 &&
 					transform.space() == static_cast<uint32_t>(space) + 1,
 					"transform wire fields must retain identity, tool state and before/after XYZW values");
@@ -1109,12 +1118,44 @@ namespace
 		}
 	}
 
+	void TestViewportTransformRollbackRejectsInvalidGroupBeforeNativeWrites()
+	{
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::string error;
+		Require(gate.TryBeginInitialization(error), "rollback validation lifecycle must initialize");
+		gate.CompleteInitialization(true);
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_lifecycleGate = &gate;
+		Proto::ViewportTransformEvent rollback;
+		auto* first = rollback.add_changes();
+		first->set_instance_id("0000000000000001");
+		first->mutable_before_rotation()->set_w(1);
+		first->mutable_after_rotation()->set_w(1);
+		first->mutable_before_scale()->set_x(1);
+		first->mutable_before_scale()->set_y(1);
+		first->mutable_before_scale()->set_z(1);
+		*first->mutable_after_scale() = first->before_scale();
+		*rollback.add_changes() = *first;
+		TProtocolBuffer duplicateBuffer;
+		const auto duplicate = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 71, 105,
+			rollback.SerializeAsString()), duplicateBuffer, dependencies);
+		Require(!duplicate.success() && duplicate.error().find("invalid or duplicate") != std::string::npos,
+			"duplicate rollback members must be rejected before the engine thread can mutate any root");
+		rollback.mutable_changes(1)->set_instance_id("0000000000000002");
+		rollback.mutable_changes(1)->mutable_before_position()->set_x(std::numeric_limits<float>::infinity());
+		TProtocolBuffer finiteBuffer;
+		const auto nonFinite = RequireProtocolResponse(MakeVersionedRequest(EditorEngineProtocolVersion, 72, 105,
+			rollback.SerializeAsString()), finiteBuffer, dependencies);
+		Require(!nonFinite.success() && nonFinite.error().find("invalid or duplicate") != std::string::npos,
+			"a non-finite later rollback member must reject the entire payload before writes");
+	}
+
 	void TestViewportAssetDropEventIsTypedAndValidated()
 	{
 		const std::string fileId =
 			"{12345678-1234-1234-1234-123456789ABC}";
 		Sailor::EditorViewport::EditorViewportController controller;
-		controller.SetManagedMutationRevisions(10, 0);
+		controller.SetManagedSelectionRevision(10);
 		std::string source = fileId + "ignored suffix";
 		Require(controller.QueueAssetDropEvent(std::string_view(source.data(), fileId.size()), 0.25f, 0.75f),
 			"valid bounded asset-drop text must enter the viewport queue");
@@ -1166,7 +1207,7 @@ namespace
 	void TestViewportToolShortcutEventIsTypedAndValidated()
 	{
 		Sailor::EditorViewport::EditorViewportController controller;
-		controller.SetManagedMutationRevisions(11, 0);
+		controller.SetManagedSelectionRevision(11);
 		Require(controller.QueueToolShortcutEvent('W'), "supported tool shortcuts must enter the queue");
 		Require(!controller.QueueToolShortcutEvent('X'), "unsupported keys must be rejected before queueing");
 		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
@@ -2401,6 +2442,7 @@ SAILOR_SHARED_API int RunEditorEngineProtocolTests()
 		TestGetExitCodeRoundTripAndFree();
 		TestViewportEventBatchKeepsOrderAndOwnsPayload();
 		TestViewportTransformPreservesValuesAndToolState();
+		TestViewportTransformRollbackRejectsInvalidGroupBeforeNativeWrites();
 		TestViewportAssetDropEventIsTypedAndValidated();
 		TestViewportToolShortcutEventIsTypedAndValidated();
 		TestLifecycleGateDrainsStartAndOperationsBeforeShutdown();

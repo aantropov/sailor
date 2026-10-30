@@ -30,21 +30,34 @@ public abstract record EditorViewportEvent(ulong Revision, ulong ManagedMutation
 public sealed record EditorViewportSelectionEvent(
     ulong Revision,
     ulong ManagedMutationRevision,
-    string SelectedInstanceId)
+    string SelectedInstanceId,
+    IReadOnlyList<string> SelectedInstanceIds,
+    bool Additive = false)
     : EditorViewportEvent(Revision, ManagedMutationRevision);
 
-public sealed record EditorViewportTransformEvent(
-    ulong Revision,
-    ulong ManagedMutationRevision,
+public enum EditorViewportTransformPivotMode
+{
+    Pivot,
+    Center,
+}
+
+public sealed record EditorViewportTransformChange(
     string InstanceId,
-    EditorViewportTransformOperation Operation,
-    EditorViewportTransformSpace Space,
+    ulong ManagedMutationRevision,
     EditorViewportVector4 BeforePosition,
     EditorViewportVector4 BeforeRotation,
     EditorViewportVector4 BeforeScale,
     EditorViewportVector4 AfterPosition,
     EditorViewportVector4 AfterRotation,
-    EditorViewportVector4 AfterScale)
+    EditorViewportVector4 AfterScale);
+
+public sealed record EditorViewportTransformEvent(
+    ulong Revision,
+    ulong ManagedMutationRevision,
+    EditorViewportTransformOperation Operation,
+    EditorViewportTransformSpace Space,
+    EditorViewportTransformPivotMode PivotMode,
+    IReadOnlyList<EditorViewportTransformChange> Changes)
     : EditorViewportEvent(Revision, ManagedMutationRevision);
 
 public sealed record EditorViewportAssetDropEvent(
@@ -82,46 +95,65 @@ public static class EditorViewportEventContract
                 viewportEvent = new EditorViewportSelectionEvent(
                     source.Revision,
                     source.ManagedMutationRevision,
-                    source.Selection.SelectedInstanceId);
+                    source.Selection.SelectedInstanceId,
+                    Array.AsReadOnly(source.Selection.SelectedInstanceIds.ToArray()),
+                    source.Selection.Additive);
                 return true;
 
             case ViewportEvent.PayloadOneofCase.Transform:
                 var transform = source.Transform;
-                if (string.IsNullOrWhiteSpace(transform.InstanceId))
-                {
-                    error = "Viewport transform event instance id must not be empty.";
-                    return false;
-                }
-
                 if (!TryMapOperation(transform.Operation, out var operation) ||
-                    !TryMapSpace(transform.Space, out var space))
+                    !TryMapSpace(transform.Space, out var space) ||
+                    !TryMapPivotMode(transform.PivotMode, out var pivotMode))
                 {
-                    error = "The viewport transform event contains an unsupported operation or space.";
+                    error = "The viewport transform event contains an unsupported operation, space or pivot mode.";
                     return false;
                 }
 
-                if (!TryCreateVector(transform.BeforePosition, "beforePosition", out var beforePosition, out error) ||
-                    !TryCreateVector(transform.BeforeRotation, "beforeRotation", out var beforeRotation, out error) ||
-                    !TryCreateVector(transform.BeforeScale, "beforeScale", out var beforeScale, out error) ||
-                    !TryCreateVector(transform.AfterPosition, "afterPosition", out var afterPosition, out error) ||
-                    !TryCreateVector(transform.AfterRotation, "afterRotation", out var afterRotation, out error) ||
-                    !TryCreateVector(transform.AfterScale, "afterScale", out var afterScale, out error))
+                if (transform.Changes.Count == 0)
                 {
+                    error = "The viewport transform event must contain at least one change.";
                     return false;
+                }
+
+                var changes = new List<EditorViewportTransformChange>(transform.Changes.Count);
+                var identities = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var change in transform.Changes)
+                {
+                    if (string.IsNullOrWhiteSpace(change.InstanceId) || !identities.Add(change.InstanceId))
+                    {
+                        error = "Viewport transform event instance ids must be non-empty and unique.";
+                        return false;
+                    }
+
+                    if (!TryCreateVector(change.BeforePosition, "beforePosition", out var beforePosition, out error) ||
+                        !TryCreateVector(change.BeforeRotation, "beforeRotation", out var beforeRotation, out error) ||
+                        !TryCreateVector(change.BeforeScale, "beforeScale", out var beforeScale, out error) ||
+                        !TryCreateVector(change.AfterPosition, "afterPosition", out var afterPosition, out error) ||
+                        !TryCreateVector(change.AfterRotation, "afterRotation", out var afterRotation, out error) ||
+                        !TryCreateVector(change.AfterScale, "afterScale", out var afterScale, out error))
+                    {
+                        return false;
+                    }
+
+                    changes.Add(new EditorViewportTransformChange(
+                        change.InstanceId,
+                        change.ManagedMutationRevision,
+                        beforePosition,
+                        beforeRotation,
+                        beforeScale,
+                        afterPosition,
+                        afterRotation,
+                        afterScale));
                 }
 
                 viewportEvent = new EditorViewportTransformEvent(
                     source.Revision,
                     source.ManagedMutationRevision,
-                    transform.InstanceId,
                     operation,
                     space,
-                    beforePosition,
-                    beforeRotation,
-                    beforeScale,
-                    afterPosition,
-                    afterRotation,
-                    afterScale);
+                    pivotMode,
+                    changes.AsReadOnly());
                 return true;
 
             case ViewportEvent.PayloadOneofCase.AssetDrop:
@@ -207,6 +239,24 @@ public static class EditorViewportEventContract
                 return true;
             default:
                 space = default;
+                return false;
+        }
+    }
+
+    static bool TryMapPivotMode(
+        ViewportTransformPivotMode source,
+        out EditorViewportTransformPivotMode pivotMode)
+    {
+        switch (source)
+        {
+            case ViewportTransformPivotMode.Pivot:
+                pivotMode = EditorViewportTransformPivotMode.Pivot;
+                return true;
+            case ViewportTransformPivotMode.Center:
+                pivotMode = EditorViewportTransformPivotMode.Center;
+                return true;
+            default:
+                pivotMode = default;
                 return false;
         }
     }
