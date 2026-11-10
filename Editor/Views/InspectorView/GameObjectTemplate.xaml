@@ -20,7 +20,7 @@
             </ResourceDictionary>
         </Grid.Resources>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="140" />
+            <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
