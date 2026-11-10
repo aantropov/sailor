@@ -35,7 +35,7 @@ def default_framework(host_os: str) -> str:
         return "net10.0-maccatalyst"
     if host_os == "windows":
         return "net10.0-windows10.0.19041.0"
-    return "net10.0-android"
+    return "net10.0"
 
 
 def detect_dotnet() -> str | None:

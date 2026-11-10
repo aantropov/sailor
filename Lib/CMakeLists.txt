@@ -31,8 +31,8 @@ if(NOT yaml-cpp_FOUND)
 	sailor_create_stub_target(yaml-cpp::yaml-cpp)
 endif()
 
-find_package(tracy CONFIG QUIET)
-if(NOT tracy_FOUND)
+find_package(Tracy CONFIG QUIET)
+if(NOT Tracy_FOUND)
 	list(APPEND SAILOR_MISSING_DEPS "tracy")
 	sailor_create_stub_target(Tracy::TracyClient)
 endif()
@@ -228,9 +228,13 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND
 			COMPILE_OPTIONS "-Wno-invalid-offsetof")
 endif()
 
-if(APPLE)
+if(NOT WIN32)
 	list(REMOVE_ITEM SAILOR_RUNTIME_SOURCES
 		"${SAILOR_RUNTIME_DIR}/Platform/Win32/Window.cpp")
+endif()
+
+if(NOT APPLE)
+	list(FILTER SAILOR_RUNTIME_SOURCES EXCLUDE REGEX "\\.mm$")
 endif()
 
 if(NOT WIN32)
@@ -255,6 +259,15 @@ if(TARGET SailorProtocolGeneratedSourcesCheck)
 endif()
 
 # Dependencies
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+	find_package(glfw3 CONFIG REQUIRED)
+	find_library(SAILOR_UUID_LIBRARY NAMES uuid REQUIRED)
+	target_link_libraries(SailorLib PRIVATE glfw ${SAILOR_UUID_LIBRARY})
+	set(SAILOR_PORTABLE_MAC_BRIDGE "${SAILOR_RUNTIME_DIR}/Submodules/EditorRemote/RemoteViewportMacNativeBridge.mm")
+	set_source_files_properties("${SAILOR_PORTABLE_MAC_BRIDGE}" PROPERTIES LANGUAGE CXX)
+	target_sources(SailorLib PRIVATE "${SAILOR_PORTABLE_MAC_BRIDGE}")
+	set_target_properties(SailorLib PROPERTIES INSTALL_RPATH "$ORIGIN")
+endif()
 target_link_libraries(SailorLib PUBLIC
   yaml-cpp::yaml-cpp
   nlohmann_json::nlohmann_json
@@ -459,6 +472,14 @@ if(SAILOR_BUILD_WITH_VULKAN)
     else()
       target_link_libraries(SailorLib PRIVATE ${SAILOR_SHADERC_FALLBACK})
     endif()
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      # Distribution shaderc_combined archives leave glslang/SPIRV-Tools external.
+      find_package(glslang CONFIG REQUIRED)
+      find_package(SPIRV-Tools CONFIG REQUIRED)
+      find_package(SPIRV-Tools-opt CONFIG REQUIRED)
+      target_link_libraries(SailorLib PRIVATE glslang::SPIRV glslang::glslang SPIRV-Tools-opt SPIRV-Tools-static)
+      target_link_options(SailorLib PRIVATE -Wl,--no-undefined)
+    endif()
   elseif(SAILOR_ALLOW_MISSING_DEPS)
     message(WARNING "Vulkan SDK 1.3+ with shaderc_combined not found. Vulkan integration is disabled for this configuration.")
   else()
@@ -508,8 +529,8 @@ endif()
 
 install(TARGETS SailorLib
 	EXPORT SailorTargets
-	RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-	LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+	RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime
+	LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Runtime
 	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
 install(DIRECTORY "${SAILOR_RUNTIME_DIR}/"

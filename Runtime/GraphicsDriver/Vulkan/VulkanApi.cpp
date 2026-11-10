@@ -3,6 +3,10 @@
 #include <algorithm>
 #include <cstring>
 #include <vulkan/vulkan.h>
+#if defined(__linux__)
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
+#endif
 #ifdef _WIN32
 #include <windows.h>
 #include <vulkan/vulkan_win32.h>
@@ -294,6 +298,22 @@ void VulkanApi::Initialize(Platform::Window* viewport, RHI::EMsaaSamples msaaSam
 		nullptr,
 #endif
 	};
+
+#if defined(__linux__)
+	uint32_t glfwExtensionCount = 0;
+	const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+	if (!glfwExtensions || glfwExtensionCount == 0)
+	{
+		throw std::runtime_error("GLFW could not find Linux Vulkan presentation extensions.");
+	}
+	for (uint32_t i = 0; i < glfwExtensionCount; ++i)
+	{
+		if (std::strcmp(glfwExtensions[i], VK_KHR_SURFACE_EXTENSION_NAME) != 0)
+		{
+			extensions.Add(glfwExtensions[i]);
+		}
+	}
+#endif
 
 #if defined(__APPLE__)
 	if (hasInstanceExtension(VK_EXT_METAL_SURFACE_EXTENSION_NAME))

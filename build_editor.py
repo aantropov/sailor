@@ -46,7 +46,7 @@ def default_target_framework(host_os: str) -> str:
     if host_os == "windows":
         return "net10.0-windows10.0.19041.0"
     if host_os == "linux":
-        return "net10.0-android"
+        return "net10.0"
     raise RuntimeError("Unsupported host OS")
 
 
@@ -185,13 +185,14 @@ def main() -> int:
     maybe_build_engine(args.build_engine, args.config)
     remove_generated_imgui_ini(args.config, args.output)
     # MSBuild packages and signs the staged library as part of the app.
-    stage_engine_library(args.config)
+    if host_os == "mac":
+        stage_engine_library(args.config)
 
     dotnet = detect_dotnet()
     env = prepare_env(dotnet)
     export_bundle = host_os == "mac" and "-maccatalyst" in args.framework
 
-    command = [dotnet, "publish" if args.publish else "build", str(EDITOR_PROJECT), "-f", args.framework, "-c", args.config]
+    command = [dotnet, "publish" if args.publish else "build", str(REPO_ROOT / "Editor.Linux" / "SailorEditor.Linux.csproj" if host_os == "linux" and args.framework == "net10.0" else EDITOR_PROJECT), "-f", args.framework, "-c", args.config]
     if args.runtime:
         command += ["-r", args.runtime]
     if args.output and not export_bundle:

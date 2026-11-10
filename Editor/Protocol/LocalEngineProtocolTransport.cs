@@ -39,7 +39,14 @@ internal sealed class LocalEngineProtocolNativeBridge :
 
     public void StopLocalHost(bool shutdownEngine)
     {
-        if (EngineProtocolNative.SailorProtocolStopLocalHost(shutdownEngine) == 0)
+#if LINUX
+        // GLFW window destruction belongs to the same GTK UI thread as creation.
+        var stopped = MainThread.InvokeOnMainThreadAsync(
+            () => EngineProtocolNative.SailorProtocolStopLocalHost(shutdownEngine)).GetAwaiter().GetResult();
+#else
+        var stopped = EngineProtocolNative.SailorProtocolStopLocalHost(shutdownEngine);
+#endif
+        if (stopped == 0)
         {
             throw new EngineProtocolException(
                 "Native engine shutdown did not complete. Retry shutdown before starting another session.");

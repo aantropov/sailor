@@ -188,7 +188,7 @@ void TransformECS::Tick(float deltaTime)
 	// We guess that the amount of changed transform during frame
 	// Could be much less than the whole transforms num
 
-	const float NLogN_Algo = 2.0f * (float)m_dirtyComponents.Num() * std::max(1.0f, std::logf((float)m_dirtyComponents.Num()));
+	const float NLogN_Algo = 2.0f * (float)m_dirtyComponents.Num() * std::max(1.0f, std::log((float)m_dirtyComponents.Num()));
 	const float N_Algo = 2.0f * (float)m_components.Num();
 
 	if (NLogN_Algo < N_Algo)

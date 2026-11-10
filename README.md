@@ -67,6 +67,48 @@ ForestRiver includes [Poly Haven](https://polyhaven.com) assets (CC0). The pavil
 
 This project uses [vcpkg](https://github.com/microsoft/vcpkg) to manage C++ dependencies. Run `python update_deps.py` to install the required packages.
 
+## Linux (x86_64)
+
+The Vulkan runtime uses GLFW. The editor shares the existing MAUI interface through the
+[experimental GTK4 backend](https://github.com/dotnet/maui-labs/tree/main/platforms/Linux.Gtk4)
+and displays resolved scene frames through the engine's CPU readback path. GTK widget
+composition defaults to Cairo; the scene renders with Vulkan. Install .NET 10
+for the editor; the editor contract tests also require the .NET 9 runtime.
+
+On Ubuntu 24.04, install the native build dependencies:
+
+```sh
+sudo apt-get install -y build-essential clang-18 cmake ninja-build pkg-config autoconf automake libtool \
+  libvulkan-dev vulkan-tools libshaderc-dev glslc glslang-tools libssl-dev libasound2-dev \
+  libx11-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev \
+  libwayland-dev libxkbcommon-dev libgtk-4-dev xvfb xauth
+```
+
+Initialize dependencies and build the runtime and editor:
+
+```sh
+git submodule update --init --recursive
+CC=clang-18 CXX=clang++-18 python3 update_deps.py
+python3 build_engine.py --config Release --target SailorExec
+python3 run_editor.py --config Release
+```
+
+For native behavioral tests, configure with `-DSAILOR_BUILD_TESTS=ON`, build the test
+targets, and run `ctest --test-dir build-linux --output-on-failure`. The Linux window
+lifecycle test uses Xvfb when available.
+
+Package a workspace into a new directory outside that workspace:
+
+```sh
+python3 package_linux.py --workspace /path/to/workspace --output /path/to/Sailor-Linux
+/path/to/Sailor-Linux/Sailor.sh --world Example.world
+```
+
+The package includes the executable, engine library, workspace content, project settings
+and third-party license notices. Manifest workspaces also include the selected configuration
+of their logic module and engine content. Build that module before packaging. A Vulkan-capable driver and the system libraries used
+by the build are required on the destination machine.
+
 ## Sponsorship and Contribution
 
 **Support Sailor Engine's Development**  

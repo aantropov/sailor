@@ -37,6 +37,8 @@
     <Compile Include="..\Editor\Services\GameObjectClipboardCodec.cs" Link="Services\GameObjectClipboardCodec.cs" />
     <Compile Include="..\Editor\Utility\InspectorAggregateEditing.cs" Link="Utility\InspectorAggregateEditing.cs" />
     <Compile Include="GlobalUsings.cs" />
+    <Compile Include="LinuxMainThreadTests.cs" />
+    <Compile Include="../Editor.Linux/LinuxMainThread.cs" Link="Linux/LinuxMainThread.cs" />
     <Compile Include="CommandContractsTests.cs" />
     <Compile Include="HistoryContractsTests.cs" />
     <Compile Include="HierarchyMutationRecoveryPolicyTests.cs" />

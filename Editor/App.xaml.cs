@@ -20,6 +20,10 @@ namespace SailorEditor
             window.MinimumWidth = 1024;
             window.MinimumHeight = 768;
             window.Title = "Engine Mode";
+#if LINUX
+            window.Width = 1440;
+            window.Height = 900;
+#endif
             window.Destroying += async (_, _) =>
                 await MauiProgram.GetService<McpEditorHostService>().StopAsync();
 #if MACCATALYST

@@ -70,6 +70,12 @@ def configure(build_dir: Path, host_os: str, generator: str | None, config: str,
     if host_os != "windows" and chosen_generator not in {"Xcode", "Visual Studio 17 2022"}:
         cmd += [f"-DCMAKE_BUILD_TYPE={config}"]
 
+    if host_os == "linux" and not os.environ.get("CC") and not os.environ.get("CXX"):
+        clang = shutil.which("clang-18")
+        clangxx = shutil.which("clang++-18")
+        if clang and clangxx:
+            cmd += [f"-DCMAKE_C_COMPILER={clang}", f"-DCMAKE_CXX_COMPILER={clangxx}"]
+
     if use_vcpkg and VCPKG_TOOLCHAIN.exists():
         cmd += [f"-DCMAKE_TOOLCHAIN_FILE={VCPKG_TOOLCHAIN}"]
         if host_os == "mac":

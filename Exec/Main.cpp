@@ -45,8 +45,39 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int32_t)
 
 #else
 
+#if defined(__linux__)
+#include "Workspace/WorkspaceContext.h"
+#include "Workspace/WorkspacePathEncoding.h"
+#include <nlohmann/json.hpp>
+#include <iostream>
+#endif
+
 int main(int argc, const char** argv)
 {
+#if defined(__linux__)
+	if (argc == 3 && std::string_view(argv[1]) == "--describe-workspace")
+	{
+		const auto resolved = Workspace::ResolveWorkspaceContext(Workspace::PathFromUtf8(argv[2]));
+		if (!resolved.IsSuccess())
+		{
+			std::cerr << resolved.m_message << '\n';
+			return 1;
+		}
+		const auto& context = resolved.m_context;
+		const nlohmann::json description = {
+			{ "schemaVersion", 1 },
+			{ "legacy", context.IsLegacy() },
+			{ "workspaceId", context.GetWorkspaceId() },
+			{ "name", context.GetWorkspaceName() },
+			{ "content", Workspace::PathToUtf8(context.GetContent()) },
+			{ "engineContent", Workspace::PathToUtf8(context.GetEngineContent()) },
+			{ "logicOutput", Workspace::PathToUtf8(context.GetLogicOutput()) },
+			{ "logicModuleName", context.GetModuleName() }
+		};
+		std::cout << description.dump() << '\n';
+		return 0;
+	}
+#endif
 	const auto initialization = App::Initialize(argv, argc);
 	if (initialization == EAppInitializationResult::Ready)
 	{
