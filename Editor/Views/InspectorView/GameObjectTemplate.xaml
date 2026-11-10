@@ -73,7 +73,10 @@
                     Clicked="OnAddComponentClicked" />
         </HorizontalStackLayout>
 
-        <CollectionView Grid.Row="8" Grid.ColumnSpan="2" ItemsSource="{Binding Components}" ItemTemplate="{StaticResource ComponentTemplateSelector}" />
+        <!-- InspectorPropertiesScroll owns scrolling; components measure to their full height. -->
+        <VerticalStackLayout Grid.Row="8" Grid.ColumnSpan="2"
+                             BindableLayout.ItemsSource="{Binding Components}"
+                             BindableLayout.ItemTemplateSelector="{StaticResource ComponentTemplateSelector}" />
 
     </Grid>
 </DataTemplate>

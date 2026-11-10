@@ -99,8 +99,8 @@
             <Button Text="Clear" Width ="40" Command="{Binding ClearMaterialsCommand, Source={RelativeSource AncestorType={x:Type vm:ModelFile}}}"/>
         </HorizontalStackLayout>
 
-        <CollectionView Grid.Row="13" Grid.ColumnSpan="2" ItemsSource="{Binding Materials}">
-            <CollectionView.ItemTemplate>
+        <VerticalStackLayout Grid.Row="13" Grid.ColumnSpan="2" BindableLayout.ItemsSource="{Binding Materials}">
+            <BindableLayout.ItemTemplate>
                 <DataTemplate>
                     <HorizontalStackLayout>
                         <Button Text="-" Command="{Binding Path=BindingContext.RemoveMaterialCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
@@ -120,8 +120,8 @@
                         </Label>
                     </HorizontalStackLayout>
                 </DataTemplate>
-            </CollectionView.ItemTemplate>
-        </CollectionView>
+            </BindableLayout.ItemTemplate>
+        </VerticalStackLayout>
 
         <Label Text="Animations" FontAttributes="Bold" Grid.Row="14" Grid.ColumnSpan="2" />
 
