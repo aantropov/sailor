@@ -573,7 +573,7 @@ VkPhysicalDevice VulkanApi::PickPhysicalDevice(VulkanSurfacePtr surface)
 		if (IsDeviceSuitable(device, surface))
 		{
 			const int score = GetDeviceScore(device);
-			if (score >= bestScore)
+			if (score > bestScore)
 			{
 				bestScore = score;
 				physicalDevice = device;
@@ -585,6 +585,13 @@ VkPhysicalDevice VulkanApi::PickPhysicalDevice(VulkanSurfacePtr surface)
 	{
 		physicalDevice = VK_NULL_HANDLE;
 		SAILOR_LOG("Failed to find a suitable GPU!");
+	}
+	else
+	{
+		VkPhysicalDeviceProperties properties{};
+		vkGetPhysicalDeviceProperties(physicalDevice, &properties);
+		SAILOR_LOG("Selected Vulkan physical device: %s (type=%u).", properties.deviceName,
+			static_cast<uint32_t>(properties.deviceType));
 	}
 
 	return physicalDevice;
@@ -790,29 +797,27 @@ bool VulkanApi::IsDeviceSuitable(VkPhysicalDevice device, VulkanSurfacePtr surfa
 
 int VulkanApi::GetDeviceScore(VkPhysicalDevice device)
 {
-	VkPhysicalDeviceProperties deviceProperties;
-	VkPhysicalDeviceFeatures deviceFeatures;
-
+	VkPhysicalDeviceProperties deviceProperties{};
 	vkGetPhysicalDeviceProperties(device, &deviceProperties);
-	vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
 
-	int score = 0;
-	// Discrete GPUs have a significant performance advantage
-	if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+	// Capability limits are not performance scores: llvmpipe can expose the same
+	// texture size and geometry shaders as an integrated GPU. Keep software as a
+	// fallback after suitability checks, and preserve enumeration order within a type.
+	switch (deviceProperties.deviceType)
 	{
-		score += 1000;
+	case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
+		return 5;
+	case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
+		return 4;
+	case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
+		return 3;
+	case VK_PHYSICAL_DEVICE_TYPE_OTHER:
+		return 2;
+	case VK_PHYSICAL_DEVICE_TYPE_CPU:
+		return 1;
+	default:
+		return 2;
 	}
-
-	// Maximum possible size of textures affects graphics quality
-	score += deviceProperties.limits.maxImageDimension2D;
-
-	// Reward geometry shader support, but don't reject portability GPUs that don't expose it.
-	if (deviceFeatures.geometryShader)
-	{
-		score += 128;
-	}
-
-	return score;
 }
 
 VkResult VulkanApi::CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger)
