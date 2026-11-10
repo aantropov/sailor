@@ -231,7 +231,9 @@ void ImGuiApi::NewFrame()
 		io.DisplaySize = ImVec2(displayWidth, displayHeight);
 
 		const glm::ivec2 renderArea = window->GetRenderArea();
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__linux__)
+		// These backends deliver input in render pixels. The GTK editor's hidden
+		// GLFW window can have a different size from the visible viewport.
 		io.DisplaySize = ImVec2(static_cast<float>(renderArea.x), static_cast<float>(renderArea.y));
 		io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
 #else
@@ -281,8 +283,9 @@ ImGuiApi::PreparedFramePtr ImGuiApi::PrepareFrame(RHI::RHICommandListPtr transfe
 			return {};
 		}
 		auto& driver = RHI::Renderer::GetDriver();
+		// UI overlays must preserve the scene alpha consumed by native compositors.
 		RHI::RenderState renderState(false, false, 0.0f, false, RHI::ECullMode::None,
-			RHI::EBlendMode::AlphaBlending, RHI::EFillMode::Fill, 0, false);
+			RHI::EBlendMode::AlphaBlendingPreserveAlpha, RHI::EFillMode::Fill, 0, false);
 		bd->Material = driver->CreateMaterial(driver->GetOrAddVertexDescription<RHI::VertexP2UV2C1>(),
 			RHI::EPrimitiveTopology::TriangleList, renderState, bd->Shader, bd->ShaderBindings);
 	}

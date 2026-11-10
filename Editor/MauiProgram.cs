@@ -36,6 +36,7 @@ namespace SailorEditor
         {
 #if LINUX
             GtkGestures.Configure();
+            LinuxBorderHandler.Configure();
 #endif
             var builder = MauiApp.CreateBuilder();
             builder
@@ -50,6 +51,9 @@ namespace SailorEditor
                 .ConfigureMauiHandlers(handlers =>
                 {
                     handlers.AddHandler<NativeSceneViewport, NativeSceneViewportHandler>();
+#if LINUX
+                    handlers.AddHandler<Border, LinuxBorderHandler>();
+#endif
 #if WINDOWS
                     handlers.AddHandler<WindowsMenuBarView, WindowsMenuBarHandler>();
 #endif
