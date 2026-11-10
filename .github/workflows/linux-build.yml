@@ -1,0 +1,51 @@
+name: Linux Build
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    env:
+      CC: clang-18
+      CXX: clang++-18
+      VCPKG_MAX_CONCURRENCY: 2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 ninja-build pkg-config autoconf automake libtool \
+            libvulkan-dev libshaderc-dev glslc glslang-tools libssl-dev libasound2-dev \
+            libx11-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev \
+            libwayland-dev libxkbcommon-dev libgtk-4-dev xvfb xauth
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: vcpkg-linux-clang18-${{ hashFiles('.gitmodules', 'update_deps.py', '.github/vcpkg-ports/**') }}
+          restore-keys: vcpkg-linux-clang18-
+      - name: Install engine dependencies
+        run: python3 update_deps.py
+      - name: Configure runtime and opt-in tests
+        run: >-
+          cmake -S . -B build-linux -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_TOOLCHAIN_FILE=External/vcpkg/scripts/buildsystems/vcpkg.cmake
+          -DSAILOR_ALLOW_MISSING_DEPS=OFF -DSAILOR_BUILD_TESTS=ON
+      - name: Build runtime and tests
+        run: cmake --build build-linux --parallel 2
+      - name: Run native tests
+        run: ctest --test-dir build-linux --output-on-failure
+      - name: Package standalone runtime
+        run: python3 package_linux.py --output "$RUNNER_TEMP/Sailor-Linux"
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            9.0.x
+            10.0.x
+      - name: Build GTK4 editor and MCP bridge
+        run: python3 build_editor.py --config Release
+      - name: Test editor contracts
+        run: dotnet test Editor.Tests/Editor.Contracts.Tests.csproj -c Release

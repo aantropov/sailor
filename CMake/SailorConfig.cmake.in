@@ -12,7 +12,7 @@ find_dependency(unofficial-spirv-reflect CONFIG)
 find_dependency(Stb)
 
 if("@SAILOR_PACKAGE_NEEDS_TRACY@" STREQUAL "ON")
-	find_dependency(tracy CONFIG)
+	find_dependency(Tracy CONFIG)
 endif()
 
 if("@SAILOR_PACKAGE_NEEDS_VULKAN_TARGETS@" STREQUAL "ON")

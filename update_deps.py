@@ -58,11 +58,10 @@ def main() -> int:
         subprocess.check_call([vcpkg_exe] + list(args), cwd=VCPKG_ROOT)
 
     overlay_args = []
+    if system in ('Windows', 'Linux'):
+        overlay_args = [f'--overlay-ports={VCPKG_OVERLAY_PORTS}']
     if system == 'Windows':
-        overlay_args = [
-            f'--overlay-ports={VCPKG_OVERLAY_PORTS}',
-            f'--overlay-triplets={VCPKG_OVERLAY_TRIPLETS}',
-        ]
+        overlay_args.append(f'--overlay-triplets={VCPKG_OVERLAY_TRIPLETS}')
 
     run_vcpkg('update', *overlay_args)
     run_vcpkg('upgrade', '--no-dry-run', *overlay_args)
@@ -94,6 +93,8 @@ def main() -> int:
         'tracy',
         'yaml-cpp',
     ]
+    if system == 'Linux':
+        packages.append('glfw3')
     if system == 'Windows':
         packages.append('vulkan-loader')
 

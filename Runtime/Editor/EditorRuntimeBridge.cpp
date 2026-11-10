@@ -109,6 +109,10 @@ namespace
 
 	constexpr ViewportId kPrimaryEditorViewportId = 1;
 	std::atomic<uint32_t> g_numVisibleRemoteViewports = 0;
+#if defined(__linux__)
+	std::atomic<bool> g_linuxViewportCreated = false;
+	std::atomic<bool> g_linuxViewportVisible = false;
+#endif
 	Tasks::ITaskPtr g_viewportPumpTask; // Main owns scheduling; Editor owns the registry.
 
 	template<typename TResult, typename TOperation>
@@ -600,6 +604,8 @@ bool Sailor::EditorRuntime::ApplyPendingEditorViewportOnEngineThread()
 		}
 #if defined(_WIN32)
 		mainWindow->Show(false);
+#elif defined(__linux__)
+		// GTK displays the resolved readback; its hidden Vulkan surface stays on the UI thread.
 #else
 		mainWindow->ChangeWindowSize(requestedWindowArea.x, requestedWindowArea.y, false);
 #endif
@@ -615,6 +621,8 @@ bool Sailor::EditorRuntime::ApplyPendingEditorViewportOnEngineThread()
 	{
 #if defined(_WIN32)
 		mainWindow->Show(false);
+#elif defined(__linux__)
+		// GTK displays the resolved readback; its hidden Vulkan surface stays on the UI thread.
 #else
 		mainWindow->ChangeWindowSize(requestedWindowArea.x, requestedWindowArea.y, false);
 #endif
@@ -702,6 +710,10 @@ void Sailor::EditorRuntime::UpdateRuntimeGIWorkAllowanceOnEngineThread()
 
 void Sailor::EditorRuntime::ResetForAppLifecycle()
 {
+#if defined(__linux__)
+	g_linuxViewportCreated = false;
+	g_linuxViewportVisible = false;
+#endif
 	ResetMaterialPreviewForAppLifecycle();
 	const auto clearBindings = []()
 	{
@@ -1075,6 +1087,18 @@ void EditorRuntime::SetEditorRenderTargetSize(uint32_t width, uint32_t height)
 
 bool EditorRuntime::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height, bool bVisible, bool bFocused)
 {
+#if defined(__linux__)
+	if (viewportId > 1 || !App::HasEditor() || width == 0 || height == 0)
+	{
+		return false;
+	}
+	SetEditorRenderTargetSize(width, height);
+	SetEditorViewport(0, 0, width, height);
+	g_linuxViewportCreated = true;
+	g_linuxViewportVisible = bVisible;
+	g_numVisibleRemoteViewports = bVisible ? 1u : 0u;
+	return true;
+#endif
 #if defined(_WIN32)
 	SetEditorRenderTargetSize(width, height);
 	SetEditorViewport(0, 0, width, height);
@@ -1126,6 +1150,20 @@ bool EditorRuntime::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t win
 
 bool EditorRuntime::DestroyEditorRemoteViewport(uint64_t viewportId)
 {
+#if defined(__linux__)
+	if (viewportId > 1)
+	{
+		return false;
+	}
+	g_linuxViewportCreated = false;
+	g_linuxViewportVisible = false;
+	g_numVisibleRemoteViewports = 0;
+	return App::ExecuteOnEngineMainThread<bool>(false, []()
+	{
+		ResetEditorInputStateOnEngineThread();
+		return true;
+	});
+#endif
 	return ExecuteOnViewportOwner<bool>(false, [=]() mutable
 	{
 		viewportId = viewportId == 0 ? kPrimaryEditorViewportId : viewportId;
@@ -1159,6 +1197,13 @@ bool EditorRuntime::DestroyEditorRemoteViewport(uint64_t viewportId)
 
 uint32_t EditorRuntime::GetEditorRemoteViewportState(uint64_t viewportId)
 {
+#if defined(__linux__)
+	if (viewportId > 1 || !g_linuxViewportCreated)
+	{
+		return static_cast<uint32_t>(SessionState::Created);
+	}
+	return static_cast<uint32_t>(g_linuxViewportVisible ? SessionState::Active : SessionState::Paused);
+#endif
 	return ExecuteOnViewportOwner<uint32_t>(static_cast<uint32_t>(SessionState::Created), [=]() mutable
 	{
 		viewportId = viewportId == 0 ? kPrimaryEditorViewportId : viewportId;
@@ -1308,6 +1353,9 @@ uint32_t EditorRuntime::GetEditorRemoteViewportDiagnostics(uint64_t viewportId, 
 
 bool EditorRuntime::RetryEditorRemoteViewport(uint64_t viewportId)
 {
+#if defined(__linux__)
+	return viewportId <= 1 && g_linuxViewportCreated;
+#endif
 	return ExecuteOnViewportOwner<bool>(false, [=]() mutable
 	{
 		viewportId = viewportId == 0 ? kPrimaryEditorViewportId : viewportId;
@@ -1456,6 +1504,17 @@ bool EditorRuntime::SendEditorRemoteViewportInput(uint64_t viewportId, uint32_t 
 	input.m_captured = bCaptured;
 	input.m_text = text;
 
+#if defined(__linux__)
+	if (viewportId != kPrimaryEditorViewportId || !g_linuxViewportCreated)
+	{
+		return false;
+	}
+	return App::ExecuteOnEngineMainThread<bool>(false, [input]()
+	{
+		DispatchEditorInputToRuntime(input);
+		return true;
+	});
+#endif
 	return ExecuteOnViewportOwner<bool>(false, [viewportId, input]() mutable
 	{
 		auto binding = FindRemoteViewportBinding(viewportId);

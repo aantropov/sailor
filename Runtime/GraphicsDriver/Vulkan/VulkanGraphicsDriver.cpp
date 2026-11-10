@@ -12,7 +12,7 @@
 #include "RHI/VertexDescription.h"
 #include "RHI/CommandList.h"
 #include "RHI/Types.h"
-#include "Memory.h"
+#include <cstring>
 #include "Memory/MemoryBlockAllocator.hpp"
 #include "Platform/Window.h"
 #include "VulkanApi.h"

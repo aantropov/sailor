@@ -31,7 +31,14 @@ internal static class EngineProtocolNative
     }
 #endif
 
-#if MACCATALYST
+#if LINUX
+#if DEBUG
+    public const string Configuration = "Debug";
+#else
+    public const string Configuration = "Release";
+#endif
+    const string EngineLibrary = "Sailor-" + Configuration + ".so";
+#elif MACCATALYST
 #if DEBUG
     public const string Configuration = "Debug";
 #else
@@ -44,6 +51,16 @@ internal static class EngineProtocolNative
 #else
     public const string Configuration = "Release";
     const string EngineLibrary = "../../../../../Sailor-" + Configuration + ".dll";
+#endif
+
+#if LINUX
+    [DllImport(EngineLibrary, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int SailorProtocolCopyLinuxViewportFrame(
+        [Out] byte[] destination, ulong capacity, out uint width, out uint height,
+        out uint stride, ref ulong frameIndex);
+
+    [DllImport(EngineLibrary, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void SailorProtocolPollLinuxWindowEvents();
 #endif
 
     [DllImport(

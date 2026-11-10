@@ -1465,8 +1465,10 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& filename, std::string
 	// GeneratePrecompiledGlsl. Native/nested GLSL #include directives are not
 	// enabled until they have a separate path and dependency contract.
 
+	// shaderc requires a source name when it formats compiler diagnostics.
+	const char* sourceName = filename.empty() ? "<shader>" : filename.c_str();
 	shaderc::SpvCompilationResult module = compiler.CompileGlslToSpv(
-		source.empty() ? "" : source.data(), source.size(), kind, filename.c_str(), "main", options);
+		source.empty() ? "" : source.data(), source.size(), kind, sourceName, "main", options);
 
 	if (module.GetCompilationStatus() != shaderc_compilation_status::shaderc_compilation_status_success)
 	{

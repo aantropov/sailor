@@ -10,6 +10,10 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "Containers/Vector.h"
 #include <optional>
 #include <vulkan/vulkan.h>
+#if defined(__linux__)
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
+#endif
 #ifdef _WIN32
 #include <wtypes.h>
 #include <windows.h>
@@ -768,6 +772,14 @@ void VulkanDevice::CreateSurface(const Platform::Window* viewport)
 		VkMetalSurfaceCreateInfoEXT createInfoMetal{ VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT };
 		createInfoMetal.pLayer = Mac::GetMetalLayer(viewport->GetNativeHandle(), viewport->IsVsyncRequested());
 		VK_CHECK(vkCreateMetalSurfaceEXT(VulkanApi::GetVkInstance(), &createInfoMetal, nullptr, &surface));
+	}
+#elif defined(__linux__)
+	VkSurfaceKHR surface = VK_NULL_HANDLE;
+	const VkResult result = glfwCreateWindowSurface(VulkanApi::GetVkInstance(),
+		static_cast<GLFWwindow*>(viewport->GetNativeHandle()), nullptr, &surface);
+	if (result != VK_SUCCESS)
+	{
+		throw std::runtime_error("GLFW could not create the Linux Vulkan surface (VkResult=" + std::to_string(result) + ").");
 	}
 #else
 	VkSurfaceKHR surface = VK_NULL_HANDLE;

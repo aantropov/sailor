@@ -65,3 +65,6 @@ Cache\\Temp.world
 
 .DS_Store
 *.DS_Store.asset
+
+Editor.Linux/bin/
+Editor.Linux/obj/

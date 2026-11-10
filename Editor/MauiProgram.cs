@@ -1,4 +1,9 @@
-﻿using SailorEditor.Views;
+﻿#if LINUX
+using Microsoft.Maui.Platforms.Linux.Gtk4.Hosting;
+using SailorEditor.Platforms.Linux;
+using Microsoft.Maui.Platforms.Linux.Gtk4.Essentials.Hosting;
+#endif
+using SailorEditor.Views;
 using Microsoft.Extensions.Logging;
 using SailorEditor.Helpers;
 using SailorEditor.Services;
@@ -29,11 +34,19 @@ namespace SailorEditor
         public static TService GetService<TService>() => serviceProvider.GetService<TService>();
         public static MauiApp CreateMauiApp()
         {
+#if LINUX
+            GtkGestures.Configure();
+#endif
             var builder = MauiApp.CreateBuilder();
             builder
+                #if LINUX
+                .UseMauiAppLinuxGtk4<App>()
+                .AddLinuxGtk4Essentials()
+#else
                 .UseMauiApp<App>()
+#endif
                 .UseMauiCommunityToolkit()
-#if MACCATALYST || WINDOWS
+#if MACCATALYST || WINDOWS || LINUX
                 .ConfigureMauiHandlers(handlers =>
                 {
                     handlers.AddHandler<NativeSceneViewport, NativeSceneViewportHandler>();

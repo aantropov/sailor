@@ -68,7 +68,7 @@ namespace SailorEditor.Views
         bool lifecycleSubscribed;
         bool updatingGraphicsPickers;
         bool updatingRenderModePicker;
-#if WINDOWS || MACCATALYST
+#if WINDOWS || MACCATALYST || LINUX
         static readonly bool UseNativeViewportHost = true;
 #else
         static readonly bool UseNativeViewportHost = false;
@@ -105,7 +105,7 @@ namespace SailorEditor.Views
                 .Select(option => option.DisplayName)
                 .ToList();
 
-#if !WINDOWS && !MACCATALYST
+#if !WINDOWS && !MACCATALYST && !LINUX
             var tapGesture = new TapGestureRecognizer();
             tapGesture.Tapped += (sender, args) =>
             {
@@ -129,7 +129,7 @@ namespace SailorEditor.Views
                 SetSceneFocus(false, sendRemoteFocus: true);
             };
 
-#if WINDOWS || MACCATALYST
+#if WINDOWS || MACCATALYST || LINUX
             if (UseNativeViewportHost)
             {
                 nativeViewportHost = new NativeSceneViewport
@@ -1439,7 +1439,7 @@ namespace SailorEditor.Views
             var remoteRect = Viewport.GetAbsolutePositionWin();
             var editorRect = new SceneViewportRect(remoteRect.X, remoteRect.Y, remoteRect.Width, remoteRect.Height);
             var renderTarget = default(SceneViewportRenderTarget);
-#if WINDOWS || MACCATALYST
+#if WINDOWS || MACCATALYST || LINUX
             if (UseNativeViewportHost)
             {
                 if (nativeHostHandle == nint.Zero)
@@ -1569,7 +1569,7 @@ namespace SailorEditor.Views
 
         void RequestNativeViewportLayout()
         {
-#if WINDOWS || MACCATALYST
+#if WINDOWS || MACCATALYST || LINUX
             if (!UseNativeViewportHost || nativeViewportHost is null)
             {
                 return;
@@ -1600,7 +1600,7 @@ namespace SailorEditor.Views
 
         void QueueViewportRetry(TimeSpan? keepAlive = null)
         {
-#if WINDOWS || MACCATALYST
+#if WINDOWS || MACCATALYST || LINUX
             if (!UseNativeViewportHost || !isRunning)
             {
                 return;

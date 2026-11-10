@@ -465,8 +465,8 @@ bool Renderer::EnsureFrameGraph()
 	{
 		auto graph = m_frameGraph->GetRHI();
 		auto readback = Framegraph::EditorReadbackNode::Find(*graph);
-#if defined(__APPLE__)
-		// The Mac host consumes completed CPU frames; Windows copies the image on GPU.
+#if defined(__APPLE__) || defined(__linux__)
+		// Mac and GTK hosts consume completed CPU frames; Windows copies the image on GPU.
 		if (App::HasEditor() && !readback)
 		{
 			readback = TRefPtr<Framegraph::EditorReadbackNode>::Make();

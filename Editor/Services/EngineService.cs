@@ -136,7 +136,7 @@ namespace SailorEditor.Services
         volatile bool nativeShutdownPending;
         int lifecycleState = (int)EngineLifecycleState.Stopped;
         long engineGeneration;
-#if WINDOWS || MACCATALYST
+#if WINDOWS || MACCATALYST || LINUX
         readonly object remoteViewportStateLock = new();
         readonly Dictionary<ulong, RemoteViewportSessionState> remoteViewportStates = [];
         readonly Dictionary<ulong, string> remoteViewportDiagnostics = [];
@@ -674,7 +674,7 @@ namespace SailorEditor.Services
                 return;
             }
 
-#if WINDOWS || MACCATALYST
+#if WINDOWS || MACCATALYST || LINUX
             instance.QueuePlatformInterop(async cancellationToken =>
             {
                 await instance.protocolClient.ShowMainWindowAsync(
@@ -774,7 +774,7 @@ namespace SailorEditor.Services
 
         public bool TryUpdateRemoteViewport(ulong viewportId, Rect rect, bool visible, bool focused)
         {
-#if WINDOWS || MACCATALYST
+#if WINDOWS || MACCATALYST || LINUX
             lock (sceneViewportStateLock)
             {
                 if (viewportId == SceneViewportId)
@@ -813,7 +813,7 @@ namespace SailorEditor.Services
                 return;
             }
 
-#if WINDOWS || MACCATALYST
+#if WINDOWS || MACCATALYST || LINUX
             lock (sceneViewportStateLock)
             {
                 sceneViewportState.RememberRect(rect);
@@ -869,7 +869,7 @@ namespace SailorEditor.Services
 
         public void DestroyRemoteViewport(ulong viewportId)
         {
-#if WINDOWS || MACCATALYST
+#if WINDOWS || MACCATALYST || LINUX
             remoteViewportUpdates.Reset(viewportId);
             viewportStatusRefreshes.Reset(viewportId);
             lock (remoteViewportStateLock)
@@ -897,7 +897,7 @@ namespace SailorEditor.Services
 
         public RemoteViewportSessionState GetRemoteViewportState(ulong viewportId)
         {
-#if WINDOWS || MACCATALYST
+#if WINDOWS || MACCATALYST || LINUX
             if (State != EngineLifecycleState.Running)
             {
                 return RemoteViewportSessionState.Disposed;
@@ -918,7 +918,7 @@ namespace SailorEditor.Services
 
         public void RetryRemoteViewport(ulong viewportId)
         {
-#if WINDOWS || MACCATALYST
+#if WINDOWS || MACCATALYST || LINUX
             remoteViewportUpdates.Reset(viewportId);
             QueuePlatformInterop(cancellationToken =>
                 new ValueTask<bool>(
@@ -943,7 +943,7 @@ namespace SailorEditor.Services
             bool captured = false,
             string text = "")
         {
-#if WINDOWS || MACCATALYST
+#if WINDOWS || MACCATALYST || LINUX
             var input = new RemoteViewportInput(
                 viewportId,
                 kind,
@@ -1000,7 +1000,7 @@ namespace SailorEditor.Services
 
         public string GetRemoteViewportDiagnostics(ulong viewportId)
         {
-#if WINDOWS || MACCATALYST
+#if WINDOWS || MACCATALYST || LINUX
             if (State != EngineLifecycleState.Running)
             {
                 return string.Empty;
@@ -1019,7 +1019,7 @@ namespace SailorEditor.Services
 #endif
         }
 
-#if WINDOWS || MACCATALYST
+#if WINDOWS || MACCATALYST || LINUX
         void QueueRemoteViewportStatusRefresh(ulong viewportId)
         {
             viewportStatusRefreshes.Enqueue(
@@ -1075,7 +1075,7 @@ namespace SailorEditor.Services
         {
             ArgumentNullException.ThrowIfNull(launchContext);
 
-#if !WINDOWS && !MACCATALYST
+#if !WINDOWS && !MACCATALYST && !LINUX
             throw new PlatformNotSupportedException("The in-process engine is supported only by the Windows and Mac Catalyst editor hosts.");
 #else
             ObjectDisposedException.ThrowIf(
@@ -1153,7 +1153,7 @@ namespace SailorEditor.Services
                         LastFailure);
                 }
                 generation = Interlocked.Increment(ref engineGeneration);
-#if WINDOWS || MACCATALYST
+#if WINDOWS || MACCATALYST || LINUX
                 ResetPlatformInteropState();
 #endif
                 Volatile.Write(ref lastExitCode, 0);
@@ -1169,7 +1169,7 @@ namespace SailorEditor.Services
                 Volatile.Write(ref editorTypes, new EngineTypes());
 
                 nativeShutdownPending = true;
-#if WINDOWS || MACCATALYST
+#if WINDOWS || MACCATALYST || LINUX
                 await MainThread.InvokeOnMainThreadAsync(
                     () => protocolClient.InitializeAsync(
                         args,
@@ -1489,7 +1489,7 @@ namespace SailorEditor.Services
 
         public async Task<int> StopAsync(CancellationToken cancellationToken = default)
         {
-#if !WINDOWS && !MACCATALYST
+#if !WINDOWS && !MACCATALYST && !LINUX
             return LastExitCode;
 #else
             await lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -1607,7 +1607,7 @@ namespace SailorEditor.Services
                     nameof(serializedWorld));
             }
 
-#if !WINDOWS && !MACCATALYST
+#if !WINDOWS && !MACCATALYST && !LINUX
             throw new PlatformNotSupportedException(
                 "The local Engine host is supported only by the Windows and Mac Catalyst editor hosts.");
 #else
@@ -2057,7 +2057,7 @@ namespace SailorEditor.Services
                 }
             }
             nativeShutdownPending = !shutdownCompleted;
-#if WINDOWS || MACCATALYST
+#if WINDOWS || MACCATALYST || LINUX
             if (shutdownCompleted) ResetPlatformInteropState();
 #endif
             return failure;
