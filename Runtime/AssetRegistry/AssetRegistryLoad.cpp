@@ -30,7 +30,8 @@ bool AssetRegistry::ResolveDirectLoadPath(std::string_view requestedPath, AssetR
 			if (winner == m_contentFileWinners.end() || winner.Value().m_mountKind == EAssetMountKind::Engine ||
 				PathKey(winner.Value().m_physicalPath) == PathKey(workspaceCandidate))
 			{
-				outLocation = AssetReadLocation{workspaceCandidate, virtualPath, EAssetMountKind::Workspace, !FileSystem::IsReadOnly(workspaceCandidate)};
+				outLocation = AssetReadLocation{workspaceCandidate, virtualPath, EAssetMountKind::Workspace,
+					!m_workspaceContext.IsPackaged() && !FileSystem::IsReadOnly(workspaceCandidate)};
 				return true;
 			}
 		}

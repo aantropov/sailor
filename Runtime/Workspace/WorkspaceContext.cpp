@@ -797,6 +797,7 @@ Sailor::Workspace::WorkspaceContextResolveResult Sailor::Workspace::ResolveWorks
 	}
 	if (!packageCache.empty())
 	{
+		context.m_bPackaged = true;
 		context.m_cache = std::move(packageCache);
 	}
 	if (context.m_bLegacy)

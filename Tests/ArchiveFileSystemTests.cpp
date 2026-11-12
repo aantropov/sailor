@@ -304,6 +304,7 @@ namespace
 		auto resolved = Workspace::ResolveWorkspaceContext(game);
 		Require(resolved.IsSuccess(), resolved.m_message);
 		TVector<ArchiveMountPtr> mounts;
+		Require(!resolved.m_context.IsPackaged(), "ordinary workspaces must retain authoring ownership");
 		Require(Workspace::MountPackageContent(resolved.m_context, mounts, diagnostic) && mounts.IsEmpty(),
 			"ordinary workspaces must not require a package manifest");
 		const auto packageId = NewPackageId();
@@ -311,6 +312,7 @@ namespace
 			{"initialCache", nullptr}, {"archives", {{{"root", "Content"}, {"file", "Content.zip"}}}}}.dump());
 		resolved = Workspace::ResolveWorkspaceContext(game);
 		Require(resolved.IsSuccess(), resolved.m_message);
+		Require(resolved.m_context.IsPackaged(), "game package resolution must retain runtime ownership");
 		// Isolate test cache storage without changing HOME or shared process state.
 		const auto cache = resolved.m_context.GetCache();
 		Require(!std::filesystem::exists(cache), "fixture package ID must not reuse an existing cache");
@@ -344,6 +346,27 @@ namespace
 			App::RemoveSubmodule<DefaultAssetInfoHandler>();
 		}
 		mounts.Clear();
+		Save(game / "GamePackage.json", nlohmann::json{{"packageVersion", 1}, {"packageId", packageId},
+			{"initialCache", nullptr}, {"archives", nlohmann::json::array()}}.dump());
+		std::filesystem::copy(source, game / "Content", std::filesystem::copy_options::recursive);
+		resolved = Workspace::ResolveWorkspaceContext(game);
+		Require(resolved.IsSuccess() && resolved.m_context.IsPackaged(),
+			"loose game packages must retain runtime ownership");
+		{
+			Tests::TaskTestApp app;
+			auto& scheduler = app.GetScheduler();
+			scheduler.Initialize();
+			AssetRegistry registry(resolved.m_context, &scheduler);
+			App::AddSubmodule(TSubmodule<DefaultAssetInfoHandler>::Make(&registry));
+			Require(registry.ScanContentFolder(), "the registry must scan loose packaged content");
+			Require(registry.GetOrLoadFile("nested/payload.txt") == id && registry.GetAssetInfoPtr(id) &&
+				!registry.GetAssetInfoPtr(id)->IsWritable(),
+				"loose packaged assets must keep read-only ownership even on writable storage");
+			std::filesystem::path writable;
+			Require(!registry.ResolveWorkspaceContentPathForWrite("nested/new.asset", writable),
+				"authoring APIs must refuse loose packaged content");
+			App::RemoveSubmodule<DefaultAssetInfoHandler>();
+		}
 		for (const std::string manifest : {
 			R"({"packageVersion":2,"archives":[]})",
 			R"({"packageVersion":1,"packageVersion":1,"archives":[]})",

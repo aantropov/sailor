@@ -218,7 +218,7 @@ void ShaderCompiler::UpdateConstantsLibrary()
 	// Generated engine shader ABI belongs to Engine Content. A distinct workspace
 	// consumes that read-only library through the shared virtual content mount and
 	// must never create a higher-priority local override.
-	if (!App::GetWorkspaceContext().IsEngineMode())
+	if (!App::GetWorkspaceContext().IsEngineMode() || App::GetWorkspaceContext().IsPackaged())
 	{
 		return;
 	}
