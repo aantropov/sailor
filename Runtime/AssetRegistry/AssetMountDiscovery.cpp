@@ -336,17 +336,8 @@ namespace
 			return;
 		}
 
-		TVector<std::filesystem::path> paths;
-		FileSystem::Enumerate(logicalDirectory, paths, error);
-		TVector<std::filesystem::directory_entry> entries;
-		for (const auto& path : paths)
-		{
-			entries.Add(std::filesystem::directory_entry(path, error));
-			if (error)
-			{
-				break;
-			}
-		}
+		TVector<std::filesystem::path> entries;
+		FileSystem::Enumerate(logicalDirectory, entries, error);
 		if (error)
 		{
 			diagnostics.Add(MakeInspectionDiagnostic(
@@ -357,53 +348,54 @@ namespace
 			return;
 		}
 
-		std::sort(entries.begin(), entries.end(), [](const std::filesystem::directory_entry& left, const std::filesystem::directory_entry& right)
+		std::sort(entries.begin(), entries.end(), [](const std::filesystem::path& left, const std::filesystem::path& right)
 			{
-				const std::string leftKey = PathKey(left.path());
-				const std::string rightKey = PathKey(right.path());
+				const std::string leftKey = PathKey(left);
+				const std::string rightKey = PathKey(right);
 				return leftKey != rightKey
 					? leftKey < rightKey
-					: PathDisplay(left.path()) < PathDisplay(right.path());
+					: PathDisplay(left) < PathDisplay(right);
 			});
 
-		for (const std::filesystem::directory_entry& entry : entries)
+		for (const std::filesystem::path& entry : entries)
 		{
 			error.clear();
-			const bool bIsDirectory = entry.is_directory(error);
+			const auto status = FileSystem::Status(entry, error);
+			const bool bIsDirectory = std::filesystem::is_directory(status);
 			if (error)
 			{
 				diagnostics.Add(MakeInspectionDiagnostic(
 					EAssetMountDiagnosticCode::PathInspectionFailed,
 					mount,
-					entry.path(),
-					"Asset mount entry could not be inspected: '" + PathDisplay(entry.path()) + "'."));
+					entry,
+					"Asset mount entry could not be inspected: '" + PathDisplay(entry) + "'."));
 				continue;
 			}
 			if (bIsDirectory)
 			{
-				if (IsInternalTransactionDirectory(entry.path()))
+				if (IsInternalTransactionDirectory(entry))
 				{
 					continue;
 				}
 
-				DiscoverDirectory(mount, entry.path(), visitedDirectories, files, diagnostics);
+				DiscoverDirectory(mount, entry, visitedDirectories, files, diagnostics);
 				continue;
 			}
 
 			error.clear();
-			if (!entry.is_regular_file(error) || error)
+			if (!std::filesystem::is_regular_file(status))
 			{
 				continue;
 			}
 
-			const std::filesystem::path physicalPath = std::filesystem::canonical(entry.path(), error);
+			const std::filesystem::path physicalPath = std::filesystem::canonical(entry, error);
 			if (error)
 			{
 				diagnostics.Add(MakeInspectionDiagnostic(
 					EAssetMountDiagnosticCode::PathInspectionFailed,
 					mount,
-					entry.path(),
-					"Asset mount file could not be resolved: '" + PathDisplay(entry.path()) + "'."));
+					entry,
+					"Asset mount file could not be resolved: '" + PathDisplay(entry) + "'."));
 				continue;
 			}
 			if (!IsInside(mount.m_root, physicalPath))
@@ -411,21 +403,21 @@ namespace
 				diagnostics.Add(MakeInspectionDiagnostic(
 					EAssetMountDiagnosticCode::PhysicalEscapeSkipped,
 					mount,
-					entry.path(),
-					"Asset mount file escapes its root and was skipped: '" + PathDisplay(entry.path()) + "'."));
+					entry,
+					"Asset mount file escapes its root and was skipped: '" + PathDisplay(entry) + "'."));
 				continue;
 			}
 
-			const std::filesystem::path relativePath = entry.path().lexically_relative(mount.m_root);
+			const std::filesystem::path relativePath = entry.lexically_relative(mount.m_root);
 			const std::string virtualPath = PathToUtf8(relativePath);
 			if (!IsSafeVirtualPath(virtualPath))
 			{
 				diagnostics.Add(MakeInspectionDiagnostic(
 					EAssetMountDiagnosticCode::PathInspectionFailed,
 					mount,
-					entry.path(),
+					entry,
 					"Asset mount file has an invalid virtual path and was skipped: '" +
-						PathDisplay(entry.path()) + "'."));
+						PathDisplay(entry) + "'."));
 				continue;
 			}
 

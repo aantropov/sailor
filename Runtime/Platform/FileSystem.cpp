@@ -1,6 +1,5 @@
 #include "Platform/FileSystem.h"
 
-#include <algorithm>
 #include <array>
 #include <fstream>
 
@@ -78,6 +77,5 @@ bool FileSystem::Enumerate(const std::filesystem::path& directory,
 		outEntries.Clear();
 		return false;
 	}
-	std::sort(outEntries.begin(), outEntries.end());
 	return true;
 }
