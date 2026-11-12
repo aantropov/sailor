@@ -5,7 +5,8 @@ using SailorEditor.Workspace;
 
 namespace SailorEditor.Services;
 
-internal sealed class GameBuildWindowService(EngineService engine, GameBuildService builds)
+internal sealed class GameBuildWindowService(EngineService engine, GameBuildService builds,
+    WorkspaceLifecycleService workspaces)
 {
     Window? _window;
 
@@ -18,7 +19,10 @@ internal sealed class GameBuildWindowService(EngineService engine, GameBuildServ
         try
         {
             var context = engine.GetLaunchContext();
-            var page = new GameBuildPage(context.WorkspaceRoot, engine.EngineWorkingDirectory, builds);
+            var workspace = workspaces.Current;
+            var engineDirectory = workspace is null ? engine.EngineWorkingDirectory :
+                Path.GetFullPath(workspace.Manifest.EnginePath, workspace.WorkspaceRoot);
+            var page = new GameBuildPage(context.WorkspaceRoot, engineDirectory, builds);
             var window = new Window(page) { Title = "Build Game", Width = 780, Height = 900,
                 MinimumWidth = 620, MinimumHeight = 600 };
             window.Destroying += (_, _) =>
