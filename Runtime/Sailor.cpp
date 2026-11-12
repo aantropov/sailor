@@ -1009,6 +1009,12 @@ void App::Start()
 	ProcessPendingEngineMainThreadTasks(scheduler);
 }
 
+bool App::IsShutdownRequested()
+{
+	const std::lock_guard<std::mutex> shutdownLock(g_engineShutdownMutex);
+	return g_engineStopRequested;
+}
+
 void App::Stop()
 {
 	const std::lock_guard<std::mutex> shutdownLock(g_engineShutdownMutex);

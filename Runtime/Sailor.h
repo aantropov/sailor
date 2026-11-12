@@ -79,6 +79,7 @@ namespace Sailor
 		SAILOR_API static EAppInitializationResult Initialize(const char** commandLineArgs = nullptr, int32_t num = 0);
 		SAILOR_API static void Start();
 		SAILOR_API static void Stop();
+		SAILOR_API static bool IsShutdownRequested();
 		SAILOR_API static bool Shutdown();
 		SAILOR_API static bool IsEngineMainThreadReady();
 
