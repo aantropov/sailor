@@ -38,6 +38,7 @@ namespace SailorEditor
             GtkGestures.Configure();
             LinuxBorderHandler.Configure();
             LinuxEntryHandler.Configure();
+            LinuxEditorHandler.Configure();
 #endif
             var builder = MauiApp.CreateBuilder();
             builder
@@ -55,6 +56,7 @@ namespace SailorEditor
 #if LINUX
                     handlers.AddHandler<Border, LinuxBorderHandler>();
                     handlers.AddHandler<Entry, LinuxEntryHandler>();
+                    handlers.AddHandler<Microsoft.Maui.Controls.Editor, LinuxEditorHandler>();
 #endif
 #if WINDOWS
                     handlers.AddHandler<WindowsMenuBarView, WindowsMenuBarHandler>();
