@@ -67,12 +67,17 @@ public sealed class GameBuildNativeTests
             }
             var executable = Path.Combine(relocated, "bin", "SailorEngine-" + configuration + (OperatingSystem.IsWindows() ? ".exe" : ""));
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            var describe = await runner.RunAsync(new(executable, ["--describe-workspace", relocated], root), timeout.Token);
+            var describe = await runner.RunAsync(new(executable, ["--describe-workspace", relocated], root)
+            {
+                OutputEncoding = Encoding.UTF8
+            }, timeout.Token);
             Assert.True(describe.Succeeded, describe.Output);
             using var description = JsonDocument.Parse(describe.Output);
             Assert.Equal(session.Manifest.WorkspaceId, description.RootElement.GetProperty("workspaceId").GetString());
-            Assert.True(WorkspacePathPolicy.IsInsideRoot(relocated, description.RootElement.GetProperty("engineContent").GetString()!));
-            Assert.True(WorkspacePathPolicy.IsInsideRoot(relocated, description.RootElement.GetProperty("logicOutput").GetString()!));
+            Assert.True(WorkspacePathPolicy.IsInsideRoot(relocated, description.RootElement.GetProperty("engineContent").GetString()!),
+                "Engine content escaped package " + relocated + ": " + describe.Output);
+            Assert.True(WorkspacePathPolicy.IsInsideRoot(relocated, description.RootElement.GetProperty("logicOutput").GetString()!),
+                "Logic module escaped package " + relocated + ": " + describe.Output);
             await File.WriteAllTextAsync(Path.Combine(root, "results.json"), JsonSerializer.Serialize(new
             {
                 schemaVersion = 1, engine, build, configuration, workspace = workspace + ".hidden", package = relocated,
