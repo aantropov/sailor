@@ -7612,7 +7612,10 @@ int main(int argc, const char** argv)
 #endif
 		if (mode == "--gpu-bootstrap-submit") return RunBootstrapGpu(argc, argv, false, false);
 		if (mode == "--gpu-editor-simulation") return Tests::RunEditorSimulationTests(argc, argv);
-		if (mode == "--gpu-render-contracts" || mode == "--gpu-render-contracts-msaa2") return Tests::RunRenderContractsGpu(argc, argv);
+		if (mode == "--gpu-render-contracts" || mode == "--gpu-render-contracts-msaa2" || mode == "--gpu-shader-lifecycle")
+		{
+			return Tests::RunRenderContractsGpu(argc, argv);
+		}
 #if defined(__APPLE__)
 		if (mode == "--gpu-capabilities") return RunBootstrapGpu(argc, argv, false, false, true);
 		if (mode == "--gpu-present-no-maintenance")

@@ -1353,6 +1353,7 @@ namespace Sailor::Tests
 	int RunRenderContractsGpu(int argc, const char** argv, bool bTestPathTracer)
 	{
 		TempDirectory workspace("render-contracts");
+		const bool bShaderLifecycleOnly = argc > 1 && std::string_view(argv[1]) == "--gpu-shader-lifecycle";
 		int result = 1;
 		try
 		{
@@ -1374,14 +1375,17 @@ namespace Sailor::Tests
 			else
 			{
 				RunShaderLifecycleCommandTests(workspace.Get());
-				RunModelLodCommandTests(workspace.Get());
-				const auto previews = workspace.Get() / "Cache" / "Fingerprints";
-				Require(!std::filesystem::exists(previews) || std::filesystem::is_empty(previews),
-					"model import and LOD contracts must not generate preview images");
-				std::cout << "Model import and LOD contracts completed without preview images\n";
-				RunGIProbesCommandTests(workspace.Get());
-				RunLandscapeCommandTests(workspace.Get());
-				RunFrameGraphNodeCommandTests(workspace.Get());
+				if (!bShaderLifecycleOnly)
+				{
+					RunModelLodCommandTests(workspace.Get());
+					const auto previews = workspace.Get() / "Cache" / "Fingerprints";
+					Require(!std::filesystem::exists(previews) || std::filesystem::is_empty(previews),
+						"model import and LOD contracts must not generate preview images");
+					std::cout << "Model import and LOD contracts completed without preview images\n";
+					RunGIProbesCommandTests(workspace.Get());
+					RunLandscapeCommandTests(workspace.Get());
+					RunFrameGraphNodeCommandTests(workspace.Get());
+				}
 			}
 			result = 0;
 		}

@@ -951,6 +951,12 @@ ShaderCompiler::PreparedShaderReload ShaderCompiler::PrepareShaderReload(
 		bool ready = true;
 		for (const auto& shader : shaders)
 		{
+			// A later cold load waits for this preparation and owns its first RHI
+			// publication. Including it here would also publish it on Render.
+			if (!shader.m_second->IsReady())
+			{
+				continue;
+			}
 			ShaderResources stages;
 			if (PrepareShaderResources(info->GetFileId(), shader.m_first, stages))
 			{
