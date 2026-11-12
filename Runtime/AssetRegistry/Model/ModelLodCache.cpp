@@ -1,3 +1,4 @@
+#include "Platform/FileSystem.h"
 #include "AssetRegistry/Model/ModelLodCache.h"
 #include "Platform/AtomicFile.h"
 
@@ -136,13 +137,18 @@ bool Sailor::ModelLodCache::Load(const ModelAssetInfo& assetInfo,
 {
 	const std::filesystem::path path = GetPath(assetInfo.GetFileId(), lodLevel);
 	std::error_code error;
-	const uint64_t fileSize = path.empty() ? 0u : std::filesystem::file_size(path, error);
+	const uint64_t fileSize = path.empty() ? 0u : FileSystem::FileSize(path, error);
 	if (error || fileSize < sizeof(Header) || fileSize > MaxBytes)
 	{
 		return false;
 	}
 
-	std::ifstream input(path, std::ios::binary);
+	auto inputOwner = FileSystem::OpenRead(path);
+	if (!inputOwner)
+	{
+		return false;
+	}
+	std::istream& input = *inputOwner;
 	const std::string bytes{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
 	if (input.bad() || bytes.size() != fileSize)
 	{

@@ -92,26 +92,7 @@ bool AssetRegistry::ReadAllTextFile(const std::string& filename, std::string& te
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	constexpr auto readSize = std::size_t{4096};
-	auto stream = std::ifstream{PathFromUtf8(filename)};
-	if (!stream.is_open())
-	{
-		return false;
-	}
-
-	text.clear();
-	auto buffer = std::string(readSize, '\0');
-	while (stream.read(buffer.data(), readSize))
-	{
-		text.append(buffer, 0, stream.gcount());
-	}
-	text.append(buffer, 0, stream.gcount());
-	if (stream.bad())
-	{
-		text.clear();
-		return false;
-	}
-	return true;
+	return FileSystem::ReadText(PathFromUtf8(filename), text);
 }
 
 bool AssetRegistry::ResolveContentFile(std::string_view virtualPath, AssetReadLocation& outLocation) const

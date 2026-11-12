@@ -1,3 +1,4 @@
+#include "Platform/FileSystem.h"
 #include "AssetRegistry/Shader/ShaderCache.h"
 
 #include "AssetRegistry/Shader/ShaderCacheInternal.h"
@@ -105,7 +106,7 @@ bool ShaderCache::ReadArtifactBytes(const std::filesystem::path& path,
 	}
 
 	std::error_code sizeError;
-	const uint64_t actualSize = std::filesystem::file_size(path, sizeError);
+	const uint64_t actualSize = FileSystem::FileSize(path, sizeError);
 	if (sizeError)
 	{
 		outIoFailure = sizeError != std::errc::no_such_file_or_directory && sizeError != std::errc::not_a_directory;
@@ -119,8 +120,8 @@ bool ShaderCache::ReadArtifactBytes(const std::filesystem::path& path,
 		return false;
 	}
 
-	std::ifstream stream(path, std::ios::binary);
-	if (!stream.is_open())
+	auto streamOwner = FileSystem::OpenRead(path);
+	if (!streamOwner)
 	{
 		std::error_code existsError;
 		const bool bExists = std::filesystem::exists(path, existsError);
@@ -128,6 +129,7 @@ bool ShaderCache::ReadArtifactBytes(const std::filesystem::path& path,
 		outDiagnostic = "Cannot open shader artifact '" + Workspace::PathToUtf8(path) + "'.";
 		return false;
 	}
+	std::istream& stream = *streamOwner;
 
 	TVector<uint8_t> candidate(static_cast<size_t>(metadata.m_byteLength));
 	stream.read(reinterpret_cast<char*>(candidate.GetData()), static_cast<std::streamsize>(candidate.Num()));

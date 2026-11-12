@@ -1,3 +1,4 @@
+#include "Platform/FileSystem.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 
 #include "AssetRegistry/FileId.h"
@@ -1226,12 +1227,13 @@ bool ShaderCompiler::ReadShaderSourceBinary(
 {
 	outSource.clear();
 	outDiagnostic.clear();
-	std::ifstream shaderFile(Workspace::PathFromUtf8(filepath), std::ios::in | std::ios::binary);
-	if (!shaderFile.is_open())
+	auto shaderFileOwner = FileSystem::OpenRead(Workspace::PathFromUtf8(filepath));
+	if (!shaderFileOwner)
 	{
 		outDiagnostic = "Cannot open the shader source for reading.";
 		return false;
 	}
+	std::istream& shaderFile = *shaderFileOwner;
 
 	outSource.assign(
 		std::istreambuf_iterator<char>{ shaderFile },

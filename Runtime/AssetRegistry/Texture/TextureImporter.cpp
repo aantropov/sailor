@@ -1,3 +1,5 @@
+#include "AssetRegistry/Model/GltfImporterUtils.h"
+#include "Platform/FileSystem.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "Core/FileRevision.h"
 #include "Containers/Containers.h"
@@ -42,12 +44,13 @@ bool ExtractTextureFromGLB(const std::string& filePath, int32_t textureIndex, Sa
 		uint32_t chunkType;
 	};
 
-	std::ifstream file(Workspace::PathFromUtf8(filePath), std::ios::binary);
-	if (!file.is_open())
+	auto fileOwner = FileSystem::OpenRead(Workspace::PathFromUtf8(filePath));
+	if (!fileOwner)
 	{
 		SAILOR_LOG_ERROR("Failed to open file");
 		return false;
 	}
+	std::istream& file = *fileOwner;
 
 	GLBHeader header;
 	file.read(reinterpret_cast<char*>(&header), sizeof(GLBHeader));
@@ -259,6 +262,7 @@ namespace
 		outDiagnostic.clear();
 
 		tinygltf::TinyGLTF loader;
+		GltfImporterUtils::ConfigureFileSystem(loader);
 		loader.SetImagesAsIs(true);
 
 		tinygltf::Model gltfModel;
@@ -328,7 +332,12 @@ bool TextureImporter::CaptureCpuDecodeRequest(const TextureAssetInfo& assetInfo,
 	{
 		// TinyGLTF reads external images and buffers while extracting an image.
 		// Capture their revisions too; the document timestamp alone is insufficient.
-		std::ifstream input(Workspace::PathFromUtf8(request.m_filepath), std::ios::binary);
+		auto inputOwner = FileSystem::OpenRead(Workspace::PathFromUtf8(request.m_filepath));
+		if (!inputOwner)
+		{
+			return false;
+		}
+		std::istream& input = *inputOwner;
 		const auto document = nlohmann::json::parse(input, nullptr, false);
 		if (document.is_discarded() || !document.is_object())
 		{
@@ -771,7 +780,8 @@ bool TextureImporter::ImportTexture(const CpuDecodeRequest& request, ByteCode& d
 				"glTF extraction failed";
 		}
 
-		if (bExtracted)
+		if (bExtracted && !rawBuffer.IsEmpty() &&
+			rawBuffer.Num() <= static_cast<size_t>((std::numeric_limits<int>::max)()))
 		{
 			int32_t texChannels = 0;
 			const std::string filepath = request.m_filepath;
@@ -815,11 +825,16 @@ bool TextureImporter::ImportTexture(const CpuDecodeRequest& request, ByteCode& d
 	else
 	{
 		int32_t texChannels = 0;
-		const std::string filepath = request.m_filepath;
+		ByteCode rawBuffer;
+		if (!FileSystem::ReadBinary(Workspace::PathFromUtf8(request.m_filepath), rawBuffer) ||
+			rawBuffer.IsEmpty() || rawBuffer.Num() > static_cast<size_t>((std::numeric_limits<int>::max)()))
+		{
+			return false;
+		}
 
 		if (bDecodeAsFloat)
 		{
-			if (float* pPixels = stbi_loadf(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
+			if (float* pPixels = stbi_loadf_from_memory(rawBuffer.GetData(), static_cast<int>(rawBuffer.Num()), &width, &height, &texChannels, STBI_rgb_alpha))
 			{
 				const uint32_t imageSize = (uint32_t)width * height * sizeof(float) * 4;
 				decodedData.Resize(imageSize);
@@ -830,7 +845,7 @@ bool TextureImporter::ImportTexture(const CpuDecodeRequest& request, ByteCode& d
 				return true;
 			}
 		}
-		else if (stbi_uc* pPixels = stbi_load(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
+		else if (stbi_uc* pPixels = stbi_load_from_memory(rawBuffer.GetData(), static_cast<int>(rawBuffer.Num()), &width, &height, &texChannels, STBI_rgb_alpha))
 		{
 			const uint32_t imageSize = (uint32_t)width * height * 4;
 			decodedData.Resize(imageSize);

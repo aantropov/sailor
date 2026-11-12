@@ -1,3 +1,4 @@
+#include "Platform/FileSystem.h"
 #include "GlobalIllumination/GIProbesBinary.h"
 #include "Platform/AtomicFile.h"
 #include "Workspace/WorkspacePathEncoding.h"
@@ -578,12 +579,14 @@ GIProbesBinaryResult GIProbesBinary::Load(
 {
 	try
 	{
-		std::ifstream stream(path, std::ios::binary | std::ios::ate);
-		if (!stream.is_open())
+		auto streamOwner = FileSystem::OpenRead(path);
+		if (!streamOwner)
 		{
 			return Fail(EGIProbesBinaryStatus::IoFailure,
 				"cannot open .probes file '" + Workspace::PathToUtf8(path) + "'");
 		}
+		std::istream& stream = *streamOwner;
+		stream.seekg(0, std::ios::end);
 		const std::streampos end = stream.tellg();
 		if (end < 0 || static_cast<uint64_t>(end) > MaxPayloadBytes + FixedHeaderSize)
 		{

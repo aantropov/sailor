@@ -1,3 +1,4 @@
+#include "Platform/FileSystem.h"
 #include "AssetRegistry/AssetMountDiscovery.h"
 #include "Containers/Containers.h"
 #include "Workspace/WorkspacePathEncoding.h"
@@ -335,15 +336,16 @@ namespace
 			return;
 		}
 
+		TVector<std::filesystem::path> paths;
+		FileSystem::Enumerate(logicalDirectory, paths, error);
 		TVector<std::filesystem::directory_entry> entries;
-		for (std::filesystem::directory_iterator it(
-				logicalDirectory,
-				std::filesystem::directory_options::skip_permission_denied,
-				error), end;
-			!error && it != end;
-			it.increment(error))
+		for (const auto& path : paths)
 		{
-			entries.Add(*it);
+			entries.Add(std::filesystem::directory_entry(path, error));
+			if (error)
+			{
+				break;
+			}
 		}
 		if (error)
 		{

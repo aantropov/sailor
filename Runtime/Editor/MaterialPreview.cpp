@@ -1,3 +1,4 @@
+#include "Platform/FileSystem.h"
 #include "MaterialPreview.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
@@ -344,7 +345,12 @@ namespace
 		{
 			return false;
 		}
-		std::ifstream input(Workspace::PathFromUtf8(path), std::ios::binary);
+		auto inputOwner = FileSystem::OpenRead(Workspace::PathFromUtf8(path));
+		if (!inputOwner)
+		{
+			return false;
+		}
+		std::istream& input = *inputOwner;
 		nlohmann::json document;
 		if (Utils::GetFileExtension(path) == "glb")
 		{
@@ -356,7 +362,7 @@ namespace
 					uint32_t(header[offset + 2]) << 16 | uint32_t(header[offset + 3]) << 24;
 			};
 			std::error_code error;
-			const auto size = std::filesystem::file_size(Workspace::PathFromUtf8(path), error);
+			const auto size = FileSystem::FileSize(Workspace::PathFromUtf8(path), error);
 			if (!input || error || word(0) != 0x46546c67 || word(4) != 2 || word(16) != 0x4e4f534a ||
 				word(8) != size || word(8) < 20 || word(12) > word(8) - 20)
 			{

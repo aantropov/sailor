@@ -1,3 +1,4 @@
+#include "Platform/FileSystem.h"
 #include "AssetRegistry/Model/GltfImporterUtils.h"
 #include "AssetRegistry/Model/GltfModelImporterInternal.h"
 
@@ -45,11 +46,12 @@ namespace Sailor::GltfImporterInternal
 		bool& outHandled)
 	{
 		outHandled = false;
-		std::ifstream input(Workspace::PathFromUtf8(assetFilepath), std::ios::binary);
-		if (!input.is_open())
+		auto inputOwner = FileSystem::OpenRead(Workspace::PathFromUtf8(assetFilepath));
+		if (!inputOwner)
 		{
 			return false;
 		}
+		std::istream& input = *inputOwner;
 
 		const std::string source{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
 		if (source.find("meshopt_compression") == std::string::npos)
@@ -808,6 +810,7 @@ bool GltfImporterUtils::LoadModel(const std::string& assetFilepath,
 	outWarning.clear();
 
 	tinygltf::TinyGLTF loader;
+	GltfImporterUtils::ConfigureFileSystem(loader);
 	if (bImagesAsIs)
 	{
 		loader.SetImagesAsIs(true);
