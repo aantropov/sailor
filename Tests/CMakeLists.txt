@@ -4,6 +4,7 @@ find_package(magic_enum CONFIG REQUIRED)
 find_package(Jolt CONFIG REQUIRED)
 include("${PROJECT_SOURCE_DIR}/CMake/SailorJolt.cmake")
 find_package(Threads REQUIRED)
+find_package(miniz CONFIG REQUIRED)
 
 add_executable(FileSystemTests FileSystemTests.cpp)
 target_compile_features(FileSystemTests PRIVATE cxx_std_20)
@@ -11,6 +12,20 @@ target_include_directories(FileSystemTests PRIVATE ${SAILOR_RUNTIME_DIR})
 target_link_libraries(FileSystemTests PRIVATE Sailor::Runtime Threads::Threads)
 add_test(NAME FileSystemTests COMMAND FileSystemTests)
 set_tests_properties(FileSystemTests PROPERTIES TIMEOUT 30)
+
+add_executable(ArchiveFileSystemTests ArchiveFileSystemTests.cpp)
+target_compile_features(ArchiveFileSystemTests PRIVATE cxx_std_20)
+target_include_directories(ArchiveFileSystemTests PRIVATE ${SAILOR_RUNTIME_DIR})
+target_link_libraries(ArchiveFileSystemTests PRIVATE Sailor::Runtime miniz::miniz Threads::Threads)
+add_test(NAME ArchiveFileSystemTests COMMAND ArchiveFileSystemTests)
+set_tests_properties(ArchiveFileSystemTests PROPERTIES TIMEOUT 30)
+
+if(TARGET SailorExec)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME ArchiveCommandLineTests
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/ArchiveCommandLineTests.py $<TARGET_FILE:SailorExec>)
+    set_tests_properties(ArchiveCommandLineTests PROPERTIES TIMEOUT 90)
+endif()
 
 add_executable(SpinLockTests SpinLockTests.cpp)
 target_compile_features(SpinLockTests PRIVATE cxx_std_20)
@@ -58,6 +73,7 @@ if(WIN32)
     endfunction()
 
     sailor_stage_workspace_test_runtime(FileSystemTests)
+    sailor_stage_workspace_test_runtime(ArchiveFileSystemTests)
 
     add_executable(WindowsWindowSizingTests
         WindowsWindowSizingTests.cpp

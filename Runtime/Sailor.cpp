@@ -1,4 +1,5 @@
 #include "Sailor.h"
+#include "Workspace/WorkspacePackage.h"
 #include "Platform/Time.h"
 #include "Editor/EditorRuntimeBridge.h"
 #include "AssetRegistry/AssetRegistry.h"
@@ -501,6 +502,14 @@ EAppInitializationResult App::Initialize(const char** commandLineArgs, int32_t n
 	}
 
 	s_pInstance->m_workspaceContext = workspaceContextResult.m_context;
+	std::string packageDiagnostic;
+	if (!Workspace::MountPackageContent(s_pInstance->m_workspaceContext,
+		s_pInstance->m_packageContentMounts, packageDiagnostic))
+	{
+		SAILOR_LOG_ERROR("%s", packageDiagnostic.c_str());
+		SetExitCode(1);
+		return EAppInitializationResult::Failed;
+	}
 	s_pInstance->s_workspace = Utils::SanitizeFilepath(
 		Workspace::PathToUtf8(s_pInstance->m_workspaceContext.GetRoot()));
 	if (!s_pInstance->s_workspace.ends_with("/"))

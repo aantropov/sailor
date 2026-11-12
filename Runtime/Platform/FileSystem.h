@@ -3,6 +3,7 @@
 #include "Core/Defines.h"
 #include "Containers/Containers.h"
 #include "Memory/UniquePtr.hpp"
+#include "Memory/SharedPtr.hpp"
 
 #include <filesystem>
 #include <istream>
@@ -13,6 +14,24 @@
 
 namespace Sailor::FileSystem
 {
+	class ArchiveMount;
+	using ArchiveMountPtr = TSharedPtr<ArchiveMount>;
+
+	enum class EArchiveCompression : uint8_t
+	{
+		Stored,
+		Fastest,
+		Balanced,
+		Smallest
+	};
+
+	SAILOR_SHARED_API ArchiveMountPtr MountZipArchive(const std::filesystem::path& root,
+		const std::filesystem::path& archive, std::string& outDiagnostic);
+	// The destination must be new. Failed writes remove their incomplete output.
+	SAILOR_SHARED_API bool WriteZipArchive(const std::filesystem::path& source,
+		const std::filesystem::path& destination, EArchiveCompression compression, std::string& outDiagnostic);
+	SAILOR_SHARED_API bool IsReadOnly(const std::filesystem::path& path);
+	SAILOR_SHARED_API std::filesystem::path Canonical(const std::filesystem::path& path, std::error_code& error);
 	// Each reader owns its seekable stream and backing storage, with an independent cursor.
 	SAILOR_API TUniquePtr<std::istream> OpenRead(const std::filesystem::path& path);
 	SAILOR_API TUniquePtr<std::ostream> OpenWrite(const std::filesystem::path& path);
@@ -24,6 +43,28 @@ namespace Sailor::FileSystem
 		const std::filesystem::path& path, std::error_code& error);
 	SAILOR_API bool Enumerate(const std::filesystem::path& directory,
 		TVector<std::filesystem::path>& outEntries, std::error_code& error);
+
+	// Retain this handle while a workspace uses its archive. Already-open streams
+	// remain readable after the mount handle is released.
+	class ArchiveMount final
+	{
+	public:
+		SAILOR_SHARED_API ~ArchiveMount();
+		SAILOR_SHARED_API const std::filesystem::path& GetRoot() const;
+		ArchiveMount(const ArchiveMount&) = delete;
+		ArchiveMount& operator=(const ArchiveMount&) = delete;
+
+	private:
+		class Impl;
+		explicit ArchiveMount(TSharedPtr<Impl> implementation);
+		TSharedPtr<Impl> m_impl;
+		friend ArchiveMountPtr MountZipArchive(const std::filesystem::path&, const std::filesystem::path&, std::string&);
+		friend TUniquePtr<std::istream> OpenRead(const std::filesystem::path&);
+		friend uint64_t FileSize(const std::filesystem::path&, std::error_code&);
+		friend std::filesystem::file_time_type LastWriteTime(const std::filesystem::path&, std::error_code&);
+		friend std::filesystem::file_status Status(const std::filesystem::path&, std::error_code&);
+		friend bool Enumerate(const std::filesystem::path&, TVector<std::filesystem::path>&, std::error_code&);
+	};
 
 	template<typename T>
 	bool ReadBinary(const std::filesystem::path& path, TVector<T>& outBytes)

@@ -22,7 +22,7 @@ bool AssetRegistry::ResolveDirectLoadPath(std::string_view requestedPath, AssetR
 		std::error_code workspaceError;
 		const std::filesystem::path workspaceCandidate =
 			std::filesystem::weakly_canonical(m_workspaceContext.GetContent() / PathFromUtf8(requestedPath), workspaceError);
-		if (!workspaceError && std::filesystem::is_regular_file(workspaceCandidate, workspaceError) &&
+		if (!workspaceError && std::filesystem::is_regular_file(FileSystem::Status(workspaceCandidate, workspaceError)) &&
 			!workspaceError && IsInside(m_workspaceContext.GetContent(), workspaceCandidate))
 		{
 			const std::string virtualPath = PathToUtf8(PathFromUtf8(requestedPath));
@@ -30,7 +30,7 @@ bool AssetRegistry::ResolveDirectLoadPath(std::string_view requestedPath, AssetR
 			if (winner == m_contentFileWinners.end() || winner.Value().m_mountKind == EAssetMountKind::Engine ||
 				PathKey(winner.Value().m_physicalPath) == PathKey(workspaceCandidate))
 			{
-				outLocation = AssetReadLocation{workspaceCandidate, virtualPath, EAssetMountKind::Workspace, true};
+				outLocation = AssetReadLocation{workspaceCandidate, virtualPath, EAssetMountKind::Workspace, !FileSystem::IsReadOnly(workspaceCandidate)};
 				return true;
 			}
 		}
@@ -44,7 +44,7 @@ bool AssetRegistry::ResolveDirectLoadPath(std::string_view requestedPath, AssetR
 	const auto requested = PathFromUtf8(requestedPath);
 	const std::filesystem::path candidate = std::filesystem::weakly_canonical(
 		requested.is_absolute() ? requested : m_workspaceContext.GetContent() / requested, error);
-	if (error || !std::filesystem::is_regular_file(candidate, error) || error)
+	if (error || !std::filesystem::is_regular_file(FileSystem::Status(candidate, error)) || error)
 	{
 		return false;
 	}
@@ -171,7 +171,8 @@ const FileId& AssetRegistry::LoadFile(std::string_view requestedPath)
 	metaPath += "." + std::string(MetaFileExtension);
 	AssetInfoPtr assetInfo = nullptr;
 	bool bImported = false;
-	if (std::filesystem::is_regular_file(metaPath))
+	std::error_code metadataError;
+	if (std::filesystem::is_regular_file(FileSystem::Status(metaPath, metadataError)) && !metadataError)
 	{
 		assetInfo = handler->LoadAssetInfo(PathToUtf8(metaPath),
 			location.m_virtualPath + "." + MetaFileExtension,

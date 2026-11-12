@@ -121,6 +121,12 @@ if(MINIAUDIO_INCLUDE_DIRS MATCHES "NOTFOUND")
 	set(MINIAUDIO_INCLUDE_DIRS "")
 endif()
 
+find_package(miniz CONFIG QUIET)
+if(NOT TARGET miniz::miniz)
+	list(APPEND SAILOR_MISSING_DEPS "miniz")
+	sailor_create_stub_target(miniz::miniz)
+endif()
+
 if(SAILOR_MISSING_DEPS)
 	set(SAILOR_CONFIGURED_WITH_DEPENDENCY_STUBS ON)
 	list(JOIN SAILOR_MISSING_DEPS ", " SAILOR_MISSING_DEPS_MSG)
@@ -278,6 +284,7 @@ target_link_libraries(SailorLib PUBLIC
   unofficial::spirv-reflect
 )
 target_link_libraries(SailorLib PRIVATE
+	miniz::miniz
 	draco::draco
 	imguizmo::imguizmo
 	ixwebsocket::ixwebsocket

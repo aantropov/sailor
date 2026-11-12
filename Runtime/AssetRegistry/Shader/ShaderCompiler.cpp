@@ -223,6 +223,10 @@ void ShaderCompiler::UpdateConstantsLibrary()
 		return;
 	}
 
+	if (FileSystem::IsReadOnly(App::GetSubmodule<AssetRegistry>()->GetWorkspaceContext().GetContent()))
+	{
+		return;
+	}
 	std::filesystem::path constantsLibrary;
 	if (!App::GetSubmodule<AssetRegistry>()->ResolveWorkspaceContentPathForWrite(
 			"Shaders/Constants.glsl",

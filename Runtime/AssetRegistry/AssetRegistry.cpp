@@ -79,7 +79,7 @@ AssetRegistry::AssetRegistry(const Workspace::WorkspaceContext& workspaceContext
 	: m_workspaceContext(workspaceContext), m_scheduler(scheduler)
 {
 	m_contentMounts = {AssetMountDescriptor{m_workspaceContext.GetEngineContent(), EAssetMountKind::Engine, 0, false},
-		AssetMountDescriptor{m_workspaceContext.GetContent(), EAssetMountKind::Workspace, 100, true}};
+		AssetMountDescriptor{m_workspaceContext.GetContent(), EAssetMountKind::Workspace, 100, !FileSystem::IsReadOnly(m_workspaceContext.GetContent())}};
 	m_assetCache.Initialize(m_workspaceContext);
 }
 
@@ -131,7 +131,7 @@ bool AssetRegistry::GetContentFileModificationTime(std::string_view virtualPath,
 bool AssetRegistry::ResolveWorkspaceContentPathForWrite(std::string_view virtualPath,
 	std::filesystem::path& outPath) const
 {
-	if (!IsSafeVirtualPath(virtualPath))
+	if (!IsSafeVirtualPath(virtualPath) || FileSystem::IsReadOnly(m_workspaceContext.GetContent()))
 	{
 		return false;
 	}

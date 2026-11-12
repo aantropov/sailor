@@ -209,8 +209,8 @@ namespace
 		for (const AssetMountDescriptor& input : mounts)
 		{
 			std::error_code error;
-			const std::filesystem::path root = std::filesystem::canonical(input.m_root, error);
-			if (error || !std::filesystem::is_directory(root, error) || error)
+			const std::filesystem::path root = FileSystem::Canonical(input.m_root, error);
+			if (error || !std::filesystem::is_directory(FileSystem::Status(root, error)) || error)
 			{
 				AssetMountDiagnostic diagnostic;
 				diagnostic.m_code = EAssetMountDiagnosticCode::InvalidMountRoot;
@@ -304,7 +304,7 @@ namespace
 		TVector<AssetMountDiagnostic>& diagnostics)
 	{
 		std::error_code error;
-		const std::filesystem::path physicalDirectory = std::filesystem::canonical(logicalDirectory, error);
+		const std::filesystem::path physicalDirectory = FileSystem::Canonical(logicalDirectory, error);
 		if (error)
 		{
 			diagnostics.Add(MakeInspectionDiagnostic(
@@ -388,7 +388,7 @@ namespace
 				continue;
 			}
 
-			const std::filesystem::path physicalPath = std::filesystem::canonical(entry, error);
+			const std::filesystem::path physicalPath = FileSystem::Canonical(entry, error);
 			if (error)
 			{
 				diagnostics.Add(MakeInspectionDiagnostic(

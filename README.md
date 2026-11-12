@@ -109,6 +109,44 @@ and third-party license notices. Manifest workspaces also include the selected c
 of their logic module and engine content. Build that module before packaging. A Vulkan-capable driver and the system libraries used
 by the build are required on the destination machine.
 
+## Asset archives
+
+The engine executable can create ZIP assets without starting the renderer:
+
+```sh
+SailorEngine-Release --pack-assets /project/Content /package/Content.zip balanced
+SailorEngine-Release --describe-workspace /project
+```
+
+Use the executable from your build or installed runtime (with `.exe` on Windows).
+Compression options are `stored` (raw ZIP without compression), `fastest`, `balanced`
+and `smallest` (deflate). The archive destination must be a new file in an existing
+directory outside the source tree. Symbolic links and special source files are rejected.
+
+A game package explicitly mounts content archives using `GamePackage.json` next to
+its workspace manifest:
+
+```json
+{
+  "packageVersion": 1,
+  "archives": [
+    { "root": "Content", "file": "Content.zip" },
+    { "root": "Engine/Content", "file": "EngineContent.zip" }
+  ]
+}
+```
+
+Keep the content root directories themselves in the package, even when empty. Mount
+roots must match the workspace or engine content directories, and all archive paths
+must remain inside the package. Omit an archive entry to keep that content as ordinary
+folders. Workspaces without `GamePackage.json` continue to use native folders.
+
+Archived content is read-only and is read directly through seekable streams; games do
+not extract the content tree at startup. Each stream uses a bounded decoder buffer,
+and full-file reads verify CRC. The version-1 internal ZIP index preserves exact file
+timestamps for asset and shader cache validation. The runtime cache remains writable
+outside the content mounts.
+
 ## Sponsorship and Contribution
 
 **Support Sailor Engine's Development**  

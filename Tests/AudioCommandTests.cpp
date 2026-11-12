@@ -8,6 +8,7 @@
 #include "ECS/TransformECS.h"
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
+#include "Platform/FileSystem.h"
 
 #include <array>
 #include <cstring>
@@ -210,6 +211,40 @@ namespace
 		Require(audio.StopVoice(first), "initialized voice must accept stop");
 		audio.Flush();
 		Require(!audio.IsVoicePlaying(first), "backend stop must be acknowledged");
+	}
+
+	void TestArchivedPlayback(const std::filesystem::path& workspace, AudioSystem& audio,
+		bool stream, FileSystem::EArchiveCompression compression)
+	{
+		const std::string suffix = std::string(stream ? "Stream" : "Decoded") +
+			(compression == FileSystem::EArchiveCompression::Stored ? "Stored" : "Deflated");
+		const auto root = workspace / "Content" / ("ArchivedAudio" + suffix);
+		std::filesystem::create_directories(root);
+		const auto path = root / Workspace::PathFromUtf8("tone \xD0\xAF.wav");
+		WriteWave(path, 96000);
+		auto clip = LoadClip(path, stream);
+		std::string diagnostic;
+		const auto archive = workspace / ("audio-" + suffix + ".zip");
+		const bool written = FileSystem::WriteZipArchive(root, archive, compression, diagnostic);
+		Require(written, diagnostic.c_str());
+		{
+			std::ofstream native(path, std::ios::binary | std::ios::trunc);
+			native << "not a wave file";
+		}
+		auto mount = FileSystem::MountZipArchive(root, archive, diagnostic);
+		Require(static_cast<bool>(mount), diagnostic.c_str());
+		const size_t before = audio.GetNumVoices();
+		{
+			VoiceFixture voices(audio);
+			const auto voice = voices.Create(clip);
+			Require(audio.PlayVoice(voice, true), "archived audio must accept playback");
+			audio.Flush();
+			AudioVoiceSettings settings;
+			Require(audio.GetNumVoices() == before + 1 && audio.GetVoiceSettings(voice, settings) &&
+				audio.IsVoicePlaying(voice), "real audio decoder must read the ZIP rather than the corrupt loose file");
+		}
+		Require(audio.GetNumVoices() == before, "archived audio voices must retire before their mount");
+		std::cout << "Archived audio " << suffix << ": decoder and playback passed\n";
 	}
 
 	class AudioWorld final : public World
@@ -462,6 +497,13 @@ namespace Sailor::Tests
 			run(stream ? "Missing stream" : "Missing decoded", [&]() { TestFailedCreation(workspace, *audio, stream, false); });
 			run(stream ? "Corrupt stream" : "Corrupt decoded", [&]() { TestFailedCreation(workspace, *audio, stream, true); });
 			run(stream ? "Streaming ECS reload" : "Decoded ECS reload", [&]() { TestEcsReload(workspace, *audio, stream); });
+			for (auto compression : { FileSystem::EArchiveCompression::Stored, FileSystem::EArchiveCompression::Balanced })
+			{
+				run(stream ? "Archived streaming audio" : "Archived decoded audio", [&]()
+				{
+					TestArchivedPlayback(workspace, *audio, stream, compression);
+				});
+			}
 		}
 		run("Pending commands", [&]() { TestPendingCommands(workspace, *audio); });
 		run("ECS explicit retry", [&]() { TestEcsRetry(workspace, *audio); });

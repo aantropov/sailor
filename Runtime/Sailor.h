@@ -16,6 +16,7 @@
 
 namespace Sailor
 {
+	namespace FileSystem { class ArchiveMount; }
 	namespace Tests { class TaskTestApp; }
 
 	namespace Workspace
@@ -180,6 +181,7 @@ namespace Sailor
 		TUniquePtr<Platform::NativeWindow> m_pMainWindow;
 		TUniquePtr<Workspace::WorkspaceModuleManager> m_pWorkspaceModuleManager;
 		Workspace::WorkspaceContext m_workspaceContext;
+		TVector<TSharedPtr<FileSystem::ArchiveMount>> m_packageContentMounts;
 		EAppInitializationResult m_initializationResult = EAppInitializationResult::Failed;
 		int32_t m_exitCode = 0;
 		AppArgs m_args{};
