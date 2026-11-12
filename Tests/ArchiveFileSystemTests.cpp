@@ -463,6 +463,17 @@ namespace
 		Require(Workspace::MountPackageContent(resolved.m_context, mounts, diagnostic) &&
 			ReadText(cache / "Lods" / "mesh.bin", contents) && contents == "runtime update",
 			"later launches must preserve writable cache updates and skip reseeding");
+		const auto movedGame = fixture.Path("moved again");
+		std::filesystem::rename(game, movedGame);
+		const auto moved = Workspace::ResolveWorkspaceContext(movedGame);
+		Require(moved.IsSuccess() && moved.m_context.IsLegacy() && moved.m_context.GetCache() == cache,
+			"a relocated legacy game must reuse its package cache directory");
+		const auto movedIdentity = Workspace::MakeWorkspaceCacheIdentity("shader-cache", "shader-compiler-v1", 1,
+			moved.m_context);
+		const auto movedCache = Workspace::LoadWorkspaceCacheEnvelope(cache / "ShaderCache.yaml", movedIdentity);
+		Require(movedCache.IsLoaded() && movedCache.m_payload == payload,
+			"moving an initialized legacy package must not invalidate its seeded shader cache");
+		std::filesystem::rename(movedGame, game);
 		std::filesystem::remove_all(cache);
 		Save(game / "InitialCache.zip", RawZip({{"EditorSettings.yaml", "unexpected authoring state"}}));
 		Require(!Workspace::MountPackageContent(resolved.m_context, mounts, diagnostic) &&

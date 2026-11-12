@@ -798,6 +798,12 @@ Sailor::Workspace::WorkspaceContextResolveResult Sailor::Workspace::ResolveWorks
 	if (!packageCache.empty())
 	{
 		context.m_bPackaged = true;
+		if (context.m_bLegacy)
+		{
+			// Legacy packages have no workspace manifest ID. Their validated
+			// package ID keeps an initialized cache usable after another move.
+			context.m_workspaceId = "package:" + PathToUtf8(packageCache.filename());
+		}
 		context.m_cache = std::move(packageCache);
 	}
 	if (context.m_bLegacy)
