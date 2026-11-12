@@ -9,6 +9,7 @@
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
 #include "Platform/FileSystem.h"
+#include "Support/ScopeExit.h"
 
 #include <array>
 #include <cstring>
@@ -101,7 +102,7 @@ namespace
 		TVector<AudioVoiceId> ids;
 	};
 
-	AudioClipPtr LoadClip(const std::filesystem::path& path, bool stream = false)
+	FileId RegisterClip(const std::filesystem::path& path, bool stream)
 	{
 		auto* registry = App::GetSubmodule<AssetRegistry>();
 		const auto id = registry->GetOrLoadFile(Workspace::PathToUtf8(path));
@@ -118,6 +119,12 @@ namespace
 			}
 			Require(App::UpdateAsset(id.ToString().c_str()), "streaming metadata must update through the registry");
 		}
+		return id;
+	}
+
+	AudioClipPtr LoadClip(const std::filesystem::path& path, bool stream = false)
+	{
+		const auto id = RegisterClip(path, stream);
 		AudioClipPtr clip;
 		Require(App::GetSubmodule<AudioImporter>()->LoadAudioClip_Immediate(id, clip) &&
 			clip->GetSnapshot().m_bStream == stream, "real audio importer must load the requested source mode");
@@ -222,17 +229,26 @@ namespace
 		std::filesystem::create_directories(root);
 		const auto path = root / Workspace::PathFromUtf8("tone \xD0\xAF.wav");
 		WriteWave(path, 96000);
-		auto clip = LoadClip(path, stream);
+		const auto id = RegisterClip(path, stream);
 		std::string diagnostic;
 		const auto archive = workspace / ("audio-" + suffix + ".zip");
 		const bool written = FileSystem::WriteZipArchive(root, archive, compression, diagnostic);
 		Require(written, diagnostic.c_str());
-		{
-			std::ofstream native(path, std::ios::binary | std::ios::trunc);
-			native << "not a wave file";
-		}
+		const auto loose = workspace / ("audio-native-" + suffix);
+		std::filesystem::rename(root, loose);
+		std::filesystem::create_directory(root);
+		Tests::ScopeExit restore([&]()
+			{
+				std::filesystem::remove_all(root);
+				std::filesystem::rename(loose, root);
+			});
 		auto mount = FileSystem::MountZipArchive(root, archive, diagnostic);
 		Require(static_cast<bool>(mount), diagnostic.c_str());
+		Require(!std::filesystem::exists(path), "archived audio must have no loose source file");
+		AudioClipPtr clip;
+		Require(App::GetSubmodule<AudioImporter>()->LoadAudioClip_Immediate(id, clip) &&
+			clip->GetSnapshot().m_bStream == stream,
+			"cold audio import must resolve the archived source and its requested playback mode");
 		const size_t before = audio.GetNumVoices();
 		{
 			VoiceFixture voices(audio);
@@ -241,10 +257,10 @@ namespace
 			audio.Flush();
 			AudioVoiceSettings settings;
 			Require(audio.GetNumVoices() == before + 1 && audio.GetVoiceSettings(voice, settings) &&
-				audio.IsVoicePlaying(voice), "real audio decoder must read the ZIP rather than the corrupt loose file");
+				audio.IsVoicePlaying(voice), "real audio decoder must read the ZIP without a loose source file");
 		}
 		Require(audio.GetNumVoices() == before, "archived audio voices must retire before their mount");
-		std::cout << "Archived audio " << suffix << ": decoder and playback passed\n";
+		std::cout << "Archived audio " << suffix << ": cold importer, decoder and playback passed\n";
 	}
 
 	class AudioWorld final : public World
