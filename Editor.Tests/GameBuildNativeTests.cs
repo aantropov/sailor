@@ -1,5 +1,8 @@
 using System.Text.Json;
 using System.IO.Compression;
+using System.Buffers.Binary;
+using System.Reflection.PortableExecutable;
+using System.Text;
 using SailorEditor.Workspace;
 
 namespace SailorEditor.Tests;
@@ -58,6 +61,10 @@ public sealed class GameBuildNativeTests
             Assert.False(Directory.Exists(Path.Combine(relocated, "Source")));
             Assert.False(Directory.Exists(Path.Combine(relocated, "Generated")));
             Assert.False(Directory.Exists(Path.Combine(relocated, "Cache")));
+            if (OperatingSystem.IsWindows() && configuration != "Debug")
+            {
+                AssertCompilerRuntimesArePackaged(relocated);
+            }
             var executable = Path.Combine(relocated, "bin", "SailorEngine-" + configuration + (OperatingSystem.IsWindows() ? ".exe" : ""));
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             var describe = await runner.RunAsync(new(executable, ["--describe-workspace", relocated], root), timeout.Token);
@@ -85,6 +92,42 @@ public sealed class GameBuildNativeTests
     {
         using var archive = ZipFile.OpenRead(path);
         return archive.Entries.Select(entry => entry.FullName).ToArray();
+    }
+
+    static void AssertCompilerRuntimesArePackaged(string package)
+    {
+        foreach (var file in Directory.EnumerateFiles(package, "*", SearchOption.AllDirectories)
+            .Where(path => Path.GetExtension(path).Equals(".dll", StringComparison.OrdinalIgnoreCase) ||
+                Path.GetExtension(path).Equals(".exe", StringComparison.OrdinalIgnoreCase)))
+        {
+            using var stream = File.OpenRead(file);
+            using var image = new PEReader(stream);
+            var directory = image.PEHeaders.PEHeader!.ImportTableDirectory;
+            if (directory.RelativeVirtualAddress == 0)
+            {
+                continue;
+            }
+            var descriptors = image.GetSectionData(directory.RelativeVirtualAddress).GetContent(0, directory.Size);
+            for (var offset = 0; offset + 20 <= descriptors.Length; offset += 20)
+            {
+                var nameAddress = BinaryPrimitives.ReadInt32LittleEndian(descriptors.AsSpan(offset + 12, 4));
+                if (nameAddress == 0)
+                {
+                    break;
+                }
+                var bytes = image.GetSectionData(nameAddress).GetContent();
+                var length = bytes.AsSpan().IndexOf((byte)0);
+                Assert.True(length > 0, "Invalid PE import name in " + file);
+                var dependency = Encoding.ASCII.GetString(bytes.AsSpan(0, length));
+                if (dependency.StartsWith("msvcp", StringComparison.OrdinalIgnoreCase) ||
+                    dependency.StartsWith("vcruntime", StringComparison.OrdinalIgnoreCase) ||
+                    dependency.StartsWith("concrt", StringComparison.OrdinalIgnoreCase))
+                {
+                    Assert.True(File.Exists(Path.Combine(package, "bin", dependency)),
+                        Path.GetRelativePath(package, file) + " imports an unpackaged compiler runtime: " + dependency);
+                }
+            }
+        }
     }
 
     sealed class ExportProgress(TextWriter log) : IProgress<string>

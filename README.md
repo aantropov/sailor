@@ -155,7 +155,10 @@ include relocated non-system dylibs (including MoltenVK) with local ad-hoc signa
 distribution signing/notarization is a separate release step. Linux exports include
 non-system library dependencies and require the destination's compatible system
 libraries and Vulkan driver. Windows exports include runtime DLL dependencies and
-available Debug PDBs. Each platform is built on its native host.
+available Debug PDBs. Release exports also include the compiler's redistributable
+MSVC runtime. Windows Debug builds require the matching Visual C++ debug runtime
+on the target development machine; use Release for distribution. Each platform
+is built on its native host.
 
 ## Asset archives
 

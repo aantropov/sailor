@@ -24,6 +24,13 @@ if(WIN32)
 		install(FILES $<TARGET_FILE:Vulkan::Loader> DESTINATION bin COMPONENT Runtime)
 	endif()
 	if(MSVC)
+		# Compiler runtimes are implicit linker dependencies, so TARGET_RUNTIME_DLLS
+		# does not include them. Debug CRTs are development-machine prerequisites.
+		set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP TRUE)
+		include(InstallRequiredSystemLibraries)
+		install(PROGRAMS ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS}
+			DESTINATION bin COMPONENT Runtime
+			CONFIGURATIONS Release RelWithDebInfo MinSizeRel)
 		install(FILES $<TARGET_PDB_FILE:SailorExec> DESTINATION bin COMPONENT Runtime CONFIGURATIONS Debug OPTIONAL)
 	endif()
 endif()
