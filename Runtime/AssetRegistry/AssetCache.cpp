@@ -1,6 +1,7 @@
 #include "AssetCache.h"
 #include "Core/FileRevision.h"
 #include "Platform/AtomicFile.h"
+#include "Platform/FileSystem.h"
 #include "Containers/Containers.h"
 
 #include "AssetRegistry/AssetRegistry.h"
@@ -533,7 +534,7 @@ bool AssetCache::Update(const AssetInfo* info)
 
 	const std::string sourcePath = info->GetAssetFilepath();
 	std::error_code sourceError;
-	if (!std::filesystem::is_regular_file(PathFromUtf8(sourcePath), sourceError) || sourceError)
+	if (!std::filesystem::is_regular_file(FileSystem::Status(PathFromUtf8(sourcePath), sourceError)) || sourceError)
 	{
 		Remove(info->GetFileId());
 		return false;

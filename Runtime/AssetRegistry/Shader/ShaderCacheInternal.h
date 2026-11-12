@@ -9,7 +9,6 @@
 
 namespace Sailor::ShaderCacheInternal
 {
-	std::string NormalizeDependencyPath(const std::filesystem::path& path);
 	std::string NormalizeDependencyVirtualPath(std::string_view path);
 	std::filesystem::path GetCacheChildPath(const char* child);
 	std::filesystem::path GetShaderFilepath(const std::filesystem::path& folder,

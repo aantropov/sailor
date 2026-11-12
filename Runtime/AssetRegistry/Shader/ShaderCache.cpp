@@ -76,7 +76,6 @@ bool ShaderCache::CaptureSourceState(const FileId& uid, ShaderSourceState& outSt
 	dependencies.Reserve(shader->GetIncludes().Num() + 1);
 	ShaderDependencyFile shaderSource;
 	shaderSource.m_virtualPath = NormalizeDependencyVirtualPath(assetInfo->GetRelativeAssetFilepath());
-	shaderSource.m_winnerIdentity = NormalizeDependencyPath(Workspace::PathFromUtf8(assetInfo->GetAssetFilepath()));
 	shaderSource.m_mountKind = static_cast<uint32_t>(assetInfo->GetMountKind());
 	if (!Utils::TryGetFileRevision(assetInfo->GetAssetFilepath(), shaderSource.m_revision))
 	{
@@ -97,7 +96,6 @@ bool ShaderCache::CaptureSourceState(const FileId& uid, ShaderSourceState& outSt
 
 		ShaderDependencyFile dependency;
 		dependency.m_virtualPath = NormalizeDependencyVirtualPath(include);
-		dependency.m_winnerIdentity = NormalizeDependencyPath(location.m_physicalPath);
 		dependency.m_mountKind = static_cast<uint32_t>(location.m_mountKind);
 		if (!Utils::TryGetFileRevision(Workspace::PathToUtf8(location.m_physicalPath), dependency.m_revision))
 		{

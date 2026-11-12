@@ -763,6 +763,8 @@ void ShaderCompiler::OnAssetScanStarted()
 
 Tasks::TaskPtr<bool> ShaderCompiler::OnAssetScanFinished()
 {
+	const bool bInvalidate = !m_bInitialScan;
+	m_bInitialScan = false;
 	TSet<FileId> retryShaders;
 	if (m_lastScanReload)
 	{
@@ -839,7 +841,9 @@ Tasks::TaskPtr<bool> ShaderCompiler::OnAssetScanFinished()
 	m_scanChangedIncludes.Clear();
 	auto changes = std::move(m_scanChanges);
 	m_scanChanges.Clear();
-	auto reload = ReloadShaderBatch(assetInfos);
+	// A fresh asset index can discover unchanged sources from a package seed.
+	// Dependency fingerprints decide expiry; explicit reloads still invalidate.
+	auto reload = ReloadShaderBatch(assetInfos, bInvalidate);
 	m_lastScanReload = reload;
 	auto acknowledge = [registry, reload, changes = std::move(changes)]()
 	{

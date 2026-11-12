@@ -4,10 +4,12 @@
 #include "Support/TempDirectory.h"
 #include "Workspace/WorkspacePathEncoding.h"
 #include "Workspace/WorkspacePackage.h"
+#include "Workspace/WorkspaceCacheContract.h"
 #include "Support/TaskTestApp.h"
 #include "Tasks/Scheduler.h"
 
 #include <miniz/miniz.h>
+#include <nlohmann/json.hpp>
 #include <array>
 #include <cctype>
 #include <fstream>
@@ -35,6 +37,19 @@ namespace
 		output.write(contents.data(), static_cast<std::streamsize>(contents.size()));
 		output.close();
 		Require(static_cast<bool>(output), "fixture write must succeed");
+	}
+
+	std::string NewPackageId()
+	{
+		std::string result;
+		for (char character : FileId::CreateNewFileId().ToString())
+		{
+			if (character != '-')
+			{
+				result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(character))));
+			}
+		}
+		return result;
 	}
 
 	std::string RawZip(std::initializer_list<std::pair<std::string, std::string>> files)
@@ -286,13 +301,28 @@ namespace
 			YAML::Dump(CreateAssetInfoMetadata<AssetInfo>(id, "payload.txt")));
 		std::string diagnostic;
 		Require(WriteZipArchive(source, game / "Content.zip", EArchiveCompression::Balanced, diagnostic), diagnostic);
-		const auto resolved = Workspace::ResolveWorkspaceContext(game);
+		auto resolved = Workspace::ResolveWorkspaceContext(game);
 		Require(resolved.IsSuccess(), resolved.m_message);
 		TVector<ArchiveMountPtr> mounts;
 		Require(Workspace::MountPackageContent(resolved.m_context, mounts, diagnostic) && mounts.IsEmpty(),
 			"ordinary workspaces must not require a package manifest");
-		Save(game / "GamePackage.json",
-			R"({"packageVersion":1,"archives":[{"root":"Content","file":"Content.zip"}]})");
+		const auto packageId = NewPackageId();
+		Save(game / "GamePackage.json", nlohmann::json{{"packageVersion", 1}, {"packageId", packageId},
+			{"initialCache", nullptr}, {"archives", {{{"root", "Content"}, {"file", "Content.zip"}}}}}.dump());
+		resolved = Workspace::ResolveWorkspaceContext(game);
+		Require(resolved.IsSuccess(), resolved.m_message);
+		// Isolate test cache storage without changing HOME or shared process state.
+		const auto cache = resolved.m_context.GetCache();
+		Require(!std::filesystem::exists(cache), "fixture package ID must not reuse an existing cache");
+		struct CacheCleanup
+		{
+			std::filesystem::path m_path;
+			~CacheCleanup()
+			{
+				std::error_code error;
+				std::filesystem::remove_all(m_path, error);
+			}
+		} cleanup{cache};
 		Require(Workspace::MountPackageContent(resolved.m_context, mounts, diagnostic) && mounts.Num() == 1, diagnostic);
 		{
 			Tests::TaskTestApp app;
@@ -322,10 +352,98 @@ namespace
 			R"({"packageVersion":1,"archives":[{"root":"Content","file":"missing.zip"}]})",
 			R"({"packageVersion":1,"archives":[{"root":"Content","file":"Content.zip"},{"root":"Content","file":"Content.zip"}]})" })
 		{
-			Save(game / "GamePackage.json", manifest);
+			auto document = nlohmann::json::parse(manifest);
+			document["packageId"] = packageId;
+			document["initialCache"] = nullptr;
+			// Preserve the duplicate field fixture as raw text.
+			Save(game / "GamePackage.json", manifest.find("packageVersion\":1,\"packageVersion") != manifest.npos
+				? manifest : document.dump());
 			Require(!Workspace::MountPackageContent(resolved.m_context, mounts, diagnostic) && mounts.IsEmpty() &&
 				!IsReadOnly(game / "Content"), "invalid packages must roll back their staged mounts");
 		}
+	}
+
+	void TestInitialCache()
+	{
+		Tests::TempDirectory fixture("package-cache");
+		const auto source = fixture.Path("source");
+		std::filesystem::create_directories(source / "Content");
+		const auto authoring = Workspace::ResolveWorkspaceContext(source);
+		Require(authoring.IsSuccess(), authoring.m_message);
+		const auto sourceCache = authoring.m_context.GetCache();
+		std::filesystem::create_directory(sourceCache / "CompiledShaders");
+		std::filesystem::create_directory(sourceCache / "Lods");
+		std::filesystem::create_directory(sourceCache / "Build");
+		Save(sourceCache / "CompiledShaders" / "shader.spirv", "spirv fixture");
+		Save(sourceCache / "Lods" / "mesh.bin", "lod fixture");
+		Save(sourceCache / "Build" / "private", "do not ship");
+		Save(sourceCache / "EditorSettings.yaml", "do not ship");
+		Save(sourceCache / "AssetCache.yaml", "absolute source index: do not ship");
+		const auto sourceIdentity = Workspace::MakeWorkspaceCacheIdentity("shader-cache", "shader-compiler-v1", 1,
+			authoring.m_context);
+		std::string envelope;
+		std::string diagnostic;
+		const std::string payload = "shaderCache: {entries: {}}";
+		Require(Workspace::SerializeWorkspaceCacheEnvelope(sourceIdentity, payload, envelope, diagnostic), diagnostic);
+		Save(sourceCache / "ShaderCache.yaml", envelope);
+		const auto game = fixture.Path("relocated game");
+		std::filesystem::create_directories(game / "Content");
+		std::filesystem::create_directory(game / "InitialCache");
+		auto incompatibleIdentity = sourceIdentity;
+		incompatibleIdentity.m_buildIdentity += ";different-runtime";
+		std::string incompatibleEnvelope;
+		Require(Workspace::SerializeWorkspaceCacheEnvelope(incompatibleIdentity, payload,
+			incompatibleEnvelope, diagnostic), diagnostic);
+		Save(sourceCache / "ShaderCache.yaml", incompatibleEnvelope);
+		Require(!Workspace::WriteInitialCacheArchive(authoring.m_context, game / "invalid.zip",
+			EArchiveCompression::Stored, diagnostic) && !std::filesystem::exists(game / "invalid.zip"),
+			"initial cache export must reject a different runtime/configuration identity without publishing output");
+		Save(sourceCache / "ShaderCache.yaml", envelope);
+		Require(Workspace::WriteInitialCacheArchive(authoring.m_context, game / "InitialCache.zip",
+			EArchiveCompression::Balanced, diagnostic), diagnostic);
+		nlohmann::json document = {{"packageVersion", 1}, {"packageId", NewPackageId()},
+			{"archives", nlohmann::json::array()}, {"initialCache", "InitialCache.zip"}};
+		Save(game / "GamePackage.json", document.dump());
+		const auto resolved = Workspace::ResolveWorkspaceContext(game);
+		Require(resolved.IsSuccess(), resolved.m_message);
+		const auto cache = resolved.m_context.GetCache();
+		Require(!Workspace::IsPathWithin(game, cache) && !std::filesystem::exists(game / "Cache") &&
+			!std::filesystem::exists(cache), "resolution must not create storage in a read-only package");
+		struct Cleanup
+		{
+			std::filesystem::path m_path;
+			~Cleanup()
+			{
+				std::error_code error;
+				std::filesystem::remove_all(m_path, error);
+			}
+		} cleanup{cache};
+		// The source checkout is unavailable while the seed is installed.
+		std::filesystem::rename(source, fixture.Path("hidden-source"));
+		TVector<ArchiveMountPtr> mounts;
+		Require(Workspace::MountPackageContent(resolved.m_context, mounts, diagnostic), diagnostic);
+		std::string contents;
+		Require(ReadText(cache / "CompiledShaders" / "shader.spirv", contents) && contents == "spirv fixture",
+			"compiled artifacts must survive relocation without the source workspace");
+		Require(ReadText(cache / "Lods" / "mesh.bin", contents) && contents == "lod fixture",
+			"portable model caches must seed writable storage");
+		Require(!std::filesystem::exists(cache / "AssetCache.yaml") &&
+			!std::filesystem::exists(cache / "EditorSettings.yaml") && !std::filesystem::exists(cache / "Build"),
+			"initial cache must exclude authoring state and absolute source indexes");
+		const auto identity = Workspace::MakeWorkspaceCacheIdentity("shader-cache", "shader-compiler-v1", 1,
+			resolved.m_context);
+		const auto loaded = Workspace::LoadWorkspaceCacheEnvelope(cache / "ShaderCache.yaml", identity);
+		Require(loaded.IsLoaded() && loaded.m_payload == payload,
+			"seed must bind the shader envelope to the relocated workspace identity");
+		Save(cache / "Lods" / "mesh.bin", "runtime update");
+		std::filesystem::remove(game / "InitialCache.zip");
+		Require(Workspace::MountPackageContent(resolved.m_context, mounts, diagnostic) &&
+			ReadText(cache / "Lods" / "mesh.bin", contents) && contents == "runtime update",
+			"later launches must preserve writable cache updates and skip reseeding");
+		std::filesystem::remove_all(cache);
+		Save(game / "InitialCache.zip", RawZip({{"EditorSettings.yaml", "unexpected authoring state"}}));
+		Require(!Workspace::MountPackageContent(resolved.m_context, mounts, diagnostic) &&
+			!std::filesystem::exists(cache), "failed seeding must leave no partial runtime cache");
 	}
 }
 
@@ -340,6 +458,7 @@ int main()
 		}
 		TestInvalidArchives();
 		TestPackagedWorkspace();
+		TestInitialCache();
 		std::cout << "Archive filesystem behavior passed\n";
 		return 0;
 	}

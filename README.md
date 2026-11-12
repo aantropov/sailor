@@ -129,6 +129,8 @@ its workspace manifest:
 ```json
 {
   "packageVersion": 1,
+  "packageId": "d898c4f65e5246b88fa55d96bc0f1a87",
+  "initialCache": null,
   "archives": [
     { "root": "Content", "file": "Content.zip" },
     { "root": "Engine/Content", "file": "EngineContent.zip" }
@@ -145,7 +147,26 @@ Archived content is read-only and is read directly through seekable streams; gam
 not extract the content tree at startup. Each stream uses a bounded decoder buffer,
 and full-file reads verify CRC. The version-1 internal ZIP index preserves exact file
 timestamps for asset and shader cache validation. The runtime cache remains writable
-outside the content mounts.
+outside the package, under `Sailor/Packages/<packageId>` in the user's cache directory
+(`LOCALAPPDATA`, `~/Library/Caches`, or `XDG_CACHE_HOME` / `~/.cache`). Generate a new
+32-character lowercase hexadecimal package ID for each export. Resolving a package
+does not create directories inside it.
+
+To include an optional initial cache, run the matching configuration's executable:
+
+```sh
+SailorEngine-Release --pack-cache /path/to/workspace /path/to/game/InitialCache.zip balanced
+```
+
+Keep an empty `InitialCache` directory in the package and set `initialCache` to
+`"InitialCache.zip"`. On the first launch the runtime installs the seed into writable
+user storage and binds its shader envelope to the running workspace. Subsequent
+launches preserve that cache. The seed includes `ShaderCache.yaml`, `CompiledShaders`,
+`CompiledShadersWithDebug` and `Lods`. Shader fingerprints use mount kind, virtual
+paths and source revisions so moving the package does not invalidate them. Asset
+indexes containing absolute source paths, editor state, native driver caches and
+build files are rebuilt locally. Warm the cache using the runtime configuration
+being exported; an incompatible or invalid shader envelope fails cache export.
 
 ## Sponsorship and Contribution
 

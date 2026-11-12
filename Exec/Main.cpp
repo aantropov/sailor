@@ -4,6 +4,7 @@ using namespace Sailor;
 #include "Platform/FileSystem.h"
 #include "Workspace/WorkspaceContext.h"
 #include "Workspace/WorkspacePathEncoding.h"
+#include "Workspace/WorkspacePackage.h"
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <optional>
@@ -12,11 +13,13 @@ namespace
 {
 	std::optional<int> RunToolCommand(int argc, const char** argv)
 	{
-		if (argc >= 2 && std::string_view(argv[1]) == "--pack-assets")
+		if (argc >= 2 && (std::string_view(argv[1]) == "--pack-assets" ||
+			std::string_view(argv[1]) == "--pack-cache"))
 		{
 			if (argc != 5)
 			{
-				std::cerr << "Usage: --pack-assets SOURCE OUTPUT stored|fastest|balanced|smallest\n";
+				std::cerr << "Usage: --pack-assets SOURCE OUTPUT stored|fastest|balanced|smallest\n"
+					"       --pack-cache WORKSPACE OUTPUT stored|fastest|balanced|smallest\n";
 				return 1;
 			}
 			Sailor::FileSystem::EArchiveCompression compression;
@@ -43,8 +46,24 @@ namespace
 				return 1;
 			}
 			std::string diagnostic;
-			if (!Sailor::FileSystem::WriteZipArchive(Sailor::Workspace::PathFromUtf8(argv[2]),
-				Sailor::Workspace::PathFromUtf8(argv[3]), compression, diagnostic))
+			bool success;
+			if (std::string_view(argv[1]) == "--pack-cache")
+			{
+				const auto resolved = Sailor::Workspace::ResolveWorkspaceContext(Sailor::Workspace::PathFromUtf8(argv[2]));
+				if (!resolved.IsSuccess())
+				{
+					std::cerr << resolved.m_message << '\n';
+					return 1;
+				}
+				success = Sailor::Workspace::WriteInitialCacheArchive(resolved.m_context,
+					Sailor::Workspace::PathFromUtf8(argv[3]), compression, diagnostic);
+			}
+			else
+			{
+				success = Sailor::FileSystem::WriteZipArchive(Sailor::Workspace::PathFromUtf8(argv[2]),
+					Sailor::Workspace::PathFromUtf8(argv[3]), compression, diagnostic);
+			}
+			if (!success)
 			{
 				std::cerr << diagnostic << '\n';
 				return 1;

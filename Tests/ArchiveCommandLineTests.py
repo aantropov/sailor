@@ -66,6 +66,32 @@ class ArchiveCommandLineTests(unittest.TestCase):
             self.assertEqual(Path(description["engineContent"]).resolve(), (root / "Content").resolve())
             self.assertNotEqual(self.run_engine("--describe-workspace").returncode, 0)
 
+    def test_initial_cache_is_an_explicit_subset(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="sailor-cache-cli-") as temporary:
+            root = Path(temporary)
+            workspace = root / "project Я"
+            (workspace / "Content").mkdir(parents=True)
+            cache = workspace / "Cache"
+            (cache / "Lods").mkdir(parents=True)
+            (cache / "Lods" / "mesh.bin").write_bytes(b"lod payload")
+            (cache / "AssetCache.yaml").write_text("private absolute source paths", encoding="utf-8")
+            (cache / "EditorSettings.yaml").write_text("private editor state", encoding="utf-8")
+            output = root / "cache Я.zip"
+            result = self.run_engine("--pack-cache", workspace, output, "balanced")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            with zipfile.ZipFile(output) as archive:
+                self.assertEqual(archive.read("Lods/mesh.bin"), b"lod payload")
+                self.assertNotIn("AssetCache.yaml", archive.namelist())
+                self.assertNotIn("EditorSettings.yaml", archive.namelist())
+                self.assertIsNone(archive.testzip())
+            original = output.read_bytes()
+            self.assertNotEqual(self.run_engine("--pack-cache", workspace, output, "balanced").returncode, 0)
+            self.assertEqual(output.read_bytes(), original)
+            (cache / "ShaderCache.yaml").write_text("invalid envelope", encoding="utf-8")
+            invalid = root / "invalid.zip"
+            self.assertNotEqual(self.run_engine("--pack-cache", workspace, invalid, "stored").returncode, 0)
+            self.assertFalse(invalid.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

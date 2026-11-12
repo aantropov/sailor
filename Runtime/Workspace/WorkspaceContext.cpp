@@ -3,6 +3,7 @@
 #include "Core/Utils.h"
 #include "Core/YamlUtils.h"
 #include "Workspace/WorkspacePathEncoding.h"
+#include "Workspace/WorkspacePackage.h"
 #include "YamlExceptionBoundary.h"
 
 #include <algorithm>
@@ -774,20 +775,29 @@ Sailor::Workspace::WorkspaceContextResolveResult Sailor::Workspace::ResolveWorks
 	}
 
 	CreatedDirectoriesRollback rollback;
+	std::filesystem::path packageCache;
+	if (!ResolvePackageCache(root, packageCache, error))
+	{
+		return Fail(EWorkspaceContextResolveStatus::ManifestInvalid, std::move(error));
+	}
 	if (!bContentExists &&
 		!EnsureDirectory(root, context.m_content, "contentPath", rollback, error))
 	{
 		return Fail(EWorkspaceContextResolveStatus::DirectoryCreationFailed, std::move(error));
 	}
-	if (!EnsureDirectory(root, context.m_cache, "cachePath", rollback, error))
+	if (packageCache.empty() && !EnsureDirectory(root, context.m_cache, "cachePath", rollback, error))
 	{
 		return Fail(EWorkspaceContextResolveStatus::DirectoryCreationFailed, std::move(error));
 	}
 
 	if (!RecanonicalizeDirectory(root, context.m_content, "contentPath", error) ||
-		!RecanonicalizeDirectory(root, context.m_cache, "cachePath", error))
+		(packageCache.empty() && !RecanonicalizeDirectory(root, context.m_cache, "cachePath", error)))
 	{
 		return Fail(EWorkspaceContextResolveStatus::PathInvalid, std::move(error));
+	}
+	if (!packageCache.empty())
+	{
+		context.m_cache = std::move(packageCache);
 	}
 	if (context.m_bLegacy)
 	{

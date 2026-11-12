@@ -186,6 +186,7 @@ namespace Sailor
 		TSet<std::string> m_scanChangedIncludes;
 		Tasks::TaskPtr<ShaderReloadResults> m_lastScanReload;
 		bool m_bCollectScanChanges = false;
+		bool m_bInitialScan = true;
 		bool IsCollectingScanChanges() const;
 		void ProcessRegisteredAsset(AssetInfoPtr assetInfo);
 		void ProcessAssetUpdate(AssetInfoPtr assetInfo);
