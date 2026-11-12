@@ -145,6 +145,31 @@ class ArchiveCommandLineTests(unittest.TestCase):
             self.assertNotEqual(self.run_engine("--copy-assets", source, rejected).returncode, 0)
             self.assertFalse(rejected.exists())
 
+    def test_read_only_source_assets_make_writable_export_copies(self) -> None:
+        import stat
+        with tempfile.TemporaryDirectory(prefix="sailor-readonly-copy-") as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            source.mkdir()
+            asset = source / "readonly.bin"
+            asset.write_bytes(b"original")
+            asset.chmod(stat.S_IREAD)
+            try:
+                output = root / "output"
+                copied = self.run_engine("--copy-assets", source, output)
+                self.assertEqual(copied.returncode, 0, copied.stdout + copied.stderr)
+                (output / asset.name).write_bytes(b"imported copy")
+                self.assertEqual(asset.read_bytes(), b"original")
+                try:
+                    (source / "link").symlink_to(asset)
+                except OSError:
+                    return
+                rejected = root / "rejected"
+                self.assertNotEqual(self.run_engine("--copy-assets", source, rejected).returncode, 0)
+                self.assertFalse(rejected.exists())
+            finally:
+                asset.chmod(stat.S_IREAD | stat.S_IWRITE)
+
 
 if __name__ == "__main__":
     unittest.main()

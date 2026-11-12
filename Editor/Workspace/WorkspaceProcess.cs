@@ -121,4 +121,3 @@ public sealed class WorkspaceProcessRunner : IWorkspaceProcessRunner
             stopwatch.Elapsed);
     }
 }
-

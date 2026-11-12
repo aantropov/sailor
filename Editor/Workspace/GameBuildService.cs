@@ -269,10 +269,6 @@ public sealed class GameBuildService(IWorkspaceProcessRunner runner)
                 var target = Path.Combine(staging, root.Root);
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                 await Run(executable, ["--copy-assets", root.Source, target], workspace);
-                foreach (var file in Directory.EnumerateFiles(target, "*", SearchOption.AllDirectories))
-                {
-                    File.SetAttributes(file, File.GetAttributes(file) & ~FileAttributes.ReadOnly);
-                }
             }
             if (!description.Legacy)
             {

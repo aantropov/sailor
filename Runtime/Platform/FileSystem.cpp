@@ -1002,6 +1002,9 @@ bool FileSystem::CopyDirectory(const std::filesystem::path& source,
 				const auto timestamp = entry.last_write_time();
 				const auto size = entry.file_size();
 				std::filesystem::copy_file(entry.path(), target);
+				// The private export copy must allow CPU import and rollback on Windows.
+				std::filesystem::permissions(target, std::filesystem::perms::owner_write,
+					std::filesystem::perm_options::add);
 				if (entry.last_write_time() != timestamp || entry.file_size() != size)
 				{
 					outDiagnostic = "An asset changed while it was being copied: " + Workspace::PathToUtf8(entry.path());
