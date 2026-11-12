@@ -20,6 +20,8 @@ public sealed class Program : GtkMauiApplication
             Environment.SetEnvironmentVariable("GSK_RENDERER", "cairo");
         }
         var application = new Program();
-        application.Run(args);
+        // Managed startup reads the original command line. GTK must receive
+        // argv[0] alone so workspace/world options are not treated as file opens.
+        application.Run([Environment.GetCommandLineArgs()[0]]);
     }
 }
