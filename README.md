@@ -109,6 +109,54 @@ and third-party license notices. Manifest workspaces also include the selected c
 of their logic module and engine content. Build that module before packaging. A Vulkan-capable driver and the system libraries used
 by the build are required on the destination machine.
 
+## Desktop game builds
+
+Open **Build → Build Game…** in the editor. Select the native target platform and
+Debug or Release, choose folders or ZIP assets, select compression and optionally
+include the initial cache. The same window saves independent Windows/Linux/macOS
+options in the project's version-1 `BuildSettings.json` and supports cancellation.
+Builds use saved project files on disk.
+
+Engine users can run the same exporter with the .NET 10 SDK:
+
+```sh
+dotnet run --project Tools/SailorBuild -c Release -- \
+  --engine /path/to/sailor --workspace /path/to/project \
+  --configuration Release --assets Zip --compression Balanced \
+  --output /path/to/new-game-build
+```
+
+Use a new output directory outside the project and engine. The exporter stages the
+complete game before publishing that directory; cancellation or failure removes
+the staged output. Existing builds are preserved. It builds the runtime and game
+module in matching configurations, installs the matching SDK, and compiles the
+existing generated game CMake project through that SDK. Module outputs are kept
+separate from the authoring project's binaries. All project/engine content is
+included initially, together with project settings and license notices.
+The exporter copies content into its staging directory and runs the engine's CPU
+asset import there before sealing it. Raw glTF models get material, texture and
+animation metadata without changing the authoring project. Invalid metadata,
+failed imports or an incompatible game module stop the export before publication.
+
+`--assets Folders` uses native copying with exact file modification times. ZIP
+compression options are `Stored`, `Fastest`, `Balanced` and `Smallest`.
+`--initial-cache` includes the portable cache subset described below; warm the
+authoring project's cache with the selected runtime configuration first.
+`--save-settings` retains the options for that platform.
+
+The default engine build directory is `Cache/GameBuild/<platform>/<configuration>`.
+`--engine-build-dir` selects an existing engine build directory for the requested
+configuration. `--no-build-runtime` reuses that configured runtime; the game module
+is still built through its SDK. `--engine` can also select an installed SDK that
+contains the selected standalone runtime in `bin/`.
+
+Launch the result using `Sailor.cmd`, `Sailor.sh` or `Sailor.command`. macOS exports
+include relocated non-system dylibs (including MoltenVK) with local ad-hoc signatures;
+distribution signing/notarization is a separate release step. Linux exports include
+non-system library dependencies and require the destination's compatible system
+libraries and Vulkan driver. Windows exports include runtime DLL dependencies and
+available Debug PDBs. Each platform is built on its native host.
+
 ## Asset archives
 
 The engine executable can create ZIP assets without starting the renderer:

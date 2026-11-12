@@ -27,3 +27,5 @@ jobs:
 
       - name: Build MCP bridge
         run: dotnet build Editor/McpBridge/SailorEditor.McpBridge.csproj -c Release
+      - name: Build game export CLI
+        run: dotnet build Tools/SailorBuild/SailorBuild.csproj -c Release

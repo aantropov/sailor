@@ -92,6 +92,7 @@ namespace Sailor
 			Tasks::Scheduler* scheduler);
 		SAILOR_API virtual ~AssetRegistry() override;
 		const Workspace::WorkspaceContext& GetWorkspaceContext() const { return m_workspaceContext; }
+		SAILOR_API bool ValidateContentForPackaging(std::string& diagnostic) const;
 
 		template<typename TBinaryType, typename TFilepath>
 		static bool ReadBinaryFile(const TFilepath& filename, TVector<TBinaryType>& buffer)

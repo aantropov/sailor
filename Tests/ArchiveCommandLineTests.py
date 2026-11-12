@@ -66,6 +66,31 @@ class ArchiveCommandLineTests(unittest.TestCase):
             self.assertEqual(Path(description["engineContent"]).resolve(), (root / "Content").resolve())
             self.assertNotEqual(self.run_engine("--describe-workspace").returncode, 0)
 
+    def test_game_assets_are_prepared_without_starting_renderer(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="sailor-prepare-") as temporary:
+            root = Path(temporary)
+            content = root / "Content"
+            content.mkdir()
+            model = content / "model Я.gltf"
+            model.write_text(json.dumps({"asset": {"version": "2.0"}, "materials": [{"name": "Test material"}]}), encoding="utf-8")
+            result = self.run_engine("--prepare-game-assets", "--workspace", root)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertTrue(model.with_suffix(".gltf.asset").is_file())
+            self.assertTrue(any(content.rglob("*.mat")), "glTF materials must exist before sealing the package")
+            saved_metadata = model.with_suffix(".gltf.asset").read_bytes()
+            repeated = self.run_engine("--prepare-game-assets", "--workspace", root)
+            self.assertEqual(repeated.returncode, 0, repeated.stdout + repeated.stderr)
+            self.assertEqual(model.with_suffix(".gltf.asset").read_bytes(), saved_metadata)
+            bad = content / "bad.txt.asset"
+            bad.write_text("invalid metadata", encoding="utf-8")
+            rejected = self.run_engine("--prepare-game-assets", "--workspace", root)
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("Invalid asset metadata", rejected.stdout + rejected.stderr)
+            self.assertEqual(bad.read_text(encoding="utf-8"), "invalid metadata")
+            bad.unlink()
+            model.write_text("not glTF", encoding="utf-8")
+            self.assertNotEqual(self.run_engine("--prepare-game-assets", "--workspace", root).returncode, 0)
+
     def test_initial_cache_is_an_explicit_subset(self) -> None:
         with tempfile.TemporaryDirectory(prefix="sailor-cache-cli-") as temporary:
             root = Path(temporary)
@@ -91,6 +116,34 @@ class ArchiveCommandLineTests(unittest.TestCase):
             invalid = root / "invalid.zip"
             self.assertNotEqual(self.run_engine("--pack-cache", workspace, invalid, "stored").returncode, 0)
             self.assertFalse(invalid.exists())
+
+    def test_loose_copy_retains_exact_native_revisions(self) -> None:
+        import os
+        with tempfile.TemporaryDirectory(prefix="sailor-copy-") as temporary:
+            root = Path(temporary)
+            source = root / "source Я"
+            (source / "empty directory").mkdir(parents=True)
+            asset = source / "payload Я.bin"
+            asset.write_bytes(bytes(range(256)) * 1024)
+            os.utime(asset, ns=(1_700_000_000_123_456_789, 1_700_000_000_123_456_789))
+            timestamp = asset.stat().st_mtime_ns
+            output = root / "output Я"
+            result = self.run_engine("--copy-assets", source, output)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual((output / asset.name).read_bytes(), asset.read_bytes())
+            self.assertEqual((output / asset.name).stat().st_mtime_ns, timestamp)
+            self.assertTrue((output / "empty directory").is_dir())
+            self.assertNotEqual(self.run_engine("--copy-assets", source, output).returncode, 0)
+            self.assertEqual((output / asset.name).read_bytes(), asset.read_bytes())
+            self.assertNotEqual(self.run_engine("--copy-assets", source, source / "nested").returncode, 0)
+            self.assertFalse((source / "nested").exists())
+            try:
+                (source / "link").symlink_to(asset)
+            except OSError:
+                return  # Windows may not grant symlink creation to the test user.
+            rejected = root / "rejected"
+            self.assertNotEqual(self.run_engine("--copy-assets", source, rejected).returncode, 0)
+            self.assertFalse(rejected.exists())
 
 
 if __name__ == "__main__":

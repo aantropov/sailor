@@ -81,6 +81,12 @@ jobs:
     - name: Test editor contracts
       run: dotnet test Editor.Tests/Editor.Contracts.Tests.csproj --configuration Release
 
+    - name: Validate standalone game export through the installed SDK
+      run: dotnet test Editor.Tests/Editor.Contracts.Tests.csproj --configuration Release --filter FullyQualifiedName~GameBuildNativeTests
+      env:
+        SAILOR_GAME_EXPORT_ENGINE: ${{ github.workspace }}
+        SAILOR_GAME_EXPORT_BUILD: ${{ github.workspace }}/build
+
     - name: Validate source workspace project
       run: >-
         dotnet test Editor.Tests/Editor.Contracts.Tests.csproj

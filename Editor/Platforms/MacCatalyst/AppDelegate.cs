@@ -16,6 +16,7 @@ public class AppDelegate : MauiUIApplicationDelegate
     static readonly Selector NewSceneSelector = new("newScene:");
     static readonly Selector ReloadAssetsSelector = new("reloadAssets:");
     static readonly Selector CompileWorkspaceSelector = new("compileWorkspace:");
+    static readonly Selector BuildGameSelector = new("buildGame:");
     static readonly Selector ReconfigureWorkspaceSelector = new("reconfigureWorkspace:");
     static readonly Selector ClearWorkspaceCacheSelector = new("clearWorkspaceCache:");
     static readonly Selector RerunEngineSelector = new("rerunEngine:");
@@ -85,6 +86,7 @@ public class AppDelegate : MauiUIApplicationDelegate
             0,
             new UIMenuElement[]
             {
+                UICommand.Create("Build Game…", null, BuildGameSelector, null),
                 UICommand.Create("Compile", null, CompileWorkspaceSelector, null),
                 UICommand.Create("Reconfigure", null, ReconfigureWorkspaceSelector, null),
                 UIMenu.Create(
@@ -160,6 +162,10 @@ public class AppDelegate : MauiUIApplicationDelegate
     [Export("compileWorkspace:")]
     public void CompileWorkspace(NSObject sender)
         => RunWorkspaceAction(workspace => workspace.CompileWorkspaceAsync());
+
+    [Export("buildGame:")]
+    public void BuildGame(NSObject sender)
+        => _ = MauiProgram.GetService<GameBuildWindowService>().ShowAsync();
 
     [Export("reconfigureWorkspace:")]
     public void ReconfigureWorkspace(NSObject sender)

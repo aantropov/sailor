@@ -30,6 +30,8 @@ namespace Sailor::FileSystem
 	// The destination must be new. Failed writes remove their incomplete output.
 	SAILOR_SHARED_API bool WriteZipArchive(const std::filesystem::path& source,
 		const std::filesystem::path& destination, EArchiveCompression compression, std::string& outDiagnostic);
+	SAILOR_SHARED_API bool CopyDirectory(const std::filesystem::path& source,
+		const std::filesystem::path& destination, std::string& outDiagnostic);
 	SAILOR_SHARED_API bool IsReadOnly(const std::filesystem::path& path);
 	SAILOR_SHARED_API std::filesystem::path Canonical(const std::filesystem::path& path, std::error_code& error);
 	// Each reader owns its seekable stream and backing storage, with an independent cursor.

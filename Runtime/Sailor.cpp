@@ -277,6 +277,49 @@ namespace
 		}
 	}
 
+	AssetRegistry* InitializeAssetImporters(bool bCpuOnly)
+	{
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		auto assetRegistry = App::AddSubmodule(TSubmodule<AssetRegistry>::Make());
+		App::AddSubmodule(TSubmodule<DefaultAssetInfoHandler>::Make(assetRegistry));
+
+		auto textureInfoHandler = App::AddSubmodule(TSubmodule<TextureAssetInfoHandler>::Make(assetRegistry));
+		auto shaderInfoHandler = App::AddSubmodule(TSubmodule<ShaderAssetInfoHandler>::Make(assetRegistry));
+		auto modelInfoHandler = App::AddSubmodule(TSubmodule<ModelAssetInfoHandler>::Make(assetRegistry));
+		auto animationInfoHandler = App::AddSubmodule(TSubmodule<AnimationAssetInfoHandler>::Make(assetRegistry));
+		auto animationControllerInfoHandler = App::AddSubmodule(TSubmodule<AnimationControllerAssetInfoHandler>::Make(assetRegistry));
+		auto animationSetInfoHandler = App::AddSubmodule(TSubmodule<AnimationSetAssetInfoHandler>::Make(assetRegistry));
+		auto audioInfoHandler = App::AddSubmodule(TSubmodule<AudioAssetInfoHandler>::Make(assetRegistry));
+		App::AddSubmodule(
+			TSubmodule<LandscapeVegetationAssetInfoHandler>::Make(assetRegistry));
+		auto materialInfoHandler = App::AddSubmodule(TSubmodule<MaterialAssetInfoHandler>::Make(assetRegistry));
+		auto frameGraphInfoHandler = App::AddSubmodule(TSubmodule<FrameGraphAssetInfoHandler>::Make(assetRegistry));
+		auto giProbesInfoHandler = App::AddSubmodule(TSubmodule<GIProbesAssetInfoHandler>::Make(assetRegistry));
+		auto prefabInfoHandler = App::AddSubmodule(TSubmodule<PrefabAssetInfoHandler>::Make(assetRegistry));
+		auto worldPrefabInfoHandler = App::AddSubmodule(TSubmodule<WorldPrefabAssetInfoHandler>::Make(assetRegistry));
+
+		if (bCpuOnly)
+		{
+			App::AddSubmodule(TSubmodule<ModelImporter>::Make(modelInfoHandler, scheduler, assetRegistry));
+			return assetRegistry;
+		}
+
+		App::AddSubmodule(TSubmodule<TextureImporter>::Make(textureInfoHandler));
+		App::AddSubmodule(TSubmodule<ShaderCompiler>::Make(shaderInfoHandler));
+		App::AddSubmodule(TSubmodule<ModelImporter>::Make(modelInfoHandler, scheduler, assetRegistry));
+		App::AddSubmodule(TSubmodule<AnimationImporter>::Make(animationInfoHandler));
+		App::AddSubmodule(TSubmodule<AnimationControllerImporter>::Make(animationControllerInfoHandler, animationSetInfoHandler));
+		App::AddSubmodule(TSubmodule<AudioImporter>::Make(audioInfoHandler));
+		App::AddSubmodule(TSubmodule<MaterialImporter>::Make(materialInfoHandler));
+		App::AddSubmodule(TSubmodule<FrameGraphImporter>::Make(frameGraphInfoHandler));
+		App::AddSubmodule(TSubmodule<GIProbesImporter>::Make(giProbesInfoHandler));
+		App::AddSubmodule(TSubmodule<ECS::ECSFactory>::Make());
+		App::AddSubmodule(TSubmodule<FrameGraphBuilder>::Make());
+		App::AddSubmodule(TSubmodule<PrefabImporter>::Make(prefabInfoHandler));
+		App::AddSubmodule(TSubmodule<WorldPrefabImporter>::Make(worldPrefabInfoHandler));
+		return assetRegistry;
+	}
+
 	bool ReloadAssetsOnEngineMainThread()
 	{
 		auto* assetRegistry = App::GetSubmodule<AssetRegistry>();
@@ -427,6 +470,11 @@ AppArgs ParseCommandLineArgs(const char** args, int32_t num)
 		{
 			params.m_bForceNullAudioDevice = true;
 		}
+		else if (arg == "--prepare-game-assets")
+		{
+			params.m_bPrepareGameAssets = true;
+			params.m_bRunConsole = false;
+		}
 	}
 
 	return params;
@@ -515,6 +563,29 @@ EAppInitializationResult App::Initialize(const char** commandLineArgs, int32_t n
 	if (!s_pInstance->s_workspace.ends_with("/"))
 	{
 		s_pInstance->s_workspace += "/";
+	}
+
+	if (params.m_bPrepareGameAssets)
+	{
+		if (s_pInstance->m_workspaceContext.IsPackaged())
+		{
+			SAILOR_LOG_ERROR("Game asset preparation requires an unpackaged content copy.");
+			SetExitCode(1);
+			return EAppInitializationResult::Failed;
+		}
+		auto* scheduler = AddSubmodule(TSubmodule<Tasks::Scheduler>::Make());
+		scheduler->Initialize();
+		auto* assetRegistry = InitializeAssetImporters(true);
+		std::string diagnostic;
+		const bool bScanned = assetRegistry->ValidateContentForPackaging(diagnostic) && assetRegistry->ScanContentFolder();
+		WaitForAssetTasks();
+		const bool bPrepared = assetRegistry->CompleteScanProcessing() && assetRegistry->ValidateContentForPackaging(diagnostic);
+		if (!diagnostic.empty())
+		{
+			SAILOR_LOG_ERROR("%s", diagnostic.c_str());
+		}
+		SetExitCode(bScanned && bPrepared ? 0 : 1);
+		return bScanned && bPrepared ? EAppInitializationResult::Completed : EAppInitializationResult::Failed;
 	}
 
 	g_graphicsSettingsState = Settings::LoadGraphicsSettings(
@@ -636,37 +707,7 @@ EAppInitializationResult App::Initialize(const char** commandLineArgs, int32_t n
 		return EAppInitializationResult::Failed;
 	}
 
-	auto assetRegistry = s_pInstance->AddSubmodule(TSubmodule<AssetRegistry>::Make());
-	s_pInstance->AddSubmodule(TSubmodule<DefaultAssetInfoHandler>::Make(assetRegistry));
-
-	auto textureInfoHandler = s_pInstance->AddSubmodule(TSubmodule<TextureAssetInfoHandler>::Make(assetRegistry));
-	auto shaderInfoHandler = s_pInstance->AddSubmodule(TSubmodule<ShaderAssetInfoHandler>::Make(assetRegistry));
-	auto modelInfoHandler = s_pInstance->AddSubmodule(TSubmodule<ModelAssetInfoHandler>::Make(assetRegistry));
-	auto animationInfoHandler = s_pInstance->AddSubmodule(TSubmodule<AnimationAssetInfoHandler>::Make(assetRegistry));
-	auto animationControllerInfoHandler = s_pInstance->AddSubmodule(TSubmodule<AnimationControllerAssetInfoHandler>::Make(assetRegistry));
-	auto animationSetInfoHandler = s_pInstance->AddSubmodule(TSubmodule<AnimationSetAssetInfoHandler>::Make(assetRegistry));
-	auto audioInfoHandler = s_pInstance->AddSubmodule(TSubmodule<AudioAssetInfoHandler>::Make(assetRegistry));
-	s_pInstance->AddSubmodule(
-		TSubmodule<LandscapeVegetationAssetInfoHandler>::Make(assetRegistry));
-	auto materialInfoHandler = s_pInstance->AddSubmodule(TSubmodule<MaterialAssetInfoHandler>::Make(assetRegistry));
-	auto frameGraphInfoHandler = s_pInstance->AddSubmodule(TSubmodule<FrameGraphAssetInfoHandler>::Make(assetRegistry));
-	auto giProbesInfoHandler = s_pInstance->AddSubmodule(TSubmodule<GIProbesAssetInfoHandler>::Make(assetRegistry));
-	auto prefabInfoHandler = s_pInstance->AddSubmodule(TSubmodule<PrefabAssetInfoHandler>::Make(assetRegistry));
-	auto worldPrefabInfoHandler = s_pInstance->AddSubmodule(TSubmodule<WorldPrefabAssetInfoHandler>::Make(assetRegistry));
-
-	s_pInstance->AddSubmodule(TSubmodule<TextureImporter>::Make(textureInfoHandler));
-	s_pInstance->AddSubmodule(TSubmodule<ShaderCompiler>::Make(shaderInfoHandler));
-	s_pInstance->AddSubmodule(TSubmodule<ModelImporter>::Make(modelInfoHandler, scheduler, assetRegistry));
-	s_pInstance->AddSubmodule(TSubmodule<AnimationImporter>::Make(animationInfoHandler));
-	s_pInstance->AddSubmodule(TSubmodule<AnimationControllerImporter>::Make(animationControllerInfoHandler, animationSetInfoHandler));
-	s_pInstance->AddSubmodule(TSubmodule<AudioImporter>::Make(audioInfoHandler));
-	s_pInstance->AddSubmodule(TSubmodule<MaterialImporter>::Make(materialInfoHandler));
-	s_pInstance->AddSubmodule(TSubmodule<FrameGraphImporter>::Make(frameGraphInfoHandler));
-	s_pInstance->AddSubmodule(TSubmodule<GIProbesImporter>::Make(giProbesInfoHandler));
-	s_pInstance->AddSubmodule(TSubmodule<ECS::ECSFactory>::Make());
-	s_pInstance->AddSubmodule(TSubmodule<FrameGraphBuilder>::Make());
-	s_pInstance->AddSubmodule(TSubmodule<PrefabImporter>::Make(prefabInfoHandler));
-	s_pInstance->AddSubmodule(TSubmodule<WorldPrefabImporter>::Make(worldPrefabInfoHandler));
+	auto* assetRegistry = InitializeAssetImporters(false);
 
 	assetRegistry->ScanContentFolder();
 

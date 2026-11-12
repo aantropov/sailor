@@ -949,3 +949,78 @@ bool FileSystem::WriteZipArchive(const std::filesystem::path& source,
 		return false;
 	}
 }
+
+bool FileSystem::CopyDirectory(const std::filesystem::path& source,
+	const std::filesystem::path& destination, std::string& outDiagnostic)
+{
+	struct CopyOutput
+	{
+		std::filesystem::path m_root;
+		bool m_bOwned = false;
+		bool m_bComplete = false;
+		~CopyOutput()
+		{
+			if (m_bOwned && !m_bComplete)
+			{
+				std::error_code error;
+				std::filesystem::remove_all(m_root, error);
+			}
+		}
+	} output;
+	outDiagnostic.clear();
+	try
+	{
+		if (std::filesystem::exists(std::filesystem::symlink_status(destination)))
+		{
+			outDiagnostic = "The asset copy destination must be new.";
+			return false;
+		}
+		const auto root = std::filesystem::canonical(source);
+		output.m_root = std::filesystem::weakly_canonical(destination);
+		if (!std::filesystem::is_directory(root) || IsReadOnly(root) || IsReadOnly(output.m_root) ||
+			Workspace::IsPathWithin(root, output.m_root))
+		{
+			outDiagnostic = "Asset copies require native source folders and a destination outside the source tree.";
+			return false;
+		}
+		output.m_bOwned = std::filesystem::create_directory(output.m_root);
+		if (!output.m_bOwned)
+		{
+			outDiagnostic = "Cannot create the asset copy destination.";
+			return false;
+		}
+		for (const auto& entry : std::filesystem::recursive_directory_iterator(root))
+		{
+			const auto status = entry.symlink_status();
+			const auto target = output.m_root / entry.path().lexically_relative(root);
+			if (std::filesystem::is_directory(status))
+			{
+				std::filesystem::create_directory(target);
+			}
+			else if (std::filesystem::is_regular_file(status))
+			{
+				const auto timestamp = entry.last_write_time();
+				const auto size = entry.file_size();
+				std::filesystem::copy_file(entry.path(), target);
+				if (entry.last_write_time() != timestamp || entry.file_size() != size)
+				{
+					outDiagnostic = "An asset changed while it was being copied: " + Workspace::PathToUtf8(entry.path());
+					return false;
+				}
+				std::filesystem::last_write_time(target, timestamp);
+			}
+			else
+			{
+				outDiagnostic = "Symbolic links and special files cannot be exported: " + Workspace::PathToUtf8(entry.path());
+				return false;
+			}
+		}
+		output.m_bComplete = true;
+		return true;
+	}
+	catch (const std::exception& exception)
+	{
+		outDiagnostic = "Cannot copy assets: " + std::string(exception.what());
+		return false;
+	}
+}

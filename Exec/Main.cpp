@@ -5,6 +5,7 @@ using namespace Sailor;
 #include "Workspace/WorkspaceContext.h"
 #include "Workspace/WorkspacePathEncoding.h"
 #include "Workspace/WorkspacePackage.h"
+#include "Workspace/WorkspaceModuleManager.h"
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <optional>
@@ -13,6 +14,45 @@ namespace
 {
 	std::optional<int> RunToolCommand(int argc, const char** argv)
 	{
+		if (argc >= 2 && std::string_view(argv[1]) == "--validate-workspace-module")
+		{
+			if (argc != 3)
+			{
+				std::cerr << "Usage: --validate-workspace-module WORKSPACE\n";
+				return 1;
+			}
+			const auto resolved = Sailor::Workspace::ResolveWorkspaceContext(Sailor::Workspace::PathFromUtf8(argv[2]));
+			if (!resolved.IsSuccess())
+			{
+				std::cerr << resolved.m_message << '\n';
+				return 1;
+			}
+			Sailor::Workspace::WorkspaceModuleManager module;
+			const auto result = module.Load(resolved.m_context, App::GetBuildConfig());
+			if (result.IsFailure())
+			{
+				std::cerr << result.m_message << '\n';
+				return 1;
+			}
+			std::cout << result.m_message << '\n';
+			return 0;
+		}
+		if (argc >= 2 && std::string_view(argv[1]) == "--copy-assets")
+		{
+			std::string diagnostic;
+			if (argc != 4)
+			{
+				std::cerr << "Usage: --copy-assets SOURCE NEW_DIRECTORY\n";
+				return 1;
+			}
+			if (!Sailor::FileSystem::CopyDirectory(Sailor::Workspace::PathFromUtf8(argv[2]),
+				Sailor::Workspace::PathFromUtf8(argv[3]), diagnostic))
+			{
+				std::cerr << diagnostic << '\n';
+				return 1;
+			}
+			return 0;
+		}
 		if (argc >= 2 && (std::string_view(argv[1]) == "--pack-assets" ||
 			std::string_view(argv[1]) == "--pack-cache"))
 		{
@@ -91,6 +131,10 @@ namespace
 				{ "content", Sailor::Workspace::PathToUtf8(context.GetContent()) },
 				{ "engineContent", Sailor::Workspace::PathToUtf8(context.GetEngineContent()) },
 				{ "logicOutput", Sailor::Workspace::PathToUtf8(context.GetLogicOutput()) },
+				{ "engineRoot", Sailor::Workspace::PathToUtf8(context.GetEngineRoot()) },
+				{ "generatedProject", Sailor::Workspace::PathToUtf8(context.GetGenerated()) },
+				{ "cache", Sailor::Workspace::PathToUtf8(context.GetCache()) },
+				{ "engineMode", context.IsEngineMode() },
 				{ "logicModuleName", context.GetModuleName() }
 			};
 			std::cout << description.dump() << '\n';

@@ -68,3 +68,5 @@ Cache\\Temp.world
 
 Editor.Linux/bin/
 Editor.Linux/obj/
+/Tools/SailorBuild/bin/
+/Tools/SailorBuild/obj/

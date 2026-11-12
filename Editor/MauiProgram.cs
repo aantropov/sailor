@@ -159,6 +159,8 @@ namespace SailorEditor
             builder.Services.AddSingleton<McpWorkspaceOperations>();
             builder.Services.AddSingleton<McpCSharpEvaluator>();
             builder.Services.AddSingleton<IWorkspaceProcessRunner, WorkspaceProcessRunner>();
+            builder.Services.AddSingleton<GameBuildService>();
+            builder.Services.AddSingleton<GameBuildWindowService>();
             builder.Services.AddSingleton(services => new WorkspaceBuildService(
                 services.GetRequiredService<WorkspaceLifecycleService>(),
                 services.GetRequiredService<IWorkspaceProcessRunner>(),
