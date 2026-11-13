@@ -100,9 +100,10 @@ jobs:
           cache: true
       - name: Install macOS native dependencies
         if: runner.os == 'macOS'
-        run: brew install molten-vk shaderc ninja
+        run: brew install vulkan-headers molten-vk shaderc ninja
       - name: Cache vcpkg binaries
-        uses: actions/cache@v4
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cache/vcpkg/archives
@@ -111,6 +112,14 @@ jobs:
           restore-keys: release-vcpkg-${{ matrix.target }}-
       - name: Install engine dependencies
         run: python update_deps.py
+      - name: Save installed dependency binaries
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cache/vcpkg/archives
+            ~/AppData/Local/vcpkg/archives
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
       - name: Configure native runtime and opt-in tests
         shell: bash
         run: >-

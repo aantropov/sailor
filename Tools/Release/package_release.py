@@ -167,6 +167,7 @@ def package(build: Path, editor: Path, dependencies: Path, output: Path,
             'Windows requires a Vulkan-capable graphics driver. macOS targets Apple Silicon.\n'
             'This macOS package is ad-hoc signed, not Apple-notarized; allow it through macOS Privacy & Security.\n'
             'To compile C++ workspace logic, install CMake and a C++20 toolchain (Xcode command-line tools or Visual Studio 2022).\n'
+            'C++ SDK consumers also need Vulkan SDK 1.3+ on Windows, or brew install vulkan-headers on macOS.\n'
             'The matching SDK and dependency headers/libraries are included.\n'
             'GitHub releases: https://github.com/aantropov/sailor/releases\n', encoding='utf-8')
         # Validate the relocated runtime too, before emitting a publishable archive.

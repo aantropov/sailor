@@ -43,6 +43,8 @@ Windows needs a Vulkan-capable graphics driver. macOS packages are ad-hoc signed
 not Apple-notarized; allow the application through Privacy & Security if prompted.
 Compiling C++ workspace logic also requires CMake and a C++20 toolchain, such as
 Visual Studio 2022 or the Xcode command-line tools.
+Windows SDK consumers also need the Vulkan SDK 1.3 or newer. On macOS, install
+the Vulkan headers with `brew install vulkan-headers` before compiling C++ modules.
 
 `VERSION` is the single `major.minor.patch` version for the engine, editor, SDK,
 application metadata and release archives. The editor shows both component versions
