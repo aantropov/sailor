@@ -133,6 +133,9 @@ def package(build: Path, editor: Path, dependencies: Path, output: Path,
         if mac:
             editor_target.mkdir()
             copy_directory(editor.resolve(), editor_target / 'SailorEditor.app')
+            # The app contains Mono-rewritten assemblies. C# evaluation uses
+            # the original reference image beside the bundle, as in source builds.
+            shutil.copy2(editor.resolve().parent / 'SailorEditor.dll', editor_target / 'SailorEditor.dll')
             native = editor_target / 'SailorEditor.app' / 'Contents' / 'Resources' / 'Sailor-Release.dylib'
             # Always use the native image from this SDK generation.
             shutil.copy2(stage / 'lib' / 'Sailor-Release.dylib', native)

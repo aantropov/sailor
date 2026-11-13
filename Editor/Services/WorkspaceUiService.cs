@@ -477,7 +477,8 @@ internal sealed class WorkspaceUiService
             name,
             directory,
             _engineService.EngineWorkingDirectory,
-            ManifestPath: manifestPath);
+            ManifestPath: manifestPath,
+            EngineReferenceKind: WorkspaceEngineReferenceKinds.FromEngineRoot(_engineService.EngineWorkingDirectory));
         await ActivateAsync(
             "New Workspace",
             $"create:{manifestPath}",
