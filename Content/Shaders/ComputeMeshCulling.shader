@@ -126,7 +126,10 @@ glslCompute: |
       // dimensions fit one texel. Reduce every touched texel so a single center
       // sample cannot reject geometry at an occluder edge.
       int mipLevel = int(level);
-      ivec2 mipSize = textureSize(depthHighZ, mipLevel);
+      // Neighboring instances select different mip levels. Derive their sizes
+      // from the uniform base query to keep divergent image queries out of the
+      // visibility decision, including the floor reduction of odd dimensions.
+      ivec2 mipSize = max(depthHighZSize >> mipLevel, ivec2(1));
       ivec2 texelBegin = clamp(
         ivec2(floor(clippedAabb.xy * vec2(mipSize))),
         ivec2(0),

@@ -4567,10 +4567,11 @@ frame:
 	}
 
 	void TestDepthPrepassOcclusion(ShaderSetPtr sourceShader, ShaderSetPtr indexReadback,
-		const std::array<ShaderSetPtr, 4>& depthReadback, bool named, bool paged)
+		const std::array<ShaderSetPtr, 4>& depthReadback, bool named, bool paged, bool oddPyramid)
 	{
 		constexpr uint32_t Count = Renderer::GPUCullingGroupSize + 3;
 		constexpr uint32_t Extent = 32;
+		const glm::ivec2 pyramidExtent = oddPyramid ? glm::ivec2(31, 17) : glm::ivec2(Extent / 2);
 		auto& driver = Renderer::GetDriver();
 		auto commands = Renderer::GetDriverCommands();
 		auto graph = TRefPtr<TestGraph>::Make();
@@ -4614,7 +4615,7 @@ frame:
 		{
 			if (frame == 0 || frame == 5)
 			{
-				pyramid = driver->CreateRenderTarget(glm::ivec2(Extent / 2), 5, EFormat::R32_SFLOAT,
+				pyramid = driver->CreateRenderTarget(pyramidExtent, 5, EFormat::R32_SFLOAT,
 					ETextureFiltration::Nearest, ETextureClamping::Clamp, PyramidUsage);
 				if (named) graph->SetRenderTarget("Pyramid"_h, pyramid);
 				else
@@ -4716,10 +4717,28 @@ frame:
 					if (reference || (bInFrustum && !bOccluded)) expected.Add(resources->m_packet.m_resolvedInstanceIndices[i]);
 				}
 				const auto& indirect = *static_cast<const DrawIndexedIndirectData*>(resources->m_indirectBuffers[0]->GetPointer());
-				if (indirect.m_instanceCount != expected.Num())
-					throw std::runtime_error("Hi-Z prepass frame=" + std::to_string(frame) + " count=" +
-						std::to_string(indirect.m_instanceCount) + ", expected=" + std::to_string(expected.Num()));
 				const auto* actual = static_cast<const uint32_t*>(indices->GetPointer());
+				if (indirect.m_instanceCount != expected.Num())
+				{
+					std::string missing;
+					const uint32_t actualCount = (std::min)(indirect.m_instanceCount, Count);
+					for (uint32_t i = 0; i < Count; ++i)
+					{
+						const uint32_t id = resources->m_packet.m_resolvedInstanceIndices[i];
+						if (std::find(expected.begin(), expected.end(), id) != expected.end() &&
+							std::find(actual, actual + actualCount, id) == actual + actualCount)
+						{
+							const auto center = GetSingleMobilityInstance(resources->m_packet, record.m_mobility, i).model[3];
+							missing += " " + std::to_string(i) + "(" + std::to_string(center.x) + "," +
+								std::to_string(center.z) + ")";
+						}
+					}
+					throw std::runtime_error("Hi-Z prepass frame=" + std::to_string(frame) + " count=" +
+						std::to_string(indirect.m_instanceCount) + ", expected=" + std::to_string(expected.Num()) +
+						" named=" + std::to_string(named) + " paged=" + std::to_string(paged) +
+						" oddPyramid=" + std::to_string(oddPyramid) + " reference=" + std::to_string(reference) +
+						" missing candidates:" + missing);
+				}
 				for (uint32_t i = 0; i < expected.Num(); ++i)
 					Require(actual[i] == expected[i], "Hi-Z must compact exact visible IDs, retaining foreground and uncovered objects");
 			}
@@ -4735,7 +4754,7 @@ frame:
 			}
 			Require(bHasDepth, "occlusion readback must contain rasterized geometry");
 		}
-		std::cout << "Depth prepass Hi-Z named=" << named << " paged=" << paged <<
+		std::cout << "Depth prepass Hi-Z named=" << named << " paged=" << paged << " oddPyramid=" << oddPyramid <<
 			": eight frames, exact GPU counts/IDs, moving occluder/camera, stale pyramid, replacement and unculled depth parity passed\n";
 	}
 
@@ -8563,6 +8582,60 @@ namespace Sailor::Tests
 		TestSkyWithoutStars(workspace, VK_ERROR_OUT_OF_DEVICE_MEMORY);
 	}
 
+	void RunDepthOcclusionCommandTests(const std::filesystem::path& workspace)
+	{
+		const auto depthReadback = WriteDepthReadbackShader(workspace);
+		const auto indexReadback = WriteCullingIndexReadbackShader(workspace);
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		auto* compiler = App::GetSubmodule<ShaderCompiler>();
+		ShaderSetPtr depthShader, maskedDepthShader, cullingShader;
+		const auto depthInfo = registry->GetAssetInfoPtr("Shaders/DepthOnly.shader");
+		const auto cullingInfo = registry->GetAssetInfoPtr("Shaders/ComputeMeshCulling.shader");
+		Require(depthInfo && cullingInfo && compiler->LoadShader_Immediate(depthInfo->GetFileId(), depthShader) &&
+			depthShader->IsReady() && compiler->LoadShader_Immediate(depthInfo->GetFileId(), maskedDepthShader,
+				{ "MASKED" }) && maskedDepthShader->IsReady() &&
+			compiler->LoadShader_Immediate(cullingInfo->GetFileId(), cullingShader,
+				{ "DEPTH_INSTANCE_LAYOUT", "OCCLUSION_CULLING" }) && cullingShader->IsReady(),
+			"production depth and culling shaders must be ready for the Hi-Z regression");
+		const auto highZInfo = registry->GetAssetInfoPtr("Shaders/ComputeDepthHighZ.shader");
+		Require(highZInfo != nullptr, "the production depth pyramid shader must exist");
+		std::array<ShaderSetPtr, 2> highZShaders;
+		for (uint32_t permutation = 0; permutation < highZShaders.size(); ++permutation)
+		{
+			const TVector<std::string> defines = permutation == 0 ? TVector<std::string>{} :
+				TVector<std::string>{ "DEPTH_INPUT" };
+			Require(compiler->LoadShader_Immediate(highZInfo->GetFileId(), highZShaders[permutation], defines) &&
+				highZShaders[permutation]->IsReady(), "depth pyramid shaders must be ready for the Hi-Z regression");
+		}
+		auto task = Tasks::CreateTaskWithResult<std::string>("Depth prepass Hi-Z regression"_h, [&]() -> std::string
+			{
+				try
+				{
+					for (bool named : { false, true })
+					{
+						for (bool paged : { false, true })
+						{
+							for (bool oddPyramid : { false, true })
+							{
+								TestDepthPrepassOcclusion(depthShader, indexReadback, depthReadback, named, paged, oddPyramid);
+							}
+						}
+					}
+					return {};
+				}
+				catch (const std::exception& error)
+				{
+					return error.what();
+				}
+			}, EThreadType::Render);
+		task->Run();
+		task->Wait();
+		if (!task->GetResult().empty())
+		{
+			throw std::runtime_error(task->GetResult());
+		}
+	}
+
 	void RunFrameGraphNodeCommandTests(const std::filesystem::path& workspace)
 	{
 		TestMaterialBindingCompatibility();
@@ -8710,8 +8783,15 @@ namespace Sailor::Tests
 					}
 					if (!cullingFailures.empty()) throw std::runtime_error(cullingFailures);
 					for (bool named : { false, true })
-					for (bool paged : { false, true })
-						TestDepthPrepassOcclusion(compactDepthShader, cullingIndexReadback, depthReadback, named, paged);
+					{
+						for (bool paged : { false, true })
+						{
+							for (bool oddPyramid : { false, true })
+							{
+								TestDepthPrepassOcclusion(compactDepthShader, cullingIndexReadback, depthReadback, named, paged, oddPyramid);
+							}
+						}
+					}
 					TestSamplerReductionCache();
 					FrameGraphNodeTestAccess::WithoutSamplerMinmax(*VulkanApi::GetInstance()->GetMainDevice(), [&]()
 						{

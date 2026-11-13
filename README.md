@@ -97,6 +97,12 @@ For native behavioral tests, configure with `-DSAILOR_BUILD_TESTS=ON`, build the
 targets, and run `ctest --test-dir build-linux --output-on-failure`. The Linux window
 lifecycle test uses Xvfb when available.
 
+The opt-in GPU regression `Binaries/VulkanSubmissionTests --gpu-depth-occlusion
+--workspace /path/to/sailor --null-audio` exercises the production depth prepass,
+Hi-Z pyramid and culling shaders with even/odd pyramids, direct/named resources
+and contiguous/paged instance payloads. It verifies exact visible IDs and every
+depth sample against drawing without culling. Use `xvfb-run -a` on headless Linux.
+
 Package a workspace into a new directory outside that workspace:
 
 ```sh

@@ -60,6 +60,7 @@ namespace Sailor::Tests
 	void RunLandscapeCommandTests(const std::filesystem::path& workspace);
 	void RunPrefabImporterCommandTests(const std::filesystem::path& workspace);
 	void RunFrameGraphNodeCommandTests(const std::filesystem::path& workspace);
+	void RunDepthOcclusionCommandTests(const std::filesystem::path& workspace);
 	void RunShaderLifecycleCommandTests(const std::filesystem::path& workspace);
 	void RunCloudNoiseCommandTests(const std::filesystem::path& workspace);
 	void RunSkyStarsCommandTests(const std::filesystem::path& workspace);
@@ -1371,7 +1372,14 @@ namespace Sailor::Tests
 			arguments.insert(arguments.end(), { "--workspace", root.c_str(), "--editor", "--port", "0", "--world", "" });
 			Require(App::Initialize(arguments.data(), static_cast<int32_t>(arguments.size())) == EAppInitializationResult::Ready &&
 				App::IsRendererInitialized(), "render contracts must initialize a hidden native renderer");
-			if (bTestPathTracer) TestHdrCompositing();
+			if (argc > 1 && std::string_view(argv[1]) == "--gpu-depth-occlusion")
+			{
+				RunDepthOcclusionCommandTests(workspace.Get());
+			}
+			else if (bTestPathTracer)
+			{
+				TestHdrCompositing();
+			}
 			else
 			{
 				RunShaderLifecycleCommandTests(workspace.Get());
