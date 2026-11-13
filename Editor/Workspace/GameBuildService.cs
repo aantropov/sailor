@@ -1,5 +1,6 @@
 #nullable enable
 
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -16,11 +17,16 @@ public sealed record GameBuildRequest(
     GamePlatformBuildSettings Options)
 {
     public string? EngineBuildDirectory { get; init; }
-    public string CMakeExecutable { get; init; } = "cmake";
+    public string CMakeExecutable { get; init; } = GameBuildEnvironment.CMakeExecutable;
+    public string StartupScene { get; init; } = string.Empty;
     public bool BuildRuntime { get; init; } = true;
 }
 
-public sealed record GameBuildResult(bool Succeeded, string OutputDirectory, string? Error = null);
+public sealed record GameBuildResult(bool Succeeded, string OutputDirectory, string? Error = null)
+{
+    public string? LogFile { get; init; }
+    public WorkspaceProcessInvocation? RunInvocation { get; init; }
+}
 
 public sealed class GameBuildService(IWorkspaceProcessRunner runner)
 {
@@ -53,14 +59,11 @@ public sealed class GameBuildService(IWorkspaceProcessRunner runner)
     {
         await _gate.WaitAsync(cancellationToken);
         string? staging = null;
+        string? logFile = null;
         try
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(request.WorkspaceDirectory);
             ArgumentException.ThrowIfNullOrWhiteSpace(request.EngineDirectory);
-            if (request.Platform != GameBuildSettings.HostPlatform)
-            {
-                throw new InvalidOperationException($"Build {request.Platform} on a native {request.Platform} host.");
-            }
             new GameBuildSettings { Configuration = request.Configuration,
                 Platforms = new GameBuildSettings().Platforms.ToDictionary(pair => pair.Key,
                     pair => pair.Key == request.Platform ? request.Options : pair.Value) }.Validate();
@@ -87,15 +90,29 @@ public sealed class GameBuildService(IWorkspaceProcessRunner runner)
             {
                 throw new InvalidOperationException("Select an authoring workspace to export; this folder is already a game package.");
             }
+            var logs = Path.Combine(workspace, "Cache", "BuildLogs");
+            Directory.CreateDirectory(logs);
+            logFile = Path.Combine(logs, DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..8] + ".log");
+            Report($"{request.Platform} / {request.Configuration} — {request.StartupScene}");
+            var toolchainFile = string.IsNullOrWhiteSpace(request.Options.ToolchainFile) ? string.Empty :
+                Path.GetFullPath(request.Options.ToolchainFile, workspace);
+            var capability = await GameBuildEnvironment.CheckAsync(workspace, request.Platform,
+                toolchainFile, runner, request.CMakeExecutable, cancellationToken);
+            if (!capability.CanBuild)
+            {
+                throw new InvalidOperationException(capability.Detail);
+            }
             var sourceEngine = File.Exists(Path.Combine(engine, "CMakeLists.txt")) && Directory.Exists(Path.Combine(engine, "Runtime"));
-            var build = Path.GetFullPath(request.EngineBuildDirectory ??
-                Path.Combine(engine, "Cache", "GameBuild", request.Platform.ToString(), request.Configuration), engine);
+            var configuredBuild = request.EngineBuildDirectory ??
+                (string.IsNullOrWhiteSpace(request.Options.EngineBuildDirectory) ? null : request.Options.EngineBuildDirectory);
+            var build = Path.GetFullPath(configuredBuild ?? GameBuildEnvironment.FindEngineBuild(
+                engine, request.Platform, request.Configuration, toolchainFile), engine);
             var sdk = sourceEngine ? Path.Combine(build, "GameSDK", request.Configuration) : engine;
             var suffix = request.Platform == GameBuildPlatform.Windows ? ".exe" : "";
             var executableName = "SailorEngine-" + request.Configuration + suffix;
             if (sourceEngine)
             {
-                var cache = ReadCMakeCache(build);
+                var cache = GameBuildEnvironment.ReadCMakeCache(build);
                 if (cache.Count != 0)
                 {
                     if (!cache.TryGetValue("CMAKE_HOME_DIRECTORY", out var source) || !WorkspacePathPolicy.IsSamePath(source, engine) ||
@@ -107,13 +124,13 @@ public sealed class GameBuildService(IWorkspaceProcessRunner runner)
                 }
                 if (request.BuildRuntime)
                 {
-                    progress?.Report("Building engine " + request.Configuration);
+                    Report("Building engine " + request.Configuration);
                     if (cache.Count == 0)
                     {
                         var arguments = new List<string> { "-S", engine, "-B", build,
                             "-DCMAKE_BUILD_TYPE=" + request.Configuration, "-DSAILOR_BUILD_EXECUTABLE=ON",
                             "-DSAILOR_BUILD_TESTS=OFF", "-DSAILOR_BINARIES_DIR=" + Path.Combine(build, "Binaries") };
-                        AddToolchain(engine, arguments);
+                        AddToolchain(engine, arguments, toolchainFile);
                         await Run(request.CMakeExecutable, arguments, engine);
                     }
                     await Run(request.CMakeExecutable, ["--build", build, "--config", request.Configuration,
@@ -123,7 +140,7 @@ public sealed class GameBuildService(IWorkspaceProcessRunner runner)
                 {
                     throw new InvalidOperationException("Build the engine before using --no-build-runtime.");
                 }
-                progress?.Report("Installing the matching engine SDK");
+                Report("Installing the matching engine SDK");
                 await Run(request.CMakeExecutable, ["--install", build, "--config", request.Configuration, "--prefix", sdk], engine);
             }
             var executable = Path.Combine(sdk, "bin", executableName);
@@ -131,13 +148,14 @@ public sealed class GameBuildService(IWorkspaceProcessRunner runner)
             {
                 throw new FileNotFoundException("The engine SDK must include the requested standalone runtime.", executable);
             }
-            var descriptionText = await Run(executable, ["--describe-workspace", workspace], workspace);
+            var descriptionText = await RunTarget(executable, ["--describe-workspace", workspace], workspace);
             var description = JsonSerializer.Deserialize<WorkspaceDescription>(descriptionText, JsonOptions)
                 ?? throw new InvalidDataException("The engine returned no workspace description.");
             if (description.SchemaVersion != 1)
             {
                 throw new InvalidDataException("Unsupported workspace description schema.");
             }
+            var startupScene = ValidateStartupScene(description.Content, request.StartupScene);
             string? module = null;
             string? moduleBuild = null;
             if (!description.Legacy)
@@ -170,13 +188,14 @@ public sealed class GameBuildService(IWorkspaceProcessRunner runner)
                 var arguments = new List<string> { "-S", project, "-B", Path.Combine(moduleBuild, "Build"),
                     "-DCMAKE_BUILD_TYPE=" + request.Configuration, "-DSAILOR_ENGINE_ROOT=" + sdk,
                     "-DSAILOR_ENGINE_REFERENCE_KIND=installed", "-DSailor_DIR=" + Path.Combine(sdk, "lib", "cmake", "Sailor") };
-                AddToolchain(engine, arguments);
+                AddToolchain(engine, arguments, toolchainFile);
                 if (sourceEngine)
                 {
-                    var engineCache = ReadCMakeCache(build);
+                    var engineCache = GameBuildEnvironment.ReadCMakeCache(build);
                     foreach (var key in new[] { "CMAKE_CXX_COMPILER", "CMAKE_MAKE_PROGRAM", "CMAKE_CXX_FLAGS",
                         "CMAKE_CXX_FLAGS_" + request.Configuration.ToUpperInvariant(), "CMAKE_MSVC_RUNTIME_LIBRARY",
-                        "CMAKE_OSX_ARCHITECTURES", "CMAKE_OSX_DEPLOYMENT_TARGET", "VCPKG_TARGET_TRIPLET", "VCPKG_HOST_TRIPLET",
+                        "CMAKE_OSX_ARCHITECTURES", "CMAKE_OSX_DEPLOYMENT_TARGET", "CMAKE_SYSROOT",
+                        "CMAKE_SYSTEM_NAME", "CMAKE_SYSTEM_PROCESSOR", "CMAKE_CROSSCOMPILING_EMULATOR", "VCPKG_CHAINLOAD_TOOLCHAIN_FILE", "VCPKG_TARGET_TRIPLET", "VCPKG_HOST_TRIPLET",
                         "VCPKG_INSTALLED_DIR", "VCPKG_OVERLAY_PORTS", "VCPKG_OVERLAY_TRIPLETS" })
                     {
                         if (engineCache.TryGetValue(key, out var value))
@@ -194,7 +213,7 @@ public sealed class GameBuildService(IWorkspaceProcessRunner runner)
                         }
                     }
                 }
-                progress?.Report("Building game module " + request.Configuration);
+                Report("Building game module " + request.Configuration);
                 await Run(request.CMakeExecutable, arguments, workspace);
                 await Run(request.CMakeExecutable, ["--build", Path.Combine(moduleBuild, "Build"),
                     "--config", request.Configuration, "--target", description.LogicModuleName, "--parallel", "4"], workspace);
@@ -214,7 +233,7 @@ public sealed class GameBuildService(IWorkspaceProcessRunner runner)
             Directory.CreateDirectory(parent);
             staging = Path.Combine(parent, ".sailor-build-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(staging);
-            progress?.Report("Preparing standalone runtime");
+            Report("Preparing standalone runtime");
             if (sourceEngine)
             {
                 await Run(request.CMakeExecutable, ["--install", build, "--config", request.Configuration,
@@ -252,31 +271,31 @@ public sealed class GameBuildService(IWorkspaceProcessRunner runner)
                     logicOutputPath = "Binaries", logicModuleName = description.LogicModuleName };
                 await SaveJson(Path.Combine(staging, "workspace.sailor"), manifest);
             }
-            progress?.Report("Preparing a private copy of game assets");
+            Report("Preparing a private copy of game assets");
             var archives = new List<object>();
             var roots = new List<(string Source, string Root, string Archive)>();
             if (description.Legacy || !description.EngineMode)
             {
-                roots.Add((description.Content, "Content", "Content.zip"));
+                roots.Add((description.Content, "Content", "Content.bundle"));
             }
             if (!description.Legacy)
             {
-                roots.Add((description.EngineContent, "Engine/Content", "EngineContent.zip"));
+                roots.Add((description.EngineContent, "Engine/Content", "EngineContent.bundle"));
             }
             var compression = request.Options.Compression.ToString().ToLowerInvariant();
             foreach (var root in roots)
             {
                 var target = Path.Combine(staging, root.Root);
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                await Run(executable, ["--copy-assets", root.Source, target], workspace);
+                await RunTarget(executable, ["--copy-assets", root.Source, target], workspace);
             }
             if (!description.Legacy)
             {
-                await Run(executable, ["--prepare-game-assets", "--workspace", Path.Combine(staging, "Engine")], staging);
+                await RunTarget(executable, ["--prepare-game-assets", "--workspace", Path.Combine(staging, "Engine")], staging);
             }
             if (description.Legacy || !description.EngineMode)
             {
-                await Run(executable, ["--prepare-game-assets", "--workspace", staging], staging);
+                await RunTarget(executable, ["--prepare-game-assets", "--workspace", staging], staging);
             }
             foreach (var cache in new[] { Path.Combine(staging, "Cache"), Path.Combine(staging, "Engine", "Cache") })
             {
@@ -285,25 +304,28 @@ public sealed class GameBuildService(IWorkspaceProcessRunner runner)
                     Directory.Delete(cache, recursive: true);
                 }
             }
-            progress?.Report("Packaging prepared game assets");
+            Report("Packaging prepared game assets");
             foreach (var root in roots)
             {
                 var target = Path.Combine(staging, root.Root);
                 if (request.Options.Assets == GameAssetPackaging.Zip)
                 {
-                    await Run(executable, ["--pack-assets", target, Path.Combine(staging, root.Archive), compression], workspace);
+                    await RunTarget(executable, ["--pack-assets", target, Path.Combine(staging, root.Archive), compression], workspace);
                     Directory.Delete(target, recursive: true);
-                    Directory.CreateDirectory(target);
                     archives.Add(new { root = root.Root, file = root.Archive });
                 }
+            }
+            var emptyEngine = Path.Combine(staging, "Engine");
+            if (Directory.Exists(emptyEngine) && !Directory.EnumerateFileSystemEntries(emptyEngine).Any())
+            {
+                Directory.Delete(emptyEngine);
             }
             string? initialCache = null;
             if (request.Options.IncludeInitialCache)
             {
-                progress?.Report("Exporting initial shader and model cache");
-                initialCache = "InitialCache.zip";
-                Directory.CreateDirectory(Path.Combine(staging, "InitialCache"));
-                await Run(executable, ["--pack-cache", workspace, Path.Combine(staging, initialCache), compression], workspace);
+                Report("Exporting initial shader and model cache");
+                initialCache = "InitialCache.bundle";
+                await RunTarget(executable, ["--pack-cache", workspace, Path.Combine(staging, initialCache), compression], workspace);
             }
             await SaveJson(Path.Combine(staging, "GamePackage.json"), new { packageVersion = 1,
                 packageId = Guid.NewGuid().ToString("N"), archives, initialCache });
@@ -320,33 +342,43 @@ public sealed class GameBuildService(IWorkspaceProcessRunner runner)
             File.Copy(licenses, Path.Combine(staging, "ThirdPartyLicenses.txt"), overwrite: true);
             if (request.Platform == GameBuildPlatform.Linux)
             {
-                await CollectLinuxDependencies(staging, sdk, Run);
+                await CollectLinuxDependencies(staging, sdk, RunTarget);
             }
             else if (request.Platform == GameBuildPlatform.MacOS)
             {
-                await FixMacLibraries(staging, Run);
+                await FixMacLibraries(staging, RunTarget);
             }
-            progress?.Report("Validating the packaged game module");
-            await Run(Path.Combine(staging, "bin", executableName), ["--validate-workspace-module", staging], staging);
-            await WriteLauncher(staging, executableName, request.Platform);
+            Report("Validating the packaged game module");
+            await RunTarget(Path.Combine(staging, "bin", executableName), ["--validate-workspace-module", staging], staging);
+            await WriteLauncher(staging, executableName, request.Platform, startupScene);
             cancellationToken.ThrowIfCancellationRequested();
             Directory.Move(staging, output);
             staging = null;
-            progress?.Report("Game build: " + output);
-            return new GameBuildResult(true, output);
+            Report("Game build: " + output);
+            return new GameBuildResult(true, output)
+            {
+                LogFile = logFile,
+                RunInvocation = CreateRunInvocation(output, executableName, startupScene, capability.TargetRunner)
+            };
 
-            async Task<string> Run(string program, IReadOnlyList<string> arguments, string workingDirectory)
+            Task<string> RunTarget(string program, IReadOnlyList<string> arguments, string workingDirectory)
+            {
+                return capability.TargetRunner.Count == 0 ? Run(program, arguments, workingDirectory, target: true) :
+                    Run(capability.TargetRunner[0], capability.TargetRunner.Skip(1).Concat(new[] { program }).Concat(arguments).ToArray(), workingDirectory, target: true);
+            }
+
+            async Task<string> Run(string program, IReadOnlyList<string> arguments, string workingDirectory, bool target = false)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                progress?.Report(program + " " + string.Join(" ", arguments.Select(argument => JsonSerializer.Serialize(argument))));
+                Report(program + " " + string.Join(" ", arguments.Select(argument => JsonSerializer.Serialize(argument))));
                 var invocation = new WorkspaceProcessInvocation(program, arguments, workingDirectory)
                 {
-                    OutputEncoding = Path.GetFileName(program).StartsWith("SailorEngine-", StringComparison.Ordinal) ? Encoding.UTF8 : null
+                    OutputEncoding = target || Path.GetFileName(program).StartsWith("SailorEngine-", StringComparison.Ordinal) ? Encoding.UTF8 : null
                 };
                 var result = await runner.RunAsync(invocation, cancellationToken);
                 if (!string.IsNullOrWhiteSpace(result.Output))
                 {
-                    progress?.Report(result.Output);
+                    Report(result.Output);
                 }
                 if (!result.Succeeded)
                 {
@@ -359,9 +391,10 @@ public sealed class GameBuildService(IWorkspaceProcessRunner runner)
                 JsonSerializer.Serialize(value, JsonOptions) + "\n", cancellationToken);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or
-            InvalidOperationException or JsonException)
+            InvalidOperationException or InvalidDataException or JsonException)
         {
-            return new GameBuildResult(false, request.OutputDirectory, error.Message);
+            Report("Build failed: " + error.Message);
+            return new GameBuildResult(false, request.OutputDirectory, error.Message) { LogFile = logFile };
         }
         finally
         {
@@ -377,30 +410,74 @@ public sealed class GameBuildService(IWorkspaceProcessRunner runner)
                 _gate.Release();
             }
         }
-    }
 
-    static Dictionary<string, string> ReadCMakeCache(string build)
-    {
-        var file = Path.Combine(build, "CMakeCache.txt");
-        var result = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (File.Exists(file))
+        void Report(string message)
         {
-            foreach (var line in File.ReadLines(file))
+            if (logFile is not null)
             {
-                var colon = line.IndexOf(':');
-                var equals = line.IndexOf('=');
-                if (!line.StartsWith("//", StringComparison.Ordinal) && colon > 0 && equals > colon)
-                {
-                    result[line[..colon]] = line[(equals + 1)..];
-                }
+                File.AppendAllText(logFile, message + Environment.NewLine);
             }
+            progress?.Report(message);
         }
-        return result;
     }
 
-    static void AddToolchain(string engine, List<string> arguments)
+    public static int Run(GameBuildResult result)
     {
-        var path = Path.Combine(engine, "External", "vcpkg", "scripts", "buildsystems", "vcpkg.cmake");
+        if (!result.Succeeded || result.RunInvocation is not { } invocation)
+        {
+            throw new InvalidOperationException("Build the game successfully before running it.");
+        }
+        var start = new ProcessStartInfo(invocation.FileName)
+        {
+            WorkingDirectory = invocation.WorkingDirectory,
+            UseShellExecute = false
+        };
+        foreach (var argument in invocation.Arguments)
+        {
+            start.ArgumentList.Add(argument);
+        }
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("The game did not start.");
+        return process.Id;
+    }
+
+    static WorkspaceProcessInvocation CreateRunInvocation(string output, string executable, string scene,
+        IReadOnlyList<string> targetRunner)
+    {
+        var arguments = new List<string> { "--workspace", output };
+        if (scene.Length != 0)
+        {
+            arguments.AddRange(new[] { "--world", scene });
+        }
+        else
+        {
+            arguments.Add("--new-world");
+        }
+        var program = Path.Combine(output, "bin", executable);
+        return targetRunner.Count == 0 ? new(program, arguments, output) :
+            new(targetRunner[0], targetRunner.Skip(1).Concat(new[] { program }).Concat(arguments).ToArray(), output);
+    }
+
+    static string ValidateStartupScene(string content, string scene)
+    {
+        if (string.IsNullOrEmpty(scene))
+        {
+            return string.Empty;
+        }
+        var file = Path.GetFullPath(scene, content);
+        if (!scene.EndsWith(".world", StringComparison.OrdinalIgnoreCase) || Path.IsPathRooted(scene) ||
+            scene.Any(char.IsControl) || scene.Contains('"') ||
+            !WorkspacePathPolicy.IsInsideRoot(content, file) || !File.Exists(file))
+        {
+            throw new InvalidDataException("Choose an existing startup scene inside the project Content directory.");
+        }
+        return Path.GetRelativePath(content, file).Replace('\\', '/');
+    }
+
+    static void AddToolchain(string engine, List<string> arguments, string toolchainFile)
+    {
+        var path = string.IsNullOrWhiteSpace(toolchainFile) ?
+            Path.Combine(engine, "External", "vcpkg", "scripts", "buildsystems", "vcpkg.cmake") :
+            Path.GetFullPath(toolchainFile);
         if (File.Exists(path))
         {
             arguments.Add("-DCMAKE_TOOLCHAIN_FILE=" + path);
@@ -507,12 +584,13 @@ public sealed class GameBuildService(IWorkspaceProcessRunner runner)
         }
     }
 
-    static async Task WriteLauncher(string root, string executable, GameBuildPlatform platform)
+    static async Task WriteLauncher(string root, string executable, GameBuildPlatform platform, string startupScene)
     {
         if (platform == GameBuildPlatform.Windows)
         {
             await File.WriteAllTextAsync(Path.Combine(root, "Sailor.cmd"),
-                "@echo off\r\n\"%~dp0bin\\" + executable + "\" --workspace \"%~dp0.\" %*\r\n");
+                "@echo off\r\n\"%~dp0bin\\" + executable + "\" --workspace \"%~dp0.\"" +
+                (startupScene.Length == 0 ? " --new-world" : " --world \"" + startupScene.Replace("%", "%%") + "\"") + " %*\r\n");
         }
         else
         {
@@ -520,7 +598,8 @@ public sealed class GameBuildService(IWorkspaceProcessRunner runner)
             var file = Path.Combine(root, name);
             await File.WriteAllTextAsync(file, "#!/bin/sh\nset -eu\npackage_dir=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\n" +
                 (platform == GameBuildPlatform.Linux ? "export LD_LIBRARY_PATH=\"$package_dir/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\"\n" : "") +
-                "exec \"$package_dir/bin/" + executable + "\" --workspace \"$package_dir\" \"$@\"\n");
+                "exec \"$package_dir/bin/" + executable + "\" --workspace \"$package_dir\"" +
+                (startupScene.Length == 0 ? " --new-world" : " --world '" + startupScene.Replace("'", "'\"'\"'") + "'") + " \"$@\"\n");
             if (!OperatingSystem.IsWindows())
             {
                 File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |

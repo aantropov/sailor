@@ -6,6 +6,7 @@ if (args.Length == 0 || args.Contains("--help"))
         "  [--configuration Debug|Release] [--platform Windows|Linux|MacOS]\n" +
         "  [--assets Folders|Zip] [--compression Stored|Fastest|Balanced|Smallest]\n" +
         "  [--initial-cache|--no-initial-cache] [--engine-build-dir DIRECTORY]\n" +
+        "  [--startup-scene CONTENT_RELATIVE.world] [--toolchain FILE] [--run]\n" +
         "  [--no-build-runtime] [--save-settings] [--cmake EXECUTABLE]\n" +
         "Omitted packaging options come from the project's version-1 BuildSettings.json.");
     return args.Length == 0 ? 1 : 0;
@@ -20,8 +21,8 @@ try
 {
     var values = new Dictionary<string, string>(StringComparer.Ordinal);
     var switches = new HashSet<string>(StringComparer.Ordinal);
-    var flags = new[] { "--initial-cache", "--no-initial-cache", "--no-build-runtime", "--save-settings" };
-    var options = new[] { "--engine", "--workspace", "--output", "--configuration", "--platform", "--assets", "--compression", "--engine-build-dir", "--cmake" };
+    var flags = new[] { "--initial-cache", "--no-initial-cache", "--no-build-runtime", "--save-settings", "--run" };
+    var options = new[] { "--engine", "--workspace", "--output", "--configuration", "--platform", "--assets", "--compression", "--engine-build-dir", "--cmake", "--startup-scene", "--toolchain" };
     for (var index = 0; index < args.Length; ++index)
     {
         var name = args[index];
@@ -54,9 +55,12 @@ try
         Assets = Parse("--assets", packaging.Assets),
         Compression = Parse("--compression", packaging.Compression),
         IncludeInitialCache = switches.Contains("--initial-cache") || (!switches.Contains("--no-initial-cache") && packaging.IncludeInitialCache),
-        OutputDirectory = output
+        OutputDirectory = output,
+        ToolchainFile = values.GetValueOrDefault("--toolchain", packaging.ToolchainFile),
+        EngineBuildDirectory = values.GetValueOrDefault("--engine-build-dir", packaging.EngineBuildDirectory)
     };
-    settings = settings with { Configuration = values.GetValueOrDefault("--configuration", settings.Configuration) };
+    settings = settings with { Configuration = values.GetValueOrDefault("--configuration", settings.Configuration),
+        StartupScene = values.GetValueOrDefault("--startup-scene", settings.StartupScene) };
     settings.Platforms[platform] = packaging;
     settings.Validate();
     if (switches.Contains("--save-settings"))
@@ -66,7 +70,8 @@ try
     var request = new GameBuildRequest(workspace, engine, output, settings.Configuration, platform, packaging)
     {
         EngineBuildDirectory = values.GetValueOrDefault("--engine-build-dir"),
-        CMakeExecutable = values.GetValueOrDefault("--cmake", "cmake"),
+        CMakeExecutable = values.GetValueOrDefault("--cmake", GameBuildEnvironment.CMakeExecutable),
+        StartupScene = settings.StartupScene,
         BuildRuntime = !switches.Contains("--no-build-runtime")
     };
     var result = await new GameBuildService(new WorkspaceProcessRunner()).BuildAsync(request,
@@ -75,6 +80,10 @@ try
     {
         Console.Error.WriteLine(result.Error);
         return 1;
+    }
+    if (switches.Contains("--run"))
+    {
+        Console.WriteLine("Game running: PID " + GameBuildService.Run(result));
     }
     return 0;
 
@@ -97,7 +106,8 @@ catch (OperationCanceledException)
     Console.Error.WriteLine("Game export cancelled.");
     return 130;
 }
-catch (Exception error) when (error is IOException or ArgumentException or InvalidOperationException or System.Text.Json.JsonException)
+catch (Exception error) when (error is IOException or InvalidDataException or ArgumentException or InvalidOperationException or
+    System.ComponentModel.Win32Exception or System.Text.Json.JsonException)
 {
     Console.Error.WriteLine(error.Message);
     return 1;

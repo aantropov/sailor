@@ -569,13 +569,21 @@ ArchiveMountPtr FileSystem::MountZipArchive(const std::filesystem::path& root,
 	{
 		auto implementation = TSharedPtr<ArchiveMount::Impl>::Make();
 		std::error_code error;
-		implementation->root = std::filesystem::canonical(root, error);
-		if (error || !std::filesystem::is_directory(implementation->root) ||
+		implementation->root = std::filesystem::weakly_canonical(std::filesystem::absolute(root), error);
+		if (error || root.empty())
+		{
+			outDiagnostic = "Cannot resolve the archive mount namespace.";
+			return {};
+		}
+		const auto status = std::filesystem::status(implementation->root, error);
+		const bool bMissing = error == std::errc::no_such_file_or_directory ||
+			(!error && status.type() == std::filesystem::file_type::not_found);
+		if ((!bMissing && (error || !std::filesystem::is_directory(status))) ||
 			!implementation->Initialize(archive, outDiagnostic))
 		{
 			if (outDiagnostic.empty())
 			{
-				outDiagnostic = "Archive mount root must be an existing directory.";
+				outDiagnostic = "Archive mount root must be a directory namespace.";
 			}
 			return {};
 		}

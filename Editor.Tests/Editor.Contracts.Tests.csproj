@@ -236,6 +236,7 @@
     <Compile Include="..\Editor\Workspace\WorkspaceBuildService.cs" Link="Workspace\WorkspaceBuildService.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceProcess.cs" Link="Workspace\WorkspaceProcess.cs" />
     <Compile Include="..\Editor\Workspace\GameBuildService.cs" Link="Workspace\GameBuildService.cs" />
+    <Compile Include="..\Editor\Workspace\GameBuildEnvironment.cs" Link="Workspace\GameBuildEnvironment.cs" />
     <Compile Include="..\Editor\Workspace\GameBuildSettings.cs" Link="Workspace\GameBuildSettings.cs" />
   </ItemGroup>
 </Project>

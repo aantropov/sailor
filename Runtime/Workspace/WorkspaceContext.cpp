@@ -416,6 +416,7 @@ namespace
 		std::string_view engineReferenceKind,
 		std::filesystem::path& outEngineRoot,
 		std::filesystem::path& outEngineContent,
+		const TVector<std::filesystem::path>& archivedContentRoots,
 		std::string& outError)
 	{
 		if (rawEnginePath.find('\0') != std::string_view::npos)
@@ -429,6 +430,20 @@ namespace
 			? engineReference
 			: workspaceRoot / engineReference;
 		std::error_code pathError;
+		const auto virtualRoot = std::filesystem::weakly_canonical(requestedEngineRoot, pathError);
+		const auto virtualContent = virtualRoot / DefaultContentPath;
+		if (!pathError && IsPathWithin(workspaceRoot, virtualRoot) &&
+			std::any_of(archivedContentRoots.begin(), archivedContentRoots.end(),
+				[&virtualContent](const auto& root)
+				{
+					return IsPathWithin(root, virtualContent) && IsPathWithin(virtualContent, root);
+				}))
+		{
+			outEngineRoot = virtualRoot;
+			outEngineContent = virtualContent;
+			return true;
+		}
+		pathError.clear();
 		outEngineRoot = std::filesystem::canonical(requestedEngineRoot, pathError);
 		if (pathError || !std::filesystem::is_directory(outEngineRoot, pathError) || pathError)
 		{
@@ -686,6 +701,12 @@ Sailor::Workspace::WorkspaceContextResolveResult Sailor::Workspace::ResolveWorks
 	context.m_root = root;
 	EWorkspaceContextResolveStatus discoveryFailure = EWorkspaceContextResolveStatus::ManifestNotFound;
 	std::string error;
+	std::filesystem::path packageCache;
+	TVector<std::filesystem::path> archivedContentRoots;
+	if (!ResolvePackagePaths(root, packageCache, archivedContentRoots, error))
+	{
+		return Fail(EWorkspaceContextResolveStatus::ManifestInvalid, std::move(error));
+	}
 	if (!DiscoverManifest(
 			root,
 			requestedManifest,
@@ -718,6 +739,7 @@ Sailor::Workspace::WorkspaceContextResolveResult Sailor::Workspace::ResolveWorks
 				fields.m_engineReferenceKind,
 				context.m_engineRoot,
 				context.m_engineContent,
+				archivedContentRoots,
 				error))
 		{
 			return Fail(EWorkspaceContextResolveStatus::PathInvalid, std::move(error));
@@ -750,6 +772,11 @@ Sailor::Workspace::WorkspaceContextResolveResult Sailor::Workspace::ResolveWorks
 		return Fail(EWorkspaceContextResolveStatus::PathInvalid, std::move(error));
 	}
 
+	const bool bArchivedContent = std::any_of(archivedContentRoots.begin(), archivedContentRoots.end(),
+		[&context](const auto& archiveRoot)
+		{
+			return IsPathWithin(archiveRoot, context.m_content) && IsPathWithin(context.m_content, archiveRoot);
+		});
 	pathError.clear();
 	const bool bContentExists = std::filesystem::exists(context.m_content, pathError);
 	if (pathError)
@@ -766,7 +793,7 @@ Sailor::Workspace::WorkspaceContextResolveResult Sailor::Workspace::ResolveWorks
 			"Workspace content path is not a directory: '" +
 				PathToUtf8(context.m_content) + "'.");
 	}
-	if (!bContentExists && !IsDefaultContentPath(PathToUtf8(contentRelative)))
+	if (!bContentExists && !bArchivedContent && !IsDefaultContentPath(PathToUtf8(contentRelative)))
 	{
 		return Fail(
 			EWorkspaceContextResolveStatus::ContentMissing,
@@ -775,12 +802,7 @@ Sailor::Workspace::WorkspaceContextResolveResult Sailor::Workspace::ResolveWorks
 	}
 
 	CreatedDirectoriesRollback rollback;
-	std::filesystem::path packageCache;
-	if (!ResolvePackageCache(root, packageCache, error))
-	{
-		return Fail(EWorkspaceContextResolveStatus::ManifestInvalid, std::move(error));
-	}
-	if (!bContentExists &&
+	if (!bContentExists && !bArchivedContent &&
 		!EnsureDirectory(root, context.m_content, "contentPath", rollback, error))
 	{
 		return Fail(EWorkspaceContextResolveStatus::DirectoryCreationFailed, std::move(error));
@@ -790,7 +812,7 @@ Sailor::Workspace::WorkspaceContextResolveResult Sailor::Workspace::ResolveWorks
 		return Fail(EWorkspaceContextResolveStatus::DirectoryCreationFailed, std::move(error));
 	}
 
-	if (!RecanonicalizeDirectory(root, context.m_content, "contentPath", error) ||
+	if ((!bArchivedContent && !RecanonicalizeDirectory(root, context.m_content, "contentPath", error)) ||
 		(packageCache.empty() && !RecanonicalizeDirectory(root, context.m_cache, "cachePath", error)))
 	{
 		return Fail(EWorkspaceContextResolveStatus::PathInvalid, std::move(error));

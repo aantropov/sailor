@@ -50,7 +50,7 @@ public sealed class GameBuildNativeTests
             var result = await new GameBuildService(runner).BuildAsync(request, new ExportProgress(log));
             Assert.True(result.Succeeded, result.Error + "\nEvidence: " + root);
             Assert.False(File.Exists(Path.Combine(session.ContentDirectory, "model Я.gltf.asset")));
-            var exportedFiles = packaging == GameAssetPackaging.Zip ? ReadArchiveFiles(Path.Combine(result.OutputDirectory, "Content.zip")) :
+            var exportedFiles = packaging == GameAssetPackaging.Zip ? ReadArchiveFiles(Path.Combine(result.OutputDirectory, "Content.bundle")) :
                 Directory.GetFiles(Path.Combine(result.OutputDirectory, "Content"), "*", SearchOption.AllDirectories)
                     .Select(path => Path.GetRelativePath(Path.Combine(result.OutputDirectory, "Content"), path)).ToArray();
             Assert.Contains("model Я.gltf.asset", exportedFiles);

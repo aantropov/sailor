@@ -300,7 +300,7 @@ namespace
 		Save(source / "nested" / "payload.txt.asset",
 			YAML::Dump(CreateAssetInfoMetadata<AssetInfo>(id, "payload.txt")));
 		std::string diagnostic;
-		Require(WriteZipArchive(source, game / "Content.zip", EArchiveCompression::Balanced, diagnostic), diagnostic);
+		Require(WriteZipArchive(source, game / "Content.bundle", EArchiveCompression::Balanced, diagnostic), diagnostic);
 		auto resolved = Workspace::ResolveWorkspaceContext(game);
 		Require(resolved.IsSuccess(), resolved.m_message);
 		TVector<ArchiveMountPtr> mounts;
@@ -309,9 +309,11 @@ namespace
 			"ordinary workspaces must not require a package manifest");
 		const auto packageId = NewPackageId();
 		Save(game / "GamePackage.json", nlohmann::json{{"packageVersion", 1}, {"packageId", packageId},
-			{"initialCache", nullptr}, {"archives", {{{"root", "Content"}, {"file", "Content.zip"}}}}}.dump());
+			{"initialCache", nullptr}, {"archives", {{{"root", "Content"}, {"file", "Content.bundle"}}}}}.dump());
+		std::filesystem::remove_all(game / "Content");
 		resolved = Workspace::ResolveWorkspaceContext(game);
 		Require(resolved.IsSuccess(), resolved.m_message);
+		Require(!std::filesystem::exists(game / "Content"), "bundled content must not require a physical Content directory");
 		Require(resolved.m_context.IsPackaged(), "game package resolution must retain runtime ownership");
 		// Isolate test cache storage without changing HOME or shared process state.
 		const auto cache = resolved.m_context.GetCache();
@@ -370,10 +372,10 @@ namespace
 		for (const std::string manifest : {
 			R"({"packageVersion":2,"archives":[]})",
 			R"({"packageVersion":1,"packageVersion":1,"archives":[]})",
-			R"({"packageVersion":1,"archives":[{"root":"Cache","file":"Content.zip"}]})",
-			R"({"packageVersion":1,"archives":[{"root":"../assets","file":"Content.zip"}]})",
+			R"({"packageVersion":1,"archives":[{"root":"Cache","file":"Content.bundle"}]})",
+			R"({"packageVersion":1,"archives":[{"root":"../assets","file":"Content.bundle"}]})",
 			R"({"packageVersion":1,"archives":[{"root":"Content","file":"missing.zip"}]})",
-			R"({"packageVersion":1,"archives":[{"root":"Content","file":"Content.zip"},{"root":"Content","file":"Content.zip"}]})" })
+			R"({"packageVersion":1,"archives":[{"root":"Content","file":"Content.bundle"},{"root":"Content","file":"Content.bundle"}]})" })
 		{
 			auto document = nlohmann::json::parse(manifest);
 			document["packageId"] = packageId;
@@ -422,10 +424,10 @@ namespace
 			EArchiveCompression::Stored, diagnostic) && !std::filesystem::exists(game / "invalid.zip"),
 			"initial cache export must reject a different runtime/configuration identity without publishing output");
 		Save(sourceCache / "ShaderCache.yaml", envelope);
-		Require(Workspace::WriteInitialCacheArchive(authoring.m_context, game / "InitialCache.zip",
+		Require(Workspace::WriteInitialCacheArchive(authoring.m_context, game / "InitialCache.bundle",
 			EArchiveCompression::Balanced, diagnostic), diagnostic);
 		nlohmann::json document = {{"packageVersion", 1}, {"packageId", NewPackageId()},
-			{"archives", nlohmann::json::array()}, {"initialCache", "InitialCache.zip"}};
+			{"archives", nlohmann::json::array()}, {"initialCache", "InitialCache.bundle"}};
 		Save(game / "GamePackage.json", document.dump());
 		const auto resolved = Workspace::ResolveWorkspaceContext(game);
 		Require(resolved.IsSuccess(), resolved.m_message);
@@ -459,7 +461,7 @@ namespace
 		Require(loaded.IsLoaded() && loaded.m_payload == payload,
 			"seed must bind the shader envelope to the relocated workspace identity");
 		Save(cache / "Lods" / "mesh.bin", "runtime update");
-		std::filesystem::remove(game / "InitialCache.zip");
+		std::filesystem::remove(game / "InitialCache.bundle");
 		Require(Workspace::MountPackageContent(resolved.m_context, mounts, diagnostic) &&
 			ReadText(cache / "Lods" / "mesh.bin", contents) && contents == "runtime update",
 			"later launches must preserve writable cache updates and skip reseeding");
@@ -475,7 +477,7 @@ namespace
 			"moving an initialized legacy package must not invalidate its seeded shader cache");
 		std::filesystem::rename(movedGame, game);
 		std::filesystem::remove_all(cache);
-		Save(game / "InitialCache.zip", RawZip({{"EditorSettings.yaml", "unexpected authoring state"}}));
+		Save(game / "InitialCache.bundle", RawZip({{"EditorSettings.yaml", "unexpected authoring state"}}));
 		Require(!Workspace::MountPackageContent(resolved.m_context, mounts, diagnostic) &&
 			!std::filesystem::exists(cache), "failed seeding must leave no partial runtime cache");
 	}

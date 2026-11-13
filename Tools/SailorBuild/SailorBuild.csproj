@@ -8,6 +8,7 @@
   <ItemGroup>
     <Compile Include="../../Editor/Workspace/GameBuildSettings.cs" Link="GameBuildSettings.cs" />
     <Compile Include="../../Editor/Workspace/GameBuildService.cs" Link="GameBuildService.cs" />
+    <Compile Include="../../Editor/Workspace/GameBuildEnvironment.cs" Link="GameBuildEnvironment.cs" />
     <Compile Include="../../Editor/Workspace/WorkspaceProcess.cs" Link="WorkspaceProcess.cs" />
     <Compile Include="../../Editor/Workspace/WorkspacePathPolicy.cs" Link="WorkspacePathPolicy.cs" />
   </ItemGroup>

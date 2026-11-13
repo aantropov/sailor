@@ -75,15 +75,19 @@ public sealed class GameBuildServiceTests : IDisposable
         Assert.True(result.Succeeded, result.Error);
         using var package = JsonDocument.Parse(File.ReadAllText(Path.Combine(Output, "GamePackage.json")));
         Assert.Equal(2, package.RootElement.GetProperty("archives").GetArrayLength());
-        Assert.Equal("InitialCache.zip", package.RootElement.GetProperty("initialCache").GetString());
-        Assert.True(Directory.Exists(Path.Combine(Output, "Content")));
-        Assert.Empty(Directory.EnumerateFileSystemEntries(Path.Combine(Output, "Content")));
+        Assert.Equal("InitialCache.bundle", package.RootElement.GetProperty("initialCache").GetString());
+        Assert.False(Directory.Exists(Path.Combine(Output, "Content")));
+        Assert.False(Directory.Exists(Path.Combine(Output, "Engine")));
+        Assert.False(Directory.Exists(Path.Combine(Output, "InitialCache")));
+        Assert.Empty(Directory.EnumerateFiles(Output, "*.zip", SearchOption.AllDirectories));
+        Assert.Equal(new[] { "Content.bundle", "EngineContent.bundle", "InitialCache.bundle" },
+            Directory.EnumerateFiles(Output, "*.bundle").Select(Path.GetFileName).Order(StringComparer.Ordinal));
         foreach (var invocation in runner.Invocations.Where(invocation => invocation.Arguments[0] is "--pack-assets" or "--pack-cache"))
         {
             Assert.Equal(compression.ToString().ToLowerInvariant(), invocation.Arguments[3]);
         }
         Assert.Equal(3, runner.Invocations.Count(invocation => invocation.Arguments[0] is "--pack-assets" or "--pack-cache"));
-        using var zip = ZipFile.OpenRead(Path.Combine(Output, "Content.zip"));
+        using var zip = ZipFile.OpenRead(Path.Combine(Output, "Content.bundle"));
         Assert.NotNull(zip.GetEntry("game.txt"));
     }
 
@@ -145,12 +149,15 @@ public sealed class GameBuildServiceTests : IDisposable
     [Fact]
     public void PlatformSettingsRoundTripAndRejectUnversionedDuplicateOrUnknownData()
     {
-        var settings = new GameBuildSettings { Configuration = "Debug" };
+        var settings = new GameBuildSettings { Configuration = "Debug", StartupScene = "Levels/Start Я.world" };
         settings.Platforms[GameBuildPlatform.Windows] = new() { Assets = GameAssetPackaging.Zip, Compression = GameArchiveCompression.Stored };
-        settings.Platforms[GameBuildPlatform.Linux] = new() { IncludeInitialCache = true, OutputDirectory = "/output Я" };
+        settings.Platforms[GameBuildPlatform.Linux] = new() { IncludeInitialCache = true, OutputDirectory = "/output Я", ToolchainFile = "/cross Я.cmake", EngineBuildDirectory = "/engine build Я" };
         GameBuildSettingsStore.Save(Workspace, settings);
         var loaded = GameBuildSettingsStore.Load(Workspace);
         Assert.Equal("Debug", loaded.Configuration);
+        Assert.Equal(settings.StartupScene, loaded.StartupScene);
+        Assert.Equal("/cross Я.cmake", loaded.Platforms[GameBuildPlatform.Linux].ToolchainFile);
+        Assert.Equal("/engine build Я", loaded.Platforms[GameBuildPlatform.Linux].EngineBuildDirectory);
         Assert.Equal(GameArchiveCompression.Stored, loaded.Platforms[GameBuildPlatform.Windows].Compression);
         Assert.True(loaded.Platforms[GameBuildPlatform.Linux].IncludeInitialCache);
         Assert.Equal(GameAssetPackaging.Folders, loaded.Platforms[GameBuildPlatform.MacOS].Assets);
@@ -162,11 +169,140 @@ public sealed class GameBuildServiceTests : IDisposable
         }
     }
 
+    [Theory]
+    [InlineData("Debug")]
+    [InlineData("Release")]
+    public async Task StartupSceneAndConfigurationReachTheExportedGameAndLauncher(string configuration)
+    {
+        const string scene = "Levels/Первый ' остров.world";
+        var sceneFile = Path.Combine(Workspace, "Content", scene);
+        Directory.CreateDirectory(Path.GetDirectoryName(sceneFile)!);
+        File.WriteAllText(sceneFile, "scene");
+        var executable = "SailorEngine-" + configuration + (OperatingSystem.IsWindows() ? ".exe" : "");
+        File.WriteAllText(Path.Combine(Engine, "bin", executable), "runtime");
+        var result = await new GameBuildService(runner).BuildAsync(Request() with
+        {
+            Configuration = configuration, StartupScene = scene
+        });
+        Assert.True(result.Succeeded, result.Error);
+        var invocation = Assert.IsType<WorkspaceProcessInvocation>(result.RunInvocation);
+        Assert.Equal(Path.Combine(result.OutputDirectory, "bin", executable), invocation.FileName);
+        Assert.Equal(result.OutputDirectory, invocation.WorkingDirectory);
+        Assert.Equal(new[] { "--workspace", result.OutputDirectory, "--world", scene }, invocation.Arguments);
+        Assert.Contains(runner.Invocations, command => command.Arguments.Contains("--config") && command.Arguments.Contains(configuration));
+        Assert.True(File.Exists(result.LogFile));
+        Assert.True(File.Exists(Path.Combine(Output, "Content", scene)));
+        if (!OperatingSystem.IsWindows())
+        {
+            // Execute the emitted shell launcher, including quoting, instead of checking its source text.
+            File.WriteAllText(invocation.FileName, "#!/bin/sh\nprintf '%s\\n' \"$@\" > launch-arguments.txt\n");
+            File.SetUnixFileMode(invocation.FileName, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            var launcher = Path.Combine(Output, OperatingSystem.IsMacOS() ? "Sailor.command" : "Sailor.sh");
+            var launch = await new WorkspaceProcessRunner().RunAsync(new("/bin/sh", [launcher], Output));
+            Assert.True(launch.Succeeded, launch.Output);
+            var actual = File.ReadAllLines(Path.Combine(Output, "launch-arguments.txt"));
+            Assert.Equal("--workspace", actual[0]);
+            Assert.True(WorkspacePathPolicy.IsSamePath(result.OutputDirectory, actual[1]));
+            Assert.Equal(new[] { "--world", scene }, actual.Skip(2));
+        }
+    }
+
+    [Theory]
+    [InlineData("../outside.world")]
+    [InlineData("missing.world")]
+    [InlineData("asset.txt")]
+    public async Task InvalidStartupSceneDoesNotPublishOrCompileTheModule(string scene)
+    {
+        var result = await new GameBuildService(runner).BuildAsync(Request() with { StartupScene = scene });
+        Assert.False(result.Succeeded);
+        Assert.Contains("startup scene", result.Error);
+        Assert.False(Directory.Exists(Output));
+        Assert.DoesNotContain(runner.Invocations, invocation => invocation.Arguments.Contains("--build"));
+        Assert.Contains("Build failed", File.ReadAllText(result.LogFile!));
+    }
+
+    [Fact]
+    public async Task ConfiguredCrossToolchainRunsTargetToolsThroughItsRunnerAndKeepsCMakeNative()
+    {
+        var platform = GameBuildSettings.HostPlatform == GameBuildPlatform.Linux ? GameBuildPlatform.Windows : GameBuildPlatform.Linux;
+        var toolchain = Path.Combine(root, "target toolchain.cmake");
+        var emulator = Path.Combine(root, "target runner" + (OperatingSystem.IsWindows() ? ".exe" : ""));
+        File.WriteAllText(toolchain, "toolchain fixture");
+        File.WriteAllText(emulator, "runner fixture");
+        runner.Platform = platform;
+        runner.TargetRunner = emulator;
+        File.WriteAllText(Path.Combine(Engine, "bin", "SailorEngine-Release" + (platform == GameBuildPlatform.Windows ? ".exe" : "")), "runtime");
+        var result = await new GameBuildService(runner).BuildAsync(Request(new() { ToolchainFile = toolchain }) with { Platform = platform });
+        Assert.True(result.Succeeded, result.Error);
+        var describe = Assert.Single(runner.Invocations, invocation => invocation.Arguments.Contains("--describe-workspace"));
+        Assert.Equal(emulator, describe.FileName);
+        Assert.Contains(runner.Invocations, invocation => invocation.FileName == emulator && invocation.Arguments.Contains("--validate-workspace-module"));
+        Assert.Contains(runner.Invocations, invocation => invocation.FileName != emulator && invocation.Arguments.Contains("-DCMAKE_TOOLCHAIN_FILE=" + toolchain));
+        Assert.Equal(emulator, result.RunInvocation!.FileName);
+        Assert.Contains(Path.Combine(result.OutputDirectory, "bin", "SailorEngine-Release" + (platform == GameBuildPlatform.Windows ? ".exe" : "")), result.RunInvocation.Arguments);
+    }
+
+    [Fact]
+    public async Task MissingCrossToolchainExplainsUnavailabilityBeforeInvokingTargetBinaries()
+    {
+        var platform = GameBuildSettings.HostPlatform == GameBuildPlatform.Linux ? GameBuildPlatform.Windows : GameBuildPlatform.Linux;
+        var result = await new GameBuildService(runner).BuildAsync(Request() with { Platform = platform });
+        Assert.False(result.Succeeded);
+        Assert.Contains("toolchain", result.Error);
+        Assert.Empty(runner.Invocations);
+    }
+
+    [Fact]
+    public async Task CrossToolchainMustMatchSelectedPlatformAndHaveAnInstalledRunner()
+    {
+        var target = GameBuildSettings.HostPlatform == GameBuildPlatform.Linux ? GameBuildPlatform.Windows : GameBuildPlatform.Linux;
+        var toolchain = Path.Combine(root, "cross.cmake");
+        File.WriteAllText(toolchain, "toolchain fixture");
+        runner.ProbeSystem = "WrongSystem";
+        var mismatch = await GameBuildEnvironment.CheckAsync(Workspace, target, toolchain, runner);
+        Assert.False(mismatch.CanBuild);
+        Assert.Contains("WrongSystem", mismatch.Detail);
+        runner.Platform = target;
+        runner.ProbeSystem = null;
+        var noRunner = await GameBuildEnvironment.CheckAsync(Workspace, target, toolchain, runner);
+        Assert.False(noRunner.CanBuild);
+        Assert.Contains("CMAKE_CROSSCOMPILING_EMULATOR", noRunner.Detail);
+        runner.TargetRunner = Path.Combine(root, "missing runner");
+        var missingRunner = await GameBuildEnvironment.CheckAsync(Workspace, target, toolchain, runner);
+        Assert.False(missingRunner.CanBuild);
+        Assert.Contains("not installed", missingRunner.Detail);
+    }
+
+    [Fact]
+    public void NativeBuildDiscoveryReusesOnlyTheMatchingEngineAndConfiguration()
+    {
+        var build = Path.Combine(Engine, "build-current");
+        var system = Path.Combine(build, "CMakeFiles", "4.2.0");
+        Directory.CreateDirectory(system);
+        File.WriteAllText(Path.Combine(build, "CMakeCache.txt"),
+            "CMAKE_HOME_DIRECTORY:INTERNAL=" + Engine + "\nCMAKE_BUILD_TYPE:STRING=Release\n");
+        var systemName = GameBuildSettings.HostPlatform switch
+        {
+            GameBuildPlatform.Windows => "Windows",
+            GameBuildPlatform.Linux => "Linux",
+            _ => "Darwin"
+        };
+        File.WriteAllText(Path.Combine(system, "CMakeSystem.cmake"), $"set(CMAKE_SYSTEM_NAME \"{systemName}\")\n");
+        Assert.Equal(build, GameBuildEnvironment.FindEngineBuild(Engine, GameBuildSettings.HostPlatform, "Release"));
+        Assert.NotEqual(build, GameBuildEnvironment.FindEngineBuild(Engine, GameBuildSettings.HostPlatform, "Debug"));
+        File.WriteAllText(Path.Combine(build, "CMakeCache.txt"),
+            "CMAKE_HOME_DIRECTORY:INTERNAL=" + Workspace + "\nCMAKE_BUILD_TYPE:STRING=Release\n");
+        Assert.NotEqual(build, GameBuildEnvironment.FindEngineBuild(Engine, GameBuildSettings.HostPlatform, "Release"));
+    }
+
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     sealed class FakeRunner(string workspace, string engine) : IWorkspaceProcessRunner
     {
         public List<WorkspaceProcessInvocation> Invocations { get; } = [];
+        public GameBuildPlatform Platform { get; set; } = GameBuildSettings.HostPlatform;
+        public string? TargetRunner { get; set; }
+        public string? ProbeSystem { get; set; }
         public bool FailArchive { get; set; }
         public string? FailCommand { get; set; }
         public Action? BeforeArchive { get; set; }
@@ -176,7 +312,13 @@ public sealed class GameBuildServiceTests : IDisposable
         {
             cancellationToken.ThrowIfCancellationRequested();
             Invocations.Add(invocation);
-            var arguments = invocation.Arguments;
+            var arguments = invocation.FileName == TargetRunner ? invocation.Arguments.Skip(1).ToArray() : invocation.Arguments;
+            if (arguments[0] == "-S" && arguments[1].Contains("BuildToolchains"))
+            {
+                var build = arguments[arguments.ToList().IndexOf("-B") + 1];
+                Directory.CreateDirectory(build);
+                File.WriteAllText(Path.Combine(build, "Target.txt"), $"system={ProbeSystem ?? (Platform == GameBuildPlatform.Windows ? "Windows" : Platform == GameBuildPlatform.MacOS ? "Darwin" : "Linux")}\nprocessor=test-arch\nrunner={TargetRunner}\n");
+            }
             if (arguments[0] == FailCommand)
             {
                 return Task.FromResult(new WorkspaceProcessResult(1, "tool validation failed", TimeSpan.Zero));
@@ -192,12 +334,18 @@ public sealed class GameBuildServiceTests : IDisposable
             else if (arguments[0] == "--build")
             {
                 var project = Path.GetDirectoryName(arguments[1])!;
-                var target = Path.Combine(project, "Binaries", "Release");
+                var configuration = arguments[arguments.ToList().IndexOf("--config") + 1];
+                var target = Path.Combine(project, "Binaries", configuration);
                 Directory.CreateDirectory(target);
-                File.WriteAllText(Path.Combine(target, ModuleName), "module");
-                if (OperatingSystem.IsWindows())
+                File.WriteAllText(Path.Combine(target, Platform switch
                 {
-                    File.WriteAllText(Path.Combine(project, "runtime-dlls-Release.txt"), "");
+                    GameBuildPlatform.Windows => "Game.dll",
+                    GameBuildPlatform.MacOS => "libGame.dylib",
+                    _ => "libGame.so"
+                }), "module");
+                if (Platform == GameBuildPlatform.Windows)
+                {
+                    File.WriteAllText(Path.Combine(project, "runtime-dlls-" + configuration + ".txt"), "");
                 }
             }
             else if (arguments[0] == "--copy-assets")

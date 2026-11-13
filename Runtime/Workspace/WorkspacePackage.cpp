@@ -178,7 +178,7 @@ namespace
 	}
 
 	bool ResolvePackagePath(const std::filesystem::path& root, const std::string& text,
-		std::filesystem::path& result)
+		std::filesystem::path& result, bool bDirectoryNamespace = false)
 	{
 		const auto relative = PathFromUtf8(text);
 		if (relative.empty() || relative.is_absolute() || relative.has_root_name() ||
@@ -194,8 +194,17 @@ namespace
 			}
 		}
 		std::error_code error;
-		result = std::filesystem::canonical(root / relative, error);
-		return !error && IsPathWithin(root, result);
+		result = bDirectoryNamespace
+			? std::filesystem::weakly_canonical(root / relative, error)
+			: std::filesystem::canonical(root / relative, error);
+		if (error || !IsPathWithin(root, result))
+		{
+			return false;
+		}
+		const auto status = std::filesystem::status(result, error);
+		return !bDirectoryNamespace ||
+			(error == std::errc::no_such_file_or_directory ||
+				(!error && (status.type() == std::filesystem::file_type::not_found || std::filesystem::is_directory(status))));
 	}
 
 	bool SamePath(const std::filesystem::path& first, const std::filesystem::path& second)
@@ -242,7 +251,8 @@ namespace
 		std::string& outDiagnostic)
 	{
 		std::filesystem::path cache;
-		if (!Workspace::ResolvePackageCache(context.GetRoot(), cache, outDiagnostic) ||
+		TVector<std::filesystem::path> contentRoots;
+		if (!Workspace::ResolvePackagePaths(context.GetRoot(), cache, contentRoots, outDiagnostic) ||
 			!SamePath(cache, context.GetCache()))
 		{
 			outDiagnostic = "Package cache changed after workspace resolution. " + outDiagnostic;
@@ -267,7 +277,7 @@ namespace
 		std::filesystem::path archive;
 		std::filesystem::path source;
 		if (!ResolvePackagePath(context.GetRoot(), document.at("initialCache").get<std::string>(), archive) ||
-			!ResolvePackagePath(context.GetRoot(), "InitialCache", source))
+			!ResolvePackagePath(context.GetRoot(), "InitialCache", source, true))
 		{
 			outDiagnostic = "Initial cache archive and its InitialCache mount directory must be inside the package.";
 			return false;
@@ -304,10 +314,12 @@ namespace
 	}
 }
 
-bool Workspace::ResolvePackageCache(const std::filesystem::path& root,
-	std::filesystem::path& outCache, std::string& outDiagnostic)
+bool Workspace::ResolvePackagePaths(const std::filesystem::path& root,
+	std::filesystem::path& outCache, TVector<std::filesystem::path>& outContentRoots,
+	std::string& outDiagnostic)
 {
 	outCache.clear();
+	outContentRoots.Clear();
 	outDiagnostic.clear();
 	try
 	{
@@ -319,6 +331,26 @@ bool Workspace::ResolvePackageCache(const std::filesystem::path& root,
 		if (document.is_null())
 		{
 			return true;
+		}
+		for (const auto& archive : document.at("archives"))
+		{
+			std::filesystem::path contentRoot;
+			std::filesystem::path file;
+			if (!archive.is_object() || archive.size() != 2 ||
+				!ResolvePackagePath(root, archive.at("root").get<std::string>(), contentRoot, true) ||
+				!ResolvePackagePath(root, archive.at("file").get<std::string>(), file) ||
+				file.extension() != ".bundle")
+			{
+				outDiagnostic = "Package content requires an owned virtual root and an existing .bundle file.";
+				return false;
+			}
+			outContentRoots.Add(contentRoot);
+		}
+		if (document.at("initialCache").is_string() &&
+			!document.at("initialCache").get_ref<const std::string&>().ends_with(".bundle"))
+		{
+			outDiagnostic = "Initial cache requires a .bundle file.";
+			return false;
 		}
 		const auto userRoot = UserCacheRoot();
 		if (!userRoot.is_absolute())
@@ -395,7 +427,7 @@ bool Workspace::MountPackageContent(const WorkspaceContext& context,
 			std::filesystem::path root;
 			std::filesystem::path file;
 			if (!archive.is_object() || archive.size() != 2 ||
-				!ResolvePackagePath(context.GetRoot(), archive.at("root").get<std::string>(), root) ||
+				!ResolvePackagePath(context.GetRoot(), archive.at("root").get<std::string>(), root, true) ||
 				!ResolvePackagePath(context.GetRoot(), archive.at("file").get<std::string>(), file) ||
 				(!SamePath(root, context.GetContent()) && !SamePath(root, context.GetEngineContent())))
 			{

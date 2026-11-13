@@ -15,12 +15,15 @@ public sealed record GamePlatformBuildSettings
     public GameArchiveCompression Compression { get; init; } = GameArchiveCompression.Balanced;
     public bool IncludeInitialCache { get; init; }
     public string OutputDirectory { get; init; } = string.Empty;
+    public string ToolchainFile { get; init; } = string.Empty;
+    public string EngineBuildDirectory { get; init; } = string.Empty;
 }
 
 public sealed record GameBuildSettings
 {
     [JsonRequired] public int SchemaVersion { get; init; } = 1;
     public string Configuration { get; init; } = "Release";
+    public string StartupScene { get; init; } = string.Empty;
     public Dictionary<GameBuildPlatform, GamePlatformBuildSettings> Platforms { get; init; } =
         Enum.GetValues<GameBuildPlatform>().ToDictionary(platform => platform, _ => new GamePlatformBuildSettings());
 
@@ -30,7 +33,7 @@ public sealed record GameBuildSettings
 
     public void Validate()
     {
-        if (SchemaVersion != 1 || Configuration is not ("Debug" or "Release") || Platforms is null ||
+        if (SchemaVersion != 1 || Configuration is not ("Debug" or "Release") || StartupScene is null || Platforms is null ||
             Platforms.Count != 3 || Enum.GetValues<GameBuildPlatform>().Any(platform => !Platforms.ContainsKey(platform)))
         {
             throw new InvalidDataException("Build settings require schemaVersion 1, Debug/Release and all three desktop platforms.");
@@ -38,7 +41,7 @@ public sealed record GameBuildSettings
         foreach (var settings in Platforms.Values)
         {
             if (settings is null || !Enum.IsDefined(settings.Assets) || !Enum.IsDefined(settings.Compression) ||
-                settings.OutputDirectory is null)
+                settings.OutputDirectory is null || settings.ToolchainFile is null || settings.EngineBuildDirectory is null)
             {
                 throw new InvalidDataException("Invalid platform build options.");
             }
