@@ -43,7 +43,7 @@ def verify(assets: Path, target: str) -> None:
         probe_path = Path((build / 'probe-Release.txt').read_text(encoding='utf-8'))
         environment = os.environ.copy()
         environment['PATH'] = str(package / 'bin') + os.pathsep + environment.get('PATH', '')
-        actual = subprocess.check_output([str(probe_path)], text=True, env=environment).strip()
+        actual = subprocess.check_output([str(probe_path)], text=True, encoding='utf-8', env=environment).strip()
         if actual != version:
             raise ValueError('An external SDK consumer loaded an unexpected runtime version.')
         print(f'Extracted {target}: runtime, workspace content and compiled SDK consumer match {version}')

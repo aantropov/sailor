@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import unittest
 import zipfile
@@ -18,6 +20,20 @@ from publish_release import verify_assets
 
 
 class ReleasePackagingTests(unittest.TestCase):
+    def test_runtime_utf8_output_does_not_depend_on_the_host_locale(self):
+        environment = os.environ.copy()
+        environment.update(PYTHONUTF8='0', PYTHONCOERCECLOCALE='0', LC_ALL='C')
+        script = r'''
+import sys
+sys.path.insert(0, sys.argv[1])
+from package_release import run
+payload = bytes([208,159,209,128,208,190,208,181,208,186,209,130])
+actual = run(sys.executable, '-c', 'import sys; sys.stdout.buffer.write(' + repr(payload) + ')')
+assert actual == '\u041f\u0440\u043e\u0435\u043a\u0442'
+'''
+        subprocess.run([sys.executable, '-c', script, str(ROOT / 'Tools' / 'Release')],
+                       env=environment, check=True, capture_output=True)
+
     def test_version_validation(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

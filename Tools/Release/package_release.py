@@ -34,7 +34,7 @@ def sha256_file(path: Path) -> str:
 
 
 def run(*arguments: object) -> str:
-    return subprocess.check_output([str(argument) for argument in arguments], text=True).strip()
+    return subprocess.check_output([str(argument) for argument in arguments], text=True, encoding='utf-8').strip()
 
 
 def copy_directory(source: Path, target: Path) -> None:
