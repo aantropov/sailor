@@ -18,6 +18,7 @@
 #include "AssetRegistry/AssetCache.h"
 #include "Tasks/Tasks.h"
 #include "Workspace/WorkspacePathEncoding.h"
+#include "Platform/FileSystem.h"
 
 namespace Sailor
 {
@@ -91,51 +92,25 @@ namespace Sailor
 			Tasks::Scheduler* scheduler);
 		SAILOR_API virtual ~AssetRegistry() override;
 		const Workspace::WorkspaceContext& GetWorkspaceContext() const { return m_workspaceContext; }
+		SAILOR_API bool ValidateContentForPackaging(std::string& diagnostic) const;
 
 		template<typename TBinaryType, typename TFilepath>
 		static bool ReadBinaryFile(const TFilepath& filename, TVector<TBinaryType>& buffer)
 		{
-			std::ifstream file(NativeFilePath(filename), std::ios::ate | std::ios::binary);
-			file.unsetf(std::ios::skipws);
-
-			if (!file.is_open())
-			{
-				return false;
-			}
-
-			size_t fileSize = (size_t)file.tellg();
-			buffer.Clear();
-
-			size_t mod = fileSize % sizeof(TBinaryType);
-			size_t size = fileSize / sizeof(TBinaryType) + (mod ? 1 : 0);
-			buffer.Resize(size);
-
-			//buffer.resize(fileSize / sizeof(T));
-
-			file.seekg(0, std::ios::beg);
-			file.read(reinterpret_cast<char*>(buffer.GetData()), fileSize);
-
-			file.close();
-			return true;
+			return FileSystem::ReadBinary(NativeFilePath(filename), buffer);
 		}
 
 		template<typename TTextType, typename TFilepath>
 		static bool ReadTextFile(const TFilepath& filename, TTextType& outText)
 		{
 			const auto& path = NativeFilePath(filename);
-			std::ifstream file(path, std::ios::in | std::ios::ate);
-			if (!file.is_open())
+			std::string text;
+			if (!FileSystem::ReadText(path, text))
 			{
+				outText = {};
 				return false;
 			}
-
-			file.seekg(0, std::ios::beg);
-
-			std::stringstream buffer;
-			buffer << file.rdbuf();
-			outText = buffer.str();
-
-			file.close();
+			outText = std::move(text);
 #if defined(SAILOR_FILE_IO_TEST_HOOKS)
 			NotifyTextReadForTests(path);
 #endif
@@ -143,19 +118,29 @@ namespace Sailor
 		}
 
 		template<typename TBinaryType, typename TFilepath>
-		static void WriteBinaryFile(const TFilepath& filename, const TVector<TBinaryType>& buffer)
+		static bool WriteBinaryFile(const TFilepath& filename, const TVector<TBinaryType>& buffer)
 		{
-			std::ofstream file(NativeFilePath(filename), std::ofstream::binary);
-			file.write(reinterpret_cast<const char*>(buffer.GetData()), buffer.Num() * sizeof(buffer[0]));
-			file.close();
+			auto file = FileSystem::OpenWrite(NativeFilePath(filename));
+			if (!file)
+			{
+				return false;
+			}
+			file->write(reinterpret_cast<const char*>(buffer.GetData()), buffer.Num() * sizeof(buffer[0]));
+			file->flush();
+			return static_cast<bool>(*file);
 		}
 
 		template<typename TStringType, typename TFilepath>
-		static void WriteTextFile(const TFilepath& filename, const TStringType& text)
+		static bool WriteTextFile(const TFilepath& filename, const TStringType& text)
 		{
-			std::ofstream file(NativeFilePath(filename));
-			file << text;
-			file.close();
+			auto file = FileSystem::OpenWrite(NativeFilePath(filename));
+			if (!file)
+			{
+				return false;
+			}
+			*file << text;
+			file->flush();
+			return static_cast<bool>(*file);
 		}
 
 		SAILOR_API static bool ReadAllTextFile(const std::string& filename, std::string& text);

@@ -60,6 +60,8 @@ namespace Sailor::Tests
 	void RunLandscapeCommandTests(const std::filesystem::path& workspace);
 	void RunPrefabImporterCommandTests(const std::filesystem::path& workspace);
 	void RunFrameGraphNodeCommandTests(const std::filesystem::path& workspace);
+	void RunDepthOcclusionCommandTests(const std::filesystem::path& workspace);
+	void RunDefaultDepthCommandTests(const std::filesystem::path& workspace);
 	void RunShaderLifecycleCommandTests(const std::filesystem::path& workspace);
 	void RunCloudNoiseCommandTests(const std::filesystem::path& workspace);
 	void RunSkyStarsCommandTests(const std::filesystem::path& workspace);
@@ -1353,6 +1355,7 @@ namespace Sailor::Tests
 	int RunRenderContractsGpu(int argc, const char** argv, bool bTestPathTracer)
 	{
 		TempDirectory workspace("render-contracts");
+		const bool bShaderLifecycleOnly = argc > 1 && std::string_view(argv[1]) == "--gpu-shader-lifecycle";
 		int result = 1;
 		try
 		{
@@ -1362,7 +1365,8 @@ namespace Sailor::Tests
 			{
 				if (std::string_view(argv[i]) == "--workspace" && i + 1 < argc) enginePath = argv[i + 1];
 				if (std::string_view(argv[i]) == "--gpu-render-contracts-msaa2" ||
-					std::string_view(argv[i]) == "--gpu-pathtracer-images-msaa2") msaaSamples = 2;
+					std::string_view(argv[i]) == "--gpu-pathtracer-images-msaa2" ||
+					std::string_view(argv[i]) == "--gpu-default-depth-msaa2") msaaSamples = 2;
 			}
 			WriteScene(workspace, enginePath, msaaSamples);
 			const auto root = workspace.Get().string();
@@ -1370,18 +1374,32 @@ namespace Sailor::Tests
 			arguments.insert(arguments.end(), { "--workspace", root.c_str(), "--editor", "--port", "0", "--world", "" });
 			Require(App::Initialize(arguments.data(), static_cast<int32_t>(arguments.size())) == EAppInitializationResult::Ready &&
 				App::IsRendererInitialized(), "render contracts must initialize a hidden native renderer");
-			if (bTestPathTracer) TestHdrCompositing();
+			if (argc > 1 && std::string_view(argv[1]) == "--gpu-depth-occlusion")
+			{
+				RunDepthOcclusionCommandTests(workspace.Get());
+			}
+			else if (argc > 1 && std::string_view(argv[1]) == "--gpu-default-depth-msaa2")
+			{
+				RunDefaultDepthCommandTests(workspace.Get());
+			}
+			else if (bTestPathTracer)
+			{
+				TestHdrCompositing();
+			}
 			else
 			{
 				RunShaderLifecycleCommandTests(workspace.Get());
-				RunModelLodCommandTests(workspace.Get());
-				const auto previews = workspace.Get() / "Cache" / "Fingerprints";
-				Require(!std::filesystem::exists(previews) || std::filesystem::is_empty(previews),
-					"model import and LOD contracts must not generate preview images");
-				std::cout << "Model import and LOD contracts completed without preview images\n";
-				RunGIProbesCommandTests(workspace.Get());
-				RunLandscapeCommandTests(workspace.Get());
-				RunFrameGraphNodeCommandTests(workspace.Get());
+				if (!bShaderLifecycleOnly)
+				{
+					RunModelLodCommandTests(workspace.Get());
+					const auto previews = workspace.Get() / "Cache" / "Fingerprints";
+					Require(!std::filesystem::exists(previews) || std::filesystem::is_empty(previews),
+						"model import and LOD contracts must not generate preview images");
+					std::cout << "Model import and LOD contracts completed without preview images\n";
+					RunGIProbesCommandTests(workspace.Get());
+					RunLandscapeCommandTests(workspace.Get());
+					RunFrameGraphNodeCommandTests(workspace.Get());
+				}
 			}
 			result = 0;
 		}

@@ -81,6 +81,8 @@ namespace SailorEditor
 
 #if !MACCATALYST
             var build = new MenuBarItem { Text = "Build" };
+            build.Add(CreateWorkspaceMenuItem("Build Game…", () => MauiProgram.GetService<GameBuildWindowService>().ShowAsync()));
+            build.Add(new MenuFlyoutSeparator());
             build.Add(CreateWorkspaceMenuItem("Compile", () => _workspaceUi.CompileWorkspaceAsync()));
             build.Add(CreateWorkspaceMenuItem("Reconfigure", () => _workspaceUi.ReconfigureWorkspaceAsync()));
             build.Add(new MenuFlyoutSeparator());

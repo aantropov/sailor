@@ -1,3 +1,4 @@
+#include "Platform/FileSystem.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "Core/FileRevision.h"
 #include "Platform/AtomicFile.h"
@@ -34,11 +35,12 @@ namespace
 
 	bool ReadFileExactly(const std::filesystem::path& filepath, std::string& outContents)
 	{
-		std::ifstream file(filepath, std::ios::binary);
-		if (!file.is_open())
+		auto fileOwner = FileSystem::OpenRead(filepath);
+		if (!fileOwner)
 		{
 			return false;
 		}
+		std::istream& file = *fileOwner;
 
 		outContents.assign(
 			std::istreambuf_iterator<char>(file),

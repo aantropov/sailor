@@ -19,6 +19,7 @@
 
 namespace tinygltf
 {
+	class TinyGLTF;
 	class Material;
 	class Model;
 	class Node;
@@ -26,6 +27,8 @@ namespace tinygltf
 
 namespace Sailor::GltfImporterUtils
 {
+	SAILOR_API void ConfigureFileSystem(tinygltf::TinyGLTF& loader);
+
 	struct MaterialAlphaModeSettings
 	{
 		const char* m_renderQueue = "Opaque";

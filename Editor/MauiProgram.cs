@@ -38,6 +38,7 @@ namespace SailorEditor
             GtkGestures.Configure();
             LinuxBorderHandler.Configure();
             LinuxEntryHandler.Configure();
+            LinuxEditorHandler.Configure();
 #endif
             var builder = MauiApp.CreateBuilder();
             builder
@@ -55,6 +56,7 @@ namespace SailorEditor
 #if LINUX
                     handlers.AddHandler<Border, LinuxBorderHandler>();
                     handlers.AddHandler<Entry, LinuxEntryHandler>();
+                    handlers.AddHandler<Microsoft.Maui.Controls.Editor, LinuxEditorHandler>();
 #endif
 #if WINDOWS
                     handlers.AddHandler<WindowsMenuBarView, WindowsMenuBarHandler>();
@@ -157,6 +159,8 @@ namespace SailorEditor
             builder.Services.AddSingleton<McpWorkspaceOperations>();
             builder.Services.AddSingleton<McpCSharpEvaluator>();
             builder.Services.AddSingleton<IWorkspaceProcessRunner, WorkspaceProcessRunner>();
+            builder.Services.AddSingleton<GameBuildService>();
+            builder.Services.AddSingleton<GameBuildWindowService>();
             builder.Services.AddSingleton(services => new WorkspaceBuildService(
                 services.GetRequiredService<WorkspaceLifecycleService>(),
                 services.GetRequiredService<IWorkspaceProcessRunner>(),

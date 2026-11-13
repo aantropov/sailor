@@ -1,3 +1,4 @@
+#include "Platform/FileSystem.h"
 #include "AssetRegistry/Landscape/LandscapeVegetationAsset.h"
 #include "Platform/AtomicFile.h"
 
@@ -339,7 +340,7 @@ bool LandscapeVegetationAssetData::Load(
 {
 	outDiagnostic.clear();
 	std::error_code fileError;
-	const uint64_t fileSize = std::filesystem::file_size(filepath, fileError);
+	const uint64_t fileSize = FileSystem::FileSize(filepath, fileError);
 	if (fileError)
 	{
 		return Fail("Cannot inspect landscape vegetation file: " + fileError.message() + ".", outDiagnostic);
@@ -352,11 +353,12 @@ bool LandscapeVegetationAssetData::Load(
 
 	TVector<uint8_t> bytes;
 	bytes.Resize(static_cast<size_t>(fileSize));
-	std::ifstream stream(filepath, std::ios::binary);
-	if (!stream.is_open())
+	auto streamOwner = FileSystem::OpenRead(filepath);
+	if (!streamOwner)
 	{
 		return Fail("Cannot open landscape vegetation file.", outDiagnostic);
 	}
+	std::istream& stream = *streamOwner;
 	stream.read(
 		reinterpret_cast<char*>(bytes.GetData()),
 		static_cast<std::streamsize>(bytes.Num()));

@@ -15,6 +15,7 @@
 #include "RHI/RenderTarget.h"
 #include "RHI/Shader.h"
 #include "Workspace/WorkspacePathEncoding.h"
+#include "Support/ScopeExit.h"
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -429,6 +430,82 @@ void main() {
 		std::cout << "Shader load lifecycle: pending/finished GC, shared request, two diagnosed failures, same-asset repair, healthy permutation and debug/optimized GPU values passed\n";
 	}
 
+	void TestColdLoadDuringReloadPreparation(const std::filesystem::path& workspace)
+	{
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		auto* compiler = App::GetSubmodule<ShaderCompiler>();
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		const auto path = workspace / "Content" / "ColdAfterReloadQueued.shader";
+		YAML::Node document;
+		document["defines"].push_back("COLD");
+		document["glslCommon"] = "#version 450\n";
+		document["glslCompute"] = R"glsl(
+layout(local_size_x = 1) in;
+layout(set = 0, binding = 0, std430) buffer OutputData { uint values[]; } outputData;
+void main() {
+#ifdef COLD
+	outputData.values[0] = 29u;
+#else
+	outputData.values[0] = 17u;
+#endif
+}
+)glsl";
+		{
+			std::ofstream output(path);
+			output << document;
+			Require(static_cast<bool>(output), "concurrent cold/reload shader fixture must be written");
+		}
+		const auto id = registry->GetOrLoadFile(Workspace::PathToUtf8(path));
+		scheduler->WaitIdle({ EThreadType::Worker, EThreadType::Render, EThreadType::RHI, EThreadType::Main });
+		ShaderSetPtr warmShader;
+		Require(compiler->LoadShader_Immediate(id, warmShader) && warmShader->IsReady(),
+			"the existing permutation must be ready before queuing its reload");
+		const auto warmStage = warmShader->GetComputeShaderRHI();
+
+		std::latch renderEntered{ 1 }, renderRelease{ 1 };
+		auto renderGate = Tasks::CreateTask("Hold cold/reload publication"_h, [&]()
+			{
+				renderEntered.count_down();
+				renderRelease.wait();
+			}, EThreadType::Render);
+		renderGate->Run();
+		renderEntered.wait();
+		Tests::ScopeExit releaseRender([&]()
+			{
+				renderRelease.count_down();
+				renderGate->Wait();
+			});
+		ShaderSetPtr coldShader;
+		Tasks::TaskPtr<bool> reload;
+		Tasks::TaskPtr<ShaderSetPtr> cold;
+		Tasks::ITaskPtr preparation;
+		{
+			HoldShaderWorkers hold;
+			reload = ShaderCompilerTestAccess::ReloadShaderResources(*compiler, id);
+			preparation = ShaderCompilerTestAccess::GetLastPreparation(*compiler);
+			cold = compiler->LoadShader(id, coldShader, { "COLD" });
+			Require(reload && preparation && cold && !preparation->IsFinished() && !cold->IsFinished() &&
+				coldShader && !coldShader->IsReady(),
+				"the cold request must arrive after the reload is queued but before its target snapshot");
+		}
+		preparation->Wait();
+		cold->Wait();
+		Require(cold->GetResult() == coldShader && coldShader->IsReady() && !reload->IsFinished(),
+			"cold RHI publication must complete while the older reload is held on Render");
+		const auto coldStage = coldShader->GetComputeShaderRHI();
+		const auto coldDebugStage = coldShader->GetDebugComputeShaderRHI();
+		releaseRender.Run();
+		reload->Wait();
+		scheduler->WaitIdle({ EThreadType::Worker, EThreadType::Render, EThreadType::RHI });
+		Require(reload->GetResult() && warmShader->GetComputeShaderRHI() != warmStage,
+			"the older ready permutation must receive its queued replacement");
+		Require(coldShader->GetComputeShaderRHI() == coldStage && coldShader->GetDebugComputeShaderRHI() == coldDebugStage,
+			"a reload queued before a cold load must not publish that cold shader a second time on Render");
+		CheckShaderValue(warmShader, 17);
+		CheckShaderValue(coldShader, 29);
+		std::cout << "Concurrent shader publication: pending reload excludes later cold loads; stable RHI identity and GPU values passed\n";
+	}
+
 	template<typename Instance>
 	void CheckCullingReadback(RHIShaderPtr shader, bool bOcclusion)
 	{
@@ -622,6 +699,7 @@ namespace Sailor::Tests
 	void RunShaderLifecycleCommandTests(const std::filesystem::path& workspace)
 	{
 		TestShaderLoadRetry(workspace);
+		TestColdLoadDuringReloadPreparation(workspace);
 	}
 
 	void RunShaderInterfaceCommandTests()

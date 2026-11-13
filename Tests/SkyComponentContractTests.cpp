@@ -386,6 +386,17 @@ namespace
 		verify(SkyNodeProbe::LoadCloudsNoise((path / "unwritable.bin").string(), 2, generate));
 		Require(generationCount == 4,
 			"an unwritable cache must still return the generated in-memory volume");
+
+		const auto cancelledPath = cache.path / "cancelled.bin";
+		const auto cancelled = SkyNodeProbe::LoadCloudsNoise(cancelledPath.string(), 2,
+			+[]() -> TVector<uint8_t>
+			{
+				return {};
+			});
+		Require(cancelled.IsEmpty() && !std::filesystem::exists(cancelledPath),
+			"cancelled generation must not publish an incomplete cache");
+		verify(SkyNodeProbe::LoadCloudsNoise(cancelledPath.string(), 2, generate));
+		Require(generationCount == 5, "a later request must recover after cancelled generation");
 	}
 
 	glm::vec3 ReconstructEnvironmentDirection(

@@ -1693,13 +1693,11 @@ namespace
 
 	ShaderDependencyFile Dependency(
 		const std::string& virtualPath,
-		const std::string& winnerIdentity,
 		int64_t modificationTimeNanoseconds,
 		uint32_t mountKind)
 	{
 		ShaderDependencyFile dependency;
 		dependency.m_virtualPath = virtualPath;
-		dependency.m_winnerIdentity = winnerIdentity;
 		dependency.m_revision.m_modificationTimeNanoseconds = modificationTimeNanoseconds;
 		dependency.m_revision.m_bIsValid = true;
 		dependency.m_mountKind = mountKind;
@@ -1711,12 +1709,10 @@ namespace
 		TVector<ShaderDependencyFile> baselineDependencies;
 		baselineDependencies.Add(Dependency(
 			"Shaders/User.shader",
-			"/Engine/Content/Shaders/User.shader",
 			5000000000ll,
 			0));
 		baselineDependencies.Add(Dependency(
 			"Shaders/Library/Math.glsl",
-			"/Workspace/Content/Shaders/Library/Math.glsl",
 			6000000000ll,
 			1));
 
@@ -1736,10 +1732,13 @@ namespace
 			"backdated GLSL edits should invalidate the shader fingerprint");
 
 		TVector<ShaderDependencyFile> engineFallback = baselineDependencies;
-		engineFallback[1].m_winnerIdentity = "/Engine/Content/Shaders/Library/Math.glsl";
 		engineFallback[1].m_mountKind = 0;
 		Require(CalculateShaderDependencyFingerprint(engineFallback) != baseline,
 			"workspace-winner to Engine-fallback transitions should invalidate the shader fingerprint");
+		TVector<ShaderDependencyFile> movedInclude = baselineDependencies;
+		movedInclude[1].m_virtualPath = "Shaders/Library/Replacement.glsl";
+		Require(CalculateShaderDependencyFingerprint(movedInclude) != baseline,
+			"changing the winning virtual source must invalidate the shader fingerprint");
 	}
 
 	void TestMissingYamlIncludeFailsWithoutPartialSource()

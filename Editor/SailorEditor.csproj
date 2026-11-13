@@ -244,6 +244,8 @@
         <SailorRuntimeConfiguration>Release</SailorRuntimeConfiguration>
         <SailorRuntimeConfiguration Condition="'$(Configuration)' == 'Debug'">RelWithDebInfo</SailorRuntimeConfiguration>
         <SailorRuntimeConfiguration Condition="'$(Configuration)' == 'Debug' and $([MSBuild]::IsOSPlatform('osx'))">Debug</SailorRuntimeConfiguration>
+        <SailorMacNativeLibrary>$(SailorNativeBuildDirectory)/Lib/$(SailorRuntimeConfiguration)/Sailor-$(SailorRuntimeConfiguration).dylib</SailorMacNativeLibrary>
+        <SailorMacNativeLibrary Condition="Exists('$(SailorNativeBuildDirectory)/Lib/Sailor-$(SailorRuntimeConfiguration).dylib')">$(SailorNativeBuildDirectory)/Lib/Sailor-$(SailorRuntimeConfiguration).dylib</SailorMacNativeLibrary>
     </PropertyGroup>
 
     <!-- Compile Workspace uses the SDK from the same build as the embedded runtime. -->
@@ -263,7 +265,7 @@
     </Target>
 
     <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">
-        <Content Include="$(SailorNativeBuildDirectory)/Lib/$(SailorRuntimeConfiguration)/Sailor-$(SailorRuntimeConfiguration).dylib" Link="Sailor-$(SailorRuntimeConfiguration).dylib" CopyToOutputDirectory="PreserveNewest" />
+        <Content Include="$(SailorMacNativeLibrary)" Link="Sailor-$(SailorRuntimeConfiguration).dylib" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
 </Project>

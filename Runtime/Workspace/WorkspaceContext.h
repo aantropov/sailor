@@ -51,6 +51,7 @@ namespace Sailor::Workspace
 		const std::string& GetWorkspaceName() const noexcept { return m_workspaceName; }
 		uint32_t GetManifestVersion() const noexcept { return m_manifestVersion; }
 		bool IsLegacy() const noexcept { return m_bLegacy; }
+		bool IsPackaged() const noexcept { return m_bPackaged; }
 		bool IsEngineMode() const noexcept { return m_content == m_engineContent; }
 
 	private:
@@ -69,6 +70,7 @@ namespace Sailor::Workspace
 		std::string m_workspaceName;
 		uint32_t m_manifestVersion = 0;
 		bool m_bLegacy = false;
+		bool m_bPackaged = false;
 
 		friend struct WorkspaceContextResolveResult;
 		friend SAILOR_SHARED_API WorkspaceContextResolveResult ResolveWorkspaceContext(

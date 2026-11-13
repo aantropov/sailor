@@ -121,6 +121,12 @@ if(MINIAUDIO_INCLUDE_DIRS MATCHES "NOTFOUND")
 	set(MINIAUDIO_INCLUDE_DIRS "")
 endif()
 
+find_package(miniz CONFIG QUIET)
+if(NOT TARGET miniz::miniz)
+	list(APPEND SAILOR_MISSING_DEPS "miniz")
+	sailor_create_stub_target(miniz::miniz)
+endif()
+
 if(SAILOR_MISSING_DEPS)
 	set(SAILOR_CONFIGURED_WITH_DEPENDENCY_STUBS ON)
 	list(JOIN SAILOR_MISSING_DEPS ", " SAILOR_MISSING_DEPS_MSG)
@@ -278,6 +284,7 @@ target_link_libraries(SailorLib PUBLIC
   unofficial::spirv-reflect
 )
 target_link_libraries(SailorLib PRIVATE
+	miniz::miniz
 	draco::draco
 	imguizmo::imguizmo
 	ixwebsocket::ixwebsocket
@@ -532,6 +539,11 @@ install(TARGETS SailorLib
 	RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime
 	LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Runtime
 	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+install(FILES "${PROJECT_SOURCE_DIR}/ThirdPartyLicenses.txt" DESTINATION . COMPONENT Runtime)
+if(MSVC)
+	install(FILES $<TARGET_PDB_FILE:SailorLib> DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime CONFIGURATIONS Debug OPTIONAL)
+endif()
 
 install(DIRECTORY "${SAILOR_RUNTIME_DIR}/"
 	DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/Sailor/Runtime"

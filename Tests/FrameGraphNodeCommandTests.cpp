@@ -697,7 +697,8 @@ void main() {
 	uvec2 pixel = uvec2(gl_FragCoord.xy);
 	if (pattern.sampleIndex > 0 && (pixel.x + pixel.y + pattern.frame) % 5 == 0) discard;
 	gl_SampleMask[0] = 1 << pattern.sampleIndex;
-	gl_FragDepth = float(1 + (pixel.x * 3 + pixel.y * 5 + pattern.frame * 7) % 13) / 16.0 - float(pattern.sampleIndex) / 32.0;
+	// Keep covered samples distinct and inside [0, 1], including more than 2x MSAA.
+	gl_FragDepth = float(1 + (pixel.x * 3 + pixel.y * 5 + pattern.frame * 7) % 13) / 16.0 - float(pattern.sampleIndex) / 2048.0;
 }
 )glsl";
 		std::ofstream output(path);
@@ -4567,10 +4568,11 @@ frame:
 	}
 
 	void TestDepthPrepassOcclusion(ShaderSetPtr sourceShader, ShaderSetPtr indexReadback,
-		const std::array<ShaderSetPtr, 4>& depthReadback, bool named, bool paged)
+		const std::array<ShaderSetPtr, 4>& depthReadback, bool named, bool paged, bool oddPyramid)
 	{
 		constexpr uint32_t Count = Renderer::GPUCullingGroupSize + 3;
 		constexpr uint32_t Extent = 32;
+		const glm::ivec2 pyramidExtent = oddPyramid ? glm::ivec2(31, 17) : glm::ivec2(Extent / 2);
 		auto& driver = Renderer::GetDriver();
 		auto commands = Renderer::GetDriverCommands();
 		auto graph = TRefPtr<TestGraph>::Make();
@@ -4614,7 +4616,7 @@ frame:
 		{
 			if (frame == 0 || frame == 5)
 			{
-				pyramid = driver->CreateRenderTarget(glm::ivec2(Extent / 2), 5, EFormat::R32_SFLOAT,
+				pyramid = driver->CreateRenderTarget(pyramidExtent, 5, EFormat::R32_SFLOAT,
 					ETextureFiltration::Nearest, ETextureClamping::Clamp, PyramidUsage);
 				if (named) graph->SetRenderTarget("Pyramid"_h, pyramid);
 				else
@@ -4716,10 +4718,28 @@ frame:
 					if (reference || (bInFrustum && !bOccluded)) expected.Add(resources->m_packet.m_resolvedInstanceIndices[i]);
 				}
 				const auto& indirect = *static_cast<const DrawIndexedIndirectData*>(resources->m_indirectBuffers[0]->GetPointer());
-				if (indirect.m_instanceCount != expected.Num())
-					throw std::runtime_error("Hi-Z prepass frame=" + std::to_string(frame) + " count=" +
-						std::to_string(indirect.m_instanceCount) + ", expected=" + std::to_string(expected.Num()));
 				const auto* actual = static_cast<const uint32_t*>(indices->GetPointer());
+				if (indirect.m_instanceCount != expected.Num())
+				{
+					std::string missing;
+					const uint32_t actualCount = (std::min)(indirect.m_instanceCount, Count);
+					for (uint32_t i = 0; i < Count; ++i)
+					{
+						const uint32_t id = resources->m_packet.m_resolvedInstanceIndices[i];
+						if (std::find(expected.begin(), expected.end(), id) != expected.end() &&
+							std::find(actual, actual + actualCount, id) == actual + actualCount)
+						{
+							const auto center = GetSingleMobilityInstance(resources->m_packet, record.m_mobility, i).model[3];
+							missing += " " + std::to_string(i) + "(" + std::to_string(center.x) + "," +
+								std::to_string(center.z) + ")";
+						}
+					}
+					throw std::runtime_error("Hi-Z prepass frame=" + std::to_string(frame) + " count=" +
+						std::to_string(indirect.m_instanceCount) + ", expected=" + std::to_string(expected.Num()) +
+						" named=" + std::to_string(named) + " paged=" + std::to_string(paged) +
+						" oddPyramid=" + std::to_string(oddPyramid) + " reference=" + std::to_string(reference) +
+						" missing candidates:" + missing);
+				}
 				for (uint32_t i = 0; i < expected.Num(); ++i)
 					Require(actual[i] == expected[i], "Hi-Z must compact exact visible IDs, retaining foreground and uncovered objects");
 			}
@@ -4735,7 +4755,7 @@ frame:
 			}
 			Require(bHasDepth, "occlusion readback must contain rasterized geometry");
 		}
-		std::cout << "Depth prepass Hi-Z named=" << named << " paged=" << paged <<
+		std::cout << "Depth prepass Hi-Z named=" << named << " paged=" << paged << " oddPyramid=" << oddPyramid <<
 			": eight frames, exact GPU counts/IDs, moving occluder/camera, stale pyramid, replacement and unculled depth parity passed\n";
 	}
 
@@ -4769,15 +4789,18 @@ frame:
 		{
 			RHICommandListPtr m_upload, m_draw;
 			RHIRenderSubmissionContextPtr m_context;
-			RHIBufferPtr m_depth, m_resolved, m_color, m_unusedDepth;
+			RHIBufferPtr m_depth, m_resolved, m_color, m_liveColor, m_unusedDepth;
 			glm::ivec2 m_extent;
 			uint32_t m_samples = 1, m_unusedSamples = 1, m_frame = 0;
 			float m_clearDepth = 0;
 			bool m_bAttachmentsMatch = false;
+			bool m_bColorTargetMatches = true, m_bColorResolveMatches = true;
 		};
 		const auto complete = [&](const Recorded& recorded)
 		{
 			CompleteCommands(recorded.m_upload, recorded.m_draw);
+			Require(recorded.m_bColorTargetMatches, "default scene must render to the selected native color target");
+			Require(recorded.m_bColorResolveMatches, "default scene must resolve to the selected native color output");
 			const auto* live = static_cast<const glm::vec2*>(recorded.m_depth->GetPointer());
 			const auto* resolved = static_cast<const glm::vec2*>(recorded.m_resolved->GetPointer());
 			for (int y = 0; y < recorded.m_extent.y; ++y)
@@ -4804,8 +4827,20 @@ frame:
 				if (recorded.m_color)
 				{
 					const auto actual = static_cast<const glm::vec4*>(recorded.m_color->GetPointer())[pixel];
-					Require(actual == (bVisible ? glm::vec4(0.75f, 0.5f, 0.25f, 1) : glm::vec4(-1)),
-						"scene color must obey the selected depth, including rejected geometry");
+					const auto expectedColor = bVisible ? glm::vec4(0.75f, 0.5f, 0.25f, 1) : glm::vec4(-1);
+					if (actual != expectedColor)
+					{
+						const auto liveColor = static_cast<const glm::vec4*>(recorded.m_liveColor->GetPointer())[pixel];
+						throw std::runtime_error("default scene color frame=" + std::to_string(recorded.m_frame) +
+							" pixel=" + std::to_string(pixel) + " visible=" + std::to_string(bVisible) +
+							" samples=" + std::to_string(recorded.m_samples) + " actual=" +
+							std::to_string(actual.x) + "," + std::to_string(actual.y) + "," +
+							std::to_string(actual.z) + "," + std::to_string(actual.w) + " live=" +
+							std::to_string(liveColor.x) + "," + std::to_string(liveColor.y) + "," +
+							std::to_string(liveColor.z) + "," + std::to_string(liveColor.w));
+					}
+					Require(static_cast<const glm::vec4*>(recorded.m_liveColor->GetPointer())[pixel] == expectedColor,
+						"live scene color must match the resolved color in every pixel");
 				}
 			}
 			Require(recorded.m_bAttachmentsMatch, "default depth must retain the explicit attachment's native target/resolve views");
@@ -4890,9 +4925,19 @@ frame:
 			recorded.m_bAttachmentsMatch = node->GetDrawCallStats().m_numInstances == 1 &&
 				recordedDepth.imageView == static_cast<VkImageView>(*target->m_vulkan.m_imageView) &&
 				recordedDepth.resolveImageView == (target != resolved ? static_cast<VkImageView>(*resolved->m_vulkan.m_imageView) : VK_NULL_HANDLE);
+			if (!prepass)
+			{
+				recorded.m_bColorTargetMatches = recordedColor.imageView == static_cast<VkImageView>(*colorTarget->m_vulkan.m_imageView);
+				recorded.m_bColorResolveMatches = recordedColor.resolveImageView ==
+					(colorTarget != color ? static_cast<VkImageView>(*color->m_vulkan.m_imageView) : VK_NULL_HANDLE);
+			}
 			recorded.m_depth = ReadDepth(recorded.m_draw, target, depthReadback);
 			recorded.m_resolved = ReadDepth(recorded.m_draw, resolved, depthReadback);
-			if (!prepass) recorded.m_color = ReadColor(recorded.m_draw, color);
+			if (!prepass)
+			{
+				recorded.m_color = ReadColor(recorded.m_draw, color);
+				recorded.m_liveColor = colorTarget == color ? recorded.m_color : ReadColor(recorded.m_draw, colorTarget);
+			}
 			if (bSingleSample && surface && surface->NeedsResolve())
 			{
 				recorded.m_unusedDepth = ReadDepth(recorded.m_draw, surface->GetTarget(), depthReadback);
@@ -7303,7 +7348,7 @@ frame:
 					for (uint32_t sample = 0; sample < samples; ++sample)
 					{
 						const float expectedDepth = sample > 0 && (x + y + frame) % 5 == 0 ? 0.0f :
-							float(1 + (x * 3 + y * 5 + frame * 7) % 13) / 16.0f - float(sample) / 32.0f;
+							float(1 + (x * 3 + y * 5 + frame * 7) % 13) / 16.0f - float(sample) / 2048.0f;
 						Require(actualDepth[(y * Side + x) * samples + sample] == glm::vec2(expectedDepth, 0),
 							"the depth-tested draw must preserve every depth/stencil sample");
 						if (sample == 0 || recordedDepth.resolveMode == VK_RESOLVE_MODE_MIN_BIT)
@@ -7425,7 +7470,7 @@ frame:
 					for (uint32_t sample = 0; sample < samples; ++sample)
 					{
 						const float expected = sample > 0 && (x + y + frame) % 5 == 0 ? 0.0f :
-							float(1 + (x * 3 + y * 5 + frame * 7) % 13) / 16.0f - float(sample) / 32.0f;
+							float(1 + (x * 3 + y * 5 + frame * 7) % 13) / 16.0f - float(sample) / 2048.0f;
 						const auto value = inputValues[(y * inputSize.x + x) * samples + sample].x;
 						Require(std::isfinite(value) && std::abs(value - expected) < 0.00001f,
 							"depth fixture must write each distinct sample, including uncovered zero samples");
@@ -8318,8 +8363,8 @@ frame:
 	{
 		auto& driver = Renderer::GetDriver();
 		auto commands = Renderer::GetDriverCommands();
-		Require(VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() == VK_SAMPLE_COUNT_2_BIT,
-			"the private command-test workspace must exercise real 2x MSAA");
+		Require(VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT,
+			"the private command-test workspace must exercise real MSAA");
 		auto graph = TRefPtr<TestGraph>::Make();
 		auto output = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32G32B32A32_SFLOAT);
 		auto single = RHISurfacePtr::Make(output, output, false);
@@ -8482,11 +8527,11 @@ frame:
 		node->SetRHIResource("color"_h, single);
 		draw("bound 1x surface", output, single, secondTexel);
 		node->SetRHIResource("color"_h, multisampled);
-		draw("bound 2x surface", multisampled->GetResolved(), multisampled, secondTexel);
+		draw("bound MSAA surface", multisampled->GetResolved(), multisampled, secondTexel);
 		graph->SetSurface("LateOutput"_h, multisampled);
 		graph->SetRenderTarget("LateOutput"_h, multisampled->GetResolved());
 		node->SetRHIResource_Unresolved("color"_h, "LateOutput"_h);
-		draw("late 2x surface", multisampled->GetResolved(), multisampled, secondTexel);
+		draw("late MSAA surface", multisampled->GetResolved(), multisampled, secondTexel);
 		graph->SetSurface("LateOutput"_h, single);
 		graph->SetRenderTarget("LateOutput"_h, output);
 		draw("late 1x surface replacement", output, single, secondTexel);
@@ -8501,10 +8546,10 @@ frame:
 		node->SetRHIResource("sourceSampler"_h, textureA);
 		draw("bound overrides late sampler", output, {}, firstTexel);
 		node->SetRHIResource("sourceSampler"_h, multisampled);
-		draw("sample resolved 2x surface", output, {}, tint * gain + secondTexel);
+		draw("sample resolved MSAA surface", output, {}, tint * gain + secondTexel);
 		graph->SetSurface("SurfaceSampler"_h, multisampled);
 		node->SetRHIResource_Unresolved("sourceSampler"_h, "SurfaceSampler"_h);
-		draw("sample late 2x surface", output, {}, tint * gain + secondTexel);
+		draw("sample late MSAA surface", output, {}, tint * gain + secondTexel);
 
 		for (const auto format : { EFormat::D32_SFLOAT, EFormat::D32_SFLOAT_S8_UINT })
 		{
@@ -8561,6 +8606,102 @@ namespace Sailor::Tests
 		TestSkyWithoutStars(workspace);
 		TestSkyWithoutStars(workspace, VK_ERROR_OUT_OF_HOST_MEMORY);
 		TestSkyWithoutStars(workspace, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+	}
+
+	void RunDefaultDepthCommandTests(const std::filesystem::path& workspace)
+	{
+		const auto depthReadback = WriteDepthReadbackShader(workspace);
+		const auto colorShader = WriteMrtShader(workspace);
+		const auto info = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/DepthOnly.shader");
+		ShaderSetPtr depthShader;
+		Require(info && App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(info->GetFileId(), depthShader) &&
+			depthShader->IsReady(), "the production depth shader must be ready for the attachment regression");
+		auto task = Tasks::CreateTaskWithResult<std::string>("Default depth attachment regression"_h, [&]() -> std::string
+			{
+				try
+				{
+					for (auto publication : { DefaultDepthPublication::Target, DefaultDepthPublication::Surface,
+						DefaultDepthPublication::SurfaceOnly, DefaultDepthPublication::SurfaceWithDecoy })
+					{
+						for (bool named : { true, false })
+						{
+							for (bool prepass : { true, false })
+							{
+								for (uint32_t colorKind = 0; colorKind < (prepass ? 1u : 3u); ++colorKind)
+								{
+									TestDefaultDepthAttachment(prepass ? depthShader : colorShader, depthReadback,
+										prepass, colorKind, publication, named);
+								}
+							}
+						}
+					}
+					return {};
+				}
+				catch (const std::exception& error)
+				{
+					return error.what();
+				}
+			}, EThreadType::Render);
+		task->Run();
+		task->Wait();
+		if (!task->GetResult().empty())
+		{
+			throw std::runtime_error(task->GetResult());
+		}
+	}
+
+	void RunDepthOcclusionCommandTests(const std::filesystem::path& workspace)
+	{
+		const auto depthReadback = WriteDepthReadbackShader(workspace);
+		const auto indexReadback = WriteCullingIndexReadbackShader(workspace);
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		auto* compiler = App::GetSubmodule<ShaderCompiler>();
+		ShaderSetPtr depthShader, maskedDepthShader, cullingShader;
+		const auto depthInfo = registry->GetAssetInfoPtr("Shaders/DepthOnly.shader");
+		const auto cullingInfo = registry->GetAssetInfoPtr("Shaders/ComputeMeshCulling.shader");
+		Require(depthInfo && cullingInfo && compiler->LoadShader_Immediate(depthInfo->GetFileId(), depthShader) &&
+			depthShader->IsReady() && compiler->LoadShader_Immediate(depthInfo->GetFileId(), maskedDepthShader,
+				{ "MASKED" }) && maskedDepthShader->IsReady() &&
+			compiler->LoadShader_Immediate(cullingInfo->GetFileId(), cullingShader,
+				{ "DEPTH_INSTANCE_LAYOUT", "OCCLUSION_CULLING" }) && cullingShader->IsReady(),
+			"production depth and culling shaders must be ready for the Hi-Z regression");
+		const auto highZInfo = registry->GetAssetInfoPtr("Shaders/ComputeDepthHighZ.shader");
+		Require(highZInfo != nullptr, "the production depth pyramid shader must exist");
+		std::array<ShaderSetPtr, 2> highZShaders;
+		for (uint32_t permutation = 0; permutation < highZShaders.size(); ++permutation)
+		{
+			const TVector<std::string> defines = permutation == 0 ? TVector<std::string>{} :
+				TVector<std::string>{ "DEPTH_INPUT" };
+			Require(compiler->LoadShader_Immediate(highZInfo->GetFileId(), highZShaders[permutation], defines) &&
+				highZShaders[permutation]->IsReady(), "depth pyramid shaders must be ready for the Hi-Z regression");
+		}
+		auto task = Tasks::CreateTaskWithResult<std::string>("Depth prepass Hi-Z regression"_h, [&]() -> std::string
+			{
+				try
+				{
+					for (bool named : { false, true })
+					{
+						for (bool paged : { false, true })
+						{
+							for (bool oddPyramid : { false, true })
+							{
+								TestDepthPrepassOcclusion(depthShader, indexReadback, depthReadback, named, paged, oddPyramid);
+							}
+						}
+					}
+					return {};
+				}
+				catch (const std::exception& error)
+				{
+					return error.what();
+				}
+			}, EThreadType::Render);
+		task->Run();
+		task->Wait();
+		if (!task->GetResult().empty())
+		{
+			throw std::runtime_error(task->GetResult());
+		}
 	}
 
 	void RunFrameGraphNodeCommandTests(const std::filesystem::path& workspace)
@@ -8710,8 +8851,15 @@ namespace Sailor::Tests
 					}
 					if (!cullingFailures.empty()) throw std::runtime_error(cullingFailures);
 					for (bool named : { false, true })
-					for (bool paged : { false, true })
-						TestDepthPrepassOcclusion(compactDepthShader, cullingIndexReadback, depthReadback, named, paged);
+					{
+						for (bool paged : { false, true })
+						{
+							for (bool oddPyramid : { false, true })
+							{
+								TestDepthPrepassOcclusion(compactDepthShader, cullingIndexReadback, depthReadback, named, paged, oddPyramid);
+							}
+						}
+					}
 					TestSamplerReductionCache();
 					FrameGraphNodeTestAccess::WithoutSamplerMinmax(*VulkanApi::GetInstance()->GetMainDevice(), [&]()
 						{
@@ -8888,7 +9036,7 @@ namespace Sailor::Tests
 					TestImportedBindings(graphId);
 					TestPostProcessFlights(smallShader, false);
 					TestPostProcessFlights(smallShader, true);
-					if (VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() == VK_SAMPLE_COUNT_2_BIT)
+					if (VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT)
 						TestPostProcess(smallShader, largeShader);
 					return {};
 				}

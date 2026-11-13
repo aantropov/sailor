@@ -16,6 +16,7 @@
 
 namespace Sailor
 {
+	namespace FileSystem { class ArchiveMount; }
 	namespace Tests { class TaskTestApp; }
 
 	namespace Workspace
@@ -37,6 +38,7 @@ namespace Sailor
 		bool m_bEnableRenderValidationLayers = true;
 		bool m_bRunPathTracer = false;
 		bool m_bForceNullAudioDevice = false;
+		bool m_bPrepareGameAssets = false;
 
 		uint32_t m_editorPort = 32800;
 		HWND m_editorHwnd{};
@@ -78,6 +80,7 @@ namespace Sailor
 		SAILOR_API static EAppInitializationResult Initialize(const char** commandLineArgs = nullptr, int32_t num = 0);
 		SAILOR_API static void Start();
 		SAILOR_API static void Stop();
+		SAILOR_API static bool IsShutdownRequested();
 		SAILOR_API static bool Shutdown();
 		SAILOR_API static bool IsEngineMainThreadReady();
 
@@ -180,6 +183,7 @@ namespace Sailor
 		TUniquePtr<Platform::NativeWindow> m_pMainWindow;
 		TUniquePtr<Workspace::WorkspaceModuleManager> m_pWorkspaceModuleManager;
 		Workspace::WorkspaceContext m_workspaceContext;
+		TVector<TSharedPtr<FileSystem::ArchiveMount>> m_packageContentMounts;
 		EAppInitializationResult m_initializationResult = EAppInitializationResult::Failed;
 		int32_t m_exitCode = 0;
 		AppArgs m_args{};

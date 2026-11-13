@@ -62,23 +62,6 @@ bool Sailor::ShaderCacheInternal::ResolveDirectCacheChild(const std::filesystem:
 	return true;
 }
 
-std::string Sailor::ShaderCacheInternal::NormalizeDependencyPath(const std::filesystem::path& path)
-{
-	std::error_code error;
-	std::string result = PathToUtf8(std::filesystem::weakly_canonical(path, error));
-	if (error)
-	{
-		result = PathToUtf8(path.lexically_normal());
-	}
-#if defined(_WIN32)
-	std::transform(result.begin(),
-		result.end(),
-		result.begin(),
-		[](unsigned char character) { return static_cast<char>(std::tolower(character)); });
-#endif
-	return result;
-}
-
 std::string Sailor::ShaderCacheInternal::NormalizeDependencyVirtualPath(std::string_view path)
 {
 	std::string result = PathToUtf8(PathFromUtf8(path).lexically_normal());

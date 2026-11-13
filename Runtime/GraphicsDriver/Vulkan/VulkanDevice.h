@@ -104,6 +104,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API float GetMaxAllowedAnisotropy() const { return m_physicalDeviceProperties.limits.maxSamplerAnisotropy; };
 		SAILOR_API VkSampleCountFlagBits GetMaxAllowedMsaaSamples() const { return m_maxAllowedMsaaSamples; };
 		SAILOR_API VkSampleCountFlagBits GetCurrentMsaaSamples() const { return m_currentMsaaSamples; };
+		SAILOR_API static VkSampleCountFlagBits SelectMsaaSamples(VkSampleCountFlags supported, VkSampleCountFlagBits requested);
 		SAILOR_API const VkPhysicalDeviceDepthStencilResolveProperties& GetDepthStencilResolveProperties() const { return m_depthStencilResolveProperties; }
 		SAILOR_API const VkMemoryRequirements& GetMemoryRequirements_StagingBuffer() const { return m_memoryRequirements_StagingBuffer; }
 		SAILOR_API const VkDeviceSize& GetMinUboOffsetAlignment() const { return m_physicalDeviceProperties.limits.minUniformBufferOffsetAlignment; }

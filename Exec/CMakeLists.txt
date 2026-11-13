@@ -13,5 +13,24 @@ set_target_properties(SailorExec PROPERTIES OUTPUT_NAME "SailorEngine-$<CONFIG>"
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	set_target_properties(SailorExec PROPERTIES INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
-	install(TARGETS SailorExec RUNTIME DESTINATION bin COMPONENT Runtime)
+elseif(APPLE)
+	set_target_properties(SailorExec PROPERTIES INSTALL_RPATH "@executable_path/../${CMAKE_INSTALL_LIBDIR}")
+endif()
+install(TARGETS SailorExec RUNTIME DESTINATION bin COMPONENT Runtime)
+if(WIN32)
+	install(FILES $<TARGET_RUNTIME_DLLS:SailorExec> DESTINATION bin COMPONENT Runtime)
+	if(SAILOR_BUILD_WITH_VULKAN)
+		find_package(VulkanLoader CONFIG REQUIRED)
+		install(FILES $<TARGET_FILE:Vulkan::Loader> DESTINATION bin COMPONENT Runtime)
+	endif()
+	if(MSVC)
+		# Compiler runtimes are implicit linker dependencies, so TARGET_RUNTIME_DLLS
+		# does not include them. Debug CRTs are development-machine prerequisites.
+		set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP TRUE)
+		include(InstallRequiredSystemLibraries)
+		install(PROGRAMS ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS}
+			DESTINATION bin COMPONENT Runtime
+			CONFIGURATIONS Release RelWithDebInfo MinSizeRel)
+		install(FILES $<TARGET_PDB_FILE:SailorExec> DESTINATION bin COMPONENT Runtime CONFIGURATIONS Debug OPTIONAL)
+	endif()
 endif()

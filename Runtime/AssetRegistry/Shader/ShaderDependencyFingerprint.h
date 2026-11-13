@@ -13,7 +13,6 @@ namespace Sailor
 	struct ShaderDependencyFile final
 	{
 		std::string m_virtualPath;
-		std::string m_winnerIdentity;
 		FileRevision m_revision{};
 		uint32_t m_mountKind = 0;
 	};
@@ -25,14 +24,13 @@ namespace Sailor
 		HashValue(hash, static_cast<uint64_t>(files.Num()));
 		for (const ShaderDependencyFile& file : files)
 		{
-			if (!file.m_revision.m_bIsValid || file.m_virtualPath.empty() ||
-				file.m_winnerIdentity.empty())
+			if (!file.m_revision.m_bIsValid || file.m_virtualPath.empty())
 			{
 				return 0;
 			}
 
+			// The winning mount and virtual path survive export and relocation.
 			HashValue(hash, std::string_view(file.m_virtualPath));
-			HashValue(hash, std::string_view(file.m_winnerIdentity));
 			HashValues(
 				hash,
 				static_cast<uint64_t>(file.m_mountKind),

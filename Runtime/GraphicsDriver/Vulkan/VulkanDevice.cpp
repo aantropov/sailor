@@ -76,15 +76,28 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
-VkSampleCountFlagBits CalculateMaxAllowedMSAASamples(VkSampleCountFlags counts)
+VkSampleCountFlagBits VulkanDevice::SelectMsaaSamples(VkSampleCountFlags supported, VkSampleCountFlagBits requested)
 {
-	if (counts & VK_SAMPLE_COUNT_64_BIT) { return VK_SAMPLE_COUNT_64_BIT; }
-	if (counts & VK_SAMPLE_COUNT_32_BIT) { return VK_SAMPLE_COUNT_32_BIT; }
-	if (counts & VK_SAMPLE_COUNT_16_BIT) { return VK_SAMPLE_COUNT_16_BIT; }
-	if (counts & VK_SAMPLE_COUNT_8_BIT) { return VK_SAMPLE_COUNT_8_BIT; }
-	if (counts & VK_SAMPLE_COUNT_4_BIT) { return VK_SAMPLE_COUNT_4_BIT; }
-	if (counts & VK_SAMPLE_COUNT_2_BIT) { return VK_SAMPLE_COUNT_2_BIT; }
-
+	if (requested == VK_SAMPLE_COUNT_1_BIT)
+	{
+		return VK_SAMPLE_COUNT_1_BIT;
+	}
+	for (uint32_t samples = VK_SAMPLE_COUNT_64_BIT; samples >= VK_SAMPLE_COUNT_2_BIT; samples >>= 1u)
+	{
+		if (samples <= requested && (supported & samples))
+		{
+			return static_cast<VkSampleCountFlagBits>(samples);
+		}
+	}
+	// Supported counts need not be contiguous. Preserve multisampling when the
+	// device only offers a higher count, e.g. 1x/4x with a 2x request.
+	for (uint32_t samples = VK_SAMPLE_COUNT_2_BIT; samples <= VK_SAMPLE_COUNT_64_BIT; samples <<= 1u)
+	{
+		if (supported & samples)
+		{
+			return static_cast<VkSampleCountFlagBits>(samples);
+		}
+	}
 	return VK_SAMPLE_COUNT_1_BIT;
 }
 
@@ -103,14 +116,17 @@ VulkanDevice::VulkanDevice(Platform::Window* pViewport, RHI::EMsaaSamples reques
 
 	vkGetPhysicalDeviceProperties(m_physicalDevice, &m_physicalDeviceProperties);
 
-	m_maxAllowedMsaaSamples = CalculateMaxAllowedMSAASamples(m_physicalDeviceProperties.limits.framebufferColorSampleCounts & m_physicalDeviceProperties.limits.framebufferDepthSampleCounts);
-	m_currentMsaaSamples = (VkSampleCountFlagBits)(std::min((uint8_t)requestMsaa, (uint8_t)m_maxAllowedMsaaSamples));
+	const VkSampleCountFlags supportedSamples = m_physicalDeviceProperties.limits.framebufferColorSampleCounts &
+		m_physicalDeviceProperties.limits.framebufferDepthSampleCounts;
+	m_maxAllowedMsaaSamples = SelectMsaaSamples(supportedSamples, VK_SAMPLE_COUNT_64_BIT);
+	m_currentMsaaSamples = SelectMsaaSamples(supportedSamples, static_cast<VkSampleCountFlagBits>(requestMsaa));
 	if (!CreateLogicalDevice(m_physicalDevice)) return;
 
 	SAILOR_LOG("maxDescriptorSetSampledImages = %d", (int32_t)m_physicalDeviceProperties.limits.maxDescriptorSetSampledImages);
 	SAILOR_LOG("maxSamplerAnisotropy = %.2f", m_physicalDeviceProperties.limits.maxSamplerAnisotropy);
 	SAILOR_LOG("bufferImageGranularity = %d", (int32_t)m_physicalDeviceProperties.limits.bufferImageGranularity);
-	SAILOR_LOG("m_maxAllowedMSAASamples = %d, requestedMSAASamples = %d", m_maxAllowedMsaaSamples, m_currentMsaaSamples);
+	SAILOR_LOG("MSAA samples: requested=%u, selected=%u, supportedMask=0x%x",
+		static_cast<uint32_t>(requestMsaa), static_cast<uint32_t>(m_currentMsaaSamples), supportedSamples);
 	SAILOR_LOG("m_bSupportsMultiDrawIndirect = %d", (int32_t)m_bSupportsMultiDrawIndirect);
 	SAILOR_LOG("maxFramesInFlight = %u", m_maxFramesInFlight);
 

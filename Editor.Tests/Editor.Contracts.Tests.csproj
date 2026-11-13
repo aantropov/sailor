@@ -87,6 +87,8 @@
     <Compile Include="McpBridgeIntegrationTests.cs" />
     <Compile Include="WorkspaceBuildPlanTests.cs" />
     <Compile Include="WorkspaceBuildServiceTests.cs" />
+    <Compile Include="GameBuildServiceTests.cs" />
+    <Compile Include="GameBuildNativeTests.cs" />
     <Compile Include="WorkspaceCacheServiceTests.cs" />
     <Compile Include="McpYamlUtilitiesTests.cs" />
     <Compile Include="YamlHelperTests.cs" />
@@ -232,5 +234,9 @@
     <Compile Include="..\Editor\Services\AssetCacheIndexStore.cs" Link="Services\AssetCacheIndexStore.cs" />
     <Compile Include="..\Editor\Commands\EditorCommandRuntime.cs" Link="Commands\EditorCommandRuntime.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceBuildService.cs" Link="Workspace\WorkspaceBuildService.cs" />
+    <Compile Include="..\Editor\Workspace\WorkspaceProcess.cs" Link="Workspace\WorkspaceProcess.cs" />
+    <Compile Include="..\Editor\Workspace\GameBuildService.cs" Link="Workspace\GameBuildService.cs" />
+    <Compile Include="..\Editor\Workspace\GameBuildEnvironment.cs" Link="Workspace\GameBuildEnvironment.cs" />
+    <Compile Include="..\Editor\Workspace\GameBuildSettings.cs" Link="Workspace\GameBuildSettings.cs" />
   </ItemGroup>
 </Project>

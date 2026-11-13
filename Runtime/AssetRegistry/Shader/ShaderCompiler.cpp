@@ -1,3 +1,4 @@
+#include "Platform/FileSystem.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 
 #include "AssetRegistry/FileId.h"
@@ -217,11 +218,15 @@ void ShaderCompiler::UpdateConstantsLibrary()
 	// Generated engine shader ABI belongs to Engine Content. A distinct workspace
 	// consumes that read-only library through the shared virtual content mount and
 	// must never create a higher-priority local override.
-	if (!App::GetWorkspaceContext().IsEngineMode())
+	if (!App::GetWorkspaceContext().IsEngineMode() || App::GetWorkspaceContext().IsPackaged())
 	{
 		return;
 	}
 
+	if (FileSystem::IsReadOnly(App::GetSubmodule<AssetRegistry>()->GetWorkspaceContext().GetContent()))
+	{
+		return;
+	}
 	std::filesystem::path constantsLibrary;
 	if (!App::GetSubmodule<AssetRegistry>()->ResolveWorkspaceContentPathForWrite(
 			"Shaders/Constants.glsl",
@@ -758,6 +763,8 @@ void ShaderCompiler::OnAssetScanStarted()
 
 Tasks::TaskPtr<bool> ShaderCompiler::OnAssetScanFinished()
 {
+	const bool bInvalidate = !m_bInitialScan;
+	m_bInitialScan = false;
 	TSet<FileId> retryShaders;
 	if (m_lastScanReload)
 	{
@@ -834,7 +841,9 @@ Tasks::TaskPtr<bool> ShaderCompiler::OnAssetScanFinished()
 	m_scanChangedIncludes.Clear();
 	auto changes = std::move(m_scanChanges);
 	m_scanChanges.Clear();
-	auto reload = ReloadShaderBatch(assetInfos);
+	// A fresh asset index can discover unchanged sources from a package seed.
+	// Dependency fingerprints decide expiry; explicit reloads still invalidate.
+	auto reload = ReloadShaderBatch(assetInfos, bInvalidate);
 	m_lastScanReload = reload;
 	auto acknowledge = [registry, reload, changes = std::move(changes)]()
 	{
@@ -942,6 +951,12 @@ ShaderCompiler::PreparedShaderReload ShaderCompiler::PrepareShaderReload(
 		bool ready = true;
 		for (const auto& shader : shaders)
 		{
+			// A later cold load waits for this preparation and owns its first RHI
+			// publication. Including it here would also publish it on Render.
+			if (!shader.m_second->IsReady())
+			{
+				continue;
+			}
 			ShaderResources stages;
 			if (PrepareShaderResources(info->GetFileId(), shader.m_first, stages))
 			{
@@ -1226,12 +1241,13 @@ bool ShaderCompiler::ReadShaderSourceBinary(
 {
 	outSource.clear();
 	outDiagnostic.clear();
-	std::ifstream shaderFile(Workspace::PathFromUtf8(filepath), std::ios::in | std::ios::binary);
-	if (!shaderFile.is_open())
+	auto shaderFileOwner = FileSystem::OpenRead(Workspace::PathFromUtf8(filepath));
+	if (!shaderFileOwner)
 	{
 		outDiagnostic = "Cannot open the shader source for reading.";
 		return false;
 	}
+	std::istream& shaderFile = *shaderFileOwner;
 
 	outSource.assign(
 		std::istreambuf_iterator<char>{ shaderFile },

@@ -97,6 +97,14 @@ For native behavioral tests, configure with `-DSAILOR_BUILD_TESTS=ON`, build the
 targets, and run `ctest --test-dir build-linux --output-on-failure`. The Linux window
 lifecycle test uses Xvfb when available.
 
+The opt-in GPU regression `Binaries/VulkanSubmissionTests --gpu-depth-occlusion
+--workspace /path/to/sailor --null-audio` exercises the production depth prepass,
+Hi-Z pyramid and culling shaders with even/odd pyramids, direct/named resources
+and contiguous/paged instance payloads. It verifies exact visible IDs and every
+depth sample against drawing without culling. Use `xvfb-run -a` on headless Linux.
+`--gpu-default-depth-msaa2` checks the native color/depth targets and resolves,
+including rejection by depth, resize and retained command lists with MSAA requested.
+
 Package a workspace into a new directory outside that workspace:
 
 ```sh
@@ -108,6 +116,116 @@ The package includes the executable, engine library, workspace content, project 
 and third-party license notices. Manifest workspaces also include the selected configuration
 of their logic module and engine content. Build that module before packaging. A Vulkan-capable driver and the system libraries used
 by the build are required on the destination machine.
+
+## Desktop game builds
+
+Open **Build → Build Game…** in the editor. Select the native target platform and
+Debug or Release, choose folders or ZIP assets, select compression and optionally
+include the initial cache. The same window saves independent Windows/Linux/macOS
+options in the project's version-1 `BuildSettings.json` and supports cancellation.
+Builds use saved project files on disk.
+
+Engine users can run the same exporter with the .NET 10 SDK:
+
+```sh
+dotnet run --project Tools/SailorBuild -c Release -- \
+  --engine /path/to/sailor --workspace /path/to/project \
+  --configuration Release --assets Zip --compression Balanced \
+  --output /path/to/new-game-build
+```
+
+Use a new output directory outside the project and engine. The exporter stages the
+complete game before publishing that directory; cancellation or failure removes
+the staged output. Existing builds are preserved. It builds the runtime and game
+module in matching configurations, installs the matching SDK, and compiles the
+existing generated game CMake project through that SDK. Module outputs are kept
+separate from the authoring project's binaries. All project/engine content is
+included initially, together with project settings and license notices.
+The exporter copies content into its staging directory and runs the engine's CPU
+asset import there before sealing it. Raw glTF models get material, texture and
+animation metadata without changing the authoring project. Invalid metadata,
+failed imports or an incompatible game module stop the export before publication.
+
+`--assets Folders` uses native copying with exact file modification times. ZIP
+compression options are `Stored`, `Fastest`, `Balanced` and `Smallest`.
+`--initial-cache` includes the portable cache subset described below; warm the
+authoring project's cache with the selected runtime configuration first.
+`--save-settings` retains the options for that platform.
+
+The default engine build directory is `Cache/GameBuild/<platform>/<configuration>`.
+`--engine-build-dir` selects an existing engine build directory for the requested
+configuration. `--no-build-runtime` reuses that configured runtime; the game module
+is still built through its SDK. `--engine` can also select an installed SDK that
+contains the selected standalone runtime in `bin/`.
+
+Launch the result using `Sailor.cmd`, `Sailor.sh` or `Sailor.command`. macOS exports
+include relocated non-system dylibs (including MoltenVK) with local ad-hoc signatures;
+distribution signing/notarization is a separate release step. Linux exports include
+non-system library dependencies and require the destination's compatible system
+libraries and Vulkan driver. Windows exports include runtime DLL dependencies and
+available Debug PDBs. Release exports also include the compiler's redistributable
+MSVC runtime. Windows Debug builds require the matching Visual C++ debug runtime
+on the target development machine; use Release for distribution. Each platform
+is built on its native host.
+
+## Asset archives
+
+The engine executable can create ZIP assets without starting the renderer:
+
+```sh
+SailorEngine-Release --pack-assets /project/Content /package/Content.zip balanced
+SailorEngine-Release --describe-workspace /project
+```
+
+Use the executable from your build or installed runtime (with `.exe` on Windows).
+Compression options are `stored` (raw ZIP without compression), `fastest`, `balanced`
+and `smallest` (deflate). The archive destination must be a new file in an existing
+directory outside the source tree. Symbolic links and special source files are rejected.
+
+A game package explicitly mounts content archives using `GamePackage.json` next to
+its workspace manifest:
+
+```json
+{
+  "packageVersion": 1,
+  "packageId": "d898c4f65e5246b88fa55d96bc0f1a87",
+  "initialCache": null,
+  "archives": [
+    { "root": "Content", "file": "Content.zip" },
+    { "root": "Engine/Content", "file": "EngineContent.zip" }
+  ]
+}
+```
+
+Keep the content root directories themselves in the package, even when empty. Mount
+roots must match the workspace or engine content directories, and all archive paths
+must remain inside the package. Omit an archive entry to keep that content as ordinary
+folders. Workspaces without `GamePackage.json` continue to use native folders.
+
+Archived content is read-only and is read directly through seekable streams; games do
+not extract the content tree at startup. Each stream uses a bounded decoder buffer,
+and full-file reads verify CRC. The version-1 internal ZIP index preserves exact file
+timestamps for asset and shader cache validation. The runtime cache remains writable
+outside the package, under `Sailor/Packages/<packageId>` in the user's cache directory
+(`LOCALAPPDATA`, `~/Library/Caches`, or `XDG_CACHE_HOME` / `~/.cache`). Generate a new
+32-character lowercase hexadecimal package ID for each export. Resolving a package
+does not create directories inside it.
+
+To include an optional initial cache, run the matching configuration's executable:
+
+```sh
+SailorEngine-Release --pack-cache /path/to/workspace /path/to/game/InitialCache.zip balanced
+```
+
+Keep an empty `InitialCache` directory in the package and set `initialCache` to
+`"InitialCache.zip"`. On the first launch the runtime installs the seed into writable
+user storage and binds its shader envelope to the running workspace. Subsequent
+launches preserve that cache. The seed includes `ShaderCache.yaml`, `CompiledShaders`,
+`CompiledShadersWithDebug` and `Lods`. Shader fingerprints use mount kind, virtual
+paths and source revisions so moving the package does not invalidate them. Asset
+indexes containing absolute source paths, editor state, native driver caches and
+build files are rebuilt locally. Warm the cache using the runtime configuration
+being exported; an incompatible or invalid shader envelope fails cache export.
 
 ## Sponsorship and Contribution
 

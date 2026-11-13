@@ -14,6 +14,42 @@ using namespace Sailor;
 using namespace Sailor::AssetRegistryInternal;
 using namespace Sailor::Workspace;
 
+bool AssetRegistry::ValidateContentForPackaging(std::string& diagnostic) const
+{
+	diagnostic.clear();
+	const auto discovery = DiscoverAssetMountFiles(m_contentMounts);
+	if (discovery.HasFatalErrors())
+	{
+		diagnostic = "Asset content mounts are invalid.";
+		return false;
+	}
+	for (const auto& file : discovery.m_files)
+	{
+		if (Extension(file.m_virtualPath) != MetaFileExtension)
+		{
+			continue;
+		}
+		std::string id;
+		std::string filename;
+		std::string type;
+		std::string error;
+		if (!ReadMetadataIdentity(file.m_physicalPath, id, filename, type, error))
+		{
+			diagnostic = "Invalid asset metadata '" + PathToUtf8(file.m_physicalPath) + "': " + error;
+			return false;
+		}
+		const auto source = file.m_physicalPath.parent_path() / PathFromUtf8(filename);
+		std::error_code statusError;
+		if (!std::filesystem::is_regular_file(FileSystem::Status(source, statusError)) || statusError)
+		{
+			diagnostic = "Asset metadata '" + PathToUtf8(file.m_physicalPath) +
+				"' references missing source '" + PathToUtf8(source) + "'.";
+			return false;
+		}
+	}
+	return true;
+}
+
 bool AssetRegistry::ScanContentFolder()
 {
 	SAILOR_PROFILE_FUNCTION();

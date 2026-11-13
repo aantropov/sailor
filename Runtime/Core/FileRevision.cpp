@@ -1,11 +1,11 @@
 #include "Core/FileRevision.h"
+#include "Platform/FileSystem.h"
 
 #include "Core/YamlSerializable.h"
 #include "Workspace/WorkspacePathEncoding.h"
 
 #include <chrono>
 #include <filesystem>
-#include <sys/stat.h>
 
 using namespace Sailor;
 
@@ -26,16 +26,17 @@ void FileRevision::Deserialize(const YAML::Node& inData)
 std::time_t Utils::GetFileModificationTime(const std::string& filepath)
 {
 	SAILOR_PROFILE_FUNCTION();
-	const auto path = Workspace::PathFromUtf8(filepath);
-#if defined(_WIN32)
-	struct _stat64 result;
-	if (_wstat64(path.c_str(), &result) == 0)
-#else
-	struct stat result;
-	if (stat(path.c_str(), &result) == 0)
-#endif
+	std::error_code error;
+	const auto timestamp = FileSystem::LastWriteTime(Workspace::PathFromUtf8(filepath), error);
+	if (!error)
 	{
-		return (std::time_t)result.st_mtime;
+#if defined(_MSC_VER)
+		const auto systemTime = std::chrono::clock_cast<std::chrono::system_clock>(timestamp);
+#else
+		const auto systemTime = std::chrono::file_clock::to_sys(timestamp);
+#endif
+		return static_cast<std::time_t>(std::chrono::floor<std::chrono::seconds>(
+			systemTime).time_since_epoch().count());
 	}
 	return 0;
 }
@@ -47,12 +48,12 @@ bool Utils::TryGetFileRevision(
 	outRevision = {};
 	const auto path = Workspace::PathFromUtf8(filepath);
 	std::error_code error;
-	if (!std::filesystem::is_regular_file(path, error) || error)
+	if (!std::filesystem::is_regular_file(FileSystem::Status(path, error)) || error)
 	{
 		return false;
 	}
 
-	const auto modificationTime = std::filesystem::last_write_time(path, error);
+	const auto modificationTime = FileSystem::LastWriteTime(path, error);
 	if (error)
 	{
 		return false;

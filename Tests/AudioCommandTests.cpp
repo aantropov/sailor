@@ -8,6 +8,8 @@
 #include "ECS/TransformECS.h"
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
+#include "Platform/FileSystem.h"
+#include "Support/ScopeExit.h"
 
 #include <array>
 #include <cstring>
@@ -100,7 +102,7 @@ namespace
 		TVector<AudioVoiceId> ids;
 	};
 
-	AudioClipPtr LoadClip(const std::filesystem::path& path, bool stream = false)
+	FileId RegisterClip(const std::filesystem::path& path, bool stream)
 	{
 		auto* registry = App::GetSubmodule<AssetRegistry>();
 		const auto id = registry->GetOrLoadFile(Workspace::PathToUtf8(path));
@@ -117,6 +119,12 @@ namespace
 			}
 			Require(App::UpdateAsset(id.ToString().c_str()), "streaming metadata must update through the registry");
 		}
+		return id;
+	}
+
+	AudioClipPtr LoadClip(const std::filesystem::path& path, bool stream = false)
+	{
+		const auto id = RegisterClip(path, stream);
 		AudioClipPtr clip;
 		Require(App::GetSubmodule<AudioImporter>()->LoadAudioClip_Immediate(id, clip) &&
 			clip->GetSnapshot().m_bStream == stream, "real audio importer must load the requested source mode");
@@ -210,6 +218,49 @@ namespace
 		Require(audio.StopVoice(first), "initialized voice must accept stop");
 		audio.Flush();
 		Require(!audio.IsVoicePlaying(first), "backend stop must be acknowledged");
+	}
+
+	void TestArchivedPlayback(const std::filesystem::path& workspace, AudioSystem& audio,
+		bool stream, FileSystem::EArchiveCompression compression)
+	{
+		const std::string suffix = std::string(stream ? "Stream" : "Decoded") +
+			(compression == FileSystem::EArchiveCompression::Stored ? "Stored" : "Deflated");
+		const auto root = workspace / "Content" / ("ArchivedAudio" + suffix);
+		std::filesystem::create_directories(root);
+		const auto path = root / Workspace::PathFromUtf8("tone \xD0\xAF.wav");
+		WriteWave(path, 96000);
+		const auto id = RegisterClip(path, stream);
+		std::string diagnostic;
+		const auto archive = workspace / ("audio-" + suffix + ".zip");
+		const bool written = FileSystem::WriteZipArchive(root, archive, compression, diagnostic);
+		Require(written, diagnostic.c_str());
+		const auto loose = workspace / ("audio-native-" + suffix);
+		std::filesystem::rename(root, loose);
+		std::filesystem::create_directory(root);
+		Tests::ScopeExit restore([&]()
+			{
+				std::filesystem::remove_all(root);
+				std::filesystem::rename(loose, root);
+			});
+		auto mount = FileSystem::MountZipArchive(root, archive, diagnostic);
+		Require(static_cast<bool>(mount), diagnostic.c_str());
+		Require(!std::filesystem::exists(path), "archived audio must have no loose source file");
+		AudioClipPtr clip;
+		Require(App::GetSubmodule<AudioImporter>()->LoadAudioClip_Immediate(id, clip) &&
+			clip->GetSnapshot().m_bStream == stream,
+			"cold audio import must resolve the archived source and its requested playback mode");
+		const size_t before = audio.GetNumVoices();
+		{
+			VoiceFixture voices(audio);
+			const auto voice = voices.Create(clip);
+			Require(audio.PlayVoice(voice, true), "archived audio must accept playback");
+			audio.Flush();
+			AudioVoiceSettings settings;
+			Require(audio.GetNumVoices() == before + 1 && audio.GetVoiceSettings(voice, settings) &&
+				audio.IsVoicePlaying(voice), "real audio decoder must read the ZIP without a loose source file");
+		}
+		Require(audio.GetNumVoices() == before, "archived audio voices must retire before their mount");
+		std::cout << "Archived audio " << suffix << ": cold importer, decoder and playback passed\n";
 	}
 
 	class AudioWorld final : public World
@@ -462,6 +513,13 @@ namespace Sailor::Tests
 			run(stream ? "Missing stream" : "Missing decoded", [&]() { TestFailedCreation(workspace, *audio, stream, false); });
 			run(stream ? "Corrupt stream" : "Corrupt decoded", [&]() { TestFailedCreation(workspace, *audio, stream, true); });
 			run(stream ? "Streaming ECS reload" : "Decoded ECS reload", [&]() { TestEcsReload(workspace, *audio, stream); });
+			for (auto compression : { FileSystem::EArchiveCompression::Stored, FileSystem::EArchiveCompression::Balanced })
+			{
+				run(stream ? "Archived streaming audio" : "Archived decoded audio", [&]()
+				{
+					TestArchivedPlayback(workspace, *audio, stream, compression);
+				});
+			}
 		}
 		run("Pending commands", [&]() { TestPendingCommands(workspace, *audio); });
 		run("ECS explicit retry", [&]() { TestEcsRetry(workspace, *audio); });

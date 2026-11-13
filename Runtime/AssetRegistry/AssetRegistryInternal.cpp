@@ -1,3 +1,4 @@
+#include "Platform/FileSystem.h"
 #include "AssetRegistry/AssetRegistryInternal.h"
 
 #include "AssetRegistry/AssetScanSourceRevisionCache.h"
@@ -139,12 +140,13 @@ namespace Sailor::AssetRegistryInternal
 		outAssetInfoType.clear();
 		outError.clear();
 
-		std::ifstream input(metaPath);
-		if (!input.is_open())
+		auto inputOwner = FileSystem::OpenRead(metaPath);
+		if (!inputOwner)
 		{
 			outError = "Cannot open asset metadata: " + PathToUtf8(metaPath);
 			return false;
 		}
+		std::istream& input = *inputOwner;
 
 		bool bSuccess = false;
 		std::string yamlDiagnostic;

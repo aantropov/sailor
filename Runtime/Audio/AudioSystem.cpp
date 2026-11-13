@@ -12,12 +12,113 @@
 #include "Tasks/Scheduler.h"
 #include "Tasks/Tasks.h"
 #include "Workspace/WorkspacePathEncoding.h"
+#include "Platform/FileSystem.h"
 
 #include <algorithm>
 #include <atomic>
 #include <utility>
 
 using namespace Sailor;
+
+namespace
+{
+	ma_result OpenAudioFile(const std::filesystem::path& path, ma_uint32 mode, ma_vfs_file* output)
+	{
+		*output = nullptr;
+		if (mode != MA_OPEN_MODE_READ)
+		{
+			return MA_ACCESS_DENIED;
+		}
+		try
+		{
+			auto stream = FileSystem::OpenRead(path);
+			if (!stream)
+			{
+				return MA_DOES_NOT_EXIST;
+			}
+			*output = stream.Release();
+			return MA_SUCCESS;
+		}
+		catch (...)
+		{
+			return MA_IO_ERROR;
+		}
+	}
+
+	// miniaudio retains this table for its asynchronous resource manager. Each
+	// decoder owns a separate seekable stream until onClose, including streaming voices.
+	ma_vfs_callbacks g_audioFileSystem
+	{
+		[](ma_vfs*, const char* path, ma_uint32 mode, ma_vfs_file* output)
+		{
+			return OpenAudioFile(Workspace::PathFromUtf8(path), mode, output);
+		},
+		[](ma_vfs*, const wchar_t* path, ma_uint32 mode, ma_vfs_file* output)
+		{
+#if defined(_WIN32)
+			return OpenAudioFile(std::filesystem::path(path), mode, output);
+#else
+			return MA_NOT_IMPLEMENTED;
+#endif
+		},
+		[](ma_vfs*, ma_vfs_file file)
+		{
+			delete static_cast<std::istream*>(file);
+			return MA_SUCCESS;
+		},
+		[](ma_vfs*, ma_vfs_file file, void* destination, size_t size, size_t* read)
+		{
+			auto& stream = *static_cast<std::istream*>(file);
+			if (size > static_cast<size_t>((std::numeric_limits<std::streamsize>::max)()))
+			{
+				return MA_TOO_BIG;
+			}
+			stream.read(static_cast<char*>(destination), static_cast<std::streamsize>(size));
+			const auto count = stream.gcount();
+			if (read)
+			{
+				*read = static_cast<size_t>(count);
+			}
+			return stream.bad() ? MA_IO_ERROR : (count == 0 && size != 0 ? MA_AT_END : MA_SUCCESS);
+		},
+		nullptr,
+		[](ma_vfs*, ma_vfs_file file, ma_int64 offset, ma_seek_origin origin)
+		{
+			auto& stream = *static_cast<std::istream*>(file);
+			stream.clear();
+			stream.seekg(offset, origin == ma_seek_origin_start ? std::ios::beg :
+				(origin == ma_seek_origin_end ? std::ios::end : std::ios::cur));
+			return stream ? MA_SUCCESS : MA_BAD_SEEK;
+		},
+		[](ma_vfs*, ma_vfs_file file, ma_int64* cursor)
+		{
+			auto& stream = *static_cast<std::istream*>(file);
+			stream.clear();
+			const auto position = stream.tellg();
+			if (position < 0)
+			{
+				return MA_IO_ERROR;
+			}
+			*cursor = static_cast<ma_int64>(position);
+			return MA_SUCCESS;
+		},
+		[](ma_vfs*, ma_vfs_file file, ma_file_info* info)
+		{
+			auto& stream = *static_cast<std::istream*>(file);
+			stream.clear();
+			const auto position = stream.tellg();
+			stream.seekg(0, std::ios::end);
+			const auto end = stream.tellg();
+			stream.seekg(position);
+			if (position < 0 || end < 0 || !stream)
+			{
+				return MA_IO_ERROR;
+			}
+			info->sizeInBytes = static_cast<ma_uint64>(end);
+			return MA_SUCCESS;
+		}
+	};
+}
 
 class AudioSystem::Impl
 {
@@ -76,6 +177,7 @@ public:
 		check(App::GetSubmodule<Tasks::Scheduler>()->IsAudioThread());
 
 		ma_engine_config config = ma_engine_config_init();
+		config.pResourceManagerVFS = &g_audioFileSystem;
 		config.listenerCount = 1;
 		config.noDevice = bForceNullDevice ? MA_TRUE : MA_FALSE;
 		if (bForceNullDevice)
@@ -88,6 +190,7 @@ public:
 		if (result != MA_SUCCESS && !bForceNullDevice)
 		{
 			config = ma_engine_config_init();
+			config.pResourceManagerVFS = &g_audioFileSystem;
 			config.listenerCount = 1;
 			config.noDevice = MA_TRUE;
 			config.channels = 2;

@@ -135,6 +135,10 @@ TVector<uint8_t> SkyNode::LoadCloudsNoise(
 	if (!AssetRegistry::ReadBinaryFile(path, noise) || noise.Num() != expectedSize)
 	{
 		noise = generate();
+		if (noise.Num() != expectedSize)
+		{
+			return {};
+		}
 		// The in-memory result remains usable even when the cache is read-only.
 		AssetRegistry::WriteBinaryFile(path, noise);
 	}
@@ -150,6 +154,10 @@ TVector<uint8_t> SkyNode::GenerateCloudsNoiseLow()
 	// frame preparation drains that queue and would stall behind cloud generation.
 	for (uint32_t z = 0; z < CloudsNoiseLowResolution; z++)
 	{
+		if (App::IsShutdownRequested())
+		{
+			return {};
+		}
 		for (uint32_t y = 0; y < CloudsNoiseLowResolution; y++)
 		{
 			for (uint32_t x = 0; x < CloudsNoiseLowResolution; x++)
@@ -182,6 +190,10 @@ TVector<uint8_t> SkyNode::GenerateCloudsNoiseHigh()
 
 	for (uint32_t z = 0; z < CloudsNoiseHighResolution; z++)
 	{
+		if (App::IsShutdownRequested())
+		{
+			return {};
+		}
 		for (uint32_t y = 0; y < CloudsNoiseHighResolution; y++)
 		{
 			for (uint32_t x = 0; x < CloudsNoiseHighResolution; x++)
@@ -335,6 +347,10 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		}
 
 		const auto& noise = task->GetResult();
+		if (noise.IsEmpty())
+		{
+			return;
+		}
 		texture = driver->CreateTexture(noise.GetData(), noise.Num() * sizeof(uint8_t),
 			glm::ivec3(resolution),
 			(uint32_t)glm::max(1.0f, glm::log2((float)resolution)),
@@ -343,7 +359,10 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 			ETextureFiltration::Linear,
 			ETextureClamping::Repeat,
 			ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit);
-		if (!texture) return;
+		if (!texture)
+		{
+			return;
+		}
 		driver->SetDebugName(texture, name);
 		task.Clear();
 	};
