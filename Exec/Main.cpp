@@ -14,6 +14,11 @@ namespace
 {
 	std::optional<int> RunToolCommand(int argc, const char** argv)
 	{
+		if (argc == 2 && std::string_view(argv[1]) == "--version")
+		{
+			std::cout << "Sailor Engine " << App::GetEngineVersion() << '\n';
+			return 0;
+		}
 		if (argc >= 2 && std::string_view(argv[1]) == "--validate-workspace-module")
 		{
 			if (argc != 3)

@@ -129,8 +129,13 @@ public partial class MainPage : ContentPage
 #endif
     }
 
+    async void OnOpenReleases(object? sender, EventArgs e)
+    {
+        await Launcher.Default.OpenAsync(new Uri(ReleaseInfo.ReleasesUrl));
+    }
+
     static string BuildWindowTitle(WorkspaceUiProjection projection)
-        => projection.WindowTitle;
+        => $"Sailor Editor {ReleaseInfo.EditorVersion} · Engine {ReleaseInfo.EngineVersion} — {projection.WindowTitle}";
 
     async Task LoadCommandLineWorldAsync(IReadOnlyList<string> arguments)
     {

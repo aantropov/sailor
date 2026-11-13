@@ -174,7 +174,7 @@ namespace Sailor
 		static const char* GetEngineName() { return "SailorEngine"; }
 		SAILOR_API static const std::string& GetLoadedWorldPath();
 		SAILOR_API static const char* GetBuildConfig();
-		static const char* GetEngineVersion() { return "unknown"; }
+		SAILOR_API static const char* GetEngineVersion();
 		SAILOR_API static int32_t GetExitCode();
 		SAILOR_API static void SetExitCode(int32_t exitCode);
 

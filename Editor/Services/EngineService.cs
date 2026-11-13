@@ -696,8 +696,9 @@ namespace SailorEditor.Services
             while (current != null)
             {
                 if (Directory.Exists(Path.Combine(current.FullName, "Content")) &&
-                    Directory.Exists(Path.Combine(current.FullName, "Editor")) &&
-                    Directory.Exists(Path.Combine(current.FullName, "Runtime")))
+                    ((Directory.Exists(Path.Combine(current.FullName, "Editor")) &&
+                      Directory.Exists(Path.Combine(current.FullName, "Runtime"))) ||
+                     File.Exists(Path.Combine(current.FullName, "lib", "cmake", "Sailor", "SailorConfig.cmake"))))
                 {
                     return current.FullName;
                 }

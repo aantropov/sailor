@@ -21,9 +21,7 @@
 		<ApplicationId>com.companyname.SailorEditor</ApplicationId>
 		<ApplicationIdGuid>06eeaff0-e94f-42cf-96d6-3e9dcedd2a0f</ApplicationIdGuid>
 
-		<!-- Versions -->
-		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-		<ApplicationVersion>1</ApplicationVersion>
+		<!-- Application versions come from the shared Directory.Build.props. -->
 
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">11.0</SupportedOSPlatformVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">15.0</SupportedOSPlatformVersion>
@@ -266,6 +264,15 @@
 
     <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">
         <Content Include="$(SailorMacNativeLibrary)" Link="Sailor-$(SailorRuntimeConfiguration).dylib" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
+    <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
+        <SailorWindowsRuntimeDirectory>$(MSBuildProjectDirectory)/../Binaries/$(SailorRuntimeConfiguration)</SailorWindowsRuntimeDirectory>
+        <SailorWindowsRuntimeDirectory Condition="Exists('$(MSBuildProjectDirectory)/../Binaries/Sailor-$(SailorRuntimeConfiguration).dll')">$(MSBuildProjectDirectory)/../Binaries</SailorWindowsRuntimeDirectory>
+    </PropertyGroup>
+    <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
+        <Content Include="$(SailorWindowsRuntimeDirectory)/*.dll" Link="%(Filename)%(Extension)"
+                 CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>
 
 </Project>

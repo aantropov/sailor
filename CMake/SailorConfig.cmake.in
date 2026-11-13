@@ -2,6 +2,11 @@
 
 include(CMakeFindDependencyMacro)
 
+if(EXISTS "${PACKAGE_PREFIX_DIR}/Dependencies")
+	list(PREPEND CMAKE_PREFIX_PATH "${PACKAGE_PREFIX_DIR}/Dependencies")
+	list(PREPEND CMAKE_MODULE_PATH "${PACKAGE_PREFIX_DIR}/Dependencies/share/stb")
+endif()
+
 find_dependency(yaml-cpp CONFIG)
 find_dependency(nlohmann_json CONFIG)
 find_dependency(magic_enum CONFIG)

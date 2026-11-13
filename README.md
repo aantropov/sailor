@@ -1,12 +1,16 @@
 # Sailor Engine
 
+[![GitHub Release](https://img.shields.io/github/v/release/aantropov/sailor?include_prereleases)](https://github.com/aantropov/sailor/releases)
+[![Desktop Release](https://github.com/aantropov/sailor/actions/workflows/release.yml/badge.svg)](https://github.com/aantropov/sailor/actions/workflows/release.yml)
+[![Engine Build](https://github.com/aantropov/sailor/actions/workflows/engine-build.yml/badge.svg)](https://github.com/aantropov/sailor/actions/workflows/engine-build.yml)
+
 **Sailor Engine** is an independent real-time engine for games, visual effects, interactive art, and experimental demos. It combines a bindless `Vulkan 1.3` renderer with a multithreaded `C++20` runtime, custom memory allocators, and a data-driven frame graph.
 
 The editor is built in **C# with .NET MAUI**, with component-based scene authoring, landscape tools, and project build workflows. Its MCP integration lets AI assistants work directly with scenes, assets, and components through the editor.
 
 Sailor is a long-running passion project rooted in a lifetime of work with computer graphics. The engine's core was originally designed and written by hand, with a focus on extensible rendering and creative experimentation.
 
-**In active development.** Current desktop targets are Windows and macOS. Linux, Android, and iOS ports are under evaluation.
+**In active development.** Current desktop targets are Windows, macOS, and Linux (experimental GTK4 editor). Android and iOS ports are under evaluation.
 
 ## Showcase
 
@@ -20,6 +24,35 @@ The **Sailor** Wiki provides a centralized resource for all aspects of the engin
 Visit the Wiki to explore everything you need to get started, understand the engine's internals, and contribute to its development.
 
 **Set sail on your game development journey with Sailor Engine!**
+
+
+## Desktop releases
+
+[GitHub Releases](https://github.com/aantropov/sailor/releases) is the download page for
+versioned engine/editor bundles. Archives become available after the repository owner
+runs **Actions → Desktop Release** with **Publish** enabled. There are no automatic
+releases on pushes or tags. A run with Publish disabled builds reviewable Actions
+artifacts without creating a tag or release; pull requests changing release tooling
+also validate packages without publishing.
+
+The initial release targets are **Windows x64** and **macOS Apple Silicon (arm64)**.
+Each archive includes the editor, native runtime, content, matching C++ SDK,
+dependency headers/libraries, MCP bridge, game-build CLI and a SHA-256 checksum.
+Extract the entire archive, then open `SailorEditor.cmd` or `SailorEditor.command`.
+Windows needs a Vulkan-capable graphics driver. macOS packages are ad-hoc signed,
+not Apple-notarized; allow the application through Privacy & Security if prompted.
+Compiling C++ workspace logic also requires CMake and a C++20 toolchain, such as
+Visual Studio 2022 or the Xcode command-line tools.
+
+`VERSION` is the single `major.minor.patch` version for the engine, editor, SDK,
+application metadata and release archives. The editor shows both component versions
+and a **GitHub Releases** link; `SailorEngine-Release --version` reports the compiled
+runtime version without starting a renderer. To prepare a new release, update VERSION
+in a reviewed commit, merge it to main, and manually run Desktop Release. Publishing
+requires all platform builds/tests, verifies both archive checksums, and creates
+`v<VERSION>` at the tested commit. Existing tags/releases are preserved. The
+**Prerelease** option defaults to enabled. Until the first release is published,
+use the source build instructions below.
 
 ## Screenshots
 

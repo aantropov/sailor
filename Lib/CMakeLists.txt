@@ -338,6 +338,10 @@ target_compile_definitions(SailorLib PUBLIC $<$<CONFIG:Debug>:_DEBUG>)
 target_compile_definitions(SailorLib PUBLIC $<$<CONFIG:Release>:_SHIPPING>)
 target_compile_definitions(SailorLib PRIVATE SAILOR_BUILD_CONFIG="$<CONFIG>")
 target_compile_definitions(SailorLib PRIVATE SAILOR_ENGINE_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(SailorLib PRIVATE
+    SAILOR_ENGINE_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+    SAILOR_ENGINE_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+    SAILOR_ENGINE_VERSION_PATCH=${PROJECT_VERSION_PATCH})
 if(draco_FOUND)
 	target_compile_definitions(SailorLib PRIVATE SAILOR_HAS_DRACO)
 endif()

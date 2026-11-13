@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.21)
+project(ReleaseSdkProbe LANGUAGES CXX)
+find_package(Sailor CONFIG REQUIRED)
+add_executable(ReleaseSdkProbe Probe.cpp)
+target_link_libraries(ReleaseSdkProbe PRIVATE Sailor::Runtime)
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/probe-$<CONFIG>.txt" CONTENT "$<TARGET_FILE:ReleaseSdkProbe>")
