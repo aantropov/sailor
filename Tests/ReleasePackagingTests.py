@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import unittest
 import zipfile
+from unittest.mock import patch
 
 import yaml
 
@@ -17,9 +18,27 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'Tools' / 'Release'))
 from package_release import read_version, write_archive
 from publish_release import verify_assets
+import update_deps
 
 
 class ReleasePackagingTests(unittest.TestCase):
+    def test_all_desktop_hosts_use_the_pinned_dependency_overlays(self):
+        for system in ('Darwin', 'Windows', 'Linux'):
+            with self.subTest(system=system):
+                with patch.object(update_deps.platform, 'system', return_value=system), \
+                        patch.object(update_deps.platform, 'machine', return_value='arm64'), \
+                        patch.object(update_deps, 'has_current_vcpkg_tool', return_value=True), \
+                        patch.object(update_deps, 'required_vcpkg_tool_release', return_value='test'), \
+                        patch.object(update_deps.subprocess, 'check_call') as execute:
+                    self.assertEqual(update_deps.main(), 0)
+                commands = [call.args[0] for call in execute.call_args_list]
+                installations = [command for command in commands if 'install' in command]
+                self.assertTrue(installations)
+                self.assertTrue(all('--overlay-ports=' + update_deps.VCPKG_OVERLAY_PORTS in command
+                                    for command in commands))
+                self.assertEqual(any(any(value.startswith('--overlay-triplets=') for value in command)
+                                     for command in commands), system == 'Windows')
+
     def test_runtime_utf8_output_does_not_depend_on_the_host_locale(self):
         environment = os.environ.copy()
         environment.update(PYTHONUTF8='0', PYTHONCOERCECLOCALE='0', LC_ALL='C')
