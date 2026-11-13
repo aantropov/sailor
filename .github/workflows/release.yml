@@ -136,6 +136,7 @@ jobs:
         run: >-
           dotnet publish Editor/SailorEditor.csproj -c Release
           -f net10.0-windows10.0.19041.0 -r win-x64 --self-contained true
+          -p:SailorReleaseTargetFramework=net10.0-windows10.0.19041.0
           -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true
           -p:SailorNativeBuildDirectory=${{ github.workspace }}/build-release
           -o release-editor
@@ -144,6 +145,7 @@ jobs:
         run: >-
           dotnet build Editor/SailorEditor.csproj -c Release
           -f net10.0-maccatalyst -r maccatalyst-arm64
+          -p:SailorReleaseTargetFramework=net10.0-maccatalyst
           -p:SailorNativeBuildDirectory=${{ github.workspace }}/build-release
       - name: Publish command-line tools
         shell: bash
