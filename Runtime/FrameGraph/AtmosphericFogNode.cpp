@@ -98,7 +98,7 @@ void AtmosphericFogNode::Process(RHIFrameGraphPtr frameGraph, RHICommandListPtr 
 	{
 		m_bindings = driver->CreateShaderBindings();
 		driver->FillShadersLayout(m_bindings,
-			{ m_shader->GetDebugVertexShaderRHI(), m_shader->GetDebugFragmentShaderRHI() }, 1);
+			{ m_shader->GetVertexShaderRHI(), m_shader->GetFragmentShaderRHI() }, 1);
 		driver->AddBufferToShaderBindings(m_bindings, "data"_h, sizeof(ShaderParameters), 0, EShaderBindingType::UniformBuffer);
 		driver->AddSamplerToShaderBindings(m_bindings, "depthSampler"_h, sampledDepth, 1);
 		driver->AddSamplerToShaderBindings(m_bindings, "environmentSampler"_h, m_environment, 2);

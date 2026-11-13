@@ -1169,7 +1169,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				resources->m_cullingDepthHighZ = depthHighZ;
 			}
 #ifdef _DEBUG
-			cullingShader = m_pComputeMeshCullingShader->GetDebugComputeShaderRHI();
+			cullingShader = m_pComputeMeshCullingShader->GetComputeShaderRHI();
 #else
 			cullingShader = m_pComputeMeshCullingShader->GetComputeShaderRHI();
 #endif

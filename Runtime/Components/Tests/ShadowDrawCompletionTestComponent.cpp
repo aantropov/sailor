@@ -554,7 +554,7 @@ namespace
 			firstFlight->m_vulkan.m_descriptorSet != firstNative || firstFlight->GetDescriptorRevision() != firstRevision) return "committed cold tuple or flight UBO was rebuilt on reuse";
 
 		auto incompatible = driver->CreateShaderBindings();
-		if (!driver->FillShadersLayout(incompatible, { state.m_shaders[4]->GetDebugVertexShaderRHI(), state.m_shaders[4]->GetDebugFragmentShaderRHI() }, 1u)) return "ShadowCaster reflection is unavailable";
+		if (!driver->FillShadersLayout(incompatible, { state.m_shaders[4]->GetVertexShaderRHI(), state.m_shaders[4]->GetFragmentShaderRHI() }, 1u)) return "ShadowCaster reflection is unavailable";
 		const auto& reflected = incompatible->GetLayoutBindings();
 		if (reflected.FindIf([](const ShaderLayoutBinding& binding)
 			{ return binding.m_binding == 0u && binding.m_name == "data"_h && binding.m_type == EShaderBindingType::StorageBuffer; }) == static_cast<size_t>(-1)) return "real ShadowCaster data binding is not the incompatible StorageBuffer prerequisite";

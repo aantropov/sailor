@@ -3,6 +3,7 @@
 #include "vulkan/vulkan.h"
 #include "VulkanDevice.h"
 #include "RHI/Types.h"
+#include "RHI/ShaderLayout.h"
 #include "Core/StringHash.h"
 #include "Memory/RefPtr.hpp"
 #include "Containers/Set.h"
@@ -46,7 +47,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 	public:
 		SAILOR_API VulkanShaderStage() = default;
 		SAILOR_API VulkanShaderStage(VkShaderStageFlagBits stage, StringHash entryPointName, VulkanShaderModulePtr shaderModule);
-		SAILOR_API VulkanShaderStage(VkShaderStageFlagBits stage, StringHash entryPointName, VulkanDevicePtr pDevice, const RHI::ShaderByteCode& spirv);
+		SAILOR_API VulkanShaderStage(VkShaderStageFlagBits stage, StringHash entryPointName, VulkanDevicePtr pDevice, const RHI::ShaderByteCode& spirv, const RHI::ShaderStageLayout* layout = nullptr);
 
 		/// Vulkan VkPipelineShaderStageCreateInfo settings
 		VkPipelineShaderStageCreateFlags m_flags = 0;
@@ -64,8 +65,13 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API const TSet<uint32_t>& GetVertexAttributesBindings() const { return m_vertexAttributeBindings; }
 		SAILOR_API uint32_t GetFragmentOutputMask() const { return m_fragmentOutputMask; }
 
+		SAILOR_API static bool ReflectShaderLayout(RHI::EShaderStage stage, const RHI::ShaderByteCode& code,
+			RHI::ShaderStageLayout& outLayout, std::string& outDiagnostic);
+
 	protected:
 
+		void ApplyShaderLayout(const RHI::ShaderStageLayout& layout);
+		bool m_bHasCachedLayout = false;
 		SAILOR_API static bool IsRuntimeArrayBinding(const SpvReflectDescriptorBinding& reflBinding);
 		SAILOR_API void ReflectDescriptorSetBindings(const RHI::ShaderByteCode& code);
 

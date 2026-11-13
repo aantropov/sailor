@@ -1242,12 +1242,19 @@ RHI::RHIBufferPtr VulkanGraphicsDriver::CreateBuffer(RHI::RHICommandListPtr& cmd
 	return outBuffer;
 }
 
-RHI::RHIShaderPtr VulkanGraphicsDriver::CreateShader(RHI::EShaderStage shaderStage, const RHI::ShaderByteCode& shaderSpirv)
+RHI::RHIShaderPtr VulkanGraphicsDriver::CreateShader(RHI::EShaderStage shaderStage, const RHI::ShaderByteCode& shaderSpirv, const RHI::ShaderStageLayout* layout)
 {
 	SAILOR_PROFILE_FUNCTION();
 
+	std::string diagnostic;
+	if (layout && (layout->m_stage != shaderStage || !layout->Validate(diagnostic)))
+	{
+		SAILOR_LOG_ERROR("Invalid cached shader layout: %s", diagnostic.c_str());
+		return {};
+	}
 	auto res = RHI::RHIShaderPtr::Make(shaderStage);
-	res->m_vulkan.m_shader = VulkanShaderStagePtr::Make((VkShaderStageFlagBits)shaderStage, "main"_h, m_vkInstance->GetMainDevice(), shaderSpirv);
+	res->m_vulkan.m_shader = VulkanShaderStagePtr::Make((VkShaderStageFlagBits)shaderStage, "main"_h,
+		m_vkInstance->GetMainDevice(), shaderSpirv, layout);
 	res->m_vulkan.m_shader->Compile();
 
 	return res;
@@ -2172,15 +2179,15 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 	TVector<VulkanDescriptorSetLayoutPtr> descriptorSetLayouts;
 	TVector<RHI::ShaderLayoutBinding> bindings;
 
-	// We need debug shaders to get full names from reflection
-	const bool bHasValidShaders = shader->GetDebugVertexShaderRHI() && shader->GetDebugFragmentShaderRHI();
+	// Named bindings are restored from the cached stage layout.
+	const bool bHasValidShaders = shader->GetVertexShaderRHI() && shader->GetFragmentShaderRHI();
 	if (!bHasValidShaders)
 	{
 		SAILOR_LOG_ERROR("Shader %s is not compiled or valid", shader->GetFileId().ToString().c_str());
 		return nullptr;
 	}
 
-	VulkanApi::CreateDescriptorSetLayouts(device, { shader->GetDebugVertexShaderRHI()->m_vulkan.m_shader, shader->GetDebugFragmentShaderRHI()->m_vulkan.m_shader },
+	VulkanApi::CreateDescriptorSetLayouts(device, { shader->GetVertexShaderRHI()->m_vulkan.m_shader, shader->GetFragmentShaderRHI()->m_vulkan.m_shader },
 		descriptorSetLayouts, bindings);
 
 	// Material-owned parameters live exclusively in descriptor set 3. Keep
@@ -2267,7 +2274,7 @@ bool VulkanGraphicsDriver::FillShadersLayout(RHI::RHIShaderBindingSetPtr& pShade
 	TVector<uint32_t> optionalVariableDescriptorCount =
 		this->CollectOptionalVariableDescriptorCount(vulkanShaders, shaderBindingSets);
 
-	// We need debug shaders to get full names from reflection
+	// Named bindings are restored from the cached stage layout.
 	if (VulkanApi::CreateDescriptorSetLayouts(device, vulkanShaders, descriptorSetLayouts, bindings, &optionalVariableDescriptorCount))
 	{
 		bindings.RemoveAll([=](const auto& el) { return el.m_set != setNum; });
@@ -2293,23 +2300,25 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 		}
 	}
 
+	auto vertex = shader->GetVertexShaderRHI();
+	auto fragment = shader->GetFragmentShaderRHI();
+#ifdef _DEBUG
+	if (shader->GetDebugVertexShaderRHI() && shader->GetDebugFragmentShaderRHI())
+	{
+		vertex = shader->GetDebugVertexShaderRHI();
+		fragment = shader->GetDebugFragmentShaderRHI();
+	}
+#endif
+
 	TVector<VulkanShaderStagePtr> vulkanShaders
 	{
-		shader->GetDebugVertexShaderRHI()->m_vulkan.m_shader,
-		shader->GetDebugFragmentShaderRHI()->m_vulkan.m_shader
+		vertex->m_vulkan.m_shader,
+		fragment->m_vulkan.m_shader
 	};
 
 	TVector<uint32_t> optionalVariableDescriptorCount =
 		this->CollectOptionalVariableDescriptorCount(vulkanShaders, shaderBindingSets);
 
-#ifdef _DEBUG
-	const bool bIsDebug = true;
-#else
-	const bool bIsDebug = false;
-#endif
-
-	auto vertex = bIsDebug ? shader->GetDebugVertexShaderRHI() : shader->GetVertexShaderRHI();
-	auto fragment = bIsDebug ? shader->GetDebugFragmentShaderRHI() : shader->GetFragmentShaderRHI();
 
 	RHI::RHIMaterialPtr res = RHI::RHIMaterialPtr::Make(renderState, vertex, fragment, vertexDescription, topology);
 
@@ -2323,7 +2332,7 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 		TVector<VulkanDescriptorSetLayoutPtr> descriptorSetLayouts;
 		TVector<RHI::ShaderLayoutBinding> bindings;
 		TVector<VkPushConstantRange> pushConstants;
-		// Debug reflection retains the binding names used by the RHI.
+		// The executable stages retain the cached named layout.
 		VulkanApi::CreateDescriptorSetLayouts(device, vulkanShaders,
 			descriptorSetLayouts, bindings, &optionalVariableDescriptorCount);
 		if (!VulkanPipelineLayout::BuildPushConstantRanges(
@@ -2910,7 +2919,7 @@ VulkanComputePipelinePtr VulkanGraphicsDriver::GetOrAddComputePipeline(RHI::RHIS
 		TVector<RHI::ShaderLayoutBinding> bindings;
 		TVector<VkPushConstantRange> pushConstants;
 
-		// We need debug shaders to get full names from reflection
+		// Named bindings are restored from the cached stage layout.
 		VulkanApi::CreateDescriptorSetLayouts(device, { computeShader->m_vulkan.m_shader }, descriptorSetLayouts, bindings, optionalVariableDescriptorCount);
 
 		if (!VulkanPipelineLayout::BuildPushConstantRanges({ computeShader->m_vulkan.m_shader },

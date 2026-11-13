@@ -91,6 +91,14 @@ bool ShaderCacheTestAccess::PublishWithArtifactFailure(ShaderCache& cache,
 		return false;
 	}
 
+	// Byte-level persistence fixtures supply their stage topology without constructing GPU resources.
+	ShaderCache::LayoutSet layout;
+	layout.m_vertex.m_bValid = !vertex.IsEmpty();
+	layout.m_vertex.m_stage = RHI::EShaderStage::Vertex;
+	layout.m_fragment.m_bValid = !fragment.IsEmpty();
+	layout.m_fragment.m_stage = RHI::EShaderStage::Fragment;
+	layout.m_compute.m_bValid = !compute.IsEmpty();
+	layout.m_compute.m_stage = RHI::EShaderStage::Compute;
 	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
 	return cache.CacheCompleteSpirvLocked(uid,
 		permutation,
@@ -100,6 +108,7 @@ bool ShaderCacheTestAccess::PublishWithArtifactFailure(ShaderCache& cache,
 		debugVertex,
 		debugFragment,
 		debugCompute,
+		layout,
 		sourceState.m_timestamp,
 		sourceState.m_fingerprint,
 		failArtifactIndex,

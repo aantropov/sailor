@@ -2,6 +2,9 @@
 #include "Editor/EditorInterop.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
+#include "AssetRegistry/Shader/ShaderCache.h"
+#include "RHI/Material.h"
+#include "RHI/VertexDescription.h"
 #include "FrameGraph/BloomNode.h"
 #include "FrameGraph/DepthPrepassNode.h"
 #include "FrameGraph/RenderSceneNode.h"
@@ -287,10 +290,14 @@ namespace
 		TVector<Tasks::ITaskPtr> m_tasks;
 	};
 
-	void CheckShaderValue(const ShaderSetPtr& shader, uint32_t expected)
+	void CheckShaderValue(const ShaderSetPtr& shader, uint32_t expected, bool includeDebug = true)
 	{
 		for (bool named : { false, true })
 		{
+			if (named && !includeDebug)
+			{
+				continue;
+			}
 			const auto compute = named ? shader->GetDebugComputeShaderRHI() : shader->GetComputeShaderRHI();
 			Require(bool(compute), "a loaded shader must publish both compute variants");
 			auto task = Tasks::CreateTask<std::string>("Check loaded shader output"_h, [compute, expected]() -> std::string
@@ -700,6 +707,112 @@ namespace Sailor::Tests
 	{
 		TestShaderLoadRetry(workspace);
 		TestColdLoadDuringReloadPreparation(workspace);
+	}
+
+	std::string RunReleaseShaderCacheCommandTests(const std::filesystem::path& workspace, bool warm)
+	{
+		const auto path = workspace / "Content" / "ReleaseLayout.shader";
+		if (warm)
+		{
+			YAML::Node document;
+			document["glslCommon"] = "#version 450\n";
+			document["glslCompute"] = R"glsl(
+layout(local_size_x = 1) in;
+layout(set = 0, binding = 0, std430) buffer OutputData { uint values[]; } outputData;
+void main() { outputData.values[0] = 37u; }
+)glsl";
+			document["glslVertex"] = R"glsl(
+void main() {
+    const vec2 positions[3] = vec2[3](vec2(-1,-1), vec2(3,-1), vec2(-1,3));
+    gl_Position = vec4(positions[gl_VertexIndex], 0, 1);
+}
+)glsl";
+			document["glslFragment"] = R"glsl(
+layout(set = 0, binding = 0) uniform Parameters { vec4 color; } parameters;
+layout(location = 0) out vec4 resultColor;
+void main() { resultColor = parameters.color; }
+)glsl";
+			std::ofstream output(path);
+			output << document;
+			output.close();
+			Require(bool(output), "release layout fixture must be written");
+		}
+		auto* compiler = App::GetSubmodule<ShaderCompiler>();
+		const auto id = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(Workspace::PathToUtf8(path));
+		ShaderSetPtr shader;
+		Require(compiler->LoadShader_Immediate(id, shader) && shader && shader->IsReady(),
+			"release layout fixture must load");
+		if (!warm)
+		{
+			Require(!shader->GetDebugVertexShaderRHI() && !shader->GetDebugFragmentShaderRHI() &&
+				!shader->GetDebugComputeShaderRHI(), "cold runtime must publish only release shader modules");
+		}
+		CheckShaderValue(shader, 37, warm);
+		auto task = Tasks::CreateTask<std::string>("Draw cached release layout"_h, [shader]() -> std::string
+			{
+				try
+				{
+					auto& driver = Renderer::GetDriver();
+					auto commands = Renderer::GetDriverCommands();
+					const auto& sets = shader->GetFragmentShaderRHI()->m_vulkan.m_shader->GetBindings();
+					Require(sets.Num() == 1 && sets[0].Num() == 1 && sets[0][0].m_name == "parameters"_h &&
+						sets[0][0].m_members.Num() == 1 && sets[0][0].m_members[0].m_name == "color"_h &&
+						sets[0][0].m_members[0].m_absoluteOffset == 0 && sets[0][0].m_members[0].m_size == 16,
+						"optimized shader must restore named material field and offset from cache");
+					constexpr auto memory = EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent;
+					const glm::vec4 expected(0.25f, 0.5f, 0.75f, 1.0f);
+					auto color = driver->CreateBuffer(sizeof(expected), EBufferUsageBit::UniformBuffer_Bit, memory);
+					std::memcpy(color->GetPointer(), &expected, sizeof(expected));
+					auto bindings = driver->CreateShaderBindings();
+					Require(bool(driver->AddBufferToShaderBindings(bindings, color, "parameters"_h, 0)),
+						"cached named material uniform must bind");
+					const RenderState state{ false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, false };
+					auto material = driver->CreateMaterial(driver->GetOrAddVertexDescription<VertexP3N3UV2C4>(),
+						EPrimitiveTopology::TriangleList, state, shader, bindings);
+					Require(bool(material), "cached graphics pipeline layout must initialize");
+					const uint32_t indices[] = { 0, 1, 2 };
+					auto index = driver->CreateBuffer(sizeof(indices), EBufferUsageBit::IndexBuffer_Bit, memory);
+					std::memcpy(index->GetPointer(), indices, sizeof(indices));
+					auto target = driver->CreateRenderTarget(glm::ivec2(4), 1, EFormat::R32G32B32A32_SFLOAT);
+					auto pixels = driver->CreateBuffer(16 * sizeof(glm::vec4), EBufferUsageBit::BufferTransferDst_Bit, memory);
+					auto command = driver->CreateCommandList(false, ECommandListQueue::Graphics);
+					commands->BeginCommandList(command, true);
+					commands->ImageMemoryBarrier(command, target, EImageLayout::ColorAttachmentOptimal);
+					Require(commands->BeginRenderPass(command, TVector<RHITexturePtr>{ target }, nullptr,
+						glm::ivec4(0, 0, 4, 4), glm::ivec2(0), true, glm::vec4(-8), 0, false),
+						"release-only render pass must begin");
+					commands->SetViewport(command, 0, 0, 4, 4, glm::vec2(0), glm::vec2(4), 0, 1);
+					commands->BindMaterial(command, material);
+					Require(commands->BindShaderBindings(command, material, { bindings }), "named cached uniform must bind for drawing");
+					commands->BindIndexBuffer(command, index, 0);
+					commands->DrawIndexed(command, 3);
+					commands->EndRenderPass(command);
+					commands->ImageMemoryBarrier(command, target, EImageLayout::TransferSrcOptimal);
+					commands->CopyImageToBuffer(command, target, pixels);
+					commands->MemoryBarrier(command, static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit),
+						static_cast<EAccessFlags>(EAccessBit::HostRead_Bit));
+					commands->EndCommandList(command);
+					Require(driver->SubmitCommandList_Immediate(command), "release graphics draw must complete");
+					const auto values = static_cast<const glm::vec4*>(pixels->GetPointer());
+					for (uint32_t pixel = 0; pixel < 16; ++pixel)
+					{
+						Require(values[pixel] == expected, "release-only graphics must read back all expected material pixels");
+					}
+					return {};
+				}
+				catch (const std::exception& error)
+				{
+					return error.what();
+				}
+			}, EThreadType::Render);
+		task->Run();
+		task->Wait();
+		Require(task->GetResult().empty(), task->GetResult());
+		auto& cache = ShaderCompilerTestAccess::GetShaderCache(*compiler);
+		Require(cache.SaveCache(), "layout cache must persist before restart");
+		std::cout << "Shader layout cache: " << (warm ? "import" : "release-only restart") <<
+			" named uniform pixels and compute readback passed\n";
+		return ShaderCacheTestAccess::GetGeneration(cache, id, 0);
 	}
 
 	void RunShaderInterfaceCommandTests()

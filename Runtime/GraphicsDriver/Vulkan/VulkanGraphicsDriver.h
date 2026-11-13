@@ -107,7 +107,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual RHI::RHIBufferPtr CreateBuffer(RHI::RHICommandListPtr& cmdBuffer, const void* pData, size_t size, RHI::EBufferUsageFlags usage, RHI::EMemoryPropertyFlags properties = RHI::EMemoryPropertyBit::DeviceLocal) override;
 		SAILOR_API virtual RHI::RHIBufferPtr CreateIndirectBuffer(size_t size) override;
 
-		SAILOR_API virtual RHI::RHIShaderPtr CreateShader(RHI::EShaderStage shaderStage, const RHI::ShaderByteCode& shaderSpirv) override;
+		SAILOR_API virtual RHI::RHIShaderPtr CreateShader(RHI::EShaderStage shaderStage, const RHI::ShaderByteCode& shaderSpirv, const RHI::ShaderStageLayout* layout = nullptr) override;
 		SAILOR_API virtual RHI::RHITexturePtr CreateTexture(
 			const void* pData,
 			size_t size,

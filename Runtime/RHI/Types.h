@@ -17,6 +17,7 @@
 
 namespace Sailor::RHI
 {
+	struct ShaderStageLayout;
 	using ShaderByteCode = Sailor::TVector<uint32_t>;
 
 	using RHIBufferPtr = TRefPtr<class RHIBuffer>;
