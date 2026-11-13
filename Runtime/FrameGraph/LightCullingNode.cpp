@@ -133,7 +133,7 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdCompute);
 
 #ifdef _DEBUG
-	if (RHIShaderPtr computeShader = m_pComputeShader->GetDebugComputeShaderRHI())
+	if (RHIShaderPtr computeShader = m_pComputeShader->GetComputeShaderRHI())
 #else
 	if (RHIShaderPtr computeShader = m_pComputeShader->GetComputeShaderRHI())
 #endif

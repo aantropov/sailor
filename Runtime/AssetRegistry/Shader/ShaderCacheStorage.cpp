@@ -525,8 +525,7 @@ bool ShaderCache::PruneInvalidArtifactsLocked(ShaderCacheData& candidate,
 			const auto& entry = entries[index - 1];
 			SpirvSet ignored;
 			std::string diagnostic;
-			if (ReadArtifactSetLocked(entry, entry.m_regular, false, ignored, diagnostic, outIoFailure) &&
-				ReadArtifactSetLocked(entry, entry.m_debug, true, ignored, diagnostic, outIoFailure))
+			if (ReadArtifactSetLocked(entry, entry.m_regular, false, ignored, diagnostic, outIoFailure))
 			{
 				continue;
 			}

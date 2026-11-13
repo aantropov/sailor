@@ -528,7 +528,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		m_pShaderBindings = driver->CreateShaderBindings();
 
 		// Firstly we must assign the correct layout
-		driver->FillShadersLayout(m_pShaderBindings, { m_pSkyShader->GetDebugVertexShaderRHI(), m_pSkyShader->GetDebugFragmentShaderRHI() }, 1);
+		driver->FillShadersLayout(m_pShaderBindings, { m_pSkyShader->GetVertexShaderRHI(), m_pSkyShader->GetFragmentShaderRHI() }, 1);
 
 		// That should be enough to handle all the uniforms 
 		const size_t uniformsSize = std::max(sizeof(SkyParameters), m_vectorParams.Num() * sizeof(glm::vec4));
@@ -587,7 +587,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		m_pBlitCloudsBindings = driver->CreateShaderBindings();
 
 		// Firstly we must assign the correct layout
-		driver->FillShadersLayout(m_pBlitCloudsBindings, { m_pBlitShader->GetDebugVertexShaderRHI(), m_pBlitShader->GetDebugFragmentShaderRHI() }, 1);
+		driver->FillShadersLayout(m_pBlitCloudsBindings, { m_pBlitShader->GetVertexShaderRHI(), m_pBlitShader->GetFragmentShaderRHI() }, 1);
 
 		// That should be enough to handle all the uniforms 
 		//const size_t uniformsSize = std::max(sizeof(SkyParams), m_vectorParams.Num() * sizeof(glm::vec4));
@@ -886,7 +886,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		m_pEnvironmentBindings = driver->CreateShaderBindings();
 		// Debug bytecode retains the names required by binding reflection.
 		driver->FillShadersLayout(m_pEnvironmentBindings,
-			{ m_pSkyEnvShader->GetDebugVertexShaderRHI(), m_pSkyEnvShader->GetDebugFragmentShaderRHI() }, 1);
+			{ m_pSkyEnvShader->GetVertexShaderRHI(), m_pSkyEnvShader->GetFragmentShaderRHI() }, 1);
 		auto skyBinding = driver->AddBufferToShaderBindings(m_pEnvironmentBindings, "data"_h, sizeof(SkyParameters), 0,
 			RHI::EShaderBindingType::UniformBuffer);
 		commands->UpdateShaderBinding(transferCommandList, skyBinding,

@@ -41,6 +41,10 @@ namespace
 	class ShaderLayoutProbe final : public GraphicsDriver::Vulkan::VulkanShaderStage
 	{
 	public:
+		ShaderLayoutProbe()
+		{
+			m_stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+		}
 		using VulkanShaderStage::ReflectDescriptorSetBindings;
 	};
 
@@ -427,6 +431,17 @@ namespace
 			"test SPIR-V should be writable: " + diagnostic);
 	}
 
+	ShaderCache::LayoutSet EmptyLayout(bool compute = false)
+	{
+		ShaderCache::LayoutSet layout;
+		layout.m_vertex.m_stage = RHI::EShaderStage::Vertex;
+		layout.m_fragment.m_stage = RHI::EShaderStage::Fragment;
+		layout.m_compute.m_stage = RHI::EShaderStage::Compute;
+		layout.m_vertex.m_bValid = layout.m_fragment.m_bValid = !compute;
+		layout.m_compute.m_bValid = compute;
+		return layout;
+	}
+
 	bool PublishComplete(
 		ShaderCache& cache,
 		const FileId& uid,
@@ -442,7 +457,8 @@ namespace
 			empty,
 			Words(seed + 2),
 			Words(seed + 3),
-			empty);
+			empty,
+			EmptyLayout());
 	}
 
 	template<size_t Size>
@@ -647,7 +663,7 @@ namespace
 		}
 	}
 
-	void TestDebugArtifactsAreRequired()
+	void TestDebugArtifactsAreOptional()
 	{
 		TempDirectory directory;
 		ShaderCache cache(&c_shaderSourceStateProvider);
@@ -662,10 +678,8 @@ namespace
 
 		const std::string payload = ShaderCacheTestAccess::PayloadWithMissingDebug(cache);
 		std::string diagnostic;
-		Require(!ShaderCacheTestAccess::ParsePayload(payload, diagnostic),
-			"payload v1 must reject entries without required debug artifacts");
-		Require(diagnostic.find("debug artifacts") != std::string::npos,
-			"missing-debug diagnostic should identify the required debug artifact set");
+		Require(ShaderCacheTestAccess::ParsePayload(payload, diagnostic),
+			"payload v1 must allow executable stages with cached layouts and no diagnostic SPIR-V");
 
 		diagnostic.clear();
 		Require(
@@ -686,7 +700,7 @@ namespace
 				empty,
 				empty,
 				empty,
-				Words(13)),
+				Words(13), EmptyLayout()),
 			"live publication must reject different regular/debug shader stage topology");
 	}
 
@@ -826,7 +840,7 @@ namespace
 		Require(reads == 4, "one warm graphics permutation must read four artifacts once, got " + std::to_string(reads));
 
 		const TVector<uint32_t> empty;
-		Require(cache.CacheSpirv_ThreadSafe(uid, 1, empty, empty, Words(210), empty, empty, Words(211)),
+		Require(cache.CacheSpirv_ThreadSafe(uid, 1, empty, empty, Words(210), empty, empty, Words(211), EmptyLayout(true)),
 			"warm-read compute fixture must publish");
 		cache.SaveCache();
 		ShaderCacheTestAccess::TakeArtifactReadCount(cache);
@@ -842,9 +856,10 @@ namespace
 			"one warm compute permutation must read its two artifacts once");
 		const auto debugPath = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 1, ShaderCache::ComputeShaderTag, true);
 		WriteWords(debugPath, Words(999));
-		Require(!cache.TryLoadPermutation(uid, 1, loaded), "corrupt debug bytes must reject the complete permutation");
+		Require(cache.TryLoadPermutation(uid, 1, loaded), "corrupt diagnostics must not reject executable code and layout");
 		RequireWords(loaded.m_regular.m_compute, Words(210), "failed whole-permutation load regular output");
-		RequireWords(loaded.m_debug.m_compute, Words(211), "failed whole-permutation load debug output");
+		Require(loaded.m_debug.m_compute.IsEmpty() && loaded.m_layout.m_compute.m_bValid,
+			"corrupt diagnostics must be omitted while preserving cached layout");
 		++source.revision;
 		ShaderCacheTestAccess::SetArtifactReadIoFailure(cache, true);
 		Require(cache.IsExpired(uid, 0) && ShaderCacheTestAccess::IsQuarantined(cache),
@@ -863,7 +878,7 @@ namespace
 			Require(PublishComplete(cache, uid, 0, 220) && PublishComplete(cache, uid, 1, 230) &&
 				PublishComplete(cache, other, 0, 240), "three independent permutations must publish");
 			cache.SaveCache();
-			const auto badPath = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 0, ShaderCache::FragmentShaderTag, true);
+			const auto badPath = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 0, ShaderCache::FragmentShaderTag, false);
 			const auto healthyPath = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 1, ShaderCache::VertexShaderTag, false);
 			const auto healthyGeneration = ShaderCacheTestAccess::GetGeneration(cache, uid, 1);
 			const auto healthyBytes = ReadText(healthyPath);
@@ -1366,7 +1381,7 @@ namespace
 
 		Require(PublishComplete(cache, durableUid, 0, 60), "the durable quarantine fixture should publish");
 		cache.SaveCache(true);
-		const auto debugPath = ShaderCacheTestAccess::GetArtifactPath(cache, durableUid, 0, ShaderCache::FragmentShaderTag, true);
+		const auto artifactPath = ShaderCacheTestAccess::GetArtifactPath(cache, durableUid, 0, ShaderCache::FragmentShaderTag, false);
 		const auto cachePath = ShaderCacheTestAccess::GetCachePath(cache);
 		const auto backupPath = cacheRoot / "ShaderCache.backup.yaml";
 		std::filesystem::rename(cachePath, backupPath);
@@ -1441,17 +1456,17 @@ namespace
 
 		std::filesystem::remove(cachePath);
 		std::filesystem::rename(backupPath, cachePath);
-		WriteWords(debugPath, Words(999));
-		const auto badBytes = ReadText(debugPath);
+		WriteWords(artifactPath, Words(999));
+		const auto badBytes = ReadText(artifactPath);
 		cache.LoadCache();
 		Require(ShaderCacheTestAccess::IsQuarantined(cache) && cache.Contains(sessionUid) &&
 			cache.GetLastLoadResult().m_status == Workspace::EWorkspaceCacheLoadStatus::Corrupt,
 			"partial artifact recovery must not escape an existing I/O quarantine");
 		cache.SaveCache(true);
 		cache.ClearExpired();
-		Require(ReadText(cachePath) == durableEnvelope && ReadText(debugPath) == badBytes,
+		Require(ReadText(cachePath) == durableEnvelope && ReadText(artifactPath) == badBytes,
 			"a valid manifest with bad artifacts must stay read-only during quarantine");
-		WriteWords(debugPath, Words(63));
+		WriteWords(artifactPath, Words(61));
 		cache.LoadCache();
 		Require(cache.GetLastLoadResult().IsLoaded(),
 			"a later full successful reload should leave I/O quarantine");
@@ -1846,6 +1861,97 @@ namespace
 			std::string("runtime shader stage should compile: ") + shaderPath + " " + stageDefine);
 		Require(!byteCode.IsEmpty(), "runtime shader stage should produce SPIR-V");
 		return byteCode;
+	}
+
+	void TestCachedStageLayoutsWithoutDebugArtifacts()
+	{
+		TempDirectory directory;
+		ShaderCache cache(&c_shaderSourceStateProvider);
+		const auto root = directory.Path("Cache");
+		Require(ShaderCacheTestAccess::Configure(cache, root), "layout cache fixture must initialize");
+		const auto uid = MakeFileId("{SHADER-CACHED-LAYOUT}");
+		const TVector<uint32_t> empty;
+		for (const auto stage : { RHI::EShaderStage::Vertex, RHI::EShaderStage::Fragment, RHI::EShaderStage::Compute })
+		{
+			const auto path = stage == RHI::EShaderStage::Compute ? "Shaders/ComputeMeshCulling.shader" : "Shaders/Standard_glTF.shader";
+			const auto regular = CompileRuntimeShaderStage(path, {}, stage);
+			const auto debug = CompileRuntimeShaderStage(path, {}, stage, true);
+			RHI::ShaderStageLayout layout;
+			std::string diagnostic;
+			Require(VulkanShaderStage::ReflectShaderLayout(stage, debug, layout, diagnostic), diagnostic);
+			RHI::ShaderStageLayout restored;
+			restored.Deserialize(YAML::Load(YAML::Dump(layout.Serialize())));
+			Require(restored.Validate(diagnostic), "cached reflected layout must deserialize: " + diagnostic);
+			Require(YAML::Dump(layout.Serialize()) == YAML::Dump(restored.Serialize()),
+				"reflection persistence must retain names, offsets, strides, arrays, push constants and stage interfaces");
+			Require(!restored.m_bindings.IsEmpty(), "real compiled shader must contain named descriptor layouts");
+			bool named = false;
+			for (const auto& set : restored.m_bindings)
+			{
+				for (const auto& binding : set)
+				{
+					named |= !binding.m_name.ToString().empty();
+					if (binding.m_type == RHI::EShaderBindingType::StorageBuffer && !binding.m_members.IsEmpty())
+					{
+						Require(binding.m_paddedSize >= binding.m_size, "cached SSBO stride must cover its payload");
+					}
+				}
+			}
+			Require(named, "cached descriptors must retain material and compute binding names");
+			auto corrupt = restored.Serialize();
+			corrupt["stage"] = 255u;
+			restored.Deserialize(corrupt);
+			Require(!restored.m_bValid, "unknown cached stage must be rejected");
+			RHI::ShaderStageLayout wrongStage;
+			Require(!VulkanShaderStage::ReflectShaderLayout(stage == RHI::EShaderStage::Compute ?
+				RHI::EShaderStage::Vertex : RHI::EShaderStage::Compute, regular, wrongStage, diagnostic),
+				"SPIR-V reflection must reject the wrong stage association");
+		}
+
+		ShaderCache::LayoutSet layouts;
+		const auto vertex = CompileRuntimeShaderStage("Shaders/Standard_glTF.shader", {}, RHI::EShaderStage::Vertex);
+		const auto fragment = CompileRuntimeShaderStage("Shaders/Standard_glTF.shader", {}, RHI::EShaderStage::Fragment);
+		const auto debugVertex = CompileRuntimeShaderStage("Shaders/Standard_glTF.shader", {}, RHI::EShaderStage::Vertex, true);
+		const auto debugFragment = CompileRuntimeShaderStage("Shaders/Standard_glTF.shader", {}, RHI::EShaderStage::Fragment, true);
+		std::string diagnostic;
+		Require(VulkanShaderStage::ReflectShaderLayout(RHI::EShaderStage::Vertex, debugVertex, layouts.m_vertex, diagnostic) &&
+			VulkanShaderStage::ReflectShaderLayout(RHI::EShaderStage::Fragment, debugFragment, layouts.m_fragment, diagnostic), diagnostic);
+		Require(cache.CacheSpirv_ThreadSafe(uid, 0, vertex, fragment, empty, debugVertex, debugFragment, empty, layouts) &&
+			cache.SaveCache(), "real code and named layout must publish together");
+		const auto payload = ShaderCacheTestAccess::PayloadWithUnknownFields(cache);
+		for (int damage = 0; damage < 3; ++damage)
+		{
+			auto value = YAML::Load(payload);
+			auto entry = value["shaderCache"]["entries"][uid.ToString()][0];
+			if (damage == 0)
+			{
+				entry.remove("layout");
+			}
+			else if (damage == 1)
+			{
+				entry["layout"]["fragment"]["bindings"][0][0]["name"] = "wrongGeneration";
+			}
+			else
+			{
+				entry["regular"]["vertex"]["checksum"] = 19u;
+			}
+			Require(!ShaderCacheTestAccess::ParsePayload(YAML::Dump(value), diagnostic),
+				"missing, corrupt or code-mismatched reflection metadata must reject its cache entry");
+		}
+		const auto generation = ShaderCacheTestAccess::GetGeneration(cache, uid, 0);
+		std::filesystem::remove_all(root / "CompiledShadersWithDebug");
+		ShaderCache reopened(&c_shaderSourceStateProvider);
+		Require(ShaderCacheTestAccess::Configure(reopened, root), "release-only cache must reopen");
+		reopened.LoadCache();
+		ShaderCache::PermutationSpirv loaded;
+		Require(reopened.TryLoadPermutation(uid, 0, loaded) &&
+			ShaderCacheTestAccess::GetGeneration(reopened, uid, 0) == generation,
+			"fresh cache instance must reuse its generation without debug files");
+		RequireWords(loaded.m_regular.m_vertex, vertex, "release-only vertex");
+		RequireWords(loaded.m_regular.m_fragment, fragment, "release-only fragment");
+		Require(loaded.m_debug.m_vertex.IsEmpty() && loaded.m_debug.m_fragment.IsEmpty() &&
+			YAML::Dump(loaded.m_layout.Serialize()) == YAML::Dump(layouts.Serialize()),
+			"release-only reload must restore all layout data without diagnostic bytecode");
 	}
 
 	VulkanShaderStagePtr ReflectStage(const RHI::ShaderByteCode& code, RHI::EShaderStage stage)
@@ -2470,7 +2576,7 @@ int main()
 		TestMisalignedArtifactIsRejected();
 		TestChecksumMismatchIsRejected();
 		TestOwnedArtifactContainment();
-		TestDebugArtifactsAreRequired();
+		TestDebugArtifactsAreOptional();
 		TestPayloadIgnoresUnknownFields();
 		TestArtifactValidationDiagnostics();
 		TestBatchInvalidationAndRestart();
@@ -2494,6 +2600,7 @@ int main()
 		TestShaderDependencyFingerprintTracksTimestampAndWinner();
 		TestMissingYamlIncludeFailsWithoutPartialSource();
 		TestShaderMaterialDefaults();
+		TestCachedStageLayoutsWithoutDebugArtifacts();
 		TestCompiledPushConstantRanges();
 		TestRuntimePushConstantLayouts();
 		TestRuntimeLightingShadersCompile();

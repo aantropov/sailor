@@ -96,6 +96,64 @@ void ShaderCache::ArtifactSet::Deserialize(const YAML::Node& inData)
 	}
 }
 
+bool ShaderCache::LayoutSet::Validate(bool vertex, bool fragment, bool compute, std::string& diagnostic) const
+{
+	const RHI::ShaderStageLayout* stages[] = { &m_vertex, &m_fragment, &m_compute };
+	const bool present[] = { vertex, fragment, compute };
+	const RHI::EShaderStage kinds[] = { RHI::EShaderStage::Vertex, RHI::EShaderStage::Fragment, RHI::EShaderStage::Compute };
+	for (size_t index = 0; index < 3; ++index)
+	{
+		if (stages[index]->m_bValid != present[index] ||
+			(present[index] && (stages[index]->m_stage != kinds[index] || !stages[index]->Validate(diagnostic))))
+		{
+			diagnostic = "Shader layout does not match its SPIR-V stage topology. " + diagnostic;
+			return false;
+		}
+	}
+	return true;
+}
+
+YAML::Node ShaderCache::LayoutSet::Serialize() const
+{
+	YAML::Node result(YAML::NodeType::Map);
+	result["schemaVersion"] = 1;
+	result["vertex"] = m_vertex.Serialize();
+	result["fragment"] = m_fragment.Serialize();
+	result["compute"] = m_compute.Serialize();
+	return result;
+}
+
+void ShaderCache::LayoutSet::Deserialize(const YAML::Node& data)
+{
+	*this = {};
+	std::string diagnostic;
+	External::GuardYamlExceptions([&]()
+		{
+			if (!data.IsMap() || data.size() != 4 || data["schemaVersion"].as<uint32_t>() != 1)
+			{
+				return;
+			}
+			m_vertex.Deserialize(data["vertex"]);
+			m_fragment.Deserialize(data["fragment"]);
+			m_compute.Deserialize(data["compute"]);
+			if ((!data["vertex"].IsNull() && !m_vertex.m_bValid) ||
+				(!data["fragment"].IsNull() && !m_fragment.m_bValid) ||
+				(!data["compute"].IsNull() && !m_compute.m_bValid))
+			{
+				*this = {};
+			}
+		}, diagnostic);
+}
+
+uint64_t ShaderCache::CalculateLayoutChecksum(const LayoutSet& layout, const ArtifactSet& regular)
+{
+	YAML::Node value;
+	value["layout"] = layout.Serialize();
+	value["spirv"] = regular.Serialize();
+	const auto text = YAML::Dump(value);
+	return CalculateArtifactChecksum(text.data(), text.size());
+}
+
 YAML::Node ShaderCache::ShaderCacheData::Entry::Serialize() const
 {
 	YAML::Node result(YAML::NodeType::Map);
@@ -106,6 +164,8 @@ YAML::Node ShaderCache::ShaderCacheData::Entry::Serialize() const
 	SERIALIZE_PROPERTY(result, m_generation);
 	SERIALIZE_PROPERTY(result, m_regular);
 	SERIALIZE_PROPERTY(result, m_debug);
+	SERIALIZE_PROPERTY(result, m_layout);
+	SERIALIZE_PROPERTY(result, m_layoutChecksum);
 	return result;
 }
 
@@ -123,6 +183,8 @@ void ShaderCache::ShaderCacheData::Entry::Deserialize(const YAML::Node& inData)
 				DESERIALIZE_PROPERTY(inData, m_generation);
 				DESERIALIZE_PROPERTY(inData, m_regular);
 				DESERIALIZE_PROPERTY(inData, m_debug);
+				DESERIALIZE_PROPERTY(inData, m_layout);
+				DESERIALIZE_PROPERTY(inData, m_layoutChecksum);
 			},
 			yamlDiagnostic))
 	{
@@ -160,11 +222,18 @@ bool ShaderCache::ShaderCacheData::Entry::Validate(const FileId& key, std::strin
 	{
 		return fail("regular artifacts must contain a vertex/fragment pair or compute artifact.");
 	}
-	if (!IsValidArtifactSet(m_debug, false))
+	if (!m_layout.Validate(m_regular.m_vertex.IsPresent(), m_regular.m_fragment.IsPresent(),
+			m_regular.m_compute.IsPresent(), outDiagnostic) || m_layoutChecksum == 0 ||
+		m_layoutChecksum != CalculateLayoutChecksum(m_layout, m_regular))
+	{
+		return fail("has invalid shader layout metadata or checksum. " + outDiagnostic);
+	}
+	if (!IsValidArtifactSet(m_debug, true))
 	{
 		return fail("debug artifacts must contain a vertex/fragment pair or compute artifact.");
 	}
-	if (!HasMatchingArtifactTopology(m_regular, m_debug))
+	if ((m_debug.m_vertex.IsPresent() || m_debug.m_fragment.IsPresent() || m_debug.m_compute.IsPresent()) &&
+		!HasMatchingArtifactTopology(m_regular, m_debug))
 	{
 		return fail("regular and debug artifacts must contain identical shader stages.");
 	}

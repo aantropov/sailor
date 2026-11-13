@@ -576,7 +576,7 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	if (!resources->m_shaderBindings)
 	{
 		resources->m_shaderBindings = driver->CreateShaderBindings();
-		driver->FillShadersLayout(resources->m_shaderBindings, { m_pShader->GetDebugVertexShaderRHI(), m_pShader->GetDebugFragmentShaderRHI() }, 1);
+		driver->FillShadersLayout(resources->m_shaderBindings, { m_pShader->GetVertexShaderRHI(), m_pShader->GetFragmentShaderRHI() }, 1);
 		driver->AddBufferToShaderBindings(resources->m_shaderBindings, "data"_h, 32, 1, RHI::EShaderBindingType::UniformBuffer);
 		driver->AddSamplerToShaderBindings(resources->m_shaderBindings, "currentSampler"_h, resources->m_runtimeTexture, 0);
 		resources->m_shaderBindings->RecalculateCompatibility();

@@ -265,7 +265,7 @@ namespace
 	std::array<RHIShaderPtr, 6> ShaderStages(ShaderSetPtr shader)
 	{
 		return { shader->GetVertexShaderRHI(), shader->GetFragmentShaderRHI(), shader->GetComputeShaderRHI(),
-			shader->GetDebugVertexShaderRHI(), shader->GetDebugFragmentShaderRHI(), shader->GetDebugComputeShaderRHI() };
+			shader->GetVertexShaderRHI(), shader->GetFragmentShaderRHI(), shader->GetComputeShaderRHI() };
 	}
 
 	// Shader and texture replacement is serialized on Render. Keep the old resources

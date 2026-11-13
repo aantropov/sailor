@@ -63,6 +63,7 @@ namespace Sailor::Tests
 	void RunDepthOcclusionCommandTests(const std::filesystem::path& workspace);
 	void RunDefaultDepthCommandTests(const std::filesystem::path& workspace);
 	void RunShaderLifecycleCommandTests(const std::filesystem::path& workspace);
+	std::string RunReleaseShaderCacheCommandTests(const std::filesystem::path& workspace, bool warm);
 	void RunCloudNoiseCommandTests(const std::filesystem::path& workspace);
 	void RunSkyStarsCommandTests(const std::filesystem::path& workspace);
 	void RequireImageInitializationRefusal(const std::function<void()>& record,
@@ -1374,7 +1375,21 @@ namespace Sailor::Tests
 			arguments.insert(arguments.end(), { "--workspace", root.c_str(), "--editor", "--port", "0", "--world", "" });
 			Require(App::Initialize(arguments.data(), static_cast<int32_t>(arguments.size())) == EAppInitializationResult::Ready &&
 				App::IsRendererInitialized(), "render contracts must initialize a hidden native renderer");
-			if (argc > 1 && std::string_view(argv[1]) == "--gpu-depth-occlusion")
+			if (argc > 1 && std::string_view(argv[1]) == "--gpu-release-shaders")
+			{
+				const auto generation = RunReleaseShaderCacheCommandTests(workspace.Get(), true);
+				App::Stop();
+				Require(App::Shutdown(), "warm shader runtime must shut down before cold reload");
+				const auto debug = workspace.Get() / "Cache" / "CompiledShadersWithDebug";
+				std::filesystem::remove_all(debug);
+				Require(App::Initialize(arguments.data(), static_cast<int32_t>(arguments.size())) == EAppInitializationResult::Ready,
+					"release-only runtime must restart");
+				Require(RunReleaseShaderCacheCommandTests(workspace.Get(), false) == generation,
+					"cold reload must use the same immutable generation without recompiling");
+				Require(!std::filesystem::exists(debug) || std::filesystem::is_empty(debug),
+					"cold startup and GPU execution must not recreate debug shader artifacts");
+			}
+			else if (argc > 1 && std::string_view(argv[1]) == "--gpu-depth-occlusion")
 			{
 				RunDepthOcclusionCommandTests(workspace.Get());
 			}

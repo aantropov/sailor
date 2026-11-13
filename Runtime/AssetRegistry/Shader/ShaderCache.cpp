@@ -129,6 +129,7 @@ bool ShaderCache::CacheCompleteSpirvLocked(const FileId& uid,
 	const TVector<uint32_t>& debugVertexSpirv,
 	const TVector<uint32_t>& debugFragmentSpirv,
 	const TVector<uint32_t>& debugComputeSpirv,
+	const LayoutSet& layout,
 	std::time_t sourceTimestamp,
 	uint64_t sourceFingerprint,
 	int32_t failArtifactIndex,
@@ -147,6 +148,12 @@ bool ShaderCache::CacheCompleteSpirvLocked(const FileId& uid,
 		return false;
 	}
 
+	if (!layout.Validate(regularMetadata.m_vertex.IsPresent(), regularMetadata.m_fragment.IsPresent(),
+		regularMetadata.m_compute.IsPresent(), outDiagnostic))
+	{
+		return false;
+	}
+
 	if (sourceFingerprint == 0)
 	{
 		outDiagnostic = "Cannot publish SPIR-V without a valid shader dependency fingerprint.";
@@ -161,6 +168,7 @@ bool ShaderCache::CacheCompleteSpirvLocked(const FileId& uid,
 		candidate.m_sourceFingerprint = sourceFingerprint;
 		candidate.m_spirv.m_regular = { vertexSpirv, fragmentSpirv, computeSpirv };
 		candidate.m_spirv.m_debug = { debugVertexSpirv, debugFragmentSpirv, debugComputeSpirv };
+		candidate.m_spirv.m_layout = layout;
 		if (QuarantinedEntry* existing = FindQuarantinedEntryLocked(uid, permutation))
 		{
 			*existing = std::move(candidate);
@@ -222,6 +230,8 @@ bool ShaderCache::CacheCompleteSpirvLocked(const FileId& uid,
 	candidate.m_generation = generation;
 	candidate.m_regular = regularMetadata;
 	candidate.m_debug = debugMetadata;
+	candidate.m_layout = layout;
+	candidate.m_layoutChecksum = CalculateLayoutChecksum(layout, regularMetadata);
 	if (existing == std::end(entries))
 	{
 		entries.Add(std::move(candidate));
@@ -249,7 +259,8 @@ bool ShaderCache::CacheSpirv_ThreadSafe(const FileId& uid,
 	const TVector<uint32_t>& computeSpirv,
 	const TVector<uint32_t>& debugVertexSpirv,
 	const TVector<uint32_t>& debugFragmentSpirv,
-	const TVector<uint32_t>& debugComputeSpirv)
+	const TVector<uint32_t>& debugComputeSpirv,
+	const LayoutSet& layout)
 {
 	SAILOR_PROFILE_FUNCTION();
 	ShaderSourceState sourceState;
@@ -270,6 +281,7 @@ bool ShaderCache::CacheSpirv_ThreadSafe(const FileId& uid,
 		debugVertexSpirv,
 		debugFragmentSpirv,
 		debugComputeSpirv,
+		layout,
 		sourceState.m_fingerprint);
 }
 
@@ -281,6 +293,7 @@ bool ShaderCache::CacheSpirvForSourceFingerprint_ThreadSafe(const FileId& uid,
 	const TVector<uint32_t>& debugVertexSpirv,
 	const TVector<uint32_t>& debugFragmentSpirv,
 	const TVector<uint32_t>& debugComputeSpirv,
+	const LayoutSet& layout,
 	uint64_t expectedSourceFingerprint)
 {
 	ShaderSourceState currentSourceState;
@@ -309,6 +322,7 @@ bool ShaderCache::CacheSpirvForSourceFingerprint_ThreadSafe(const FileId& uid,
 			debugVertexSpirv,
 			debugFragmentSpirv,
 			debugComputeSpirv,
+			layout,
 			currentSourceState.m_timestamp,
 			currentSourceState.m_fingerprint,
 			-1,
@@ -345,7 +359,7 @@ bool ShaderCache::GetSpirvCode(const FileId& uid,
 	vertexSpirv = std::move(selected.m_vertex);
 	fragmentSpirv = std::move(selected.m_fragment);
 	computeSpirv = std::move(selected.m_compute);
-	return true;
+	return !vertexSpirv.IsEmpty() || !fragmentSpirv.IsEmpty() || !computeSpirv.IsEmpty();
 }
 
 bool ShaderCache::Contains(const FileId& uid) const
@@ -395,8 +409,8 @@ bool ShaderCache::TryLoadPermutationLocked(const FileId& uid, uint32_t permutati
 	}
 
 	const ShaderCacheData::Entry& entry = entries[index];
-	if (!IsValidArtifactSet(entry.m_regular, false) || !IsValidArtifactSet(entry.m_debug, false) ||
-		!HasMatchingArtifactTopology(entry.m_regular, entry.m_debug) || !IsValidGeneration(entry.m_generation))
+	std::string layoutDiagnostic;
+	if (!entry.Validate(uid, layoutDiagnostic))
 	{
 		return false;
 	}
@@ -404,8 +418,7 @@ bool ShaderCache::TryLoadPermutationLocked(const FileId& uid, uint32_t permutati
 	std::string diagnostic;
 	PermutationSpirv loaded;
 	bool bArtifactIoFailure = false;
-	if (!ReadArtifactSetLocked(entry, entry.m_regular, false, loaded.m_regular, diagnostic, bArtifactIoFailure) ||
-		!ReadArtifactSetLocked(entry, entry.m_debug, true, loaded.m_debug, diagnostic, bArtifactIoFailure))
+	if (!ReadArtifactSetLocked(entry, entry.m_regular, false, loaded.m_regular, diagnostic, bArtifactIoFailure))
 	{
 		if (bArtifactIoFailure)
 		{
@@ -420,6 +433,12 @@ bool ShaderCache::TryLoadPermutationLocked(const FileId& uid, uint32_t permutati
 		entry.m_sourceFingerprint != sourceState.m_fingerprint)
 	{
 		return false;
+	}
+	loaded.m_layout = entry.m_layout;
+	bool debugIoFailure = false;
+	if (!ReadArtifactSetLocked(entry, entry.m_debug, true, loaded.m_debug, diagnostic, debugIoFailure))
+	{
+		loaded.m_debug = {};
 	}
 	outSpirv = std::move(loaded);
 	return true;

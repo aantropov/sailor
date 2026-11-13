@@ -878,7 +878,7 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 		}
 #ifdef _DEBUG
 		cullingShader = bGpuCullingEnabled ?
-			m_pComputeMeshCullingShader->GetDebugComputeShaderRHI() : RHIShaderPtr{};
+			m_pComputeMeshCullingShader->GetComputeShaderRHI() : RHIShaderPtr{};
 #else
 		cullingShader = bGpuCullingEnabled ?
 			m_pComputeMeshCullingShader->GetComputeShaderRHI() : RHIShaderPtr{};

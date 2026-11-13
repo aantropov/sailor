@@ -6,6 +6,7 @@
 #include "Containers/Vector.h"
 #include "Core/YamlSerializable.h"
 #include "Sailor.h"
+#include "RHI/ShaderLayout.h"
 #include "Platform/AtomicFile.h"
 #include "Workspace/WorkspaceCacheContract.h"
 
@@ -81,6 +82,14 @@ namespace Sailor
 			std::string_view vertexGlsl,
 			std::string_view fragmentGlsl,
 			std::string_view computeGlsl);
+		struct LayoutSet final : IYamlSerializable
+		{
+			RHI::ShaderStageLayout m_vertex, m_fragment, m_compute;
+			SAILOR_API bool Validate(bool vertex, bool fragment, bool compute, std::string& diagnostic) const;
+			SAILOR_API YAML::Node Serialize() const override;
+			SAILOR_API void Deserialize(const YAML::Node& data) override;
+		};
+
 		SAILOR_API bool CacheSpirv_ThreadSafe(
 			const FileId& uid,
 			uint32_t permutation,
@@ -89,7 +98,8 @@ namespace Sailor
 			const TVector<uint32_t>& computeSpirv,
 			const TVector<uint32_t>& debugVertexSpirv,
 			const TVector<uint32_t>& debugFragmentSpirv,
-			const TVector<uint32_t>& debugComputeSpirv);
+			const TVector<uint32_t>& debugComputeSpirv,
+			const LayoutSet& layout);
 
 		SAILOR_API bool GetSpirvCode(
 			const FileId& uid,
@@ -107,6 +117,7 @@ namespace Sailor
 		struct PermutationSpirv
 		{
 			SpirvSet m_regular, m_debug;
+			LayoutSet m_layout;
 		};
 
 		SAILOR_API bool TryLoadPermutation(const FileId& uid, uint32_t permutation, PermutationSpirv& outSpirv);
@@ -186,6 +197,8 @@ namespace Sailor
 					std::string m_generation;
 					ArtifactSet m_regular;
 					ArtifactSet m_debug;
+					LayoutSet m_layout;
+					uint64_t m_layoutChecksum = 0;
 
 				SAILOR_API bool operator==(const Entry& rhs) const
 				{
@@ -232,6 +245,7 @@ namespace Sailor
 			PermutationSpirv m_spirv;
 		};
 
+		static uint64_t CalculateLayoutChecksum(const LayoutSet& layout, const ArtifactSet& regular);
 		static std::string SerializeShaderCachePayload(const ShaderCacheData& cache);
 		static bool TryDeserializeShaderCachePayload(
 			const std::string& payload,
@@ -321,6 +335,7 @@ namespace Sailor
 			const TVector<uint32_t>& debugVertexSpirv,
 			const TVector<uint32_t>& debugFragmentSpirv,
 			const TVector<uint32_t>& debugComputeSpirv,
+			const LayoutSet& layout,
 			std::time_t sourceTimestamp,
 			uint64_t sourceFingerprint,
 			int32_t failArtifactIndex,
@@ -334,6 +349,7 @@ namespace Sailor
 			const TVector<uint32_t>& debugVertexSpirv,
 			const TVector<uint32_t>& debugFragmentSpirv,
 			const TVector<uint32_t>& debugComputeSpirv,
+			const LayoutSet& layout,
 			uint64_t expectedSourceFingerprint);
 		bool CaptureSourceState(
 			const FileId& uid,

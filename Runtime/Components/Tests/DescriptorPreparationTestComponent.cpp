@@ -1023,7 +1023,7 @@ namespace
 			return "offset-bound inspection of an allocated SSBO changed its original binding";
 
 		auto reflected = driver->CreateShaderBindings();
-		if (!driver->FillShadersLayout(reflected, { storageShader->GetDebugComputeShaderRHI() }, 0u) ||
+		if (!driver->FillShadersLayout(reflected, { storageShader->GetComputeShaderRHI() }, 0u) ||
 			!reflected->GetShaderBindings().IsEmpty()) return "debug reflection did not prepare metadata-only bindings";
 		const auto& layouts = reflected->GetLayoutBindings();
 		const size_t sourceIndex = layouts.FindIf([](const auto& layout) { return layout.m_binding == 1u; });

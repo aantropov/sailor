@@ -84,7 +84,7 @@ void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		bindings = driver->CreateShaderBindings();
 
 		// Reflection retains uniform names in the debug bytecode; rendering uses the material's regular shaders.
-		driver->FillShadersLayout(bindings, { m_pShader->GetDebugVertexShaderRHI(), m_pShader->GetDebugFragmentShaderRHI() }, 1);
+		driver->FillShadersLayout(bindings, { m_pShader->GetVertexShaderRHI(), m_pShader->GetFragmentShaderRHI() }, 1);
 
 		const auto layouts = bindings->GetLayoutBindings();
 		for (const auto& layout : layouts)

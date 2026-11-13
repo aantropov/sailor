@@ -10,6 +10,7 @@
 #include "ShaderCache.h"
 #include "ShaderYamlIncludeResolver.h"
 #include "RHI/Shader.h"
+#include "GraphicsDriver/Vulkan/VulkanShaderModule.h"
 #include "Core/Utils.h"
 #include <cctype>
 #include <filesystem>
@@ -458,7 +459,35 @@ bool ShaderCompiler::ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint3
 			assetInfo->GetAssetFilepath().c_str(),
 			permutation);
 	}
-	const bool bCachedComplete = bCompiledRegular && bCompiledDebug && m_shaderCache.CacheSpirvForSourceFingerprint_ThreadSafe(
+	ShaderCache::LayoutSet layout;
+	auto reflectLayout = [&](RHI::EShaderStage stage, const RHI::ShaderByteCode& regular,
+		const RHI::ShaderByteCode& debug, RHI::ShaderStageLayout& result)
+	{
+		if (regular.IsEmpty())
+		{
+			return debug.IsEmpty();
+		}
+		RHI::ShaderStageLayout executable;
+		std::string diagnostic;
+		using GraphicsDriver::Vulkan::VulkanShaderStage;
+		if (!VulkanShaderStage::ReflectShaderLayout(stage, debug, result, diagnostic) ||
+			!VulkanShaderStage::ReflectShaderLayout(stage, regular, executable, diagnostic))
+		{
+			SAILOR_LOG_ERROR("Cannot cache shader reflection: %s", diagnostic.c_str());
+			return false;
+		}
+		// Retain names from unoptimized reflection, but execution interfaces from
+		// the bytecode actually used by the runtime.
+		result.m_vertexAttributeBindings = std::move(executable.m_vertexAttributeBindings);
+		result.m_fragmentOutputMask = executable.m_fragmentOutputMask;
+		result.m_pushConstants = std::move(executable.m_pushConstants);
+		return true;
+	};
+	const bool bLayoutReady = bCompiledRegular && bCompiledDebug &&
+		reflectLayout(RHI::EShaderStage::Vertex, spirvVertexByteCode, spirvVertexByteCodeDebug, layout.m_vertex) &&
+		reflectLayout(RHI::EShaderStage::Fragment, spirvFragmentByteCode, spirvFragmentByteCodeDebug, layout.m_fragment) &&
+		reflectLayout(RHI::EShaderStage::Compute, spirvComputeByteCode, spirvComputeByteCodeDebug, layout.m_compute);
+	const bool bCachedComplete = bLayoutReady && m_shaderCache.CacheSpirvForSourceFingerprint_ThreadSafe(
 		assetInfo->GetFileId(),
 		permutation,
 		spirvVertexByteCode,
@@ -467,6 +496,7 @@ bool ShaderCompiler::ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint3
 		spirvVertexByteCodeDebug,
 		spirvFragmentByteCodeDebug,
 		spirvComputeByteCodeDebug,
+		layout,
 		expectedSourceState.m_fingerprint);
 	if (bCompiledRegular && bCompiledDebug && !bCachedComplete)
 	{
@@ -1569,7 +1599,7 @@ bool ShaderCompiler::GetSpirvCode(const FileId& assetFileId, uint32_t permutatio
 	outVertexByteCode = std::move(selected.m_vertex);
 	outFragmentByteCode = std::move(selected.m_fragment);
 	outComputeByteCode = std::move(selected.m_compute);
-	return true;
+	return !outVertexByteCode.IsEmpty() || !outFragmentByteCode.IsEmpty() || !outComputeByteCode.IsEmpty();
 }
 
 bool ShaderCompiler::GetSpirvPermutation(const FileId& assetFileId, uint32_t permutation, ShaderCache::PermutationSpirv& outSpirv)
@@ -1729,13 +1759,15 @@ bool ShaderCompiler::CreateShaderResources(ShaderResources& resources)
 	auto createShader = [&](RHI::EShaderStage stage,
 		const RHI::ShaderByteCode& byteCode,
 		RHI::RHIShaderPtr& outShader,
-		std::string_view debugName) -> bool
+		std::string_view debugName, bool cachedLayout = true) -> bool
 	{
 		if (byteCode.IsEmpty())
 		{
 			return true;
 		}
-		outShader = pRhiDriver->CreateShader(stage, byteCode);
+		const auto& layout = stage == RHI::EShaderStage::Vertex ? spirv.m_layout.m_vertex :
+			(stage == RHI::EShaderStage::Fragment ? spirv.m_layout.m_fragment : spirv.m_layout.m_compute);
+		outShader = pRhiDriver->CreateShader(stage, byteCode, cachedLayout ? &layout : nullptr);
 		if (!outShader)
 		{
 			SAILOR_LOG_ERROR(
@@ -1751,17 +1783,17 @@ bool ShaderCompiler::CreateShaderResources(ShaderResources& resources)
 		RHI::EShaderStage::Vertex,
 		spirv.m_debug.m_vertex,
 		resources.m_debugVertex,
-		"Debug Vertex") ||
+		"Debug Vertex", false) ||
 		!createShader(
 			RHI::EShaderStage::Fragment,
 			spirv.m_debug.m_fragment,
 			resources.m_debugFragment,
-			"Debug Fragment") ||
+			"Debug Fragment", false) ||
 		!createShader(
 			RHI::EShaderStage::Compute,
 			spirv.m_debug.m_compute,
 			resources.m_debugCompute,
-			"Debug Compute") ||
+			"Debug Compute", false) ||
 		!createShader(
 			RHI::EShaderStage::Vertex,
 			spirv.m_regular.m_vertex,
@@ -1783,12 +1815,10 @@ bool ShaderCompiler::CreateShaderResources(ShaderResources& resources)
 
 	const bool bRegularReady =
 		(resources.m_vertex && resources.m_fragment) || resources.m_compute;
-	const bool bDebugReady =
-		(resources.m_debugVertex && resources.m_debugFragment) || resources.m_debugCompute;
-	if (!bRegularReady || !bDebugReady)
+	if (!bRegularReady)
 	{
 		SAILOR_LOG_ERROR(
-			"Prepared an incomplete regular/debug shader set for shader %s",
+			"Prepared an incomplete executable shader set for shader %s",
 			assetFilename.c_str());
 		return false;
 	}

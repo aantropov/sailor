@@ -197,7 +197,7 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 
 	RHI::RHIShaderPtr cmptShader = m_pComputeShader->GetComputeShaderRHI();
 #ifdef _DEBUG
-	cmptShader = m_pComputeShader->GetDebugComputeShaderRHI();
+	cmptShader = m_pComputeShader->GetComputeShaderRHI();
 #endif
 
 	ParticlesNode::PushConstants constants{};

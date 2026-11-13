@@ -819,7 +819,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		if (bVerticalReady && bHorizontalReady)
 		{
 			auto candidateBindings = driver->CreateShaderBindings();
-			if (driver->FillShadersLayout(candidateBindings, { m_pBlurVerticalShader->GetDebugVertexShaderRHI(), m_pBlurVerticalShader->GetDebugFragmentShaderRHI() }, 1) &&
+			if (driver->FillShadersLayout(candidateBindings, { m_pBlurVerticalShader->GetVertexShaderRHI(), m_pBlurVerticalShader->GetFragmentShaderRHI() }, 1) &&
 				driver->AddBufferToShaderBindings(candidateBindings, "data"_h, sizeof(glm::vec4) * 3, 0, RHI::EShaderBindingType::UniformBuffer))
 			{
 				RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
@@ -856,7 +856,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	if (bHasBlur && !blurShaderBindings && m_pBlurShaderBindings)
 	{
 		auto candidateBindings = driver->CreateShaderBindings();
-		if (driver->FillShadersLayout(candidateBindings, { m_pBlurVerticalShader->GetDebugVertexShaderRHI(), m_pBlurVerticalShader->GetDebugFragmentShaderRHI() }, 1))
+		if (driver->FillShadersLayout(candidateBindings, { m_pBlurVerticalShader->GetVertexShaderRHI(), m_pBlurVerticalShader->GetFragmentShaderRHI() }, 1))
 		{
 			RHIShaderBindingPtr initialBlurDataBinding = driver->AddBufferToShaderBindings(candidateBindings, "data"_h, sizeof(glm::vec4) * 3, 0, RHI::EShaderBindingType::UniformBuffer);
 			if (initialBlurDataBinding)
