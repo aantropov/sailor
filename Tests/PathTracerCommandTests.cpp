@@ -61,6 +61,7 @@ namespace Sailor::Tests
 	void RunPrefabImporterCommandTests(const std::filesystem::path& workspace);
 	void RunFrameGraphNodeCommandTests(const std::filesystem::path& workspace);
 	void RunDepthOcclusionCommandTests(const std::filesystem::path& workspace);
+	void RunDefaultDepthCommandTests(const std::filesystem::path& workspace);
 	void RunShaderLifecycleCommandTests(const std::filesystem::path& workspace);
 	void RunCloudNoiseCommandTests(const std::filesystem::path& workspace);
 	void RunSkyStarsCommandTests(const std::filesystem::path& workspace);
@@ -1364,7 +1365,8 @@ namespace Sailor::Tests
 			{
 				if (std::string_view(argv[i]) == "--workspace" && i + 1 < argc) enginePath = argv[i + 1];
 				if (std::string_view(argv[i]) == "--gpu-render-contracts-msaa2" ||
-					std::string_view(argv[i]) == "--gpu-pathtracer-images-msaa2") msaaSamples = 2;
+					std::string_view(argv[i]) == "--gpu-pathtracer-images-msaa2" ||
+					std::string_view(argv[i]) == "--gpu-default-depth-msaa2") msaaSamples = 2;
 			}
 			WriteScene(workspace, enginePath, msaaSamples);
 			const auto root = workspace.Get().string();
@@ -1375,6 +1377,10 @@ namespace Sailor::Tests
 			if (argc > 1 && std::string_view(argv[1]) == "--gpu-depth-occlusion")
 			{
 				RunDepthOcclusionCommandTests(workspace.Get());
+			}
+			else if (argc > 1 && std::string_view(argv[1]) == "--gpu-default-depth-msaa2")
+			{
+				RunDefaultDepthCommandTests(workspace.Get());
 			}
 			else if (bTestPathTracer)
 			{

@@ -467,6 +467,35 @@ namespace
 		return rejectNativeSubmit && actual == VK_SUCCESS ? nextResult : actual;
 	}
 
+	void TestMsaaSelection()
+	{
+		struct Scenario
+		{
+			VkSampleCountFlags m_supported;
+			VkSampleCountFlagBits m_requested;
+			VkSampleCountFlagBits m_expected;
+		};
+		const Scenario scenarios[] = {
+			{ VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_4_BIT, VK_SAMPLE_COUNT_2_BIT, VK_SAMPLE_COUNT_4_BIT },
+			{ VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_4_BIT, VK_SAMPLE_COUNT_1_BIT, VK_SAMPLE_COUNT_1_BIT },
+			{ VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_4_BIT, VK_SAMPLE_COUNT_8_BIT, VK_SAMPLE_COUNT_4_BIT },
+			{ VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_2_BIT | VK_SAMPLE_COUNT_8_BIT, VK_SAMPLE_COUNT_4_BIT, VK_SAMPLE_COUNT_2_BIT },
+			{ VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_4_BIT | VK_SAMPLE_COUNT_16_BIT, VK_SAMPLE_COUNT_8_BIT, VK_SAMPLE_COUNT_4_BIT },
+			{ VK_SAMPLE_COUNT_1_BIT, VK_SAMPLE_COUNT_2_BIT, VK_SAMPLE_COUNT_1_BIT }
+		};
+		for (const auto& scenario : scenarios)
+		{
+			const auto selected = VulkanDevice::SelectMsaaSamples(scenario.m_supported, scenario.m_requested);
+			Require(selected == scenario.m_expected && (scenario.m_supported & selected),
+				"MSAA selection must use a supported count and preserve requested multisampling when available");
+		}
+		for (uint32_t requested = VK_SAMPLE_COUNT_1_BIT; requested <= VK_SAMPLE_COUNT_64_BIT; requested <<= 1u)
+		{
+			Require(VulkanDevice::SelectMsaaSamples(127u, static_cast<VkSampleCountFlagBits>(requested)) == requested,
+				"an exactly supported MSAA request must remain unchanged");
+		}
+	}
+
 	void TestQueueDispatch()
 	{
 		auto native = VulkanQueuePtr::Make(VK_NULL_HANDLE, 5u, 2u);
@@ -7613,7 +7642,7 @@ int main(int argc, const char** argv)
 		if (mode == "--gpu-bootstrap-submit") return RunBootstrapGpu(argc, argv, false, false);
 		if (mode == "--gpu-editor-simulation") return Tests::RunEditorSimulationTests(argc, argv);
 		if (mode == "--gpu-render-contracts" || mode == "--gpu-render-contracts-msaa2" || mode == "--gpu-shader-lifecycle" ||
-			mode == "--gpu-depth-occlusion")
+			mode == "--gpu-depth-occlusion" || mode == "--gpu-default-depth-msaa2")
 		{
 			return Tests::RunRenderContractsGpu(argc, argv);
 		}
@@ -7701,6 +7730,7 @@ int main(int argc, const char** argv)
 	}
 	try
 	{
+		TestMsaaSelection();
 		TestQueueDispatch();
 		Tests::RunLoggingWithoutAppTests();
 		std::cout << "Vulkan submission tests passed\n";

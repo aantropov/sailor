@@ -122,6 +122,8 @@ Renderer::Renderer(Platform::Window* pViewport, RHI::EMsaaSamples msaaSamples, b
 		SAILOR_LOG_ERROR("Renderer initialization failed: Vulkan backend is unavailable.");
 		return;
 	}
+	m_msaaSamples = static_cast<EMsaaSamples>(
+		Sailor::GraphicsDriver::Vulkan::VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples());
 #endif
 	m_bIsInitialized = true;
 

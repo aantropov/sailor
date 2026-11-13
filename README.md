@@ -102,6 +102,8 @@ The opt-in GPU regression `Binaries/VulkanSubmissionTests --gpu-depth-occlusion
 Hi-Z pyramid and culling shaders with even/odd pyramids, direct/named resources
 and contiguous/paged instance payloads. It verifies exact visible IDs and every
 depth sample against drawing without culling. Use `xvfb-run -a` on headless Linux.
+`--gpu-default-depth-msaa2` checks the native color/depth targets and resolves,
+including rejection by depth, resize and retained command lists with MSAA requested.
 
 Package a workspace into a new directory outside that workspace:
 
