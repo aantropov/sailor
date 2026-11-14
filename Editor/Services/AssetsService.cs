@@ -861,9 +861,14 @@ namespace SailorEditor.Services
             if (!transaction.Result.Succeeded)
                 return null;
 
+            PrefabFile? created;
             try
             {
                 Refresh();
+                created = PublishCreatedAsset(
+                    prefabPath,
+                    targetFolder,
+                    fileId) as PrefabFile;
             }
             catch
             {
@@ -871,9 +876,6 @@ namespace SailorEditor.Services
                 return null;
             }
 
-            var created = Assets.TryGetValue(fileId, out var asset) && asset is PrefabFile prefabFile
-                ? prefabFile
-                : null;
             if (created is null)
             {
                 CompletePrefabAssetWrite(transaction, commit: false);
@@ -948,9 +950,14 @@ namespace SailorEditor.Services
             if (!transaction.Result.Succeeded)
                 return null;
 
+            PrefabFile? refreshed;
             try
             {
                 Refresh();
+                refreshed = PublishCreatedAsset(
+                    existingPrefab.Asset.FullName,
+                    targetFolder: null,
+                    existingPrefab.FileId) as PrefabFile;
             }
             catch
             {
@@ -958,12 +965,6 @@ namespace SailorEditor.Services
                 return null;
             }
 
-            var refreshed = Assets.TryGetValue(
-                    existingPrefab.FileId,
-                    out var asset) &&
-                asset is PrefabFile prefabFile
-                    ? prefabFile
-                    : null;
             if (refreshed is null)
             {
                 CompletePrefabAssetWrite(transaction, commit: false);
