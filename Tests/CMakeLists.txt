@@ -1102,6 +1102,9 @@ set_tests_properties(
     PROPERTIES TIMEOUT 30
 )
 set_tests_properties(WorkspaceModuleRuntimeTests PROPERTIES TIMEOUT 90)
+# This suite also compiles production shader permutations. Windows CI can exceed
+# the short cache-contract timeout while those compilations are still progressing.
+set_tests_properties(ShaderCacheArtifactTests PROPERTIES TIMEOUT 120)
 
 if(WIN32 AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.22" AND VCPKG_INSTALLED_DIR AND VCPKG_TARGET_TRIPLET)
     set_tests_properties(
