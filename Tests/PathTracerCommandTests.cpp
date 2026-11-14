@@ -1564,6 +1564,41 @@ namespace Sailor::Tests
 		return result;
 	}
 
+	int RunTextureImporterGpu(int argc, const char** argv)
+	{
+		Tests::TempDirectory workspace("texture-importer");
+		int result = 1;
+		try
+		{
+			std::string enginePath = Workspace::PathToUtf8(std::filesystem::current_path());
+			for (int i = 1; i + 1 < argc; ++i)
+			{
+				if (std::string_view(argv[i]) == "--workspace")
+				{
+					enginePath = argv[i + 1];
+				}
+			}
+			WriteScene(workspace, enginePath, 2);
+			const auto root = Workspace::PathToUtf8(workspace.Get());
+			std::vector<const char*> arguments(argv, argv + argc);
+			arguments.insert(arguments.end(), { "--workspace", root.c_str(), "--editor", "--port", "0", "--world", "" });
+			Require(App::Initialize(arguments.data(), static_cast<int32_t>(arguments.size())) == EAppInitializationResult::Ready &&
+				App::IsRendererInitialized(), "texture importer fixture must initialize the native renderer");
+			RunTextureImporterCommandTests(workspace.Get());
+			result = 0;
+		}
+		catch (const std::exception& error)
+		{
+			std::cerr << error.what() << std::endl;
+		}
+		App::Stop();
+		if (!App::Shutdown())
+		{
+			result = 1;
+		}
+		return result;
+	}
+
 	int RunPathTracerCommandTests(int argc, const char** argv)
 	{
 		Tests::TempDirectory workspace("pathtracer-command");

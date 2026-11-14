@@ -11,7 +11,12 @@ float CameraComponent::CalculateAspect()
 	const int32_t width = Sailor::App::GetMainWindow()->GetRenderArea().x;
 	const int32_t height = Sailor::App::GetMainWindow()->GetRenderArea().y;
 
-	return (height + width) > 0 ? width / (float)height : 1.0f;
+	if (height <= 0)
+	{
+		return 1.0f;
+	}
+
+	return width / (float)height;
 }
 
 void CameraComponent::SetFov(float value)
@@ -38,6 +43,33 @@ void CameraComponent::SetZFar(float value)
 	GetData().SetProjectionMatrix(Math::PerspectiveRH(glm::radians(GetFov()), GetAspect(), GetZNear(), GetZFar()));
 }
 
+void CameraComponent::SetRendererConfig(Sailor::FileId value)
+{
+	m_rendererConfig = value;
+	if (m_handle != ECS::InvalidIndex)
+	{
+		GetData().SetRendererConfig(value);
+	}
+}
+
+void CameraComponent::SetRenderTarget(TexturePtr value)
+{
+	m_renderTarget = value;
+	if (m_handle != ECS::InvalidIndex)
+	{
+		GetData().SetRenderTarget(value);
+	}
+}
+
+void CameraComponent::SetQualityPreset(Settings::EGraphicsQualitySelection value)
+{
+	m_qualityPreset = value;
+	if (m_handle != ECS::InvalidIndex)
+	{
+		GetData().SetQualityPreset(value);
+	}
+}
+
 void CameraComponent::ResetMotionHistory()
 {
 	GetData().ResetMotionHistory();
@@ -51,6 +83,10 @@ void CameraComponent::Initialize()
 	auto& ecsData = GetData();
 
 	ecsData.SetOwner(GetOwner());
+	ecsData.SetInstanceId(GetInstanceId());
+	ecsData.SetRendererConfig(m_rendererConfig);
+	ecsData.SetRenderTarget(m_renderTarget);
+	ecsData.SetQualityPreset(m_qualityPreset);
 
 	ecsData.SetAspect(CalculateAspect());
 	ecsData.SetFov(90.0f);
@@ -89,7 +125,17 @@ void CameraComponent::EditorTick(float deltaTime)
 
 void CameraComponent::UpdateProjectionMatrix()
 {
-	const float aspect = CalculateAspect();
+	float aspect = CalculateAspect();
+
+	if (m_renderTarget && m_renderTarget->IsReady())
+	{
+		const int32_t width = m_renderTarget->GetWidth();
+		const int32_t height = m_renderTarget->GetHeight();
+		if (width > 0 && height > 0)
+		{
+			aspect = (float)width / (float)height;
+		}
+	}
 
 	if (GetAspect() != aspect)
 	{

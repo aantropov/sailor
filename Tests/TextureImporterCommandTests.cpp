@@ -4,6 +4,12 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "Raytracing/PathTracer.h"
+#include "AssetRegistry/Texture/RenderTextureDescriptor.h"
+#include "RHI/RenderTarget.h"
+#include "RHI/Renderer.h"
+#include "RHI/GraphicsDriver.h"
+#include "RHI/CommandList.h"
+#include "Workspace/WorkspaceContext.h"
 #include "RHI/Texture.h"
 
 #include <array>
@@ -17,6 +23,7 @@
 #include <stdexcept>
 #include <thread>
 #include <utility>
+#include <string>
 #include <vector>
 
 using namespace Sailor;
@@ -716,6 +723,161 @@ namespace
 			importer->GetTextureSamplersCount() == slots, "concurrent promise GC must preserve reload order and slot ownership");
 		decode.CheckWorker(24);
 	}
+	void TestRenderTextureAsset(const std::filesystem::path& workspace)
+	{
+		const std::string utf8Name = "Render Texture \xC3\xA9\xE6\xB8\xAC\xE8\xAF\x95";
+		const auto contentDir = workspace / "Content";
+		std::filesystem::create_directories(contentDir);
+		const auto rtPath = contentDir / Workspace::PathFromUtf8(utf8Name + ".rendertexture");
+
+		RenderTextureDescriptor desc;
+		desc.m_version = 1;
+		desc.m_width = 4;
+		desc.m_height = 3;
+		desc.m_format = RHI::ETextureFormat::R8G8B8A8_UNORM;
+
+		auto writeDocument = [&](const std::string_view yaml)
+		{
+			const bool existed = std::filesystem::exists(rtPath);
+			const auto prevTime = existed ? std::filesystem::last_write_time(rtPath) : std::filesystem::file_time_type{};
+			std::ofstream out(rtPath, std::ios::binary);
+			out.write(yaml.data(), static_cast<std::streamsize>(yaml.size()));
+			out.close();
+			Require(static_cast<bool>(out), "write must succeed");
+			if (existed && std::filesystem::last_write_time(rtPath) <= prevTime)
+			{
+				std::filesystem::last_write_time(rtPath, prevTime + std::chrono::seconds(1));
+			}
+		};
+
+		writeDocument(YAML::Dump(desc.Serialize()));
+
+		const auto fileId = FileId::CreateNewFileId();
+		TextureAssetInfo assetInfo;
+		auto meta = assetInfo.Serialize();
+		meta["fileId"] = fileId;
+		meta["filename"] = Workspace::PathToUtf8(rtPath.filename());
+		meta["bShouldKeepCpuBuffers"] = true;
+		meta["bShouldGenerateMips"] = false;
+		{
+			auto metaPath = rtPath;
+			metaPath += ".asset";
+			std::ofstream out(metaPath);
+			out << meta;
+			Require(static_cast<bool>(out), "asset sidecar must be written");
+		}
+
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		Require(registry->GetOrLoadFile(Workspace::PathToUtf8(rtPath)) == fileId,
+			"rendertexture must register");
+		auto info = registry->GetAssetInfoPtr<TextureAssetInfoPtr>(fileId);
+		Require(info != nullptr, "asset info must resolve");
+
+		auto* importer = App::GetSubmodule<TextureImporter>();
+		const uint32_t slotsBefore = importer->GetTextureSamplersCount();
+
+		TexturePtr texture{};
+		Require(importer->LoadTexture_Immediate(fileId, texture), "rendertexture must load");
+		Require(static_cast<bool>(texture), "texture ptr must be valid");
+
+		auto rhi = texture->GetRHI();
+		Require(static_cast<bool>(rhi), "GPU image must exist");
+		auto rt = rhi.DynamicCast<RHI::RHIRenderTarget>();
+		Require(static_cast<bool>(rt), "GPU image must be render target");
+
+		const auto extent = rt->GetExtent();
+		Require(extent.x == 4 && extent.y == 3, "extent must be 4x3");
+		Require(rt->GetMsaaSamples() == RHI::EMsaaSamples::Samples_1, "MSAA must be 1");
+		Require(rt->GetFormat() == RHI::ETextureFormat::R8G8B8A8_UNORM, "format must be RGBA8");
+		Require(!texture->HasCpuData(), "rendertexture must have no CPU data");
+		Require(texture->GetMipLevels() == 1, "mip levels must be 1");
+
+		const uint32_t slot = importer->GetTextureIndex(fileId);
+		Require(TextureImporter::IsUserTextureSamplerIndexValid(slot), "slot index must be valid");
+		Require(importer->GetTextureSamplersCount() == slotsBefore + 1, "slot count must increment");
+
+		auto snap = importer->GetTextureSamplersSnapshot({static_cast<uint32_t>(slot)});
+		Require(snap.m_slots.Num() == 1, "snapshot must have one slot");
+		Require(snap.m_slots[0].m_texture == rhi, "slot texture must match GPU ref");
+		const auto revBefore = snap.m_slots[0].m_contentRevision;
+
+		auto& driver = *RHI::Renderer::GetDriver();
+		auto commands = RHI::Renderer::GetDriverCommands();
+		auto cmd = driver.CreateCommandList(false, RHI::ECommandListQueue::Graphics);
+		commands->BeginCommandList(cmd, true);
+		commands->ImageMemoryBarrier(cmd, rhi, RHI::EImageLayout::TransferDstOptimal);
+		commands->ClearImage(cmd, rhi, glm::vec4(1.0f, 0.0f, 0.0f, 1.0f));
+		commands->ImageMemoryBarrier(cmd, rhi, RHI::EImageLayout::ShaderReadOnlyOptimal);
+		commands->EndCommandList(cmd);
+		Require(driver.SubmitCommandList_Immediate(cmd), "submit must succeed");
+
+		Tests::RequireTexturePixels(rhi, std::vector<uint32_t>(12, 0xff0000ffu));
+
+		Require(!importer->LoadCpuTexture(fileId), "CPU load must be rejected for RT");
+		TextureImporter::ByteCode cpuBytes;
+		int32_t cw = 0, ch = 0;
+		uint32_t cm = 0;
+		Require(!TextureImporter::DecodeTextureCpu(fileId, cpuBytes, cw, ch, cm),
+			"CPU decode must be rejected for RT");
+
+		TexturePtr texture2{};
+		Require(importer->LoadTexture_Immediate(fileId, texture2), "repeated load must succeed");
+		Require(texture2 == texture, "repeated load must return same object");
+		Require(importer->GetTextureSamplersCount() == slotsBefore + 1, "slot count unchanged on repeat");
+
+		desc.m_width = 2;
+		desc.m_height = 3;
+		writeDocument(YAML::Dump(desc.Serialize()));
+
+		importer->OnUpdateAssetInfo(info, true);
+		auto promise = importer->GetLoadPromise(fileId);
+		Require(promise.IsValid(), "reload promise must exist");
+		promise->Wait();
+
+		Require(promise->GetResult() == texture, "reload must reuse same Texture object");
+		auto rhi2 = texture->GetRHI();
+		Require(static_cast<bool>(rhi2) && rhi2 != rhi, "new GPU ref must differ");
+		Require(rhi2->GetExtent().x == 2 && rhi2->GetExtent().y == 3, "reloaded extent must be 2x3");
+		Require(importer->GetTextureIndex(fileId) == slot, "slot index must be stable");
+		Require(importer->GetTextureSamplersCount() == slotsBefore + 1, "sampler count stable");
+
+		auto snap2 = importer->GetTextureSamplersSnapshot({static_cast<uint32_t>(slot)});
+		Require(snap2.m_slots[0].m_contentRevision > revBefore, "content revision must advance");
+		Require(rhi->GetExtent().x == 4 && rhi->GetExtent().y == 3, "old RHI extent 4x3 remains valid");
+
+		{
+			RenderTextureDescriptor badDesc;
+			badDesc.m_version = 1;
+			badDesc.m_width = 0;
+			badDesc.m_height = 3;
+			badDesc.m_format = RHI::ETextureFormat::R8G8B8A8_UNORM;
+			writeDocument("width: 0\nheight: 3\nformat: R8G8B8A8_UNORM\nversion: 1\n");
+		}
+
+		importer->OnUpdateAssetInfo(info, true);
+		auto badPromise = importer->GetLoadPromise(fileId);
+		Require(badPromise.IsValid(), "invalid reload promise must exist");
+		badPromise->Wait();
+
+		Require(!badPromise->GetResult(), "invalid reload must fail");
+		Require(texture->GetRHI() == rhi2, "invalid reload must keep last good GPU ref");
+		Require(importer->GetTextureIndex(fileId) == slot, "invalid reload keeps slot index");
+		auto snap3 = importer->GetTextureSamplersSnapshot({static_cast<uint32_t>(slot)});
+		Require(snap3.m_slots[0].m_texture == rhi2, "invalid reload keeps sampler texture");
+		Require(snap3.m_slots[0].m_contentRevision == snap2.m_slots[0].m_contentRevision, "invalid reload keeps revision");
+		Require(importer->GetTextureSamplersCount() == slotsBefore + 1, "invalid reload keeps sampler count");
+
+		desc.m_width = 2;
+		desc.m_height = 3;
+		writeDocument(YAML::Dump(desc.Serialize()));
+
+		importer->OnUpdateAssetInfo(info, true);
+		auto restorePromise = importer->GetLoadPromise(fileId);
+		Require(restorePromise.IsValid(), "restore promise must exist");
+		restorePromise->Wait();
+		Require(restorePromise->GetResult() == texture, "restore must reuse same Texture object");
+	}
+
 }
 
 namespace Sailor::Tests
@@ -752,6 +914,7 @@ namespace Sailor::Tests
 		run("CPU snapshot batch ordering", [&]() { TestCpuSnapshotBatchOrdering(workspace); });
 		run("Reload GC stress", [&]() { TestReloadGcStress(workspace); });
 		run("Texture scan failure", [&]() { TestTextureScanFailure(workspace); });
+		run("RenderTexture asset", [&]() { TestRenderTextureAsset(workspace); });
 		if (!failures.empty()) throw std::runtime_error(failures);
 		std::cout << "Texture importer CPU enrichment, Worker decode, ordered reload and failure tests passed\n";
 	}

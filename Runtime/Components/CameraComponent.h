@@ -7,6 +7,8 @@
 #include "Engine/Object.h"
 #include "Components/Component.h"
 #include "ECS/CameraECS.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
+#include "Settings/GraphicsSettings.h"
 
 namespace Sailor
 {
@@ -36,6 +38,15 @@ namespace Sailor
 		SAILOR_API float GetZFar() const { return GetData().GetZFar(); }
 		SAILOR_API void SetZFar(float value);
 
+		SAILOR_API Sailor::FileId GetRendererConfig() const { return m_rendererConfig; }
+		SAILOR_API void SetRendererConfig(Sailor::FileId value);
+
+		SAILOR_API TexturePtr GetRenderTarget() const { return m_renderTarget; }
+		SAILOR_API void SetRenderTarget(TexturePtr value);
+
+		SAILOR_API Settings::EGraphicsQualitySelection GetQualityPreset() const { return m_qualityPreset; }
+		SAILOR_API void SetQualityPreset(Settings::EGraphicsQualitySelection value);
+
 		// Call after a cinematic cut, seek, respawn or intentional teleport.
 		SAILOR_API void ResetMotionHistory();
 
@@ -46,6 +57,10 @@ namespace Sailor
 		void UpdateProjectionMatrix();
 
 		size_t m_handle = (size_t)(-1);
+
+		Sailor::FileId m_rendererConfig = Sailor::FileId::Invalid;
+		TexturePtr m_renderTarget{};
+		Settings::EGraphicsQualitySelection m_qualityPreset = Settings::EGraphicsQualitySelection::ProjectDefault;
 
 	};
 }
@@ -62,5 +77,14 @@ REFL_AUTO(
 	func(SetZNear, property("zNear"), Attributes::SkipCDO()),
 
 	func(GetZFar, property("zFar"), Attributes::SkipCDO()),
-	func(SetZFar, property("zFar"), Attributes::SkipCDO())
+	func(SetZFar, property("zFar"), Attributes::SkipCDO()),
+
+	func(GetRendererConfig, property("rendererConfig")),
+	func(SetRendererConfig, property("rendererConfig")),
+
+	func(GetRenderTarget, property("renderTarget")),
+	func(SetRenderTarget, property("renderTarget")),
+
+	func(GetQualityPreset, property("qualityPreset")),
+	func(SetQualityPreset, property("qualityPreset"))
 )

@@ -1,5 +1,7 @@
 #include "Core/Reflection.h"
 #include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/Texture/RenderTextureDescriptor.h"
+#include "Components/CameraComponent.h"
 #include "AssetRegistry/Animation/AnimationAssetInfo.h"
 #include "AssetRegistry/Animation/AnimationControllerAssetInfo.h"
 #include "AssetRegistry/Audio/AudioAssetInfo.h"
@@ -150,7 +152,7 @@ namespace
 					"serialized metadata property absent from catalog: " + propertyName);
 			}
 		}
-		Require(extensions == std::set<std::string>{ "png", "bmp", "tga", "jpg", "gif", "psd", "dds", "hdr",
+		Require(extensions == std::set<std::string>{ "png", "bmp", "tga", "jpg", "gif", "psd", "dds", "hdr", "rendertexture",
 			"glb", "gltf", "anim", "animcontroller", "animset", "wav", "flac", "mp3", "mat", "shader", "glsl",
 			"renderer", "probes", "prefab", "world", "vegetation" }, "the catalog must retain all supported file formats");
 	}
@@ -248,6 +250,160 @@ namespace
 			animation["animationIndex"].as<uint32_t>() == 3 && animation["skinIndex"].as<uint32_t>() == 1,
 			"borrowed filename input must preserve generated-asset metadata");
 	}
+
+	void TestDescriptorSerializeDeserialize()
+	{
+		const std::array<RHI::ETextureFormat, 3> formats = { RHI::ETextureFormat::R8G8B8A8_UNORM,
+			RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureFormat::R16G16B16A16_SFLOAT };
+		for (const auto fmt : formats)
+		{
+			RenderTextureDescriptor src;
+			src.m_width = 1920;
+			src.m_height = 1080;
+			src.m_format = fmt;
+			const YAML::Node node = src.Serialize();
+			Require(node["version"].as<uint32_t>() == 1, "serialized version must be 1");
+			Require(node["width"].as<uint32_t>() == 1920 && node["height"].as<uint32_t>() == 1080,
+				"non-square extents must roundtrip");
+			RenderTextureDescriptor dst;
+			dst.Deserialize(node);
+			Require(dst.m_width == 1920 && dst.m_height == 1080 && dst.m_format == fmt,
+				"roundtrip must preserve all fields");
+		}
+		{
+			RenderTextureDescriptor src;
+			src.m_width = 640;
+			src.m_height = 480;
+			YAML::Node node = src.Serialize();
+			node.remove("format");
+			RenderTextureDescriptor dst;
+			dst.Deserialize(node);
+			Require(dst.m_format == RHI::ETextureFormat::R8G8B8A8_UNORM,
+				"omitted format must default to R8G8B8A8_UNORM");
+		}
+		RenderTextureDescriptor sentinel;
+		sentinel.m_width = 256;
+		sentinel.m_height = 256;
+		sentinel.m_format = RHI::ETextureFormat::R8G8B8A8_SRGB;
+		const char* invalidYaml[] = {
+			"width: 1\nheight: 1\n",
+			"version: 2\nwidth: 1\nheight: 1\n",
+			"version: 1\nheight: 1\n",
+			"version: 1\nwidth: 1\n",
+			"version: 1\nwidth: 0\nheight: 1\n",
+			"version: 1\nwidth: 1\nheight: 0\n",
+			"version: 1\nwidth: -1\nheight: 1\n",
+			"version: 1\nwidth: 1\nheight: -1\n",
+			"version: 1\nwidth: 16385\nheight: 1\n",
+			"version: 1\nwidth: 1\nheight: 16385\n",
+			"version: 1\nwidth: abc\nheight: 1\n",
+			"version: 1\nwidth: 1\nheight: xyz\n",
+			"version: 1\nwidth: [1,2]\nheight: 1\n",
+			"version: 1\nwidth: 1\nheight: 1\nformat: D24_UNORM_S8_UINT\n",
+			"version: 1\nwidth: 1\nheight: 1\nformat: BC7_UNORM\n",
+			"version: 1\nwidth: 1\nheight: 1\nformat: UNKNOWN_FMT\n",
+			"[]",
+		};
+		for (const char* doc : invalidYaml)
+		{
+			const YAML::Node bad = YAML::Load(doc);
+			RenderTextureDescriptor copy = sentinel;
+			bool threw = false;
+			try
+			{
+				copy.Deserialize(bad);
+			}
+			catch (const YAML::Exception&)
+			{
+				threw = true;
+			}
+			Require(threw, "invalid YAML must throw YAML::Exception");
+			Require(copy.m_width == 256 && copy.m_height == 256 &&
+				copy.m_format == RHI::ETextureFormat::R8G8B8A8_SRGB,
+				"failed Deserialize must leave descriptor unchanged");
+		}
+		struct BadSer { uint32_t w; uint32_t h; RHI::ETextureFormat fmt; uint32_t ver; };
+		const BadSer badSerialize[] = {
+			{1, 1, RHI::ETextureFormat::R8G8B8A8_UNORM, 99},
+			{0, 1, RHI::ETextureFormat::R8G8B8A8_UNORM, 1},
+			{1, 20000, RHI::ETextureFormat::R8G8B8A8_UNORM, 1},
+			{1, 1, static_cast<RHI::ETextureFormat>(999), 1},
+		};
+		for (const auto& b : badSerialize)
+		{
+			RenderTextureDescriptor bad;
+			bad.m_width = b.w;
+			bad.m_height = b.h;
+			bad.m_format = b.fmt;
+			bad.m_version = b.ver;
+			bool threw = false;
+			try
+			{
+				bad.Serialize();
+			}
+			catch (const YAML::Exception&)
+			{
+				threw = true;
+			}
+			Require(threw, "Serialize must reject invalid descriptor");
+		}
+	}
+
+	void TestCameraDataDefaults()
+	{
+		CameraData data;
+		Require(!static_cast<bool>(data.GetRendererConfig()),
+			"default rendererConfig must be invalid");
+		Require(!static_cast<bool>(data.GetRenderTarget()),
+			"default renderTarget must be null");
+		Require(data.GetQualityPreset() == Settings::EGraphicsQualitySelection::ProjectDefault,
+			"default qualityPreset must be ProjectDefault");
+		const InstanceId owner = InstanceId::GenerateNewInstanceId();
+		const InstanceId id1 = InstanceId::GenerateNewComponentId(owner);
+		const FileId cfg = FileId::CreateNewFileId();
+		data.SetInstanceId(id1);
+		data.SetRendererConfig(cfg);
+		data.SetQualityPreset(Settings::EGraphicsQualitySelection::High);
+		CameraData copy = data;
+		data.SetRendererConfig(FileId::CreateNewFileId());
+		data.SetQualityPreset(Settings::EGraphicsQualitySelection::ProjectDefault);
+		data.SetInstanceId(InstanceId::GenerateNewComponentId(owner));
+		Require(copy.GetRendererConfig() == cfg, "copy must retain original config");
+		Require(copy.GetQualityPreset() == Settings::EGraphicsQualitySelection::High,
+			"copy must retain original quality");
+		Require(copy.GetInstanceId() == id1, "copy must retain original instance id");
+		const InstanceId id2 = InstanceId::GenerateNewComponentId(owner);
+		Require(id1 != id2, "two component IDs of same owner must differ");
+	}
+
+	void TestCameraComponentReflection()
+	{
+		const YAML::Node catalog = Reflection::ExportEngineTypes();
+		bool foundType = false, foundCdo = false;
+		for (const auto& t : catalog["engineTypes"])
+		{
+			if (t["typename"].as<std::string>() == "Sailor::CameraComponent")
+			{
+				foundType = true;
+				const YAML::Node props = t["properties"];
+				Require(props["rendererConfig"].IsDefined() &&
+					props["renderTarget"].IsDefined() &&
+					props["qualityPreset"].IsDefined(),
+					"CameraComponent must export rendererConfig/renderTarget/qualityPreset");
+			}
+		}
+		for (const auto& c : catalog["cdos"])
+		{
+			if (c["typename"].as<std::string>() == "Sailor::CameraComponent")
+			{
+				foundCdo = true;
+				Require(c["defaultValues"]["qualityPreset"].Scalar() == "ProjectDefault",
+					"CDO qualityPreset must be ProjectDefault");
+			}
+		}
+		Require(foundType && foundCdo, "CameraComponent must appear in engineTypes and cdos");
+	}
+
 }
 
 int main()
@@ -255,7 +411,8 @@ int main()
 	int failures = 0;
 	for (const auto test : { &TestColdVegetationCatalog, &TestQualifiedEnumName, &TestHandlerCatalogParity,
 		&TestAnimationDoesNotClaimModelFiles, &TestAssetSchemaOrderAndIsolation, &TestNewRegisteredAsset,
-		&TestBorrowedMetadataNames })
+		&TestBorrowedMetadataNames, &TestDescriptorSerializeDeserialize,
+		&TestCameraDataDefaults, &TestCameraComponentReflection })
 	{
 		try
 		{

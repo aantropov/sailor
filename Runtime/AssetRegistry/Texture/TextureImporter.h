@@ -140,6 +140,9 @@ namespace Sailor
 		Tasks::TaskPtr<TexturePtr> CreateTextureTask(TexturePtr texture, const TextureAssetInfo& assetInfo,
 			bool bCpuOnly, bool bHotReload, const Tasks::ITaskPtr& previous);
 
+		Tasks::TaskPtr<TexturePtr> CreateRenderTextureTask(TexturePtr texture, const TextureAssetInfo& assetInfo,
+			bool bCpuOnly, bool bHotReload, const Tasks::ITaskPtr& previous);
+
 		bool RegisterTextureSamplerBinding(RHI::RHITexturePtr texture, size_t& outIndex);
 		bool UpdateTextureSamplerBinding(RHI::RHITexturePtr texture, uint32_t index);
 		bool UpdateTextureSamplerBindingLocked(RHI::RHITexturePtr texture, uint32_t index);
