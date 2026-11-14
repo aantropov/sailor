@@ -1,11 +1,38 @@
-name: Linux Build
+name: CI / Linux
 
-on:
+'on':
   workflow_dispatch:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  linux:
+  changes:
+    name: Select component checks
+    runs-on: ubuntu-24.04
+    outputs:
+      engine: ${{ steps.select.outputs.engine }}
+      editor: ${{ steps.select.outputs.editor }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test CI routing
+        run: |
+          python -m pip install PyYAML==6.0.3
+          python -m unittest discover -s Tests -p CiWorkflowTests.py -v
+      - name: Select checks from changed files
+        id: select
+        run: python Tools/CI/select_checks.py
+
+  engine:
+    name: Linux / Engine & SDK / Clang
+    needs: changes
+    if: needs.changes.outputs.engine == 'true'
     runs-on: ubuntu-24.04
     env:
       CC: clang-18
@@ -45,8 +72,6 @@ jobs:
           dotnet-version: |
             9.0.x
             10.0.x
-      - name: Build GTK4 editor and MCP bridge
-        run: python3 build_editor.py --config Release
       - name: Test editor contracts
         run: dotnet test Editor.Tests/Editor.Contracts.Tests.csproj -c Release
       - name: Validate standalone game export through the installed SDK
@@ -54,5 +79,28 @@ jobs:
         env:
           SAILOR_GAME_EXPORT_ENGINE: ${{ github.workspace }}
           SAILOR_GAME_EXPORT_BUILD: ${{ github.workspace }}/build-linux
+
+  editor:
+    name: Linux / Editor & Tools
+    needs: changes
+    if: needs.changes.outputs.editor == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install GTK4 dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            9.0.x
+            10.0.x
+      - name: Build GTK4 editor and MCP bridge
+        run: python3 build_editor.py --config Release
+      - name: Test editor contracts
+        run: dotnet test Editor.Tests/Editor.Contracts.Tests.csproj -c Release
       - name: Build game export CLI
         run: dotnet build Tools/SailorBuild/SailorBuild.csproj -c Release

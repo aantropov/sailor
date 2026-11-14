@@ -1,4 +1,4 @@
-name: Desktop Release
+name: Release / Desktop
 
 'on':
   workflow_dispatch:
@@ -13,7 +13,7 @@ name: Desktop Release
         default: true
   pull_request:
     paths:
-      - .github/workflows/release.yml
+      - .github/workflows/release-desktop.yml
       - Tools/Release/**
       - Tests/ReleasePackagingTests.py
       - Tests/ReleaseSdkProbe/**
@@ -38,6 +38,7 @@ env:
 
 jobs:
   validate:
+    name: Validate release
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -68,12 +69,13 @@ jobs:
 
   build:
     needs: validate
-    name: Package (${{ matrix.target }})
+    name: Package / ${{ matrix.platform }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-2022
+            platform: Windows x64
             target: windows-x64
             rid: win-x64
             framework: net10.0-windows10.0.19041.0
@@ -81,6 +83,7 @@ jobs:
             sdk: 10.0.404
             workload: 10.0.404
           - os: xcode-27
+            platform: macOS arm64
             target: macos-arm64
             rid: maccatalyst-arm64
             framework: net10.0-maccatalyst
@@ -89,6 +92,7 @@ jobs:
             workload: 10.0.301.1
             xcode: '27.2'
           - os: ubuntu-24.04
+            platform: Linux x64
             target: linux-x64
             rid: linux-x64
             framework: net10.0
@@ -247,6 +251,7 @@ jobs:
           retention-days: 14
 
   publish:
+    name: Publish GitHub Release
     needs: [validate, build]
     if: github.event_name == 'workflow_dispatch' && inputs.publish && github.actor == github.repository_owner && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
