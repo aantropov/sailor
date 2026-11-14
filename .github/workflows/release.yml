@@ -136,7 +136,7 @@ jobs:
         shell: bash
         run: |
           if [ "$RUNNER_OS" = macOS ]; then
-            dotnet workload install maccatalyst
+            dotnet workload install maui-maccatalyst
           else
             dotnet workload install maui-windows
           fi
