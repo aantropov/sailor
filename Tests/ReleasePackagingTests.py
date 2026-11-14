@@ -141,8 +141,15 @@ assert actual == '\u041f\u0440\u043e\u0435\u043a\u0442'
         self.assertEqual(jobs['build']['needs'], 'validate')
         targets = jobs['build']['strategy']['matrix']['include']
         self.assertEqual({entry['target'] for entry in targets}, set(RELEASE_TARGETS))
-        self.assertIn({'os': 'ubuntu-24.04', 'target': 'linux-x64', 'rid': 'linux-x64',
-                       'framework': 'net10.0', 'triplet': 'x64-linux'}, targets)
+        linux = next(entry for entry in targets if entry['target'] == 'linux-x64')
+        self.assertEqual((linux['os'], linux['rid'], linux['framework'], linux['triplet']),
+                         ('ubuntu-24.04', 'linux-x64', 'net10.0', 'x64-linux'))
+        for entry in targets:
+            self.assertRegex(entry['sdk'], r'^10\.0\.[0-9]{3}$')
+            if 'workload' in entry:
+                self.assertEqual(entry['workload'].split('.')[:3], entry['sdk'].split('.'))
+        mac = next(entry for entry in targets if entry['target'] == 'macos-arm64')
+        self.assertEqual((mac['sdk'], mac['workload'], mac['xcode']), ('10.0.301', '10.0.301.1', '27.2'))
         self.assertEqual(jobs['publish']['needs'], ['validate', 'build'])
         self.assertEqual(jobs['publish']['permissions'], {'contents': 'write'})
         conditions = {condition.strip() for condition in jobs['publish']['if'].split('&&')}

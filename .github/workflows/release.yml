@@ -74,16 +74,22 @@ jobs:
             rid: win-x64
             framework: net10.0-windows10.0.19041.0
             triplet: x64-windows
+            sdk: 10.0.404
+            workload: 10.0.404
           - os: xcode-27
             target: macos-arm64
             rid: maccatalyst-arm64
             framework: net10.0-maccatalyst
             triplet: arm64-osx
+            sdk: 10.0.301
+            workload: 10.0.301.1
+            xcode: '27.2'
           - os: ubuntu-24.04
             target: linux-x64
             rid: linux-x64
             framework: net10.0
             triplet: x64-linux
+            sdk: 10.0.404
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
     steps:
@@ -94,7 +100,21 @@ jobs:
         with:
           dotnet-version: |
             9.0.x
-            10.0.x
+            ${{ matrix.sdk }}
+      - name: Pin the SDK used by release commands
+        shell: bash
+        env:
+          SAILOR_RELEASE_SDK: ${{ matrix.sdk }}
+        run: |
+          dotnet new globaljson --sdk-version "$SAILOR_RELEASE_SDK" --roll-forward disable
+          dotnet --version
+      - name: Select the macOS release Xcode
+        if: runner.os == 'macOS'
+        env:
+          SAILOR_RELEASE_XCODE: ${{ matrix.xcode }}
+        run: |
+          sudo xcode-select --switch "/Applications/Xcode_${SAILOR_RELEASE_XCODE}.app/Contents/Developer"
+          xcodebuild -version
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -153,11 +173,13 @@ jobs:
       - name: Install editor workload
         if: runner.os != 'Linux'
         shell: bash
+        env:
+          SAILOR_RELEASE_WORKLOAD: ${{ matrix.workload }}
         run: |
           if [ "$RUNNER_OS" = macOS ]; then
-            dotnet workload install maui-maccatalyst
+            dotnet workload install maui-maccatalyst --version "$SAILOR_RELEASE_WORKLOAD"
           else
-            dotnet workload install maui-windows
+            dotnet workload install maui-windows --version "$SAILOR_RELEASE_WORKLOAD"
           fi
       - name: Publish portable Windows editor
         if: runner.os == 'Windows'
