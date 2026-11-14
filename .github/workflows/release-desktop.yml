@@ -3,14 +3,15 @@ name: Release / Desktop
 'on':
   workflow_dispatch:
     inputs:
-      publish:
-        description: Publish a GitHub Release after all checks pass (owner only, main branch)
-        type: boolean
-        default: false
-      prerelease:
-        description: Mark the GitHub Release as a prerelease
-        type: boolean
-        default: true
+      action:
+        description: Action (publication requires the repository owner and main branch)
+        type: choice
+        required: true
+        default: Build artifacts
+        options:
+          - Build artifacts
+          - Publish prerelease
+          - Publish release
   pull_request:
     paths:
       - .github/workflows/release-desktop.yml
@@ -42,6 +43,8 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.version.outputs.version }}
+      publish: ${{ steps.version.outputs.publish }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -55,17 +58,18 @@ jobs:
         id: version
         shell: bash
         env:
-          PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+          RELEASE_ACTION: ${{ inputs.action || 'Build artifacts' }}
+        run: python Tools/Release/release_identity.py --github-output "$GITHUB_OUTPUT"
+      - name: Check publication permissions
+        if: steps.version.outputs.publish == 'true'
+        shell: bash
+        env:
           ACTOR: ${{ github.actor }}
           OWNER: ${{ github.repository_owner }}
           REF: ${{ github.ref }}
-          GH_TOKEN: ${{ github.token }}
         run: |
-          python Tools/Release/release_identity.py --github-output "$GITHUB_OUTPUT"
-          if [ "$PUBLISH" = true ]; then
-            test "$ACTOR" = "$OWNER"
-            test "$REF" = refs/heads/main
-          fi
+          test "$ACTOR" = "$OWNER"
+          test "$REF" = refs/heads/main
 
   build:
     needs: validate
@@ -253,7 +257,7 @@ jobs:
   publish:
     name: Publish GitHub Release
     needs: [validate, build]
-    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.actor == github.repository_owner && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && needs.validate.outputs.publish == 'true' && github.actor == github.repository_owner && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -268,5 +272,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ needs.validate.outputs.version }}
-          PRERELEASE: ${{ inputs.prerelease }}
+          PRERELEASE: ${{ needs.validate.outputs.prerelease }}
         run: python Tools/Release/publish_release.py --assets release-assets --version "$RELEASE_VERSION" --commit "$GITHUB_SHA"

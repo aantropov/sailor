@@ -31,10 +31,17 @@ Visit the Wiki to explore everything you need to get started, understand the eng
 
 [GitHub Releases](https://github.com/aantropov/sailor/releases) is the download page for
 versioned engine/editor bundles. Archives become available after the repository owner
-runs **Actions → Release / Desktop** with **Publish** enabled. There are no automatic
-releases on pushes or tags. A run with Publish disabled builds reviewable Actions
-artifacts without creating a tag or release; pull requests changing release tooling
-also validate packages without publishing.
+runs **Actions → Release / Desktop** and selects an **Action**:
+
+| Action | Result |
+| --- | --- |
+| **Build artifacts** (default) | Build reviewable Actions artifacts. |
+| **Publish prerelease** | Publish a GitHub Release marked as a prerelease. |
+| **Publish release** | Publish a regular GitHub Release. |
+
+There are no automatic releases on pushes or tags. Pull requests changing release
+tooling also validate packages without publishing. Both publication actions require
+the repository owner to run the workflow from `main` after all platform checks pass.
 
 The release targets are **Windows x64**, **macOS Apple Silicon (arm64)** and
 **Linux x64** (Ubuntu 24.04 or a compatible distribution with glibc 2.39+).
@@ -68,7 +75,7 @@ runtime version without starting a renderer. To prepare a new release, update VE
 in a reviewed commit, merge it to main, and manually run **Release / Desktop**. Publishing
 requires all three platform builds/tests, verifies every archive checksum, and creates
 `v<VERSION>` at the tested commit. Existing tags/releases are preserved. The
-**Prerelease** option defaults to enabled. Until the first release is published,
+default **Build artifacts** action creates no tag or release. Until the first release is published,
 use the source build instructions below.
 
 ## Continuous integration
