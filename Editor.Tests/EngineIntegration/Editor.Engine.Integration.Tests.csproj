@@ -25,6 +25,7 @@
     <Compile Include="GlobalUsings.cs" />
     <Compile Include="HeadlessUi.cs" />
     <Compile Include="AssetRefreshTests.cs" />
+    <Compile Include="PrefabAssetCreationTests.cs" />
     <Compile Include="ContentSelectionRestoreTests.cs" />
     <Compile Include="InspectorSelectionTests.cs" />
     <Compile Include="InspectorAggregateBuilderTests.cs" />

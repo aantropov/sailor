@@ -87,6 +87,7 @@ public static class EngineLaunchContract
         }
         candidates.Add(Path.Combine(engineRoot, "Binaries", configuration, filename));
         candidates.Add(Path.Combine(engineRoot, "Binaries", filename));
+        candidates.Add(Path.Combine(engineRoot, "bin", filename));
         return candidates.FirstOrDefault(File.Exists) ??
             throw new FileNotFoundException(
                 $"The {configuration} engine executable is missing. Build SailorExec and the workspace module in {configuration} before launching. Checked: " +

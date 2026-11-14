@@ -21,6 +21,10 @@ name: Desktop Release
       - Directory.Build.props
       - CMake/SailorConfig.cmake.in
       - Editor.Linux/**
+      - Editor/Services/AssetsService.cs
+      - Editor/Services/EngineService.cs
+      - Editor/Services/EngineLaunchContract.cs
+      - Editor.Tests/EngineIntegration/**
 
 permissions:
   contents: read
@@ -170,6 +174,11 @@ jobs:
         run: ctest --test-dir build-release -C Release --output-on-failure
       - name: Test editor contracts
         run: dotnet test Editor.Tests/Editor.Contracts.Tests.csproj -c Release
+      - name: Test prefab asset publication through the editor service
+        if: runner.os == 'macOS'
+        run: >-
+          dotnet test Editor.Tests/EngineIntegration/Editor.Engine.Integration.Tests.csproj
+          -c Release --filter FullyQualifiedName~PrefabAssetCreationTests
       - name: Install editor workload
         if: runner.os != 'Linux'
         shell: bash

@@ -92,8 +92,13 @@ namespace SailorEditor.Services
             => Components.Values.Where(component => component.Owner == gameObject);
         public long WorkspaceEpoch { get; set; }
         public bool TryPopulateWorld(string yaml, long epoch) => throw new NotSupportedException();
+        public object? PrefabSnapshot { get; set; }
         public object CreatePrefabFromSubHierarchy(SailorEditor.ViewModels.GameObject root,
-            out List<SailorEngine.InstanceId> externalReferences) => throw new NotSupportedException();
+            out List<SailorEngine.InstanceId> externalReferences)
+        {
+            externalReferences = [];
+            return PrefabSnapshot ?? throw new NotSupportedException();
+        }
         public bool TryGetGameObject(SailorEngine.InstanceId id,
             out SailorEditor.ViewModels.GameObject gameObject) => GameObjects.TryGetValue(id.Value, out gameObject!);
         public bool TryGetComponent(SailorEngine.InstanceId id,
@@ -209,6 +214,6 @@ namespace SailorEditor.Commands
 {
     static class EditorYaml
     {
-        public static string SerializePrefab(object prefab) => throw new NotSupportedException();
+        public static string SerializePrefab(object prefab) => prefab as string ?? throw new NotSupportedException();
     }
 }
