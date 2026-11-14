@@ -20,6 +20,7 @@ name: Desktop Release
       - VERSION
       - Directory.Build.props
       - CMake/SailorConfig.cmake.in
+      - Editor.Linux/**
 
 permissions:
   contents: read
@@ -78,6 +79,11 @@ jobs:
             rid: maccatalyst-arm64
             framework: net10.0-maccatalyst
             triplet: arm64-osx
+          - os: ubuntu-24.04
+            target: linux-x64
+            rid: linux-x64
+            framework: net10.0
+            triplet: x64-linux
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
     steps:
@@ -101,6 +107,16 @@ jobs:
       - name: Install macOS native dependencies
         if: runner.os == 'macOS'
         run: brew install vulkan-headers molten-vk shaderc ninja
+      - name: Install Linux native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 ninja-build pkg-config autoconf automake libtool \
+            libvulkan-dev libshaderc-dev glslc glslang-tools libssl-dev libasound2-dev \
+            libx11-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev \
+            libwayland-dev libxkbcommon-dev libgtk-4-dev
+          echo "CC=clang-18" >> "$GITHUB_ENV"
+          echo "CXX=clang++-18" >> "$GITHUB_ENV"
       - name: Cache vcpkg binaries
         id: vcpkg-cache
         uses: actions/cache/restore@v4
@@ -109,7 +125,9 @@ jobs:
             ~/.cache/vcpkg/archives
             ~/AppData/Local/vcpkg/archives
           key: release-vcpkg-${{ matrix.target }}-${{ hashFiles('.gitmodules', 'update_deps.py', '.github/vcpkg-ports/**') }}
-          restore-keys: release-vcpkg-${{ matrix.target }}-
+          restore-keys: |
+            release-vcpkg-${{ matrix.target }}-
+            ${{ runner.os == 'Linux' && 'vcpkg-linux-clang18-' || '' }}
       - name: Install engine dependencies
         run: python update_deps.py
       - name: Save installed dependency binaries
@@ -124,7 +142,7 @@ jobs:
         shell: bash
         run: >-
           cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release
-          -DSAILOR_BUILD_TESTS=ON
+          -DSAILOR_BUILD_TESTS=ON -DSAILOR_ALLOW_MISSING_DEPS=OFF
           -DCMAKE_TOOLCHAIN_FILE=External/vcpkg/scripts/buildsystems/vcpkg.cmake
       - name: Build native runtime and tests
         run: cmake --build build-release --config Release --parallel 2
@@ -133,6 +151,7 @@ jobs:
       - name: Test editor contracts
         run: dotnet test Editor.Tests/Editor.Contracts.Tests.csproj -c Release
       - name: Install editor workload
+        if: runner.os != 'Linux'
         shell: bash
         run: |
           if [ "$RUNNER_OS" = macOS ]; then
@@ -156,11 +175,19 @@ jobs:
           -f net10.0-maccatalyst -r maccatalyst-arm64
           -p:SailorReleaseTargetFramework=net10.0-maccatalyst
           -p:SailorNativeBuildDirectory=${{ github.workspace }}/build-release
+      - name: Publish portable Linux editor
+        if: runner.os == 'Linux'
+        run: >-
+          dotnet publish Editor.Linux/SailorEditor.Linux.csproj -c Release
+          -f net10.0 -r linux-x64 --self-contained true
+          -p:SailorNativeBuildDirectory=${{ github.workspace }}/build-release
+          -o release-editor
       - name: Publish command-line tools
         shell: bash
         run: |
           tool_rid=win-x64
           if [ "$RUNNER_OS" = macOS ]; then tool_rid=osx-arm64; fi
+          if [ "$RUNNER_OS" = Linux ]; then tool_rid=linux-x64; fi
           dotnet publish Editor/McpBridge/SailorEditor.McpBridge.csproj -c Release -r "$tool_rid" --self-contained true -o release-bridge
           dotnet publish Tools/SailorBuild/SailorBuild.csproj -c Release -r "$tool_rid" --self-contained true -o release-cli
       - name: Package matching editor, runtime, SDK and content

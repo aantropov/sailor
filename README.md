@@ -35,23 +35,37 @@ releases on pushes or tags. A run with Publish disabled builds reviewable Action
 artifacts without creating a tag or release; pull requests changing release tooling
 also validate packages without publishing.
 
-The initial release targets are **Windows x64** and **macOS Apple Silicon (arm64)**.
+The release targets are **Windows x64**, **macOS Apple Silicon (arm64)** and
+**Linux x64** (Ubuntu 24.04 or a compatible distribution with glibc 2.39+).
 Each archive includes the editor, native runtime, content, matching C++ SDK,
 dependency headers/libraries, MCP bridge, game-build CLI and a SHA-256 checksum.
-Extract the entire archive, then open `SailorEditor.cmd` or `SailorEditor.command`.
+Extract the entire archive, then open `SailorEditor.cmd` on Windows,
+`SailorEditor.command` on macOS, or run `./SailorEditor.sh` on Linux.
+Linux uses `.tar.gz` to preserve executable permissions and symlinks; Windows and
+macOS use `.zip`. All three editors include their .NET runtime.
 Windows needs a Vulkan-capable graphics driver. macOS packages are ad-hoc signed,
 not Apple-notarized; allow the application through Privacy & Security if prompted.
 Compiling C++ workspace logic also requires CMake and a C++20 toolchain, such as
 Visual Studio 2022 or the Xcode command-line tools.
 Windows SDK consumers also need the Vulkan SDK 1.3 or newer. On macOS, install
 the Vulkan headers with `brew install vulkan-headers` before compiling C++ modules.
+The Linux editor uses the GTK4 desktop head. On Ubuntu 24.04 install its native
+runtime dependencies and a Vulkan driver:
+
+```bash
+sudo apt-get install libgtk-4-1 libvulkan1 libuuid1 libasound2t64 \
+  libicu74 libssl3t64 libgssapi-krb5-2 zlib1g
+```
+
+To build C++ workspace modules on Linux, also install CMake, a C++20 toolchain and
+`libvulkan-dev`. GPU drivers remain supplied by the operating system.
 
 `VERSION` is the single `major.minor.patch` version for the engine, editor, SDK,
 application metadata and release archives. The editor shows both component versions
 and a **GitHub Releases** link; `SailorEngine-Release --version` reports the compiled
 runtime version without starting a renderer. To prepare a new release, update VERSION
 in a reviewed commit, merge it to main, and manually run Desktop Release. Publishing
-requires all platform builds/tests, verifies both archive checksums, and creates
+requires all three platform builds/tests, verifies every archive checksum, and creates
 `v<VERSION>` at the tested commit. Existing tags/releases are preserved. The
 **Prerelease** option defaults to enabled. Until the first release is published,
 use the source build instructions below.

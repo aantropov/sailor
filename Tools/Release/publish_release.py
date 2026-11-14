@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify both desktop archives and publish one new immutable GitHub Release."""
+"""Verify all desktop archives and publish one new immutable GitHub Release."""
 from __future__ import annotations
 
 import argparse
@@ -7,20 +7,26 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import tarfile
 import zipfile
-from package_release import read_version, sha256_file
+from package_release import RELEASE_TARGETS, archive_filename, read_version, sha256_file
 
 
 def verify_assets(assets: Path, version: str, commit: str | None = None) -> list[Path]:
     result = []
-    for target in ('windows-x64', 'macos-arm64'):
-        archive = assets / f'Sailor-{version}-{target}.zip'
-        checksum = archive.with_suffix('.sha256')
+    for target in RELEASE_TARGETS:
+        name = f'Sailor-{version}-{target}'
+        archive = assets / archive_filename(version, target)
+        checksum = assets / (name + '.sha256')
         expected, filename = checksum.read_text(encoding='utf-8').strip().split('  ', 1)
         if filename != archive.name or expected != sha256_file(archive):
             raise ValueError(f'Invalid release checksum for {archive.name}')
-        with zipfile.ZipFile(archive) as contents:
-            metadata = json.loads(contents.read(archive.stem + '/release.json'))
+        if target == 'linux-x64':
+            with tarfile.open(archive, 'r:gz') as contents:
+                metadata = json.load(contents.extractfile(name + '/release.json'))
+        else:
+            with zipfile.ZipFile(archive) as contents:
+                metadata = json.loads(contents.read(name + '/release.json'))
         if (metadata['schemaVersion'] != 1 or metadata['engineVersion'] != version or
                 metadata['editorVersion'] != version or metadata['platform'] != target or
                 (commit is not None and metadata['commit'] != commit)):

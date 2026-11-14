@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import sys
 import subprocess
+import tarfile
 import tempfile
 import unittest
 import zipfile
@@ -16,7 +17,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'Tools' / 'Release'))
-from package_release import read_version, write_archive
+from package_release import RELEASE_TARGETS, archive_filename, read_version, write_archive
 from publish_release import verify_assets
 import update_deps
 
@@ -80,19 +81,49 @@ assert actual == '\u041f\u0440\u043e\u0435\u043a\u0442'
                 write_archive(stage, output, False)
             self.assertEqual(original, output.read_bytes())
 
-    def test_publisher_requires_both_matching_platform_archives(self):
+    @unittest.skipIf(os.name == 'nt', 'Linux executable permissions and symlinks require a POSIX host.')
+    def test_linux_archive_preserves_executables_symlinks_and_existing_output(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            for target in ('windows-x64', 'macos-arm64'):
-                archive = root / f'Sailor-0.1.0-{target}.zip'
-                with zipfile.ZipFile(archive, 'w') as contents:
-                    contents.writestr(archive.stem + '/release.json', json.dumps({
-                        'schemaVersion': 1, 'engineVersion': '0.1.0', 'editorVersion': '0.1.0',
-                        'platform': target, 'commit': 'tested-commit'}))
-                archive.with_suffix('.sha256').write_text(
+            stage = root / 'Sailor-0.9.0-linux-x64'
+            (stage / 'Editor').mkdir(parents=True)
+            executable = stage / 'SailorEditor.sh'
+            executable.write_text('#!/bin/sh\nexit 0\n', encoding='utf-8')
+            executable.chmod(0o755)
+            (stage / 'Editor' / 'link').symlink_to('../SailorEditor.sh')
+            archive = root / archive_filename('0.9.0', 'linux-x64')
+            write_archive(stage, archive, False, True)
+            with tarfile.open(archive) as contents:
+                self.assertEqual(contents.getmember(stage.name + '/SailorEditor.sh').mode & 0o777, 0o755)
+                link = contents.getmember(stage.name + '/Editor/link')
+                self.assertTrue(link.issym())
+                self.assertEqual(link.linkname, '../SailorEditor.sh')
+            original = archive.read_bytes()
+            with self.assertRaises(FileExistsError):
+                write_archive(stage, archive, False, True)
+            self.assertEqual(original, archive.read_bytes())
+
+    def test_publisher_requires_all_matching_platform_archives(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for target in RELEASE_TARGETS:
+                stage = root / f'Sailor-0.1.0-{target}'
+                stage.mkdir()
+                (stage / 'release.json').write_text(json.dumps({
+                    'schemaVersion': 1, 'engineVersion': '0.1.0', 'editorVersion': '0.1.0',
+                    'platform': target, 'commit': 'tested-commit'}), encoding='utf-8')
+                archive = root / archive_filename('0.1.0', target)
+                write_archive(stage, archive, False, target == 'linux-x64')
+                (root / (stage.name + '.sha256')).write_text(
                     hashlib.sha256(archive.read_bytes()).hexdigest() + '  ' + archive.name + '\n')
-            self.assertEqual(len(verify_assets(root, '0.1.0')), 4)
-            self.assertEqual(len(verify_assets(root, '0.1.0', 'tested-commit')), 4)
+            self.assertEqual(len(verify_assets(root, '0.1.0')), 6)
+            self.assertEqual(len(verify_assets(root, '0.1.0', 'tested-commit')), 6)
+            linux = root / archive_filename('0.1.0', 'linux-x64')
+            saved_linux = linux.read_bytes()
+            linux.unlink()
+            with self.assertRaises(FileNotFoundError):
+                verify_assets(root, '0.1.0')
+            linux.write_bytes(saved_linux)
             with self.assertRaises(ValueError):
                 verify_assets(root, '0.1.0', 'different-commit')
             (root / 'Sailor-0.1.0-macos-arm64.zip').write_bytes(b'corrupt')
@@ -109,7 +140,9 @@ assert actual == '\u041f\u0440\u043e\u0435\u043a\u0442'
         jobs = workflow['jobs']
         self.assertEqual(jobs['build']['needs'], 'validate')
         targets = jobs['build']['strategy']['matrix']['include']
-        self.assertEqual({entry['target'] for entry in targets}, {'windows-x64', 'macos-arm64'})
+        self.assertEqual({entry['target'] for entry in targets}, set(RELEASE_TARGETS))
+        self.assertIn({'os': 'ubuntu-24.04', 'target': 'linux-x64', 'rid': 'linux-x64',
+                       'framework': 'net10.0', 'triplet': 'x64-linux'}, targets)
         self.assertEqual(jobs['publish']['needs'], ['validate', 'build'])
         self.assertEqual(jobs['publish']['permissions'], {'contents': 'write'})
         conditions = {condition.strip() for condition in jobs['publish']['if'].split('&&')}

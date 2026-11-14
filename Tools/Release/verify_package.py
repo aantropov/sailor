@@ -10,20 +10,22 @@ import platform
 import shutil
 import subprocess
 import tempfile
-from package_release import ROOT, read_version, run, sha256_file
+from package_release import ROOT, RELEASE_TARGETS, archive_filename, read_version, run, sha256_file
 
 
 def verify(assets: Path, target: str) -> None:
     version = read_version()
     name = f'Sailor-{version}-{target}'
-    archive = assets.resolve() / (name + '.zip')
-    expected, filename = archive.with_suffix('.sha256').read_text(encoding='utf-8').strip().split('  ', 1)
+    archive = assets.resolve() / archive_filename(version, target)
+    expected, filename = (assets / (name + '.sha256')).read_text(encoding='utf-8').strip().split('  ', 1)
     if filename != archive.name or expected != sha256_file(archive):
         raise ValueError('Archive checksum does not match its release identity.')
     with tempfile.TemporaryDirectory(prefix='sailor-verify-release-') as temporary:
         root = Path(temporary)
         if platform.system() == 'Darwin':
             subprocess.run(['ditto', '-x', '-k', str(archive), str(root)], check=True)
+        elif target == 'linux-x64':
+            shutil.unpack_archive(archive, root, filter='data')
         else:
             shutil.unpack_archive(archive, root)
         package = root / name
@@ -36,6 +38,9 @@ def verify(assets: Path, target: str) -> None:
         description = json.loads(run(executable, '--describe-workspace', package))
         if Path(description['content']).resolve() != (package / 'Content').resolve():
             raise ValueError('The extracted runtime did not resolve its own content.')
+        if target == 'linux-x64':
+            if run(package / 'SailorEditor.sh', '--version') != f'Sailor Editor {version}':
+                raise ValueError('The extracted Linux editor has an unexpected version.')
         build = root / 'sdk-probe'
         subprocess.run(['cmake', '-S', str(ROOT / 'Tests' / 'ReleaseSdkProbe'), '-B', str(build),
                         '-DCMAKE_BUILD_TYPE=Release', '-DSailor_DIR=' + str(package / 'lib' / 'cmake' / 'Sailor')], check=True)
@@ -52,6 +57,6 @@ def verify(assets: Path, target: str) -> None:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--assets', type=Path, required=True)
-    parser.add_argument('--target', choices=['windows-x64', 'macos-arm64'], required=True)
+    parser.add_argument('--target', choices=RELEASE_TARGETS, required=True)
     args = parser.parse_args()
     verify(args.assets, args.target)

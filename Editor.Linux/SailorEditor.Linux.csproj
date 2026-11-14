@@ -9,7 +9,8 @@
     <NuGetAudit>false</NuGetAudit>
     <ApplicationId>com.sailor.editor</ApplicationId>
     <ApplicationTitle>SailorEditor</ApplicationTitle>
-    <LinuxEngineLibrary>$(MSBuildThisFileDirectory)../build-linux/Lib/Sailor-$(Configuration).so</LinuxEngineLibrary>
+    <SailorNativeBuildDirectory Condition="'$(SailorNativeBuildDirectory)' == ''">$(MSBuildThisFileDirectory)../build-linux</SailorNativeBuildDirectory>
+    <LinuxEngineLibrary>$(SailorNativeBuildDirectory)/Lib/Sailor-$(Configuration).so</LinuxEngineLibrary>
     <BaseOutputPath>../Binaries/Editor/</BaseOutputPath>
   </PropertyGroup>
   <ItemGroup>
