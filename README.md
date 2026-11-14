@@ -1,313 +1,87 @@
 # Sailor Engine
 
-[![GitHub Release](https://img.shields.io/github/v/release/aantropov/sailor?include_prereleases)](https://github.com/aantropov/sailor/releases)
-[![Release / Desktop](https://github.com/aantropov/sailor/actions/workflows/release-desktop.yml/badge.svg)](https://github.com/aantropov/sailor/actions/workflows/release-desktop.yml)
-[![CI / Windows](https://github.com/aantropov/sailor/actions/workflows/ci-windows.yml/badge.svg)](https://github.com/aantropov/sailor/actions/workflows/ci-windows.yml)
-[![CI / Linux](https://github.com/aantropov/sailor/actions/workflows/ci-linux.yml/badge.svg)](https://github.com/aantropov/sailor/actions/workflows/ci-linux.yml)
+**An independent C++20 game engine with a Vulkan renderer and a desktop editor.**
 
-**Sailor Engine** is an independent real-time engine for games, visual effects, interactive art, and experimental demos. It combines a bindless `Vulkan 1.3` renderer with a multithreaded `C++20` runtime, custom memory allocators, and a data-driven frame graph.
+[Download](https://github.com/aantropov/sailor/releases) · [Watch the showcase](https://youtu.be/WgifakC2LU0) · [Documentation](https://github.com/aantropov/sailor/wiki) · [Build from source](BUILDING.md)
 
-The editor is built in **C# with .NET MAUI**, with component-based scene authoring, landscape tools, and project build workflows. Its MCP integration lets AI assistants work directly with scenes, assets, and components through the editor.
+[![Sailor Engine — terrain, vegetation, water and atmospheric lighting in ForestRiver](.github/media/forest-river.jpg)](.github/media/forest-river.jpg)
 
-Sailor is a long-running passion project rooted in a lifetime of work with computer graphics. The engine's core was originally designed and written by hand, with a focus on extensible rendering and creative experimentation.
+Sailor brings together real-time rendering, component-based worlds and tools for
+building games, visual effects and interactive scenes. The native runtime is
+written in C++; the editor uses C# and .NET MAUI, with an experimental GTK4 head
+on Linux.
 
-**In active development.** Current desktop targets are Windows, macOS, and Linux (experimental GTK4 editor). Android and iOS ports are under evaluation.
+This is a long-running personal project rooted in computer graphics. The engine's
+core was originally written by hand, with an emphasis on extensible rendering,
+multithreading and engine systems.
 
-## Showcase
+**In active development.** Desktop packages are available for Windows x64,
+macOS Apple Silicon and Linux x64. Linux editor support is experimental.
 
-[**First Look: watch the showcase on YouTube**](https://youtu.be/WgifakC2LU0)
+## Inside the engine
 
-Please visit the Wiki to explore the engine's technical design in detail: [**Technical Overview and Details**](https://github.com/aantropov/sailor/wiki).
+- **Rendering:** Bindless Vulkan 1.3, a data-driven frame graph, Forward+ lighting,
+  physically based materials, GPU frustum/occlusion culling and mesh LODs.
+- **Lighting:** Baked and runtime GI probes, local reflections, cascaded shadows,
+  atmospheric sky, volumetric clouds and fog.
+- **Effects:** Raymarching, GPU particles, CPU path tracing, MSAA, camera and object
+  motion blur, bloom, exposure and tone mapping.
+- **Worlds:** Components and ECS, skeletal animation, Jolt physics, landscape
+  authoring and vegetation streaming.
+- **Runtime:** Task-based multithreading, parallel render preparation, custom
+  memory allocators and engine-owned containers.
+- **Extensibility:** C++ components, ECS systems and rendering nodes, plus MCP
+  tools for editor automation and AI-assisted scene work.
 
-## Get Started
+## Scene editor
 
-The **Sailor** Wiki provides a centralized resource for all aspects of the engine [Build Instructions and Documentation](https://github.com/aantropov/sailor/wiki)
-Visit the Wiki to explore everything you need to get started, understand the engine's internals, and contribute to its development.
+Create scenes, inspect components and materials, edit landscapes, work with
+prefabs, and build standalone games. Projects have their own content and C++
+logic modules, with build and reload tools in the editor.
 
-**Set sail on your game development journey with Sailor Engine!**
+[![Sailor Editor — the Light Pavilion scene, Content browser and Atmosphere inspector](.github/media/editor-pavilion.jpg)](.github/media/editor-pavilion.jpg)
 
+## More from Sailor
 
-## Desktop releases
-
-[GitHub Releases](https://github.com/aantropov/sailor/releases) is the download page for
-versioned engine/editor bundles. Archives become available after the repository owner
-runs **Actions → Release / Desktop** and selects an **Action**:
-
-| Action | Result |
+| Lighting and global illumination | Raymarching and interactive visuals |
 | --- | --- |
-| **Build artifacts** (default) | Build reviewable Actions artifacts. |
-| **Publish prerelease** | Publish a GitHub Release marked as a prerelease. |
-| **Publish release** | Publish a regular GitHub Release. |
+| [![Light Pavilion — physically based materials, reflections and GI](.github/media/light-pavilion.jpg)](.github/media/light-pavilion.jpg) | [![SwarmAlien — a raymarched humanoid form](.github/media/swarm-alien.jpg)](.github/media/swarm-alien.jpg) |
 
-There are no automatic releases on pushes or tags. Pull requests changing release
-tooling also validate packages without publishing. Both publication actions require
-the repository owner to run the workflow from `main` after all platform checks pass.
+The [showcase video](https://youtu.be/WgifakC2LU0) brings these scenes together.
+Click any screenshot to view the original 4K capture.
 
-The release targets are **Windows x64**, **macOS Apple Silicon (arm64)** and
-**Linux x64** (Ubuntu 24.04 or a compatible distribution with glibc 2.39+).
-Each archive includes the editor, native runtime, content, matching C++ SDK,
-dependency headers/libraries, MCP bridge, game-build CLI and a SHA-256 checksum.
-Extract the entire archive, then open `SailorEditor.cmd` on Windows,
-`SailorEditor.command` on macOS, or run `./SailorEditor.sh` on Linux.
-Linux uses `.tar.gz` to preserve executable permissions and symlinks; Windows and
-macOS use `.zip`. All three editors include their .NET runtime.
-Windows needs a Vulkan-capable graphics driver. macOS packages are ad-hoc signed,
-not Apple-notarized; allow the application through Privacy & Security if prompted.
-Compiling C++ workspace logic also requires CMake and a C++20 toolchain, such as
-Visual Studio 2022 or the Xcode command-line tools.
-Windows SDK consumers also need the Vulkan SDK 1.3 or newer. On macOS, install
-the Vulkan headers with `brew install vulkan-headers` before compiling C++ modules.
-The Linux editor uses the GTK4 desktop head. On Ubuntu 24.04 install its native
-runtime dependencies and a Vulkan driver:
+## Get started
 
-```bash
-sudo apt-get install libgtk-4-1 libvulkan1 libuuid1 libasound2t64 \
-  libicu74 libssl3t64 libgssapi-krb5-2 zlib1g
-```
+Download the matching archive from [GitHub Releases](https://github.com/aantropov/sailor/releases),
+extract the whole package, and start the editor:
 
-To build C++ workspace modules on Linux, also install CMake, a C++20 toolchain and
-`libvulkan-dev`. GPU drivers remain supplied by the operating system.
+| Platform | Launcher |
+| --- | --- |
+| Windows x64 | `SailorEditor.cmd` |
+| macOS Apple Silicon | `SailorEditor.command` |
+| Linux x64 | `./SailorEditor.sh` |
 
-`VERSION` is the single `major.minor.patch` version for the engine, editor, SDK,
-application metadata and release archives. The editor shows both component versions
-and a **GitHub Releases** link; `SailorEngine-Release --version` reports the compiled
-runtime version without starting a renderer. To prepare a new release, update VERSION
-in a reviewed commit, merge it to main, and manually run **Release / Desktop**. Publishing
-requires all three platform builds/tests, verifies every archive checksum, and creates
-`v<VERSION>` at the tested commit. Existing tags/releases are preserved. The
-default **Build artifacts** action creates no tag or release. Until the first release is published,
-use the source build instructions below.
+Packages include the editor, runtime, engine content and matching C++ SDK.
+See the [installation and build guide](BUILDING.md) for system requirements,
+[macOS first launch](BUILDING.md#macos-first-launch), source builds and game exports.
+The [Wiki](https://github.com/aantropov/sailor/wiki) covers engine design and usage.
 
-## Continuous integration
+## Contribute
 
-**CI / Windows** and **CI / Linux** select independent engine/SDK and editor/tools
-jobs from the complete pull-request diff. Native C++, shaders, content and native
-tests run engine/SDK checks. Editor UI and tool changes run managed builds and
-editor contract tests. Protocol, interop, workspace/export services, version and
-CI configuration changes run both components. Documentation-only changes skip
-the component builds; manual CI runs always select both.
-
-The shared routing rules are in `.github/ci-paths.json`. Unclassified inputs run
-both components so new build dependencies retain coverage. Engine jobs include
-headless editor contracts and native SDK integration without building the MAUI
-or GTK4 editor application. **Release / Desktop** builds and validates complete
-packages for all three platforms before publication.
-
-## Screenshots
-
-Four native 4K captures. Click an image to view it at full resolution.
-
-Terrain, vegetation, water, and atmospheric lighting.
-
-[![ForestRiver: a wooded river valley with vegetation shadows and atmospheric lighting](.github/media/forest-river.jpg)](.github/media/forest-river.jpg)
-
-Physically based materials, reflections, and runtime global illumination.
-
-[![DemoSailor Light Pavilion: material spheres, reflections, and indirect lighting](.github/media/light-pavilion.jpg)](.github/media/light-pavilion.jpg)
-
-Raymarched forms and interactive visuals for art installations.
-
-[![SwarmAlien: a human-shaped swarm rendered against a black background](.github/media/swarm-alien.jpg)](.github/media/swarm-alien.jpg)
-
-### Editor
-
-The C# / .NET MAUI editor, with the Content browser expanded and the Atmosphere object selected in the Inspector.
-
-[![Sailor Editor: the Light Pavilion scene, expanded Content folders, and SkyComponent settings](.github/media/editor-pavilion.jpg)](.github/media/editor-pavilion.jpg)
+[Report a bug](https://github.com/aantropov/sailor/issues), open a pull request,
+or [support the project](https://github.com/sponsors/aantropov).
+Development, CI and release instructions are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 <details>
 <summary>Screenshot notes and asset credits</summary>
 
-Captured with the Ultra preset and resolution factor 1.0. MSAA 8x applies to the relevant raster passes; SwarmAlien uses its own raymarching pass. The editor screenshot includes the complete application window. SwarmAlien uses synthetic audience input in this capture, not a live webcam recording.
+Captured with the Ultra preset and resolution factor 1.0. MSAA 8x applies to the
+relevant raster passes; SwarmAlien uses its own raymarching pass. Its audience
+input is synthetic in this capture. The editor screenshot shows the complete
+application window.
 
-ForestRiver includes [Poly Haven](https://polyhaven.com) assets (CC0). The pavilion includes [RobotExpressive](https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf/RobotExpressive) by Tomas Laulhe / Quaternius, with modifications by Don McCurdy (CC0).
+ForestRiver includes [Poly Haven](https://polyhaven.com) assets (CC0). The pavilion
+includes [RobotExpressive](https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf/RobotExpressive)
+by Tomas Laulhe / Quaternius, with modifications by Don McCurdy (CC0).
 
 </details>
-
-## Features
-
-- **Rendering:** Bindless Vulkan renderer, data-driven frame graph, Forward+ lighting, physically based materials, GPU frustum and occlusion culling, and mesh LODs.
-- **Lighting and atmosphere:** Baked and runtime GI probes, local reflections, cascaded shadow maps, atmospheric sky, volumetric clouds, and fog.
-- **Visual effects:** Raymarching, GPU particles, CPU path tracing, MSAA, camera and object motion blur, bloom, exposure, and tone mapping.
-- **Worlds and simulation:** Component-based scenes, ECS, skeletal animation, Jolt physics, and landscape and vegetation streaming.
-- **Core:** Task-based multithreading, parallel render preparation, custom memory allocators, and engine-owned containers.
-- **Editor:** C# / .NET MAUI, component and asset inspectors, landscape authoring, and workspace build and reload tools.
-- **AI-assisted workflows:** MCP tools for scene creation, asset inspection, component editing, and editor automation.
-- **Engine development:** C++20 with MSVC and Clang; extensible components, ECS systems, and rendering nodes for project-specific behavior.
-
-## Dependencies
-
-This project uses [vcpkg](https://github.com/microsoft/vcpkg) to manage C++ dependencies. Run `python update_deps.py` to install the required packages.
-
-## Linux (x86_64)
-
-The Vulkan runtime uses GLFW. The editor shares the existing MAUI interface through the
-[experimental GTK4 backend](https://github.com/dotnet/maui-labs/tree/main/platforms/Linux.Gtk4)
-and displays resolved scene frames through the engine's CPU readback path. GTK widget
-composition defaults to Cairo; the scene renders with Vulkan. Install .NET 10
-for the editor; the editor contract tests also require the .NET 9 runtime.
-
-On Ubuntu 24.04, install the native build dependencies:
-
-```sh
-sudo apt-get install -y build-essential clang-18 cmake ninja-build pkg-config autoconf automake libtool \
-  libvulkan-dev vulkan-tools libshaderc-dev glslc glslang-tools libssl-dev libasound2-dev \
-  libx11-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev \
-  libwayland-dev libxkbcommon-dev libgtk-4-dev xvfb xauth
-```
-
-Initialize dependencies and build the runtime and editor:
-
-```sh
-git submodule update --init --recursive
-CC=clang-18 CXX=clang++-18 python3 update_deps.py
-python3 build_engine.py --config Release --target SailorExec
-python3 run_editor.py --config Release
-```
-
-For native behavioral tests, configure with `-DSAILOR_BUILD_TESTS=ON`, build the test
-targets, and run `ctest --test-dir build-linux --output-on-failure`. The Linux window
-lifecycle test uses Xvfb when available.
-
-The opt-in GPU regression `Binaries/VulkanSubmissionTests --gpu-depth-occlusion
---workspace /path/to/sailor --null-audio` exercises the production depth prepass,
-Hi-Z pyramid and culling shaders with even/odd pyramids, direct/named resources
-and contiguous/paged instance payloads. It verifies exact visible IDs and every
-depth sample against drawing without culling. Use `xvfb-run -a` on headless Linux.
-`--gpu-default-depth-msaa2` checks the native color/depth targets and resolves,
-including rejection by depth, resize and retained command lists with MSAA requested.
-
-Package a workspace into a new directory outside that workspace:
-
-```sh
-python3 package_linux.py --workspace /path/to/workspace --output /path/to/Sailor-Linux
-/path/to/Sailor-Linux/Sailor.sh --world Example.world
-```
-
-The package includes the executable, engine library, workspace content, project settings
-and third-party license notices. Manifest workspaces also include the selected configuration
-of their logic module and engine content. Build that module before packaging. A Vulkan-capable driver and the system libraries used
-by the build are required on the destination machine.
-
-## Desktop game builds
-
-Open **Build → Build Game…** in the editor. Select the native target platform and
-Debug or Release, choose folders or ZIP assets, select compression and optionally
-include the initial cache. The same window saves independent Windows/Linux/macOS
-options in the project's version-1 `BuildSettings.json` and supports cancellation.
-Builds use saved project files on disk.
-
-Engine users can run the same exporter with the .NET 10 SDK:
-
-```sh
-dotnet run --project Tools/SailorBuild -c Release -- \
-  --engine /path/to/sailor --workspace /path/to/project \
-  --configuration Release --assets Zip --compression Balanced \
-  --output /path/to/new-game-build
-```
-
-Use a new output directory outside the project and engine. The exporter stages the
-complete game before publishing that directory; cancellation or failure removes
-the staged output. Existing builds are preserved. It builds the runtime and game
-module in matching configurations, installs the matching SDK, and compiles the
-existing generated game CMake project through that SDK. Module outputs are kept
-separate from the authoring project's binaries. All project/engine content is
-included initially, together with project settings and license notices.
-The exporter copies content into its staging directory and runs the engine's CPU
-asset import there before sealing it. Raw glTF models get material, texture and
-animation metadata without changing the authoring project. Invalid metadata,
-failed imports or an incompatible game module stop the export before publication.
-
-`--assets Folders` uses native copying with exact file modification times. ZIP
-compression options are `Stored`, `Fastest`, `Balanced` and `Smallest`.
-`--initial-cache` includes the portable cache subset described below; warm the
-authoring project's cache with the selected runtime configuration first.
-`--save-settings` retains the options for that platform.
-
-The default engine build directory is `Cache/GameBuild/<platform>/<configuration>`.
-`--engine-build-dir` selects an existing engine build directory for the requested
-configuration. `--no-build-runtime` reuses that configured runtime; the game module
-is still built through its SDK. `--engine` can also select an installed SDK that
-contains the selected standalone runtime in `bin/`.
-
-Launch the result using `Sailor.cmd`, `Sailor.sh` or `Sailor.command`. macOS exports
-include relocated non-system dylibs (including MoltenVK) with local ad-hoc signatures;
-distribution signing/notarization is a separate release step. Linux exports include
-non-system library dependencies and require the destination's compatible system
-libraries and Vulkan driver. Windows exports include runtime DLL dependencies and
-available Debug PDBs. Release exports also include the compiler's redistributable
-MSVC runtime. Windows Debug builds require the matching Visual C++ debug runtime
-on the target development machine; use Release for distribution. Each platform
-is built on its native host.
-
-## Asset archives
-
-The engine executable can create ZIP assets without starting the renderer:
-
-```sh
-SailorEngine-Release --pack-assets /project/Content /package/Content.zip balanced
-SailorEngine-Release --describe-workspace /project
-```
-
-Use the executable from your build or installed runtime (with `.exe` on Windows).
-Compression options are `stored` (raw ZIP without compression), `fastest`, `balanced`
-and `smallest` (deflate). The archive destination must be a new file in an existing
-directory outside the source tree. Symbolic links and special source files are rejected.
-
-A game package explicitly mounts content archives using `GamePackage.json` next to
-its workspace manifest:
-
-```json
-{
-  "packageVersion": 1,
-  "packageId": "d898c4f65e5246b88fa55d96bc0f1a87",
-  "initialCache": null,
-  "archives": [
-    { "root": "Content", "file": "Content.zip" },
-    { "root": "Engine/Content", "file": "EngineContent.zip" }
-  ]
-}
-```
-
-Keep the content root directories themselves in the package, even when empty. Mount
-roots must match the workspace or engine content directories, and all archive paths
-must remain inside the package. Omit an archive entry to keep that content as ordinary
-folders. Workspaces without `GamePackage.json` continue to use native folders.
-
-Archived content is read-only and is read directly through seekable streams; games do
-not extract the content tree at startup. Each stream uses a bounded decoder buffer,
-and full-file reads verify CRC. The version-1 internal ZIP index preserves exact file
-timestamps for asset and shader cache validation. The runtime cache remains writable
-outside the package, under `Sailor/Packages/<packageId>` in the user's cache directory
-(`LOCALAPPDATA`, `~/Library/Caches`, or `XDG_CACHE_HOME` / `~/.cache`). Generate a new
-32-character lowercase hexadecimal package ID for each export. Resolving a package
-does not create directories inside it.
-
-To include an optional initial cache, run the matching configuration's executable:
-
-```sh
-SailorEngine-Release --pack-cache /path/to/workspace /path/to/game/InitialCache.zip balanced
-```
-
-Keep an empty `InitialCache` directory in the package and set `initialCache` to
-`"InitialCache.zip"`. On the first launch the runtime installs the seed into writable
-user storage and binds its shader envelope to the running workspace. Subsequent
-launches preserve that cache. The seed includes `ShaderCache.yaml`, `CompiledShaders`,
-`CompiledShadersWithDebug` and `Lods`. Shader fingerprints use mount kind, virtual
-paths and source revisions so moving the package does not invalidate them. Asset
-indexes containing absolute source paths, editor state, native driver caches and
-build files are rebuilt locally. Warm the cache using the runtime configuration
-being exported; an incompatible or invalid shader envelope fails cache export.
-
-## Sponsorship and Contribution
-
-**Support Sailor Engine's Development**  
-Your support can help drive the development of new features, improved performance, and expanded documentation. Become a sponsor and play a role in shaping the future of Sailor Engine.
-
-- [Sponsor the Project](https://github.com/sponsors/aantropov)
-
-**Contribute to Sailor Engine**  
-We welcome contributions from developers of all levels! Whether you want to fix a bug, add a feature, or improve documentation, your help is invaluable.
-
-- Fork the repository and submit a Pull Request.
-- Discuss features, ideas, or issues.

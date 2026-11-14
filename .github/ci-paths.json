@@ -52,6 +52,8 @@
   "ignored": [
     "Docs/**",
     "README.md",
+    "BUILDING.md",
+    "CONTRIBUTING.md",
     "AGENTS.md",
     "ThirdPartyLicenses.txt",
     "LICENSE*",
