@@ -1368,6 +1368,10 @@ namespace Sailor::Tests
 				if (std::string_view(argv[i]) == "--gpu-render-contracts-msaa2" ||
 					std::string_view(argv[i]) == "--gpu-pathtracer-images-msaa2" ||
 					std::string_view(argv[i]) == "--gpu-default-depth-msaa2") msaaSamples = 2;
+				if (std::string_view(argv[i]) == "--gpu-depth-occlusion-msaa4")
+				{
+					msaaSamples = 4;
+				}
 			}
 			WriteScene(workspace, enginePath, msaaSamples);
 			const auto root = workspace.Get().string();
@@ -1389,7 +1393,8 @@ namespace Sailor::Tests
 				Require(!std::filesystem::exists(debug) || std::filesystem::is_empty(debug),
 					"cold startup and GPU execution must not recreate debug shader artifacts");
 			}
-			else if (argc > 1 && std::string_view(argv[1]) == "--gpu-depth-occlusion")
+			else if (argc > 1 && (std::string_view(argv[1]) == "--gpu-depth-occlusion" ||
+				std::string_view(argv[1]) == "--gpu-depth-occlusion-msaa4"))
 			{
 				RunDepthOcclusionCommandTests(workspace.Get());
 			}

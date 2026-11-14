@@ -7,6 +7,7 @@
 #include "RHI/VertexDescription.h"
 #include "FrameGraph/BloomNode.h"
 #include "FrameGraph/DepthPrepassNode.h"
+#include "FrameGraph/DepthHighZNode.h"
 #include "FrameGraph/RenderSceneNode.h"
 #include "FrameGraph/ShadowPrepassNode.h"
 #include "FrameGraph/SkyParameters.h"
@@ -43,6 +44,11 @@ namespace
 	public:
 		using BloomNode::PushConstantsDownscale;
 		using BloomNode::PushConstantsUpscale;
+	};
+	class DepthHighZLayout : public DepthHighZNode
+	{
+	public:
+		using DepthHighZNode::PushConstantsDownscale;
 	};
 
 	struct Field
@@ -912,6 +918,19 @@ void main() { resultColor = parameters.color; }
 				}
 			});
 		}
+		for (const auto& defines : { TVector<std::string>{}, TVector<std::string>{ "DEPTH_INPUT" }, TVector<std::string>{ "MSAA_DEPTH_INPUT" } })
+		{
+			Variant("Shaders/ComputeDepthHighZ.shader", defines, [&](const ShaderSet& shader, bool names)
+			{
+				using Payload = DepthHighZLayout::PushConstantsDownscale;
+				const std::array fields{
+					Field{ "outputSize"_h, offsetof(Payload, m_outputSize), sizeof(Payload::m_outputSize) },
+					Field{ "mipCountAndSamples"_h, offsetof(Payload, m_mipCountAndSamples), sizeof(Payload::m_mipCountAndSamples) }
+				};
+				SpirvReflection compute(names ? shader.GetDebugComputeShaderRHI() : shader.GetComputeShaderRHI());
+				CheckFields(compute.PushConstants(sizeof(Payload)), fields, names);
+			});
+		}
 		Variant("Shaders/ComputeBloomDownscale.shader", {}, [&](const ShaderSet& shader, bool names)
 		{
 			using Payload = BloomLayout::PushConstantsDownscale;
@@ -934,6 +953,6 @@ void main() { resultColor = parameters.color; }
 			SpirvReflection compute(names ? shader.GetDebugComputeShaderRHI() : shader.GetComputeShaderRHI());
 			CheckFields(compute.PushConstants(sizeof(Payload)), fields, names);
 		});
-		std::cout << "Compiled shader ABI: 26 production variants, named and optimized SPIR-V, offsets, sizes, array/matrix strides, nested motion, push constants and MRT outputs passed\n";
+		std::cout << "Compiled shader ABI: 29 production variants, named and optimized SPIR-V, offsets, sizes, array/matrix strides, nested motion, push constants and MRT outputs passed\n";
 	}
 }

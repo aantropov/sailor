@@ -7643,7 +7643,7 @@ int main(int argc, const char** argv)
 		if (mode == "--gpu-editor-simulation") return Tests::RunEditorSimulationTests(argc, argv);
 		if (mode == "--gpu-render-contracts" || mode == "--gpu-render-contracts-msaa2" || mode == "--gpu-shader-lifecycle" ||
 			mode == "--gpu-release-shaders" ||
-			mode == "--gpu-depth-occlusion" || mode == "--gpu-default-depth-msaa2")
+			mode == "--gpu-depth-occlusion" || mode == "--gpu-depth-occlusion-msaa4" || mode == "--gpu-default-depth-msaa2")
 		{
 			return Tests::RunRenderContractsGpu(argc, argv);
 		}
