@@ -2344,6 +2344,11 @@ void main() { result.value = params.value; }
 		const ReflectedShader depthMips(compileRuntimeCompute("Shaders/ComputeDepthHighZ.shader"));
 		RequireSpirvStorageImageBinding(depthMips, 0u, 0u);
 		RequireSpirvStorageImageBinding(depthMips, 0u, 1u);
+		for (const auto* variant : { &depthInput, &depthMsaa, &depthMips })
+		{
+			RequireSpirvStorageImageBinding(*variant, 0u, 2u);
+			RequireSpirvStorageImageBinding(*variant, 0u, 3u);
+		}
 		const ReflectedShader lightCulling(compileRuntimeCompute("Shaders/ComputeLightCulling.shader"));
 		RequireSpirvStorageBufferArrayStride(
 			lightCulling,

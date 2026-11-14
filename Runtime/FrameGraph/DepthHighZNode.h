@@ -31,7 +31,8 @@ namespace Sailor::Framegraph
 
 		struct PushConstantsDownscale
 		{
-			glm::vec2  m_outputSize;			
+			glm::vec2 m_outputSize;
+			glm::uvec2 m_mipCountAndSamples;
 		};
 	};
 

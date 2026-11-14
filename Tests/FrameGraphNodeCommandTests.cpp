@@ -7387,12 +7387,19 @@ frame:
 		if (namedInput) node->SetRHIResource_Unresolved("src"_h, bDefault ? "DepthBuffer"_h : "CustomDepth"_h);
 		if (namedOutput) node->SetRHIResource_Unresolved("dst"_h, "Pyramid"_h);
 		RHIRenderTargetPtr previousPyramid;
-		for (uint32_t frame = 0; frame < 3; ++frame)
+		const std::array inputSizes{ glm::ivec2(8), glm::ivec2(9, 7), glm::ivec2(5, 9), glm::ivec2(24, 40), glm::ivec2(20, 12) };
+		const std::array outputSizes{ glm::ivec2(8), glm::ivec2(7, 5), glm::ivec2(3, 7), glm::ivec2(12, 20), glm::ivec2(10, 6) };
+		for (uint32_t frame = 0; frame < inputSizes.size(); ++frame)
 		{
-			if (frame == 2) node->Clear();
-			const glm::ivec2 inputSize = frame == 0 ? glm::ivec2(8) : frame == 1 ? glm::ivec2(9, 7) : glm::ivec2(5, 9);
-			const glm::ivec2 outputSize = frame == 0 ? glm::ivec2(8) : frame == 1 ? glm::ivec2(7, 5) : glm::ivec2(3, 7);
-			const uint32_t mipCount = frame == 0 ? 4 : 3;
+			if (frame == 2)
+			{
+				node->Clear();
+			}
+			// Partially populated 8x8 groups exercise both batched reductions and
+			// the transition back to an odd, overlapping source footprint.
+			const auto inputSize = inputSizes[frame];
+			const auto outputSize = outputSizes[frame];
+			const uint32_t mipCount = frame == 0 || frame >= 3 ? 4 : 3;
 			const auto usage = ETextureUsageBit::DepthStencilAttachment_Bit | ETextureUsageBit::Sampled_Bit | ETextureUsageBit::TextureTransferDst_Bit;
 			auto defaultDepth = driver->CreateRenderTarget(inputSize, 1, format, ETextureFiltration::Nearest, ETextureClamping::Clamp, usage);
 			auto defaultTarget = VulkanApi::GetInstance()->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT ?
@@ -8654,6 +8661,7 @@ namespace Sailor::Tests
 	{
 		const auto depthReadback = WriteDepthReadbackShader(workspace);
 		const auto indexReadback = WriteCullingIndexReadbackShader(workspace);
+		const auto depthPattern = WriteDepthPatternShader(workspace, EFormat::D32_SFLOAT);
 		auto* registry = App::GetSubmodule<AssetRegistry>();
 		auto* compiler = App::GetSubmodule<ShaderCompiler>();
 		ShaderSetPtr depthShader, maskedDepthShader, cullingShader;
@@ -8667,11 +8675,11 @@ namespace Sailor::Tests
 			"production depth and culling shaders must be ready for the Hi-Z regression");
 		const auto highZInfo = registry->GetAssetInfoPtr("Shaders/ComputeDepthHighZ.shader");
 		Require(highZInfo != nullptr, "the production depth pyramid shader must exist");
-		std::array<ShaderSetPtr, 2> highZShaders;
+		std::array<ShaderSetPtr, 3> highZShaders;
 		for (uint32_t permutation = 0; permutation < highZShaders.size(); ++permutation)
 		{
 			const TVector<std::string> defines = permutation == 0 ? TVector<std::string>{} :
-				TVector<std::string>{ "DEPTH_INPUT" };
+				TVector<std::string>{ permutation == 1 ? "DEPTH_INPUT" : "MSAA_DEPTH_INPUT" };
 			Require(compiler->LoadShader_Immediate(highZInfo->GetFileId(), highZShaders[permutation], defines) &&
 				highZShaders[permutation]->IsReady(), "depth pyramid shaders must be ready for the Hi-Z regression");
 		}
@@ -8679,6 +8687,11 @@ namespace Sailor::Tests
 			{
 				try
 				{
+					for (auto input : { DepthInput::Default, DepthInput::Texture, DepthInput::Surface, DepthInput::DefaultSingleSampleSurface })
+					{
+						TestDepthHighZ(depthPattern, depthReadback, EFormat::D32_SFLOAT, input, true, true, false);
+					}
+					TestDepthHighZIsolatedClearSample(depthReadback, "depth-occlusion");
 					for (bool named : { false, true })
 					{
 						for (bool paged : { false, true })
