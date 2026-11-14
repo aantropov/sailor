@@ -161,12 +161,17 @@ namespace SailorEditor
             builder.Services.AddSingleton<IWorkspaceProcessRunner, WorkspaceProcessRunner>();
             builder.Services.AddSingleton<GameBuildService>();
             builder.Services.AddSingleton<GameBuildWindowService>();
-            builder.Services.AddSingleton(services => new WorkspaceBuildService(
-                services.GetRequiredService<WorkspaceLifecycleService>(),
-                services.GetRequiredService<IWorkspaceProcessRunner>(),
-                services.GetRequiredService<EngineService>().EngineWorkingDirectory,
-                Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-                    OperatingSystem.IsMacCatalyst() ? "../Resources/EngineSDK" : "EngineSDK"))));
+            builder.Services.AddSingleton(services =>
+            {
+                var root = services.GetRequiredService<EngineService>().EngineWorkingDirectory;
+                var sdk = File.Exists(Path.Combine(root, "lib", "cmake", "Sailor", "SailorConfig.cmake"))
+                    ? root
+                    : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+                        OperatingSystem.IsMacCatalyst() ? "../Resources/EngineSDK" : "EngineSDK"));
+                return new WorkspaceBuildService(
+                    services.GetRequiredService<WorkspaceLifecycleService>(),
+                    services.GetRequiredService<IWorkspaceProcessRunner>(), root, sdk);
+            });
             builder.Services.AddSingleton<WorkspaceCacheService>();
             builder.Services.AddSingleton<McpEditorHostService>();
             builder.Services.AddTransient<MainPage>();

@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.21)
-project(Sailor VERSION 0.1)
+file(READ "${CMAKE_CURRENT_LIST_DIR}/VERSION" SAILOR_VERSION)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/VERSION")
+string(STRIP "${SAILOR_VERSION}" SAILOR_VERSION)
+if(NOT SAILOR_VERSION MATCHES "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$")
+  message(FATAL_ERROR "VERSION must contain a major.minor.patch release version.")
+endif()
+project(Sailor VERSION "${SAILOR_VERSION}")
 include(GNUInstallDirs)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)

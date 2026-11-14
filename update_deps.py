@@ -57,9 +57,7 @@ def main() -> int:
     def run_vcpkg(*args: str) -> None:
         subprocess.check_call([vcpkg_exe] + list(args), cwd=VCPKG_ROOT)
 
-    overlay_args = []
-    if system in ('Windows', 'Linux'):
-        overlay_args = [f'--overlay-ports={VCPKG_OVERLAY_PORTS}']
+    overlay_args = [f'--overlay-ports={VCPKG_OVERLAY_PORTS}']
     if system == 'Windows':
         overlay_args.append(f'--overlay-triplets={VCPKG_OVERLAY_TRIPLETS}')
 

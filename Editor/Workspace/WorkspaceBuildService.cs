@@ -84,7 +84,7 @@ public sealed record WorkspaceBuildPlan(
             engineDirectory = Path.GetFullPath(engineDirectory);
             arguments.Add("-DSAILOR_ENGINE_ROOT=" + engineDirectory);
             arguments.Add("-DSAILOR_ENGINE_REFERENCE_KIND=" +
-                (Directory.Exists(Path.Combine(engineDirectory, "Runtime")) ? "source" : "installed"));
+                WorkspaceEngineReferenceKinds.FromEngineRoot(engineDirectory));
         }
         AddVcpkgArguments(session, arguments, engineDirectory);
         return new WorkspaceProcessInvocation(

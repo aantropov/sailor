@@ -4,6 +4,7 @@
              xmlns:local="clr-namespace:SailorEditor"
              xmlns:views="clr-namespace:SailorEditor.Views"
              xmlns:shell="clr-namespace:SailorEditor.Shell"
+             xmlns:services="clr-namespace:SailorEditor.Services"
              x:Class="SailorEditor.MainPage"
              x:DataType="local:MainPage"
              Title="Sailor Editor">
@@ -22,9 +23,11 @@
 
         <Border Grid.Row="3" StrokeThickness="1" Stroke="DimGray" BackgroundColor="#1E1E1E" Padding="10,6">
             <VerticalStackLayout Spacing="2">
-                <Grid ColumnDefinitions="Auto,*">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
                     <Label Text="Status" FontAttributes="Bold" Margin="0,0,8,0"/>
                     <Label x:Name="StatusTextLabel" Grid.Column="1" Text="Ready"/>
+                    <Label Grid.Column="2" Text="{x:Static services:ReleaseInfo.DisplayText}" TextColor="#B7BBC5" VerticalOptions="Center"/>
+                    <Button Grid.Column="3" Text="GitHub Releases" Clicked="OnOpenReleases" Padding="8,2" FontSize="12" AutomationId="GitHubReleases"/>
                 </Grid>
                 <Label Text="Right-click a tab strip to add panels. Click a tab to focus it, × to close it, and Reset Layout if the shell gets messy."
                        FontSize="11"

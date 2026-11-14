@@ -267,7 +267,7 @@ void VulkanApi::Initialize(Platform::Window* viewport, RHI::EMsaaSamples msaaSam
 	appInfo.pApplicationName = App::GetApplicationName();
 	appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
 	appInfo.pEngineName = App::GetEngineName();
-	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+	appInfo.engineVersion = VK_MAKE_VERSION(SAILOR_ENGINE_VERSION_MAJOR, SAILOR_ENGINE_VERSION_MINOR, SAILOR_ENGINE_VERSION_PATCH);
 
 	uint32_t loaderApiVersion = VK_API_VERSION_1_0;
 	const auto pfnEnumerateInstanceVersion = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceVersion"));

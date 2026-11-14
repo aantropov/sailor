@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <SailorVersion>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)VERSION').Trim())</SailorVersion>
+    <Version>$(SailorVersion)</Version>
+    <ApplicationDisplayVersion>$(SailorVersion)</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <AssemblyMetadata Include="SailorEngineVersion" Value="$(SailorVersion)" />
+  </ItemGroup>
+</Project>

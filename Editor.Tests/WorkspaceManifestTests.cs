@@ -5,6 +5,23 @@ namespace SailorEditor.Editor.Tests;
 public sealed class WorkspaceManifestTests
 {
     [Fact]
+    public void NewProjectEngineReferenceMatchesSourceOrInstalledEngineRoot()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "sailor-engine-kind-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "include", "Sailor", "Runtime"));
+            Assert.Equal(WorkspaceEngineReferenceKinds.Installed, WorkspaceEngineReferenceKinds.FromEngineRoot(root));
+            Directory.CreateDirectory(Path.Combine(root, "Runtime"));
+            Assert.Equal(WorkspaceEngineReferenceKinds.Source, WorkspaceEngineReferenceKinds.FromEngineRoot(root));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public void CreateDefault_CreatesValidManifest()
     {
         var manifest = WorkspaceManifest.CreateDefault("Sandbox", "../Sailor", "workspace-id");

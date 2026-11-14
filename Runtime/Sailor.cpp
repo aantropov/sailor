@@ -83,6 +83,11 @@ namespace
 App::App() = default;
 App::~App() = default;
 
+const char* App::GetEngineVersion()
+{
+	return SAILOR_ENGINE_VERSION;
+}
+
 App* App::GetInstance()
 {
 	return s_pInstance;

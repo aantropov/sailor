@@ -14,6 +14,12 @@ ENGINE = Path(sys.argv.pop(1)).resolve()
 
 
 class ArchiveCommandLineTests(unittest.TestCase):
+    def test_compiled_release_version_without_starting_renderer(self) -> None:
+        expected = (Path(__file__).resolve().parents[1] / "VERSION").read_text(encoding="utf-8").strip()
+        result = self.run_engine("--version")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), f"Sailor Engine {expected}")
+
     def run_engine(self, *arguments: object) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [str(ENGINE), *(str(argument) for argument in arguments)],

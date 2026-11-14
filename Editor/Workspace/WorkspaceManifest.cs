@@ -52,6 +52,9 @@ public static class WorkspaceEngineReferenceKinds
 
     public static string Normalize(string? value)
         => value?.Trim().ToLowerInvariant() ?? string.Empty;
+
+    public static string FromEngineRoot(string root)
+        => Directory.Exists(Path.Combine(root, "Runtime")) ? Source : Installed;
 }
 
 public sealed record WorkspaceManifestIssue(string Field, string Message);

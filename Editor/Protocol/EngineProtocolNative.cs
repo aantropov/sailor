@@ -47,10 +47,10 @@ internal static class EngineProtocolNative
     const string EngineLibrary = "Sailor-" + Configuration;
 #elif DEBUG
     public const string Configuration = "RelWithDebInfo";
-    const string EngineLibrary = "../../../../../Sailor-" + Configuration + ".dll";
+    const string EngineLibrary = "Sailor-" + Configuration + ".dll";
 #else
     public const string Configuration = "Release";
-    const string EngineLibrary = "../../../../../Sailor-" + Configuration + ".dll";
+    const string EngineLibrary = "Sailor-" + Configuration + ".dll";
 #endif
 
 #if LINUX
