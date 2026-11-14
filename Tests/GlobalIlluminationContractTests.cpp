@@ -169,7 +169,7 @@ namespace
 		const char* rendererPaths[] =
 		{
 			"DefaultRenderer.renderer",
-			"EditorRenderer.renderer"
+			"EditorCamera.renderer"
 		};
 		const char* probeCellTarget =
 			"GlobalIlluminationProbeCellIndices";
@@ -293,7 +293,7 @@ namespace
 		const char* rendererPaths[] =
 		{
 			"DefaultRenderer.renderer",
-			"EditorRenderer.renderer"
+			"EditorCamera.renderer"
 		};
 		for (const char* rendererPath : rendererPaths)
 		{

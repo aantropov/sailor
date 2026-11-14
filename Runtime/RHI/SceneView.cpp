@@ -769,11 +769,19 @@ void RHISceneView::PrepareDebugDrawCommandLists(
 	m_debugDraw.Reserve(m_cameras.Num());
 	const DebugContext::DrawSnapshot debugDrawSnapshot = world->GetDebugContext()->GetDrawSnapshot();
 
-	for (const auto& camera : m_cameras)
+	for (uint32_t index = 0; index < m_cameras.Num(); ++index)
 	{
+		const auto& camera = m_cameras[index];
 		const glm::mat4 viewProjection = camera.GetProjectionMatrix() * camera.GetViewMatrix();
+
+		glm::ivec2 chosenExtent = renderExtent;
+		if (index < m_cameraRenderExtents.Num() && m_cameraRenderExtents[index].x > 0 && m_cameraRenderExtents[index].y > 0)
+		{
+			chosenExtent = m_cameraRenderExtents[index];
+		}
+
 		auto task = Tasks::CreateTaskWithResult<RHI::RHICommandListPtr>("Record DebugContext Draw Command List"_h,
-			[debugDrawSnapshot, viewProjection, renderExtent]()
+			[debugDrawSnapshot, viewProjection, chosenExtent]()
 			{
 				RHI::RHICommandListPtr secondaryCmdList = RHI::Renderer::GetDriver()->CreateCommandList(true, RHI::ECommandListQueue::Graphics);
 				Sailor::RHI::Renderer::GetDriver()->SetDebugName(secondaryCmdList, "Draw Debug Mesh"_h);
@@ -783,7 +791,7 @@ void RHISceneView::PrepareDebugDrawCommandLists(
 					secondaryCmdList,
 					viewProjection,
 					debugDrawSnapshot,
-					renderExtent);
+					chosenExtent);
 				commands->EndCommandList(secondaryCmdList);
 
 				return secondaryCmdList;

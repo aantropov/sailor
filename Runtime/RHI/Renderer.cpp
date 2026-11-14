@@ -1,3 +1,4 @@
+#include "AssetRegistry/AssetRegistry.h"
 #include "Types.h"
 #include "RHI/RenderTarget.h"
 #include "Renderer.h"
@@ -195,6 +196,7 @@ Renderer::~Renderer()
 	m_frameGraph.Clear();
 	m_skyNode.Clear();
 	m_cachedSceneViews.Clear();
+	m_cameraGraphCache.Clear();
 	m_submissionContexts.Clear();
 	m_driverInstance.Clear();
 }
@@ -417,6 +419,219 @@ RHISceneViewPtr Renderer::GetOrAddSceneView(WorldPtr worldPtr)
 void Renderer::RemoveSceneView(WorldPtr worldPtr)
 {
 	m_cachedSceneViews.Remove(worldPtr);
+	PruneCameraGraphEntries(worldPtr, 0ull);
+}
+
+FrameGraphPtr Renderer::ResolveCameraGraph(WorldPtr world, const CameraData& camera, uint64_t epoch)
+{
+	if (!world || !camera.GetInstanceId())
+	{
+		return {};
+	}
+
+	const InstanceId cameraId = camera.GetInstanceId();
+
+	// Find existing entry
+	CameraGraphEntry* pEntry = nullptr;
+	for (auto& entry : m_cameraGraphCache)
+	{
+		if (entry.m_world == world && entry.m_cameraInstanceId == cameraId)
+		{
+			pEntry = &entry;
+			break;
+		}
+	}
+
+	if (pEntry)
+	{
+		pEntry->m_lastSeenEpoch = epoch;
+	}
+
+	// Determine output extent
+	Settings::GraphicsExtent outputExtent{};
+	RHITexturePtr targetTexture{};
+	uint64_t targetRevision = 0ull;
+
+	TexturePtr authoredTarget = camera.GetRenderTarget();
+	if (authoredTarget)
+	{
+		RHITexturePtr resolvedTarget = camera.GetResolvedRenderTarget();
+		if (!resolvedTarget || !resolvedTarget->IsReady())
+		{
+			return {};
+		}
+
+		RHIRenderTargetPtr renderTarget = resolvedTarget.DynamicCast<RHIRenderTarget>();
+		if (!renderTarget)
+		{
+			return {};
+		}
+
+		auto extent = renderTarget->GetExtent();
+		if (extent.x == 0 || extent.y == 0)
+		{
+			return {};
+		}
+
+		outputExtent.m_width = static_cast<uint32_t>(extent.x);
+		outputExtent.m_height = static_cast<uint32_t>(extent.y);
+		targetTexture = resolvedTarget;
+		targetRevision = camera.GetResolvedRevision();
+	}
+	else
+	{
+		if (m_pViewport)
+		{
+			auto area = m_pViewport->GetRenderArea();
+			if (area.x > 0 && area.y > 0)
+			{
+				outputExtent.m_width = static_cast<uint32_t>(area.x);
+				outputExtent.m_height = static_cast<uint32_t>(area.y);
+			}
+			else
+			{
+				return {};
+			}
+		}
+		else
+		{
+			return {};
+		}
+	}
+
+	// Resolve config UID and revision
+	FileId configUid = camera.GetRendererConfig();
+	FileRevision configRevision{};
+
+	if (configUid == FileId::Invalid)
+	{
+		const char* path = camera.GetEditorRole() ? "EditorCamera.renderer" : "DefaultRenderer.renderer";
+		auto registry = App::GetSubmodule<AssetRegistry>();
+		if (!registry)
+		{
+			return {};
+		}
+		auto info = registry->GetAssetInfoPtr<FrameGraphAssetInfoPtr>(path);
+		if (!info)
+		{
+			return {};
+		}
+		configUid = info->GetFileId();
+		std::string filepath = info->GetAssetFilepath();
+		if (!Utils::TryGetFileRevision(filepath, configRevision))
+		{
+			return {};
+		}
+	}
+	else
+	{
+		auto registry = App::GetSubmodule<AssetRegistry>();
+		if (!registry)
+		{
+			return {};
+		}
+		auto info = registry->GetAssetInfoPtr<FrameGraphAssetInfoPtr>(configUid);
+		if (!info)
+		{
+			return {};
+		}
+		std::string filepath = info->GetAssetFilepath();
+		if (!Utils::TryGetFileRevision(filepath, configRevision))
+		{
+			return {};
+		}
+	}
+
+	// Resolve quality
+	Settings::EGraphicsQuality resolvedQuality = Settings::EGraphicsQuality::Low;
+	Settings::GraphicsQualityProfile profile{};
+
+	Settings::EGraphicsQualitySelection requestedQuality = camera.GetQualityPreset();
+	if (requestedQuality == Settings::EGraphicsQualitySelection::ProjectDefault)
+	{
+		if (camera.GetEditorRole())
+		{
+			resolvedQuality = App::GetActiveGraphicsQuality();
+		}
+		else
+		{
+			resolvedQuality = App::GetGraphicsSettings().m_defaultQuality;
+		}
+	}
+	else
+	{
+		resolvedQuality = Settings::ResolveQualitySelection(requestedQuality, App::GetGraphicsSettings().m_defaultQuality);
+	}
+
+	profile = App::GetGraphicsSettings().GetProfile(resolvedQuality);
+
+	uint32_t actualMsaa = static_cast<uint32_t>(m_msaaSamples);
+
+	// Check if cache hit
+	if (pEntry)
+	{
+		bool bConfigChanged = (pEntry->m_configUid != configUid) || (pEntry->m_configRevision != configRevision);
+		bool bTargetChanged = (pEntry->m_target != targetTexture) || (pEntry->m_targetRevision != targetRevision);
+		bool bExtentChanged = (pEntry->m_outputExtent.m_width != outputExtent.m_width) || (pEntry->m_outputExtent.m_height != outputExtent.m_height);
+		bool bQualityChanged = (pEntry->m_resolvedQuality != resolvedQuality);
+		bool bFactorChanged = (pEntry->m_resolutionFactor != profile.m_resolutionFactor);
+		bool bMsaaChanged = (pEntry->m_msaaSamples != actualMsaa);
+
+		if (!bConfigChanged && !bTargetChanged && !bExtentChanged && !bQualityChanged && !bFactorChanged && !bMsaaChanged)
+		{
+			return pEntry->m_graph;
+		}
+	}
+
+	// Build new graph
+	FrameGraphPtr newGraph{};
+	auto importer = App::GetSubmodule<FrameGraphImporter>();
+	if (!importer)
+	{
+		return {};
+	}
+
+	if (!importer->Instantiate(configUid, newGraph, outputExtent, resolvedQuality, profile))
+	{
+		return {};
+	}
+
+	// Update or create entry
+	if (!pEntry)
+	{
+		m_cameraGraphCache.Add(CameraGraphEntry{});
+		pEntry = &m_cameraGraphCache[m_cameraGraphCache.Num() - 1];
+		pEntry->m_world = world;
+		pEntry->m_cameraInstanceId = cameraId;
+	}
+
+	pEntry->m_graph = newGraph;
+	pEntry->m_target = targetTexture;
+	pEntry->m_configUid = configUid;
+	pEntry->m_configRevision = configRevision;
+	pEntry->m_targetRevision = targetRevision;
+	pEntry->m_resolvedQuality = resolvedQuality;
+	pEntry->m_resolutionFactor = profile.m_resolutionFactor;
+	pEntry->m_outputExtent = outputExtent;
+	pEntry->m_msaaSamples = actualMsaa;
+	pEntry->m_lastSeenEpoch = epoch;
+
+	return newGraph;
+}
+
+void Renderer::PruneCameraGraphEntries(WorldPtr world, uint64_t epoch)
+{
+	for (size_t index = m_cameraGraphCache.Num(); index > 0; --index)
+	{
+		size_t i = index - 1;
+		if (m_cameraGraphCache[i].m_world == world)
+		{
+			if (epoch == 0ull || m_cameraGraphCache[i].m_lastSeenEpoch != epoch)
+			{
+				m_cameraGraphCache.RemoveAt(i);
+			}
+		}
+	}
 }
 
 void Renderer::QueueEditorReadback(ReadbackFramePtr frame)

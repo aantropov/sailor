@@ -48,6 +48,13 @@ namespace Sailor
 		SAILOR_API void SetQualityPreset(Settings::EGraphicsQualitySelection preset) { m_qualityPreset = preset; }
 		SAILOR_API Settings::EGraphicsQualitySelection GetQualityPreset() const { return m_qualityPreset; }
 
+		// Transient engine-assigned classification. True only for the
+		// independent editor viewport camera created by engine world
+		// infrastructure. Never serialized and never applied to authored
+		// game cameras.
+		SAILOR_API void SetEditorRole(bool value) { m_editorRole = value; }
+		SAILOR_API bool GetEditorRole() const { return m_editorRole; }
+
 		SAILOR_API void SetResolvedRenderTarget(RHI::RHITexturePtr target, uint64_t revision)
 		{
 			m_resolvedRenderTarget = target;
@@ -77,6 +84,7 @@ namespace Sailor
 		Sailor::InstanceId m_instanceId{};
 		RHI::RHITexturePtr m_resolvedRenderTarget{};
 		uint64_t m_resolvedRevision = 0ull;
+		bool m_editorRole = false;
 
 		friend class CameraECS;
 	};

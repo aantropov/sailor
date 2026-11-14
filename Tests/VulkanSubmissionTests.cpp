@@ -3318,7 +3318,7 @@ frame: []
 			for (int i = 1; i + 1 < argc; ++i)
 				if (std::string_view(argv[i]) == "--workspace") enginePath = argv[i + 1];
 			std::filesystem::create_directory(workspace.Path("Content"));
-			if (!cachedMsaa) std::ofstream(workspace.Path("Content/EditorRenderer.renderer")) << "renderTargets: []\nframe: []\n";
+			if (!cachedMsaa) std::ofstream(workspace.Path("Content/EditorCamera.renderer")) << "renderTargets: []\nframe: []\n";
 			YAML::Node manifest;
 			manifest["manifestVersion"] = 1;
 			manifest["workspaceId"] = "00000000-0000-0000-0000-000000000223";
@@ -4986,7 +4986,7 @@ frame: []
 			const auto modulePath = workspace.Path("Binaries") / App::GetBuildConfig() / "libImGuiWorkspaceFixture.dylib";
 			std::filesystem::create_directories(modulePath.parent_path());
 			std::filesystem::copy_file(SAILOR_IMGUI_FIXTURE_PATH, modulePath);
-			std::ofstream(workspace.Path("Content/EditorRenderer.renderer")) <<
+			std::ofstream(workspace.Path("Content/EditorCamera.renderer")) <<
 				"renderTargets:\n"
 				"- name: EditorOutput\n  format: B8G8R8A8_UNORM\n  width: 64\n  height: 48\n"
 				"- name: UiDepth\n  format: D32_SFLOAT_S8_UINT\n  width: 64\n  height: 48\n"
@@ -5393,7 +5393,7 @@ frame: []
 		graphics["graphics"]["defaultQuality"] = "High";
 		graphics["graphics"]["presets"]["High"]["msaaSamples"] = 4;
 		std::ofstream(workspace.Path("ProjectSettings.yaml")) << graphics;
-		const auto graphPath = workspace.Path("Content/EditorRenderer.renderer");
+		const auto graphPath = workspace.Path("Content/EditorCamera.renderer");
 		WriteEditorReadbackGraph(graphPath, 0, { 32, 24 });
 		const std::string workspacePath = workspace.Get().string();
 		int result = 1;

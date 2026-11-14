@@ -40,7 +40,7 @@ void FrameGraphImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpi
 
 const char* FrameGraphImporter::GetRendererAssetPath()
 {
-	return App::HasEditor() ? "EditorRenderer.renderer" : "DefaultRenderer.renderer";
+	return App::HasEditor() ? "EditorCamera.renderer" : "DefaultRenderer.renderer";
 }
 
 bool FrameGraphImporter::GetEnvironmentMap(std::string& outPath, std::string& outDiagnostic)

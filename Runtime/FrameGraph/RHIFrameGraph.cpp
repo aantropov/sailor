@@ -506,18 +506,38 @@ void RHIFrameGraph::FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::R
 		static_cast<EAccessFlags>(EAccessBit::UniformRead_Bit) | static_cast<EAccessFlags>(EAccessBit::ShaderRead_Bit));
 }
 
-TVector<Sailor::Tasks::ITaskPtr> RHIFrameGraph::Prepare(RHI::RHISceneViewPtr rhiSceneView)
+TVector<Sailor::Tasks::ITaskPtr> RHIFrameGraph::Prepare(RHI::RHISceneViewPtr rhiSceneView, uint32_t cameraIndex)
 {
 	TVector<Sailor::Tasks::ITaskPtr> res;
-	// Recording belongs to this submission even when its DebugDraw pass is omitted.
-	for (const auto& task : rhiSceneView->m_debugDraw)
+	const bool bAllCameras = (cameraIndex == (std::numeric_limits<uint32_t>::max)());
+
+	if (!bAllCameras && cameraIndex >= rhiSceneView->m_snapshots.Num())
 	{
-		res.Add(task);
+		return res;
+	}
+
+	if (bAllCameras)
+	{
+		for (const auto& task : rhiSceneView->m_debugDraw)
+		{
+			res.Add(task);
+		}
+	}
+	else
+	{
+		if (cameraIndex < rhiSceneView->m_debugDraw.Num())
+		{
+			res.Add(rhiSceneView->m_debugDraw[cameraIndex]);
+		}
 	}
 
 	auto frameRefPtr = this->ToRefPtr<RHIFrameGraph>();
-	for (auto& snapshot : rhiSceneView->m_snapshots)
+	const uint32_t startIdx = bAllCameras ? 0u : cameraIndex;
+	const uint32_t endIdx = bAllCameras ? rhiSceneView->m_snapshots.Num() : cameraIndex + 1;
+
+	for (uint32_t i = startIdx; i < endIdx; ++i)
 	{
+		auto& snapshot = rhiSceneView->m_snapshots[i];
 		snapshot.PrepareLods(snapshot.m_camera->GetViewMatrix(), snapshot.m_camera->GetProjectionMatrix());
 		for (auto& node : m_graph)
 		{
@@ -662,12 +682,19 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 	TVector<RHI::RHICommandListPtr>& outCommandLists,
 	RHISemaphorePtr inSignalSemaphore,
 	RHISemaphorePtr& outWaitSemaphore,
-	bool bTrackGpuStats)
+	bool bTrackGpuStats,
+	uint32_t cameraIndex)
 {
 	SAILOR_PROFILE_FUNCTION();
 	m_drawCallStats = {};
 	RHIGlobalIlluminationRenderStats globalIlluminationRenderStats;
 	outWaitSemaphore = inSignalSemaphore;
+	const bool bAllCameras = (cameraIndex == (std::numeric_limits<uint32_t>::max)());
+	if (!bAllCameras && cameraIndex >= rhiSceneView->m_snapshots.Num())
+	{
+		return false;
+	}
+	const uint32_t selectedIndex = bAllCameras ? 0u : cameraIndex;
 	if (!PrepareRenderTargets()) return false;
 
 	auto renderer = App::GetSubmodule<RHI::Renderer>();
@@ -678,14 +705,14 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 	submissionProgress->SetLastSuccessfulSemaphore(inSignalSemaphore);
 
 	if (!rhiSceneView->m_snapshots.IsEmpty() &&
-		rhiSceneView->m_snapshots[0].m_submissionContext)
+		rhiSceneView->m_snapshots[selectedIndex].m_submissionContext)
 	{
 		auto resourceUploadCommandList = renderer->GetDriver()->CreateCommandList(
 			false,
 			RHI::ECommandListQueue::Compute);
 		driver->SetDebugName(resourceUploadCommandList, "FrameGraph:SharedResourceUpload"_h);
 		driverCommands->BeginCommandList(resourceUploadCommandList, true);
-		const auto& snapshot = rhiSceneView->m_snapshots[0];
+		const auto& snapshot = rhiSceneView->m_snapshots[selectedIndex];
 		auto sharedResources = snapshot.m_submissionContext->GetOrAddFrameGraphResources<RHISharedViewSubmissionResources>(
 			this, (std::numeric_limits<uint32_t>::max)(), 1u);
 		UploadSharedLighting(resourceUploadCommandList, snapshot, *sharedResources);
@@ -757,8 +784,13 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 		submissionProgress->SetLastSuccessfulSemaphore(ready);
 	}
 
-	for (auto& snapshot : rhiSceneView->m_snapshots)
+	for (uint32_t i = 0; i < rhiSceneView->m_snapshots.Num(); ++i)
 	{
+		if (!bAllCameras && i != cameraIndex)
+		{
+			continue;
+		}
+		auto& snapshot = rhiSceneView->m_snapshots[i];
 		SAILOR_PROFILE_SCOPE("Process snapshot");
 		ResetCurrentDepthPyramids();
 

@@ -241,7 +241,7 @@ renderTargets:
 
 	void TestDepthAttachmentFrameGraphContract()
 	{
-		for (const char* rendererPath : { "DefaultRenderer.renderer", "EditorRenderer.renderer", "ExperimentalRenderer.renderer" })
+		for (const char* rendererPath : { "DefaultRenderer.renderer", "EditorCamera.renderer", "ExperimentalRenderer.renderer" })
 		{
 			const auto renderer = YAML::LoadFile(
 				(std::filesystem::path(SAILOR_TEST_SOURCE_DIR) / "Content" / rendererPath).string());
@@ -291,7 +291,7 @@ renderTargets:
 	{
 		const std::filesystem::path contentRoot =
 			std::filesystem::path(SAILOR_TEST_SOURCE_DIR) / "Content";
-		for (const char* rendererPath : { "DefaultRenderer.renderer", "EditorRenderer.renderer", "ExperimentalRenderer.renderer" })
+		for (const char* rendererPath : { "DefaultRenderer.renderer", "EditorCamera.renderer", "ExperimentalRenderer.renderer" })
 		{
 			const auto renderer = YAML::LoadFile((contentRoot / rendererPath).string());
 			uint32_t pyramids = 0;
@@ -308,7 +308,7 @@ renderTargets:
 		const char* rendererPaths[] =
 		{
 			"DefaultRenderer.renderer",
-			"EditorRenderer.renderer"
+			"EditorCamera.renderer"
 		};
 
 		for (const char* rendererPath : rendererPaths)
@@ -396,7 +396,7 @@ renderTargets:
 
 	void TestMotionMrtFrameGraphContract()
 	{
-		for (const char* rendererPath : { "DefaultRenderer.renderer", "EditorRenderer.renderer" })
+		for (const char* rendererPath : { "DefaultRenderer.renderer", "EditorCamera.renderer" })
 		{
 			const auto scalar = [rendererPath](const YAML::Node& node, const char* key)
 			{

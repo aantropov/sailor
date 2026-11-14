@@ -39,6 +39,12 @@ namespace Sailor
 		SAILOR_API void SetZFar(float value);
 
 		SAILOR_API Sailor::FileId GetRendererConfig() const { return m_rendererConfig; }
+
+		// Transient engine-assigned classification for the independent
+		// editor viewport camera. Never serialized, never applied to
+		// authored game cameras.
+		bool GetEditorRole() const { return m_editorRole; }
+		SAILOR_API void SetEditorRole(bool value);
 		SAILOR_API void SetRendererConfig(Sailor::FileId value);
 
 		SAILOR_API TexturePtr GetRenderTarget() const { return m_renderTarget; }
@@ -62,6 +68,7 @@ namespace Sailor
 		Sailor::FileId m_rendererConfig = Sailor::FileId::Invalid;
 		TexturePtr m_renderTarget{};
 		Settings::EGraphicsQualitySelection m_qualityPreset = Settings::EGraphicsQualitySelection::ProjectDefault;
+		bool m_editorRole = false;
 
 	};
 }

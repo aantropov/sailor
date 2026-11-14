@@ -74,6 +74,15 @@ void CameraComponent::SetQualityPreset(Settings::EGraphicsQualitySelection value
 	}
 }
 
+void CameraComponent::SetEditorRole(bool value)
+{
+	m_editorRole = value;
+	if (m_handle != ECS::InvalidIndex)
+	{
+		GetData().SetEditorRole(value);
+	}
+}
+
 void CameraComponent::ResetMotionHistory()
 {
 	GetData().ResetMotionHistory();
@@ -91,6 +100,7 @@ void CameraComponent::Initialize()
 	ecsData.SetRendererConfig(m_rendererConfig);
 	ecsData.SetRenderTarget(m_renderTarget);
 	ecsData.SetQualityPreset(m_qualityPreset);
+	ecsData.SetEditorRole(m_editorRole);
 
 	ecsData.SetAspect(CalculateAspect());
 	ecsData.SetFov(90.0f);

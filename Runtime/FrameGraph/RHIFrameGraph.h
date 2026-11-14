@@ -7,6 +7,7 @@
 #include "Tasks/Tasks.h"
 #include "RHI/GlobalIllumination.h"
 #include "Core/SpinLock.h"
+#include <limits>
 
 using namespace Sailor::Framegraph;
 
@@ -82,14 +83,15 @@ namespace Sailor::RHI
 			m_values[name] = value;
 		}
 
-		SAILOR_API TVector<Sailor::Tasks::ITaskPtr> Prepare(RHI::RHISceneViewPtr rhiSceneView);
+		SAILOR_API TVector<Sailor::Tasks::ITaskPtr> Prepare(RHI::RHISceneViewPtr rhiSceneView, uint32_t cameraIndex = (std::numeric_limits<uint32_t>::max)());
 
 		SAILOR_API bool Process(RHI::RHISceneViewPtr rhiSceneView,
 			TVector<RHI::RHICommandListPtr>& outTransferCommandLists,
 			TVector<RHI::RHICommandListPtr>& outSecondaryCommandLists,
 			RHISemaphorePtr inSignalSemaphore,
 			RHISemaphorePtr& outWaitSemaphore,
-			bool bTrackGpuStats = true);
+			bool bTrackGpuStats = true,
+			uint32_t cameraIndex = (std::numeric_limits<uint32_t>::max)());
 
 		SAILOR_API void Clear();
 
