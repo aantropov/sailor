@@ -1,8 +1,9 @@
 # Sailor Engine
 
 [![GitHub Release](https://img.shields.io/github/v/release/aantropov/sailor?include_prereleases)](https://github.com/aantropov/sailor/releases)
-[![Desktop Release](https://github.com/aantropov/sailor/actions/workflows/release.yml/badge.svg)](https://github.com/aantropov/sailor/actions/workflows/release.yml)
-[![Engine Build](https://github.com/aantropov/sailor/actions/workflows/engine-build.yml/badge.svg)](https://github.com/aantropov/sailor/actions/workflows/engine-build.yml)
+[![Release / Desktop](https://github.com/aantropov/sailor/actions/workflows/release-desktop.yml/badge.svg)](https://github.com/aantropov/sailor/actions/workflows/release-desktop.yml)
+[![CI / Windows](https://github.com/aantropov/sailor/actions/workflows/ci-windows.yml/badge.svg)](https://github.com/aantropov/sailor/actions/workflows/ci-windows.yml)
+[![CI / Linux](https://github.com/aantropov/sailor/actions/workflows/ci-linux.yml/badge.svg)](https://github.com/aantropov/sailor/actions/workflows/ci-linux.yml)
 
 **Sailor Engine** is an independent real-time engine for games, visual effects, interactive art, and experimental demos. It combines a bindless `Vulkan 1.3` renderer with a multithreaded `C++20` runtime, custom memory allocators, and a data-driven frame graph.
 
@@ -30,7 +31,7 @@ Visit the Wiki to explore everything you need to get started, understand the eng
 
 [GitHub Releases](https://github.com/aantropov/sailor/releases) is the download page for
 versioned engine/editor bundles. Archives become available after the repository owner
-runs **Actions → Desktop Release** with **Publish** enabled. There are no automatic
+runs **Actions → Release / Desktop** with **Publish** enabled. There are no automatic
 releases on pushes or tags. A run with Publish disabled builds reviewable Actions
 artifacts without creating a tag or release; pull requests changing release tooling
 also validate packages without publishing.
@@ -64,11 +65,26 @@ To build C++ workspace modules on Linux, also install CMake, a C++20 toolchain a
 application metadata and release archives. The editor shows both component versions
 and a **GitHub Releases** link; `SailorEngine-Release --version` reports the compiled
 runtime version without starting a renderer. To prepare a new release, update VERSION
-in a reviewed commit, merge it to main, and manually run Desktop Release. Publishing
+in a reviewed commit, merge it to main, and manually run **Release / Desktop**. Publishing
 requires all three platform builds/tests, verifies every archive checksum, and creates
 `v<VERSION>` at the tested commit. Existing tags/releases are preserved. The
 **Prerelease** option defaults to enabled. Until the first release is published,
 use the source build instructions below.
+
+## Continuous integration
+
+**CI / Windows** and **CI / Linux** select independent engine/SDK and editor/tools
+jobs from the complete pull-request diff. Native C++, shaders, content and native
+tests run engine/SDK checks. Editor UI and tool changes run managed builds and
+editor contract tests. Protocol, interop, workspace/export services, version and
+CI configuration changes run both components. Documentation-only changes skip
+the component builds; manual CI runs always select both.
+
+The shared routing rules are in `.github/ci-paths.json`. Unclassified inputs run
+both components so new build dependencies retain coverage. Engine jobs include
+headless editor contracts and native SDK integration without building the MAUI
+or GTK4 editor application. **Release / Desktop** builds and validates complete
+packages for all three platforms before publication.
 
 ## Screenshots
 

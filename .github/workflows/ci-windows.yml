@@ -1,8 +1,11 @@
-name: Engine Build
+name: CI / Windows
 
-on:
+'on':
   workflow_dispatch:
   pull_request:
+
+permissions:
+  contents: read
 
 env:
   BUILD_TYPE: Release
@@ -10,8 +13,31 @@ env:
   VCPKG_OVERLAY_TRIPLETS: ${{ github.workspace }}/.github/vcpkg-triplets
 
 jobs:
-  build:
-    name: Build (${{ matrix.compiler }})
+  changes:
+    name: Select component checks
+    runs-on: ubuntu-24.04
+    outputs:
+      engine: ${{ steps.select.outputs.engine }}
+      editor: ${{ steps.select.outputs.editor }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test CI routing
+        run: |
+          python -m pip install PyYAML==6.0.3
+          python -m unittest discover -s Tests -p CiWorkflowTests.py -v
+      - name: Select checks from changed files
+        id: select
+        run: python Tools/CI/select_checks.py
+
+  engine:
+    name: Windows / Engine & SDK / ${{ matrix.compiler }}
+    needs: changes
+    if: needs.changes.outputs.engine == 'true'
     runs-on: windows-2022
     strategy:
       fail-fast: false
@@ -26,7 +52,7 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Update submodules
       run: git submodule update --init --recursive
@@ -133,3 +159,30 @@ jobs:
         SAILOR_CMAKE_ARCHITECTURE: x64
         SAILOR_CMAKE_TOOLSET: ${{ matrix.sailor_toolset }}
         SAILOR_CMAKE_TOOLCHAIN_FILE: ${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake
+
+  editor:
+    name: Windows / Editor & Tools
+    needs: changes
+    if: needs.changes.outputs.editor == 'true'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            9.0.x
+            10.0.x
+      - name: Install MAUI workload
+        run: dotnet workload install maui
+      - name: Build editor
+        run: dotnet build Editor/SailorEditor.csproj -c Release -f net10.0-windows10.0.19041.0
+      - name: Test editor contracts
+        run: dotnet test Editor.Tests/Editor.Contracts.Tests.csproj -c Release
+      - name: Build MCP bridge
+        run: dotnet build Editor/McpBridge/SailorEditor.McpBridge.csproj -c Release
+      - name: Build game export CLI
+        run: dotnet build Tools/SailorBuild/SailorBuild.csproj -c Release

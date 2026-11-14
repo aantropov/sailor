@@ -133,7 +133,7 @@ assert actual == '\u041f\u0440\u043e\u0435\u043a\u0442'
                 verify_assets(root, '0.2.0')
 
     def test_parsed_workflow_has_manual_owner_only_publication_after_all_builds(self):
-        workflow = yaml.safe_load((ROOT / '.github/workflows/release.yml').read_text())
+        workflow = yaml.safe_load((ROOT / '.github/workflows/release-desktop.yml').read_text())
         self.assertEqual(set(workflow['on']), {'workflow_dispatch', 'pull_request'})
         self.assertIs(workflow['on']['workflow_dispatch']['inputs']['publish']['default'], False)
         self.assertEqual(workflow['permissions'], {'contents': 'read'})
