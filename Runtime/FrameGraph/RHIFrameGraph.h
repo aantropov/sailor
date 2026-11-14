@@ -1,6 +1,7 @@
 #pragma once
 #include "Memory/RefPtr.hpp"
 #include "Engine/Object.h"
+#include "Settings/GraphicsSettings.h"
 #include "RHI/Types.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "Tasks/Tasks.h"
@@ -61,6 +62,14 @@ namespace Sailor::RHI
 		SAILOR_API RHIGlobalIlluminationRenderStats
 			GetGlobalIlluminationRenderStats() const;
 
+		SAILOR_API void SetCameraQuality(Settings::EGraphicsQuality quality, const Settings::GraphicsQualityProfile& profile)
+		{
+			m_cameraQuality = quality;
+			m_cameraQualityProfile = profile;
+		}
+		SAILOR_API Settings::EGraphicsQuality GetCameraQuality() const { return m_cameraQuality; }
+		SAILOR_API const Settings::GraphicsQualityProfile& GetCameraQualityProfile() const { return m_cameraQualityProfile; }
+
 		template<typename T>
 		void SetValue(StringHash name, T value)
 		{
@@ -110,6 +119,9 @@ namespace Sailor::RHI
 		TVector<RHI::RHITexturePtr> m_currentDepthPyramids;
 
 		RHI::RHIMeshPtr m_postEffectPlane;
+
+		Settings::EGraphicsQuality m_cameraQuality = Settings::EGraphicsQuality::Medium;
+		Settings::GraphicsQualityProfile m_cameraQualityProfile{};
 
 		mutable SpinLock m_globalIlluminationStatsLock;
 		RHIGlobalIlluminationRenderStats m_globalIlluminationStats{};

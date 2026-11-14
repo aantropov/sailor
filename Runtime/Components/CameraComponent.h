@@ -55,6 +55,7 @@ namespace Sailor
 	protected:
 
 		void UpdateProjectionMatrix();
+		void CaptureRenderTarget();
 
 		size_t m_handle = (size_t)(-1);
 

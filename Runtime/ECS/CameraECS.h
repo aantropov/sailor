@@ -6,6 +6,7 @@
 #include "Components/Component.h"
 #include "Math/Transform.h"
 #include "RHI/Types.h"
+#include "RHI/Texture.h"
 #include "Memory/Memory.h"
 #include "Engine/Types.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
@@ -47,6 +48,14 @@ namespace Sailor
 		SAILOR_API void SetQualityPreset(Settings::EGraphicsQualitySelection preset) { m_qualityPreset = preset; }
 		SAILOR_API Settings::EGraphicsQualitySelection GetQualityPreset() const { return m_qualityPreset; }
 
+		SAILOR_API void SetResolvedRenderTarget(RHI::RHITexturePtr target, uint64_t revision)
+		{
+			m_resolvedRenderTarget = target;
+			m_resolvedRevision = revision;
+		}
+		SAILOR_API RHI::RHITexturePtr GetResolvedRenderTarget() const { return m_resolvedRenderTarget; }
+		SAILOR_API uint64_t GetResolvedRevision() const { return m_resolvedRevision; }
+
 		SAILOR_API void SetInstanceId(const Sailor::InstanceId& id) { m_instanceId = id; }
 		SAILOR_API const Sailor::InstanceId& GetInstanceId() const { return m_instanceId; }
 
@@ -66,6 +75,8 @@ namespace Sailor
 		TexturePtr m_renderTarget{};
 		Settings::EGraphicsQualitySelection m_qualityPreset = Settings::EGraphicsQualitySelection::ProjectDefault;
 		Sailor::InstanceId m_instanceId{};
+		RHI::RHITexturePtr m_resolvedRenderTarget{};
+		uint64_t m_resolvedRevision = 0ull;
 
 		friend class CameraECS;
 	};

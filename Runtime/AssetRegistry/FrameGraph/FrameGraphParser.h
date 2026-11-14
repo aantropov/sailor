@@ -91,66 +91,11 @@ namespace Sailor
 			bool operator==(const RenderTarget& rhs) const { return m_name == rhs.m_name; }
 
 			SAILOR_API static uint32_t ParseUintValue(std::string_view str);
+			SAILOR_API static uint32_t ParseUintValue(std::string_view str, const Settings::GraphicsExtent& outputExtent, float resolutionFactor);
 
-			virtual void Deserialize(const YAML::Node& inData)
-			{
-				m_name = inData["name"].as<std::string>();
+			SAILOR_API virtual void Deserialize(const YAML::Node& inData);
 
-				if (inData["width"])
-				{
-					m_width = ParseUintValue(inData["width"].as<std::string>());
-				}
-
-				if (inData["height"])
-				{
-					m_height = ParseUintValue(inData["height"].as<std::string>());
-				}
-
-				if (inData["format"])
-				{
-					DeserializeEnum<RHI::ETextureFormat>(inData["format"], m_format);
-				}
-
-				if (inData["filtration"])
-				{
-					DeserializeEnum<RHI::ETextureFiltration>(inData["filtration"], m_filtration);
-				}
-
-				if (inData["reduction"])
-				{
-					DeserializeEnum<RHI::ESamplerReductionMode>(inData["reduction"], m_reduction);
-				}
-
-				if (inData["clamping"])
-				{
-					DeserializeEnum<RHI::ETextureClamping>(inData["clamping"], m_clamping);
-				}
-
-				if (inData["bIsSurface"])
-				{
-					m_bIsSurface = inData["bIsSurface"].as<bool>();
-				}
-
-				if (inData["bGenerateMips"])
-				{
-					m_bGenerateMips = inData["bGenerateMips"].as<bool>();
-				}
-
-				if (inData["maxMipLevel"])
-				{
-					const int32_t limit = inData["maxMipLevel"].as<int32_t>();
-					if (limit <= 0)
-					{
-						throw YAML::RepresentationException(inData["maxMipLevel"].Mark(), "Frame graph mip limit must be positive: " + m_name);
-					}
-					m_maxMipLevel = static_cast<uint32_t>(limit);
-				}
-
-				if (inData["bIsCompatibleWithComputeShaders"])
-				{
-					m_bIsCompatibleWithComputeShaders = inData["bIsCompatibleWithComputeShaders"].as<bool>();
-				}
-			}
+			SAILOR_API void Deserialize(const YAML::Node& inData, const Settings::GraphicsExtent& outputExtent, float resolutionFactor);
 		};
 
 		class Node final : public IYamlSerializable
@@ -203,6 +148,7 @@ namespace Sailor
 		};
 
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData);
+		SAILOR_API void Deserialize(const YAML::Node& inData, const Settings::GraphicsExtent& outputExtent, float resolutionFactor);
 
 		TMap<std::string, Resource> m_samplers;
 		TMap<std::string, Value> m_values;

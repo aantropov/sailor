@@ -1,6 +1,8 @@
 #include "Components/CameraComponent.h"
 #include "Engine/GameObject.h"
 #include "ECS/CameraECS.h"
+#include "RHI/RenderTarget.h"
+#include "RHI/Texture.h"
 #include "Math/Math.h"
 
 using namespace Sailor;
@@ -58,6 +60,8 @@ void CameraComponent::SetRenderTarget(TexturePtr value)
 	if (m_handle != ECS::InvalidIndex)
 	{
 		GetData().SetRenderTarget(value);
+		GetData().SetResolvedRenderTarget(RHI::RHITexturePtr{}, 0ull);
+		UpdateProjectionMatrix();
 	}
 }
 
@@ -93,6 +97,7 @@ void CameraComponent::Initialize()
 	ecsData.SetZNear(0.1f);
 	ecsData.SetZFar(50000.0f);
 
+	UpdateProjectionMatrix();
 	GetData().SetProjectionMatrix(Math::PerspectiveRH(glm::radians(GetFov()), GetAspect(), GetZNear(), GetZFar()));
 }
 
@@ -125,15 +130,17 @@ void CameraComponent::EditorTick(float deltaTime)
 
 void CameraComponent::UpdateProjectionMatrix()
 {
+	CaptureRenderTarget();
+
 	float aspect = CalculateAspect();
 
-	if (m_renderTarget && m_renderTarget->IsReady())
+	auto resolved = GetData().GetResolvedRenderTarget();
+	if (resolved)
 	{
-		const int32_t width = m_renderTarget->GetWidth();
-		const int32_t height = m_renderTarget->GetHeight();
-		if (width > 0 && height > 0)
+		const glm::ivec2 ext = resolved->GetExtent();
+		if (ext.x > 0 && ext.y > 0)
 		{
-			aspect = (float)width / (float)height;
+			aspect = (float)ext.x / (float)ext.y;
 		}
 	}
 
@@ -142,6 +149,48 @@ void CameraComponent::UpdateProjectionMatrix()
 		GetData().SetAspect(aspect);
 		GetData().SetProjectionMatrix(Math::PerspectiveRH(glm::radians(GetFov()), aspect, GetZNear(), GetZFar()));
 	}
+}
+
+void CameraComponent::CaptureRenderTarget()
+{
+	if (!m_renderTarget)
+	{
+		GetData().SetResolvedRenderTarget(RHI::RHITexturePtr{}, 0ull);
+		return;
+	}
+
+	auto importer = Sailor::App::GetSubmodule<TextureImporter>();
+	if (!importer)
+	{
+		GetData().SetResolvedRenderTarget(RHI::RHITexturePtr{}, 0ull);
+		return;
+	}
+
+	const size_t index = importer->GetTextureIndex(m_renderTarget->GetFileId());
+	if (index == 0 || !TextureImporter::IsUserTextureSamplerIndexValid(index))
+	{
+		GetData().SetResolvedRenderTarget(RHI::RHITexturePtr{}, 0ull);
+		return;
+	}
+
+	TVector<uint32_t> req;
+	req.Emplace(static_cast<uint32_t>(index));
+	auto snapshot = importer->GetTextureSamplersSnapshot(req);
+
+	if (snapshot.m_slots.Num() == 0 || !snapshot.m_slots[0].m_texture)
+	{
+		GetData().SetResolvedRenderTarget(RHI::RHITexturePtr{}, 0ull);
+		return;
+	}
+
+	auto rt = snapshot.m_slots[0].m_texture.DynamicCast<RHI::RHIRenderTarget>();
+	if (!rt)
+	{
+		GetData().SetResolvedRenderTarget(RHI::RHITexturePtr{}, 0ull);
+		return;
+	}
+
+	GetData().SetResolvedRenderTarget(snapshot.m_slots[0].m_texture, snapshot.m_slots[0].m_contentRevision);
 }
 
 void CameraComponent::EndPlay()

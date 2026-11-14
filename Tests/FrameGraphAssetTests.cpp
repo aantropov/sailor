@@ -319,6 +319,51 @@ vec4:
 		Require(FrameGraphImporterTestAccess::GetValueCount(*empty) == 0 && empty->GetGraph().IsEmpty(),
 			"an empty description must not inherit values or nodes from previous builds");
 	}
+
+	void TestCameraDimensions()
+	{
+		const std::string yamlContent =
+			"renderTargets:\n"
+			"  - name: TestTarget\n"
+			"    width: RenderWidth/2\n"
+			"    height: ViewportHeight/2\n";
+
+		FrameGraphAsset asset1;
+		asset1.Deserialize(YAML::Load(yamlContent), Settings::GraphicsExtent{ 800, 600 }, 0.5f);
+
+		FrameGraphAsset asset2;
+		asset2.Deserialize(YAML::Load(yamlContent), Settings::GraphicsExtent{ 1024, 256 }, 1.0f);
+
+		// Asset 1: Output 800x600, Scale 0.5
+		// RenderWidth = 800 * 0.5 = 400. Width = 400 / 2 = 200.
+		// ViewportHeight = 600. Height = 600 / 2 = 300.
+		Require(asset1.m_renderTargets["TestTarget"].m_width == 200, "Asset1 width mismatch");
+		Require(asset1.m_renderTargets["TestTarget"].m_height == 300, "Asset1 height mismatch");
+
+		// Asset 2: Output 1024x256, Scale 1.0
+		// RenderWidth = 1024 * 1.0 = 1024. Width = 1024 / 2 = 512.
+		// ViewportHeight = 256. Height = 256 / 2 = 128.
+		Require(asset2.m_renderTargets["TestTarget"].m_width == 512, "Asset2 width mismatch");
+		Require(asset2.m_renderTargets["TestTarget"].m_height == 128, "Asset2 height mismatch");
+
+		// Verify independence: Re-parse asset1 to ensure it wasn't affected by asset2 parsing
+		FrameGraphAsset asset1Reparse;
+		asset1Reparse.Deserialize(YAML::Load(yamlContent), Settings::GraphicsExtent{ 800, 600 }, 0.5f);
+		Require(asset1Reparse.m_renderTargets["TestTarget"].m_width == 200, "Asset1 reparse width mismatch");
+		Require(asset1Reparse.m_renderTargets["TestTarget"].m_height == 300, "Asset1 reparse height mismatch");
+
+		// Verify literal dimensions unchanged
+		const std::string literalYaml =
+			"renderTargets:\n"
+			"  - name: LiteralTarget\n"
+			"    width: 100\n"
+			"    height: 200\n";
+
+		FrameGraphAsset literalAsset;
+		literalAsset.Deserialize(YAML::Load(literalYaml), Settings::GraphicsExtent{ 800, 600 }, 0.5f);
+		Require(literalAsset.m_renderTargets["LiteralTarget"].m_width == 100, "Literal width mismatch");
+		Require(literalAsset.m_renderTargets["LiteralTarget"].m_height == 200, "Literal height mismatch");
+	}
 }
 
 int main()
@@ -358,6 +403,7 @@ int main()
 		TestAttachmentDimensions();
 		TestNodeResourceBindings();
 		TestGlobalValues(importer);
+		TestCameraDimensions();
 		std::cout << "FrameGraphAssetTests passed\n";
 		return 0;
 	}

@@ -1,6 +1,10 @@
 #include "Sailor.h"
 #include "TextureCommandFixtures.h"
 #include "AssetRegistry/AssetRegistry.h"
+#include "Components/CameraComponent.h"
+#include "Engine/World.h"
+#include "Engine/GameObject.h"
+#include "Support/ScopeExit.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "Raytracing/PathTracer.h"
@@ -878,6 +882,128 @@ namespace
 		Require(restorePromise->GetResult() == texture, "restore must reuse same Texture object");
 	}
 
+	void TestCameraRenderTargetSnapshot(const std::filesystem::path& workspace)
+	{
+		const std::string utf8Name = "Camera RT Snapshot \xC3\xA9";
+		const auto contentDir = workspace / "Content";
+		std::filesystem::create_directories(contentDir);
+		const auto rtPath = contentDir / Workspace::PathFromUtf8(utf8Name + ".rendertexture");
+
+		RenderTextureDescriptor desc;
+		desc.m_version = 1;
+		desc.m_width = 6;
+		desc.m_height = 3;
+		desc.m_format = RHI::ETextureFormat::R8G8B8A8_UNORM;
+
+		auto writeDocument = [&](const std::string_view yaml)
+		{
+			const bool existed = std::filesystem::exists(rtPath);
+			const auto prevTime = existed ? std::filesystem::last_write_time(rtPath) : std::filesystem::file_time_type{};
+			std::ofstream out(rtPath, std::ios::binary);
+			out.write(yaml.data(), static_cast<std::streamsize>(yaml.size()));
+			out.close();
+			Require(static_cast<bool>(out), "write must succeed");
+			if (existed && std::filesystem::last_write_time(rtPath) <= prevTime)
+			{
+				std::filesystem::last_write_time(rtPath, prevTime + std::chrono::seconds(1));
+			}
+		};
+
+		writeDocument(YAML::Dump(desc.Serialize()));
+
+		const auto fileId = FileId::CreateNewFileId();
+		TextureAssetInfo assetInfo;
+		auto meta = assetInfo.Serialize();
+		meta["fileId"] = fileId;
+		meta["filename"] = Workspace::PathToUtf8(rtPath.filename());
+		meta["bShouldKeepCpuBuffers"] = true;
+		meta["bShouldGenerateMips"] = false;
+		{
+			auto metaPath = rtPath;
+			metaPath += ".asset";
+			std::ofstream out(metaPath);
+			out << meta;
+			Require(static_cast<bool>(out), "asset sidecar must be written");
+		}
+
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		Require(registry->GetOrLoadFile(Workspace::PathToUtf8(rtPath)) == fileId,
+			"rendertexture must register");
+		auto info = registry->GetAssetInfoPtr<TextureAssetInfoPtr>(fileId);
+		Require(info != nullptr, "asset info must resolve");
+
+		auto* importer = App::GetSubmodule<TextureImporter>();
+
+		TexturePtr texture{};
+		Require(importer->LoadTexture_Immediate(fileId, texture), "rendertexture must load");
+		Require(static_cast<bool>(texture), "texture ptr must be valid");
+
+		auto rhi = texture->GetRHI();
+		Require(static_cast<bool>(rhi), "GPU image must exist");
+
+		World world("Camera snapshots", 0);
+		Tests::ScopeExit cleanup([&world]()
+		{
+			world.Clear();
+		});
+
+		auto object = world.Instantiate("SnapshotCamera");
+		Require(static_cast<bool>(object), "instantiate must succeed");
+		auto camera = object->AddComponent<CameraComponent>();
+		Require(static_cast<bool>(camera), "camera component must be created");
+
+		camera->SetRenderTarget(texture);
+		camera->Tick(0.0f);
+
+		CameraData before = camera->GetData();
+		Require(before.GetResolvedRenderTarget() == rhi, "resolved target must match loaded RHI");
+		Require(before.GetResolvedRevision() != 0ull, "revision must be nonzero");
+		Require(before.GetAspect() == 2.0f, "aspect must be 2.0 for 6x3");
+		Require(before.GetRenderTarget() == texture, "authored target must match");
+		Require(before.GetInstanceId() == camera->GetInstanceId(), "instance id must match");
+
+		desc.m_width = 3;
+		desc.m_height = 6;
+		writeDocument(YAML::Dump(desc.Serialize()));
+
+		importer->OnUpdateAssetInfo(info, true);
+		auto promise = importer->GetLoadPromise(fileId);
+		Require(promise.IsValid(), "reload promise must exist");
+		promise->Wait();
+		Require(static_cast<bool>(promise->GetResult()), "reload must succeed");
+
+		camera->Tick(0.0f);
+
+		CameraData after = camera->GetData();
+		auto rhi2 = after.GetResolvedRenderTarget();
+		Require(static_cast<bool>(rhi2), "new resolved target must exist");
+		Require(rhi2 != rhi, "new RHI must differ from old");
+		Require(after.GetResolvedRevision() > before.GetResolvedRevision(), "revision must advance");
+		Require(after.GetAspect() == 0.5f, "aspect must be 0.5 for 3x6");
+
+		Require(before.GetResolvedRenderTarget() == rhi, "saved copy must still own old RHI");
+		Require(before.GetResolvedRevision() != after.GetResolvedRevision(), "saved copy revision must differ");
+
+		camera->SetRenderTarget(TexturePtr{});
+		camera->Tick(0.0f);
+
+		CameraData cleared = camera->GetData();
+		Require(!cleared.GetRenderTarget(), "authored target must be empty");
+		Require(!cleared.GetResolvedRenderTarget(), "resolved target must be empty");
+
+		Tests::TextureFixture fixture(workspace, "SnapshotOrdinary");
+		TexturePtr ordinary{};
+		Require(importer->LoadTexture_Immediate(fixture.m_id, ordinary), "ordinary texture must load");
+		Require(static_cast<bool>(ordinary), "ordinary texture ptr must be valid");
+
+		camera->SetRenderTarget(ordinary);
+		camera->Tick(0.0f);
+
+		CameraData ordinaryData = camera->GetData();
+		Require(static_cast<bool>(ordinaryData.GetRenderTarget()), "authored target must be nonempty");
+		Require(!ordinaryData.GetResolvedRenderTarget(), "resolved target must be empty for ordinary image");
+	}
+
 }
 
 namespace Sailor::Tests
@@ -915,6 +1041,7 @@ namespace Sailor::Tests
 		run("Reload GC stress", [&]() { TestReloadGcStress(workspace); });
 		run("Texture scan failure", [&]() { TestTextureScanFailure(workspace); });
 		run("RenderTexture asset", [&]() { TestRenderTextureAsset(workspace); });
+		run("Camera RT snapshot", [&]() { TestCameraRenderTargetSnapshot(workspace); });
 		if (!failures.empty()) throw std::runtime_error(failures);
 		std::cout << "Texture importer CPU enrichment, Worker decode, ordered reload and failure tests passed\n";
 	}
