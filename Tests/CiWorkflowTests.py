@@ -43,7 +43,8 @@ class CiWorkflowTests(unittest.TestCase):
                 self.assertEqual(select_checks([path], RULES), {'engine': True, 'editor': True})
 
     def test_documentation_only_changes_skip_component_builds(self):
-        self.assertEqual(select_checks(['README.md', 'Docs/Plans/CI.md', '.github/media/editor.png'], RULES),
+        self.assertEqual(select_checks(['README.md', 'BUILDING.md', 'CONTRIBUTING.md',
+                                        'Docs/Plans/CI.md', '.github/media/editor.png'], RULES),
                          {'engine': False, 'editor': False})
         self.assertEqual(select_checks([], RULES), {'engine': False, 'editor': False})
 
