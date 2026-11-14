@@ -273,43 +273,13 @@ namespace SailorEditor.Services
                 workspace?.Manifest.WorkspaceId);
         }
 
-        public string PathToEngineExecDebug
-        {
-            get
-            {
-#if WINDOWS
-                return EngineLaunchContract.ResolveExecutable(
-                    EngineWorkingDirectory, workspaceLifecycle.Current?.LogicOutputDirectory, "Debug", windows: true);
-#elif MACCATALYST
-                return Path.Combine(
-                    EngineWorkingDirectory,
-                    "Binaries",
-                    "Debug",
-                    "SailorEngine-Debug");
-#else
-                return Path.Combine(EngineWorkingDirectory, "Binaries", "SailorEngine-Debug");
-#endif
-            }
-        }
+        public string PathToEngineExecDebug => EngineLaunchContract.ResolveExecutable(
+            EngineWorkingDirectory, workspaceLifecycle.Current?.LogicOutputDirectory,
+            "Debug", windows: OperatingSystem.IsWindows());
 
-        public string PathToEngineExec
-        {
-            get
-            {
-#if WINDOWS
-                return EngineLaunchContract.ResolveExecutable(
-                    EngineWorkingDirectory, workspaceLifecycle.Current?.LogicOutputDirectory, "Release", windows: true);
-#elif MACCATALYST
-                return Path.Combine(
-                    EngineWorkingDirectory,
-                    "Binaries",
-                    "Release",
-                    "SailorEngine-Release");
-#else
-                return Path.Combine(EngineWorkingDirectory, "Binaries", "SailorEngine-Release");
-#endif
-            }
-        }
+        public string PathToEngineExec => EngineLaunchContract.ResolveExecutable(
+            EngineWorkingDirectory, workspaceLifecycle.Current?.LogicOutputDirectory,
+            "Release", windows: OperatingSystem.IsWindows());
 
         public Rect Viewport
         {

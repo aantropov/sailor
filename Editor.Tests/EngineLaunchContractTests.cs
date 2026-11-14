@@ -6,6 +6,28 @@ public class EngineLaunchContractTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
+    public void ResolveExecutable_FindsTheInstalledSdkRuntimeWithoutFallingBackAcrossConfigurations(bool windows)
+    {
+        var root = Directory.CreateTempSubdirectory("SailorInstalledLaunch-");
+        try
+        {
+            var directory = Directory.CreateDirectory(Path.Combine(root.FullName, "bin"));
+            var executable = Path.Combine(directory.FullName, "SailorEngine-Release" + (windows ? ".exe" : string.Empty));
+            File.WriteAllText(executable, string.Empty);
+
+            Assert.Equal(executable, EngineLaunchContract.ResolveExecutable(root.FullName, null, "Release", windows));
+            Assert.Throws<FileNotFoundException>(() =>
+                EngineLaunchContract.ResolveExecutable(root.FullName, null, "Debug", windows));
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
     public void ResolveExecutable_PrefersWorkspaceRuntimeAndKeepsConfigurationsSeparate(bool windows)
     {
         var root = Path.Combine(Path.GetTempPath(), "SailorLaunch-" + Guid.NewGuid().ToString("N"));
