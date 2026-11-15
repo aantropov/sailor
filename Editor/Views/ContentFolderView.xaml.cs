@@ -1140,7 +1140,6 @@ namespace SailorEditor.Views
             {
                 UpdateRowHighlight(border);
             }
-            RunContentUiAction(() => SelectRow(row, preserveSelected: true, useModifiers: false), "Select Content item");
         }
 
         void ShowContextMenu(object model)
