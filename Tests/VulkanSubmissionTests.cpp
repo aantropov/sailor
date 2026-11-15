@@ -1,5 +1,6 @@
 #include "Sailor.h"
 #include "Support/RendererReady.h"
+#include "Support/SurfaceRender.h"
 #include "Components/SkyComponent.h"
 #include "Components/CameraComponent.h"
 #include "Components/EditorComponent.h"
@@ -7862,6 +7863,61 @@ namespace Sailor::Tests
 				"frame graph wrapper must be cached (unchanged after tick)");
 		}
 
+		// === ASSERTION 1.5: camera RT sampled through material surface ===
+		{
+			auto* matImporter = App::GetSubmodule<MaterialImporter>();
+
+			MaterialAsset::Data matData;
+			matData.m_shader = FileId("1A4BA353-FDA4-4F65-941F-D9FFEE4630A0");
+			matData.m_uniformsVec4["material.baseColorFactor"] = glm::vec4(1, 1, 1, 1);
+			matData.m_uniformsFloat["material.roughnessFactor"] = 0.5f;
+			matData.m_samplers["baseColorSampler"] = textureA->GetFileId();
+			matData.m_renderQueue = "SurfaceReference";
+			matData.m_renderState = RHI::RenderState(false, false, 0, false, RHI::ECullMode::None, RHI::EBlendMode::None, RHI::EFillMode::Fill, 0, false);
+
+			const auto matPath = contentDir / "CameraRouting.mat";
+			const auto matId = matImporter->CreateMaterialAsset(Workspace::PathToUtf8(matPath), std::move(matData));
+			Require(registry->GetOrLoadFile(Workspace::PathToUtf8(matPath)) == matId,
+				"material must register");
+
+			MaterialPtr material;
+			Require(matImporter->LoadMaterial_Immediate(matId, material) && material,
+				"material must load");
+			scheduler->WaitIdle({EThreadType::Worker, EThreadType::RHI, EThreadType::Render});
+			scheduler->ProcessTasksOnMainThread();
+			driver.WaitIdle();
+			driver.TrackResources_ThreadSafe();
+			Require(material->IsReady(), "material GPU resources must be ready");
+
+			auto pixels = Tests::RenderSurface(material);
+			for (uint32_t i = 0; i < pixels.size(); ++i)
+			{
+				const auto& p = pixels[i];
+				Require(std::isfinite(p.r) && std::isfinite(p.g) && std::isfinite(p.b) && std::isfinite(p.a),
+					"surface pixel must be finite");
+				Require(p.r > 0.01f && p.r > p.g + 0.01f && p.r > p.b + 0.01f,
+					"surface must be red-dominant while camA renders red into textureA");
+			}
+
+			camA->SetRendererConfig(blueId);
+			tick();
+
+			pixels = Tests::RenderSurface(material);
+			for (uint32_t i = 0; i < pixels.size(); ++i)
+			{
+				const auto& p = pixels[i];
+				Require(std::isfinite(p.r) && std::isfinite(p.g) && std::isfinite(p.b) && std::isfinite(p.a),
+					"surface pixel must be finite after blue tick");
+				Require(p.b > 0.01f && p.b > p.r + 0.01f && p.b > p.g + 0.01f,
+					"same material surface must be blue-dominant after camA RT turns blue (no sampler reassignment)");
+			}
+
+			Tests::RequireTexturePixels(rhiA, std::vector<uint32_t>(12, 0xffff0000u));
+
+			camA->SetRendererConfig(redId);
+			tick();
+		}
+
 		// === ASSERTION 2 ===
 		{
 			camB->SetRendererConfig(redId);
@@ -7933,13 +7989,43 @@ namespace Sailor::Tests
 			tick();
 			Require(driver.GetPresentedFrameCount() > presentBefore4,
 				"Present config must increment presented frame count");
+
+			// Mark camA editor-role true with its existing RT
+			camA->SetEditorRole(true);
+			const uint64_t presentBefore4b = driver.GetPresentedFrameCount();
+			tick();
+			tick();
+			tick();
+			// camB is ordinary no-target; with camA editor-role, camB should be skipped
+			// so its Present counter stays unchanged
+			Require(driver.GetPresentedFrameCount() == presentBefore4b,
+				"camB ordinary no-target Present counter must stay unchanged when camA is editor-role");
+
+			// Clear role and prove original positive Present still works
+			camA->SetEditorRole(false);
+			const uint64_t presentBefore4c = driver.GetPresentedFrameCount();
+			tick();
+			tick();
+			tick();
+			Require(driver.GetPresentedFrameCount() > presentBefore4c,
+				"Original positive Present must still work after clearing editor role");
 		}
 
 		// === ASSERTION 5 ===
 		{
+			// Mark camA editor-role true while camB has its authored RT
+			camA->SetEditorRole(true);
 			camB->SetRenderTarget(textureB);
 			camB->SetRendererConfig(blueId);
+			clearGreen(rhiA, rhiB);
 			tick();
+
+			// Prove both existing red/blue pixel outputs still update
+			Tests::RequireTexturePixels(rhiA, std::vector<uint32_t>(12, 0xff0000ffu));
+			Tests::RequireTexturePixels(rhiB, std::vector<uint32_t>(15, 0xffff0000u));
+
+			// Restore role before later editor serialization cases
+			camA->SetEditorRole(false);
 
 			auto graphBeforeResize = renderer->GetFrameGraph();
 			Require(static_cast<bool>(graphBeforeResize), "graphBeforeResize must exist");

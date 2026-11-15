@@ -790,6 +790,17 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	const auto& activeCameras = world->GetECS<CameraECS>()->GetActiveCameras();
 	const uint32_t cameraCount = static_cast<uint32_t>(activeCameras.Num());
 
+	// Detect presence of an active editor-role camera before graph resolution
+	bool bHasEditorRoleCamera = false;
+	for (uint32_t i = 0; i < cameraCount; ++i)
+	{
+		if (activeCameras[i].GetEditorRole())
+		{
+			bHasEditorRoleCamera = true;
+			break;
+		}
+	}
+
 	size_t primaryPassIndex = (std::numeric_limits<size_t>::max)();
 	FrameGraphPtr primaryGraph;
 	bool bFoundEditorPrimary = false;
@@ -798,6 +809,17 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	for (uint32_t i = 0; i < cameraCount; ++i)
 	{
 		const auto& cameraData = activeCameras[i];
+		const bool bIsEditorRole = cameraData.GetEditorRole();
+		const bool bHasAuthoredTarget = static_cast<bool>(cameraData.GetRenderTarget());
+
+		// Skip authored cameras that have neither editor role nor authored render target
+		// when an editor-role camera is present. This prevents redundant full-graph
+		// resolution for background game cameras in edit mode.
+		if (bHasEditorRoleCamera && !bIsEditorRole && !bHasAuthoredTarget)
+		{
+			continue;
+		}
+
 		RHIRenderTargetPtr outOutput;
 		glm::ivec2 outExtent;
 
@@ -814,7 +836,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		pass.m_renderExtent = outExtent;
 
 		// Resolve quality from App project settings, not cached graph mutable state
-		const auto defaultTier = cameraData.GetEditorRole() ? App::GetActiveGraphicsQuality() : App::GetGraphicsSettings().m_defaultQuality;
+		const auto defaultTier = bIsEditorRole ? App::GetActiveGraphicsQuality() : App::GetGraphicsSettings().m_defaultQuality;
 		pass.m_quality = Settings::ResolveQualitySelection(cameraData.GetQualityPreset(), defaultTier);
 		pass.m_qualityProfile = App::GetGraphicsSettings().GetProfile(pass.m_quality);
 
@@ -827,7 +849,6 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 		// Determine presentation intent
 		const bool bHasPresentationIntent = pass.m_frameGraph->HasPresentationIntent();
-		const bool bHasAuthoredTarget = static_cast<bool>(cameraData.GetRenderTarget());
 		pass.m_bWantsPresent = bHasPresentationIntent && !bHasAuthoredTarget && !App::HasEditor();
 
 		if (pass.m_bWantsPresent)
@@ -839,12 +860,12 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 		// Primary selection logic
 		if (primaryPassIndex == (std::numeric_limits<size_t>::max)() ||
-			(cameraData.GetEditorRole() && !bFoundEditorPrimary) ||
+			(bIsEditorRole && !bFoundEditorPrimary) ||
 			(!bFoundEditorPrimary && !bFoundNoTargetPrimary && !bHasAuthoredTarget))
 		{
 			primaryPassIndex = submission->m_cameraPasses.Num() - 1;
 			primaryGraph = graph;
-			bFoundEditorPrimary = cameraData.GetEditorRole();
+			bFoundEditorPrimary = bIsEditorRole;
 			bFoundNoTargetPrimary = !bHasAuthoredTarget;
 		}
 	}
