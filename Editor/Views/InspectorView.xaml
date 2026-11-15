@@ -18,6 +18,7 @@
 
             <local:ComponentTemplateSelector x:Key="ComponentTemplateSelector" ComponentTemplate="{StaticResource ComponentTemplate}"/>
 
+            <local:RenderTextureFileTemplate x:Key="RenderTextureFileTemplate" />
             <local:TextureFileTemplate x:Key="TextureFileTemplate" />
             <local:ShaderFileTemplate x:Key="ShaderFileTemplate" />
             <local:ShaderLibraryFileTemplate x:Key="ShaderLibraryFileTemplate" />
@@ -33,6 +34,7 @@
             <local:InspectorTemplateSelector x:Key="InspectorTemplateSelector"
                                           ComponentTemplate="{StaticResource ComponentTemplate}"
                                           AssetFileTemplate="{StaticResource AssetFileTemplate}"
+                                          RenderTextureFileTemplate="{StaticResource RenderTextureFileTemplate}"
                                           TextureFileTemplate="{StaticResource TextureFileTemplate}"
                                           ShaderFileTemplate="{StaticResource ShaderFileTemplate}"                                          
                                           MaterialFileTemplate ="{StaticResource MaterialFileTemplate}"

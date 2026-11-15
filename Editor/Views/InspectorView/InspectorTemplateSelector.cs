@@ -5,6 +5,7 @@ namespace SailorEditor;
 public class InspectorTemplateSelector : DataTemplateSelector
 {
     public DataTemplate ComponentTemplate { get; set; }
+    public DataTemplate RenderTextureFileTemplate { get; set; }
     public DataTemplate TextureFileTemplate { get; set; }
     public DataTemplate AssetFileTemplate { get; set; }
     public DataTemplate ModelFileTemplate { get; set; }
@@ -23,6 +24,7 @@ public class InspectorTemplateSelector : DataTemplateSelector
         DataTemplate template = item switch
         {
             AggregateInspectorModel => AggregateInspectorTemplate,
+            RenderTextureFile => RenderTextureFileTemplate,
             TextureFile => TextureFileTemplate,
             ShaderFile => ShaderFileTemplate,
             ShaderLibraryFile => ShaderLibraryFileTemplate,

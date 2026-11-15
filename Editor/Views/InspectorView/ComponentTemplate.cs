@@ -390,15 +390,24 @@ public partial class ComponentTemplate : DataTemplate
         Component component,
         string propertyName)
     {
-        if (component.Typename.Name != "Sailor::LandscapeComponent")
+        if (component.Typename.Name == "Sailor::LandscapeComponent")
         {
-            return null;
+            return propertyName switch
+            {
+                "vegetation" => typeof(LandscapeVegetationFile),
+                _ => null
+            };
         }
-        return propertyName switch
+        if (component.Typename.Name == "Sailor::CameraComponent")
         {
-            "vegetation" => typeof(LandscapeVegetationFile),
-            _ => null
-        };
+            return propertyName switch
+            {
+                "rendererConfig" => typeof(FrameGraphFile),
+                "renderTarget" => typeof(RenderTextureFile),
+                _ => null
+            };
+        }
+        return null;
     }
 
     static Command CreateContextMenuCommand(

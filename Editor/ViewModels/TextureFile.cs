@@ -13,7 +13,7 @@ namespace SailorEditor.ViewModels;
 
 public partial class TextureFile : AssetFile
 {
-    public bool IsImageLoaded { get => !Texture.IsEmpty; }
+    public bool IsImageLoaded { get => Texture != null && !Texture.IsEmpty; }
 
     [ObservableProperty]
     List<string> textureFiltrationType = [];
@@ -79,7 +79,7 @@ public partial class TextureFile : AssetFile
     public override Task<bool> LoadDependentResources()
         => LoadDependentResources(CancellationToken.None);
 
-    public async Task<bool> LoadDependentResources(
+    public virtual async Task<bool> LoadDependentResources(
         CancellationToken cancellationToken)
     {
         if (!IsLoaded)
@@ -150,7 +150,7 @@ public partial class TextureFile : AssetFile
 
 public class TextureFileYamlConverter : IYamlTypeConverter
 {
-    public bool Accepts(Type type) => type == typeof(TextureFile);
+    public bool Accepts(Type type) => typeof(TextureFile).IsAssignableFrom(type);
 
     public object ReadYaml(IParser parser, Type type)
     {

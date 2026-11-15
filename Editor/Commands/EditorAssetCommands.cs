@@ -615,3 +615,23 @@ static class AssetCommandMessages
         return $"{error} Rollback was incomplete; paths requiring recovery: {string.Join(", ", operation.UnrestoredPaths)}";
     }
 }
+
+public sealed class CreateRenderTextureAssetCommand(
+    AssetFolder? folder) : IEditorCommand
+{
+    public string Name => nameof(CreateRenderTextureAssetCommand);
+
+    public bool CanExecute(ActionContext context) =>
+        MauiProgram.GetService<Services.AssetsService>().CanCreateFolder(folder);
+
+    public async Task<CommandResult> ExecuteAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
+    {
+        var asset = await MauiProgram.GetService<Services.AssetsService>()
+            .CreateRenderTextureAssetAsync(folder, cancellationToken);
+        return asset is null
+            ? CommandResult.Failure("Unable to create render texture.")
+            : CommandResult.Success(value: asset.FileId);
+    }
+}
