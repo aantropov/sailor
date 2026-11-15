@@ -51,6 +51,7 @@ namespace Sailor::Tests
 	void RunGIProbesCommandTests(const std::filesystem::path& workspace);
 	int RunGIShutdownCommandTests(int argc, const char** argv, const std::filesystem::path& workspace);
 	void RunTextureImporterCommandTests(const std::filesystem::path& workspace);
+	void RunCameraRoutingChecks(const std::filesystem::path& workspace);
 	void RunMaterialImporterCommandTests(const std::filesystem::path& workspace);
 	void RunMaterialPreviewCommandTests(const std::filesystem::path& workspace);
 	void RunAudioCommandTests(const std::filesystem::path& workspace);
@@ -1555,6 +1556,63 @@ namespace Sailor::Tests
 		catch (const std::exception& error)
 		{
 			std::cerr << error.what() << '\n';
+		}
+		App::Stop();
+		if (!App::Shutdown())
+		{
+			result = 1;
+		}
+		return result;
+	}
+
+	int RunCameraRoutingGpu(int argc, const char** argv)
+	{
+		Tests::TempDirectory workspace("camera-routing");
+		int result = 1;
+		try
+		{
+			std::string enginePath = Workspace::PathToUtf8(std::filesystem::current_path());
+			for (int i = 1; i + 1 < argc; ++i)
+			{
+				if (std::string_view(argv[i]) == "--workspace")
+				{
+					enginePath = argv[i + 1];
+				}
+			}
+			WriteScene(workspace, enginePath, 2);
+			auto manifest = YAML::LoadFile(Workspace::PathToUtf8(workspace.Path("workspace.sailor")));
+			manifest["logicModuleName"] = "ImGuiWorkspaceFixture";
+			{
+				std::ofstream workspaceStream(workspace.Path("workspace.sailor"));
+				workspaceStream << manifest;
+			}
+			const auto modulePath = workspace.Path("Binaries") / App::GetBuildConfig() / std::filesystem::path(SAILOR_IMGUI_FIXTURE_PATH).filename();
+			std::filesystem::create_directories(modulePath.parent_path());
+			std::filesystem::copy_file(SAILOR_IMGUI_FIXTURE_PATH, modulePath);
+
+			const auto contentDir = workspace.Get() / "Content";
+			std::filesystem::create_directories(contentDir);
+			{
+				std::ofstream rendererFile(contentDir / "DefaultRenderer.renderer", std::ios::binary);
+				rendererFile << "renderTargets: []\nframe: []\n";
+			}
+			{
+				std::ofstream editorCamFile(contentDir / "EditorCamera.renderer", std::ios::binary);
+				editorCamFile << "renderTargets: []\nframe: []\n";
+			}
+
+			const auto root = Workspace::PathToUtf8(workspace.Get());
+			std::vector<const char*> arguments(argv, argv + argc);
+			arguments.insert(arguments.end(), { "--workspace", root.c_str(), "--world", "" });
+			Require(App::Initialize(arguments.data(), static_cast<int32_t>(arguments.size())) == EAppInitializationResult::Ready &&
+				App::IsRendererInitialized() &&
+				!App::HasEditor(), "camera routing fixture must initialize the native renderer without editor");
+			RunCameraRoutingChecks(workspace.Get());
+			result = 0;
+		}
+		catch (const std::exception& error)
+		{
+			std::cerr << error.what() << std::endl;
 		}
 		App::Stop();
 		if (!App::Shutdown())

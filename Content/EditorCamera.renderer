@@ -532,6 +532,12 @@ frame:
   - src: EditorOutput
 
 #############################
+- name: Blit
+#############################
+  renderTargets:
+  - src: EditorOutput
+  - dst: BackBuffer
+#############################
 - name: CopyTextureToRam
 #############################
   renderTargets:

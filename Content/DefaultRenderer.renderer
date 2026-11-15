@@ -529,7 +529,7 @@ frame:
   - src: EditorOutput
 
 #############################
-- name: Blit
+- name: Present
 #############################
   renderTargets:
   - src: EditorOutput

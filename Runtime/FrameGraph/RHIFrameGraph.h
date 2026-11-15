@@ -33,6 +33,8 @@ namespace Sailor::RHI
 
 		SAILOR_API FrameGraphNodePtr GetGraphNode(StringHash tag);
 		SAILOR_API TVector<FrameGraphNodePtr>& GetGraph() { return m_graph; }
+		SAILOR_API const TVector<FrameGraphNodePtr>& GetGraph() const { return m_graph; }
+		SAILOR_API bool HasPresentationIntent() const;
 
 		SAILOR_API void SetSampler(StringHash name, RHI::RHITexturePtr sampler);
 		SAILOR_API void SetRenderTarget(StringHash name, RHI::RHIRenderTargetPtr sampler);
@@ -122,6 +124,7 @@ namespace Sailor::RHI
 
 		RHI::RHIMeshPtr m_postEffectPlane;
 
+		Settings::GraphicsExtent m_cameraOutputExtent{0u, 0u};
 		Settings::EGraphicsQuality m_cameraQuality = Settings::EGraphicsQuality::Medium;
 		Settings::GraphicsQualityProfile m_cameraQualityProfile{};
 

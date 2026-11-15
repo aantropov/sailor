@@ -1,6 +1,7 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "FrameGraph/FrameGraphNode.h"
+#include "FrameGraph/BlitNode.h"
 #include "Support/TempDirectory.h"
 #include "Workspace/WorkspaceContext.h"
 
@@ -30,6 +31,11 @@ namespace Sailor
 				throw std::runtime_error("Missing built frame-graph value: " + name.ToString());
 			}
 			return *value;
+		}
+
+		static void SetCameraOutputExtent(RHI::RHIFrameGraph& graph, const Settings::GraphicsExtent& extent)
+		{
+			graph.m_cameraOutputExtent = extent;
 		}
 
 		static size_t GetValueCount(const RHI::RHIFrameGraph& graph)
@@ -474,6 +480,59 @@ vec4:
 		result = graph->Process(emptyView, transferVec, graphicsVec, inSem, outSem, true, 0);
 		Require(!result, "Empty view Process(0) returns false");
 	}
+
+	void TestPresentationIntent()
+	{
+		Framegraph::FrameGraphBuilder builder;
+
+		auto presentNode = builder.CreateNode("Present"_h);
+		auto blitNode = builder.CreateNode("Blit"_h);
+
+		Require(presentNode != nullptr, "Present node creation failed");
+		auto typedPresent = presentNode.DynamicCast<Framegraph::PresentNode>();
+		Require(typedPresent != nullptr && typedPresent->GetDebugName() == "Present", "Present debug name mismatch");
+		Require(presentNode->IsPresentationIntent(), "Present intent should be true");
+
+		Require(blitNode != nullptr, "Blit node creation failed");
+		Require(!blitNode->IsPresentationIntent(), "Blit intent should be false");
+
+		RHI::RHIFrameGraph graph;
+		Require(!graph.HasPresentationIntent(), "Empty graph should have no presentation intent");
+
+		graph.GetGraph().Add(blitNode);
+		Require(!graph.HasPresentationIntent(), "Graph with only Blit should have no presentation intent");
+
+		graph.GetGraph().Add(presentNode);
+		Require(graph.HasPresentationIntent(), "Graph with Present should have presentation intent");
+
+		graph.GetGraph().Clear();
+		Require(!graph.HasPresentationIntent(), "Cleared graph should have no presentation intent");
+	}
+
+	void TestExplicitCameraExtent()
+	{
+		auto graph = RHI::RHIFrameGraphPtr::Make();
+
+		Settings::GraphicsExtent extent64x48{64u, 48u};
+		FrameGraphImporterTestAccess::SetCameraOutputExtent(*graph, extent64x48);
+
+		Settings::GraphicsQualityProfile profileLow;
+		profileLow.m_resolutionFactor = 0.5f;
+		graph->SetCameraQuality(Settings::EGraphicsQuality::Low, profileLow);
+
+		Require(graph->GetSceneRenderExtent() == glm::ivec2(32, 24), "Explicit extent 64x48 @ 0.5 should be 32x24");
+
+		Settings::GraphicsExtent extent96x64{96u, 64u};
+		FrameGraphImporterTestAccess::SetCameraOutputExtent(*graph, extent96x64);
+
+		Require(graph->GetSceneRenderExtent() == glm::ivec2(48, 32), "Explicit extent 96x64 @ 0.5 should be 48x32");
+
+		Settings::GraphicsQualityProfile profileFull;
+		profileFull.m_resolutionFactor = 1.0f;
+		graph->SetCameraQuality(Settings::EGraphicsQuality::Low, profileFull);
+
+		Require(graph->GetSceneRenderExtent() == glm::ivec2(96, 64), "Explicit extent 96x64 @ 1.0 should be 96x64");
+	}
 }
 
 int main()
@@ -515,6 +574,8 @@ int main()
 		TestGlobalValues(importer);
 		TestCameraDimensions();
 		TestCameraSnapshotSelection();
+		TestPresentationIntent();
+		TestExplicitCameraExtent();
 		std::cout << "FrameGraphAssetTests passed\n";
 		return 0;
 	}

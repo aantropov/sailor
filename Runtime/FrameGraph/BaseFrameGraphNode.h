@@ -15,6 +15,8 @@ namespace Sailor::Framegraph
 
 		SAILOR_API virtual ~BaseFrameGraphNode() = default;
 
+		SAILOR_API virtual bool IsPresentationIntent() const { return false; }
+
 		SAILOR_API void SetString(StringHash name, std::string_view value);
 		SAILOR_API void SetVec4(StringHash name, const glm::vec4& value);
 		SAILOR_API virtual void SetFloat(StringHash name, float value);

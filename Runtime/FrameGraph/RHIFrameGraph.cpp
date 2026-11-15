@@ -477,6 +477,18 @@ glm::ivec2 RHIFrameGraph::GetSceneRenderExtent()
 			(std::max)(extent.y, 1));
 	}
 
+	if (m_cameraOutputExtent.m_width > 0u && m_cameraOutputExtent.m_height > 0u)
+	{
+		const Settings::GraphicsExtent resolved =
+			Settings::ResolveRenderDimensions(
+				m_cameraOutputExtent.m_width,
+				m_cameraOutputExtent.m_height,
+				m_cameraQualityProfile.m_resolutionFactor);
+		return glm::ivec2(
+			static_cast<int32_t>(resolved.m_width),
+			static_cast<int32_t>(resolved.m_height));
+	}
+
 	const glm::ivec2 viewportExtent = App::GetMainWindow()->GetRenderArea();
 	const Settings::GraphicsExtent fallbackExtent =
 		Settings::ResolveRenderDimensions(
@@ -550,6 +562,18 @@ TVector<Sailor::Tasks::ITaskPtr> RHIFrameGraph::Prepare(RHI::RHISceneViewPtr rhi
 	}
 
 	return res;
+}
+
+bool RHIFrameGraph::HasPresentationIntent() const
+{
+	for (const auto& node : m_graph)
+	{
+		if (node && node->IsPresentationIntent())
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 bool RHIFrameGraph::PrepareRenderTargets()

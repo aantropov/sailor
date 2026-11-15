@@ -330,6 +330,7 @@ bool FrameGraphImporter::Instantiate(FileId uid, FrameGraphPtr& outFrameGraph, c
 		if (FrameGraphPtr pFrameGraph = BuildFrameGraph(uid, pFrameGraphAsset))
 		{
 			// Override with explicit camera values before publication
+			pFrameGraph->m_frameGraph->m_cameraOutputExtent = outputExtent;
 			pFrameGraph->m_frameGraph->SetCameraQuality(quality, profile);
 			outFrameGraph = pFrameGraph;
 			return true;

@@ -2,6 +2,10 @@
 #include "Support/RendererReady.h"
 #include "Components/SkyComponent.h"
 #include "Components/CameraComponent.h"
+#include "AssetRegistry/Texture/RenderTextureDescriptor.h"
+#include "AssetRegistry/Texture/TextureAssetInfo.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
+#include "Platform/Window.h"
 #include "FrameGraph/DebugDrawNode.h"
 #include "FrameGraph/SkyNode.h"
 #include "FrameGraph/MotionBlurNode.h"
@@ -113,6 +117,10 @@ using namespace Sailor::GraphicsDriver::Vulkan;
 namespace Sailor::Tests { int RunPathTracerCommandTests(int argc, const char** argv); }
 namespace Sailor::Tests { int RunMaterialPreviewGpu(int argc, const char** argv); }
 namespace Sailor::Tests { int RunTextureImporterGpu(int argc, const char** argv); }
+namespace Sailor::Tests
+{
+	int RunCameraRoutingGpu(int argc, const char** argv);
+}
 namespace Sailor::Tests { int RunAudioCommandTests(int argc, const char** argv); }
 namespace Sailor::Tests { int RunSkyGpu(int argc, const char** argv, bool bTestStars); }
 namespace Sailor::Tests { int RunLandscapeGpu(int argc, const char** argv); }
@@ -7554,9 +7562,430 @@ namespace Sailor::Tests
 	{
 		OnRender([&]()
 			{
-				Require(ReadImage(*Renderer::GetDriver(), texture->m_vulkan.m_image) == expected,
+				const uint32_t width = std::max(1u, texture->m_vulkan.m_image->m_extent.width);
+				const uint32_t height = std::max(1u, texture->m_vulkan.m_image->m_extent.height);
+				const uint32_t depth = std::max(1u, texture->m_vulkan.m_image->m_extent.depth);
+				const uint32_t wordCount = width * height * depth;
+
+				auto buffer = Renderer::GetDriver()->CreateBuffer(
+					wordCount * sizeof(uint32_t),
+					EBufferUsageBit::BufferTransferDst_Bit,
+					EMemoryPropertyBit::HostVisible | EMemoryPropertyBit::HostCoherent);
+
+				auto cmd = Renderer::GetDriver()->CreateCommandList(false, ECommandListQueue::Graphics);
+				auto* commands = Renderer::GetDriverCommands();
+
+				commands->BeginCommandList(cmd, true);
+				commands->ImageMemoryBarrier(cmd, texture, EImageLayout::TransferSrcOptimal);
+
+				auto& native = cmd->m_vulkan.m_commandBuffer;
+				native->CopyImageToBuffer(
+					*buffer->m_vulkan.m_buffer->Get(),
+					texture->m_vulkan.m_image,
+					width, height, depth, 0u, 0u);
+				native->MemoryBarrier(VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
+
+				commands->EndCommandList(cmd);
+
+				Require(Renderer::GetDriver()->SubmitCommandList_Immediate(cmd),
+					"image readback did not complete");
+
+				std::vector<uint32_t> actual(wordCount);
+				std::copy_n(static_cast<const uint32_t*>(buffer->GetPointer()), wordCount, actual.begin());
+
+				Require(actual == expected,
 					"every published texture pixel must match the accepted importer revision");
 			});
+	}
+
+	void WithCameraSwapchainUnavailable(const std::function<void()>& test)
+	{
+		Renderer::GetDriver()->WaitIdle();
+		auto device = VulkanApi::GetInstance()->GetMainDevice();
+		const bool prior = VulkanSubmissionTestAccess::ExchangeSwapchainOutdated(*device, true);
+		Tests::ScopeExit restore([device, prior]() mutable
+		{
+			VulkanSubmissionTestAccess::ExchangeSwapchainOutdated(*device, prior);
+		});
+		test();
+	}
+
+	void RunCameraRoutingChecks(const std::filesystem::path& workspace)
+	{
+		Require(!App::HasEditor(), "must run standalone (no --editor)");
+
+		auto* engine = App::GetSubmodule<EngineLoop>();
+		auto* renderer = App::GetSubmodule<RHI::Renderer>();
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		auto& driver = *RHI::Renderer::GetDriver();
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+		auto* importer = App::GetSubmodule<TextureImporter>();
+
+		auto* window = App::GetMainWindowPlatform();
+		Require(window != nullptr, "main window must exist");
+		window->Show(true);
+		window->ChangeWindowSize(96, 64);
+		window->SetRenderArea({96, 64});
+		window->ProcessSystemMessages();
+		renderer->FixLostDevice();
+
+		const auto contentDir = workspace / "Content";
+		std::filesystem::create_directories(contentDir);
+
+		auto makeRT = [&](const std::string& name, uint32_t w, uint32_t h) -> TexturePtr
+		{
+			const auto rtPath = contentDir / (name + ".rendertexture");
+
+			RenderTextureDescriptor desc;
+			desc.m_version = 1;
+			desc.m_width = w;
+			desc.m_height = h;
+			desc.m_format = RHI::ETextureFormat::R8G8B8A8_UNORM;
+
+			const bool existed = std::filesystem::exists(rtPath);
+			const auto prevTime = existed ? std::filesystem::last_write_time(rtPath) : std::filesystem::file_time_type{};
+			{
+				std::ofstream out(rtPath, std::ios::binary);
+				const auto yaml = YAML::Dump(desc.Serialize());
+				out.write(yaml.data(), static_cast<std::streamsize>(yaml.size()));
+				out.close();
+				Require(static_cast<bool>(out), "write rendertexture must succeed");
+			}
+			if (existed && std::filesystem::last_write_time(rtPath) <= prevTime)
+			{
+				std::filesystem::last_write_time(rtPath, prevTime + std::chrono::seconds(1));
+			}
+
+			const auto fileId = FileId::CreateNewFileId();
+			TextureAssetInfo assetInfo;
+			auto meta = assetInfo.Serialize();
+			meta["fileId"] = fileId;
+			meta["filename"] = Workspace::PathToUtf8(rtPath.filename());
+			meta["bShouldKeepCpuBuffers"] = true;
+			meta["bShouldGenerateMips"] = false;
+			{
+				auto metaPath = rtPath;
+				metaPath += ".asset";
+				std::ofstream out(metaPath);
+				out << meta;
+				Require(static_cast<bool>(out), "asset sidecar must be written");
+			}
+
+			Require(registry->GetOrLoadFile(Workspace::PathToUtf8(rtPath)) == fileId,
+				"rendertexture must register");
+
+			TexturePtr texture{};
+			Require(importer->LoadTexture_Immediate(fileId, texture), "rendertexture must load");
+			Require(static_cast<bool>(texture), "texture ptr must be valid");
+			return texture;
+		};
+
+		auto makeConfig = [&](const std::string& name, glm::vec4 color, bool present) -> FileId
+		{
+			const auto cfgPath = contentDir / (name + ".renderer");
+
+			YAML::Node root;
+			root["renderTargets"] = YAML::Node(YAML::NodeType::Sequence);
+			{
+				YAML::Node mainTarget;
+				mainTarget["name"] = "Main";
+				mainTarget["width"] = "RenderWidth";
+				mainTarget["height"] = "RenderHeight";
+				mainTarget["format"] = "R8G8B8A8_UNORM";
+				mainTarget["bIsSurface"] = false;
+				root["renderTargets"].push_back(mainTarget);
+			}
+
+			root["frame"] = YAML::Node(YAML::NodeType::Sequence);
+			{
+				YAML::Node clearNode;
+				clearNode["name"] = "Clear";
+				YAML::Node clearColorSeq;
+				clearColorSeq.push_back(color.r);
+				clearColorSeq.push_back(color.g);
+				clearColorSeq.push_back(color.b);
+				clearColorSeq.push_back(color.a);
+				YAML::Node vec4Entry;
+				vec4Entry["clearColor"] = clearColorSeq;
+				YAML::Node vec4Seq;
+				vec4Seq.push_back(vec4Entry);
+				clearNode["vec4"] = vec4Seq;
+				YAML::Node clearTargets;
+				YAML::Node clearTargetEntry;
+				clearTargetEntry["target"] = "Main";
+				clearTargets.push_back(clearTargetEntry);
+				clearNode["renderTargets"] = clearTargets;
+				root["frame"].push_back(clearNode);
+			}
+			{
+				YAML::Node blitNode;
+				blitNode["name"] = present ? "Present" : "Blit";
+				YAML::Node blitTargets;
+				YAML::Node srcEntry;
+				srcEntry["src"] = "Main";
+				blitTargets.push_back(srcEntry);
+				YAML::Node dstEntry;
+				dstEntry["dst"] = "BackBuffer";
+				blitTargets.push_back(dstEntry);
+				blitNode["renderTargets"] = blitTargets;
+				root["frame"].push_back(blitNode);
+			}
+
+			const bool existed = std::filesystem::exists(cfgPath);
+			const auto prevTime = existed ? std::filesystem::last_write_time(cfgPath) : std::filesystem::file_time_type{};
+			{
+				std::ofstream out(cfgPath, std::ios::binary);
+				const auto yaml = YAML::Dump(root);
+				out.write(yaml.data(), static_cast<std::streamsize>(yaml.size()));
+				out.close();
+				Require(static_cast<bool>(out), "write config must succeed");
+			}
+			if (existed && std::filesystem::last_write_time(cfgPath) <= prevTime)
+			{
+				std::filesystem::last_write_time(cfgPath, prevTime + std::chrono::seconds(1));
+			}
+
+			const auto fileId = FileId::CreateNewFileId();
+			{
+				auto metaPath = cfgPath;
+				metaPath += ".asset";
+				YAML::Node meta;
+				meta["fileId"] = fileId;
+				meta["filename"] = Workspace::PathToUtf8(cfgPath.filename());
+				meta["type"] = "Sailor::FrameGraphAssetInfo";
+				std::ofstream out(metaPath);
+				out << meta;
+				Require(static_cast<bool>(out), "config sidecar must be written");
+			}
+
+			Require(registry->GetOrLoadFile(Workspace::PathToUtf8(cfgPath)) == fileId,
+				"config must register");
+			return fileId;
+		};
+
+		auto textureA = makeRT("textureA", 4, 3);
+		auto textureB = makeRT("textureB", 3, 5);
+
+		const auto redId = makeConfig("Red", glm::vec4(1.0f, 0.0f, 0.0f, 1.0f), false);
+		const auto blueId = makeConfig("Blue", glm::vec4(0.0f, 0.0f, 1.0f, 1.0f), false);
+		const auto bluePresentId = makeConfig("BluePresent", glm::vec4(0.0f, 0.0f, 1.0f, 1.0f), true);
+
+		driver.WaitIdle();
+		driver.TrackResources_ThreadSafe();
+
+		auto world = engine->GetWorld();
+		Require(static_cast<bool>(world), "camera routing requires active standalone world");
+
+		Tests::ScopeExit cleanupGuard([&]()
+		{
+			renderer->WaitIdle();
+			engine->ExitWorld(world.GetRawPtr());
+			engine->ProcessPendingWorldExits();
+		});
+
+		TObjectPtr<CameraComponent> camA;
+		for (auto& go : world->GetGameObjects())
+		{
+			if (auto c = go->GetComponent<CameraComponent>())
+			{
+				camA = c;
+				break;
+			}
+		}
+		Require(camA.IsInited(), "default world must contain one CameraComponent");
+		auto goB = world->Instantiate("CamB");
+		auto camB = goB->AddComponent<CameraComponent>();
+		Require(camB.IsInited(), "camB must be created");
+
+		camA->SetRendererConfig(redId);
+		camA->SetRenderTarget(textureA);
+		camA->SetQualityPreset(Settings::EGraphicsQualitySelection::Low);
+
+		camB->SetRendererConfig(blueId);
+		camB->SetRenderTarget(textureB);
+		camB->SetQualityPreset(Settings::EGraphicsQualitySelection::High);
+
+		FrameState previous;
+		auto tick = [&]()
+		{
+			FrameState frame(world.GetRawPtr(), previous.GetTime() + 16, {}, {96, 64},
+				world->GetCurrentFrame() ? &previous : nullptr);
+			engine->ProcessCpuFrame(frame);
+			frame.GetDrawImGuiTask()->Wait();
+			Require(renderer->PushFrame(frame), "PushFrame must succeed");
+			scheduler->WaitIdle({EThreadType::Worker, EThreadType::RHI, EThreadType::Render});
+			scheduler->ProcessTasksOnMainThread();
+			renderer->WaitIdle();
+			previous = std::move(frame);
+		};
+
+		auto clearGreen = [&](RHI::RHITexturePtr texA, RHI::RHITexturePtr texB)
+		{
+			OnRender([&]()
+			{
+				auto cmd = driver.CreateCommandList(false, ECommandListQueue::Graphics);
+				auto commands = RHI::Renderer::GetDriverCommands();
+				commands->BeginCommandList(cmd, true);
+				commands->ImageMemoryBarrier(cmd, texA, EImageLayout::TransferDstOptimal);
+				commands->ClearImage(cmd, texA, glm::vec4(0.0f, 1.0f, 0.0f, 1.0f));
+				commands->ImageMemoryBarrier(cmd, texB, EImageLayout::TransferDstOptimal);
+				commands->ClearImage(cmd, texB, glm::vec4(0.0f, 1.0f, 0.0f, 1.0f));
+				commands->EndCommandList(cmd);
+				Require(driver.SubmitCommandList_Immediate(cmd), "clearGreen submit must succeed");
+			});
+		};
+
+		auto rhiA = textureA->GetRHI();
+		auto rhiB = textureB->GetRHI();
+		Require(static_cast<bool>(rhiA), "rhiA must be valid");
+		Require(static_cast<bool>(rhiB), "rhiB must be valid");
+
+		// === ASSERTION 1 ===
+		{
+			const uint64_t nativePresentBefore = driver.GetPresentedFrameCount();
+			tick();
+
+			Tests::RequireTexturePixels(rhiA, std::vector<uint32_t>(12, 0xff0000ffu));
+			Tests::RequireTexturePixels(rhiB, std::vector<uint32_t>(15, 0xffff0000u));
+			Require(driver.GetPresentedFrameCount() == nativePresentBefore,
+				"presented count must be unchanged despite GPU work");
+
+			auto savedWrapper = renderer->GetFrameGraph();
+			Require(static_cast<bool>(savedWrapper), "frame graph wrapper must exist");
+			tick();
+			Require(renderer->GetFrameGraph() == savedWrapper,
+				"frame graph wrapper must be cached (unchanged after tick)");
+		}
+
+		// === ASSERTION 2 ===
+		{
+			camB->SetRendererConfig(redId);
+			clearGreen(rhiA, rhiB);
+			tick();
+
+			Tests::RequireTexturePixels(rhiA, std::vector<uint32_t>(12, 0xff0000ffu));
+			Tests::RequireTexturePixels(rhiB, std::vector<uint32_t>(15, 0xff0000ffu));
+
+			auto savedWrapper = renderer->GetFrameGraph();
+			tick();
+			Require(renderer->GetFrameGraph() == savedWrapper,
+				"A primary wrapper must remain same after B config change");
+		}
+
+		// === ASSERTION 3 ===
+		{
+			clearGreen(rhiA, rhiB);
+			const uint64_t presentBefore3 = driver.GetPresentedFrameCount();
+
+			WithCameraSwapchainUnavailable([&]()
+			{
+				tick();
+			});
+
+			Tests::RequireTexturePixels(rhiA, std::vector<uint32_t>(12, 0xff0000ffu));
+			Tests::RequireTexturePixels(rhiB, std::vector<uint32_t>(15, 0xff0000ffu));
+			Require(driver.GetPresentedFrameCount() == presentBefore3,
+				"presented count unchanged with swapchain unavailable");
+		}
+
+		// === ASSERTION 4 ===
+		{
+			camB->SetRendererConfig(blueId);
+			camB->SetRenderTarget(TexturePtr{});
+
+			const uint64_t presentBefore4 = driver.GetPresentedFrameCount();
+			tick();
+			tick();
+			tick();
+			Require(driver.GetPresentedFrameCount() == presentBefore4,
+				"no-target Blit camera must not present");
+
+			Tests::RequireTexturePixels(rhiA, std::vector<uint32_t>(12, 0xff0000ffu));
+
+			camB->SetRendererConfig(bluePresentId);
+			tick();
+			tick();
+			tick();
+			Require(driver.GetPresentedFrameCount() > presentBefore4,
+				"Present config must increment presented frame count");
+		}
+
+		// === ASSERTION 5 ===
+		{
+			camB->SetRenderTarget(textureB);
+			camB->SetRendererConfig(blueId);
+			tick();
+
+			auto graphBeforeResize = renderer->GetFrameGraph();
+			Require(static_cast<bool>(graphBeforeResize), "graphBeforeResize must exist");
+
+			auto oldB = camB->GetData().GetResolvedRenderTarget();
+			Require(static_cast<bool>(oldB), "oldB resolved target must exist");
+			const uint64_t revBefore = camB->GetData().GetResolvedRevision();
+
+			const auto rtPathB = contentDir / "textureB.rendertexture";
+			{
+				RenderTextureDescriptor desc;
+				desc.m_version = 1;
+				desc.m_width = 5;
+				desc.m_height = 2;
+				desc.m_format = RHI::ETextureFormat::R8G8B8A8_UNORM;
+
+				const auto prevTime = std::filesystem::last_write_time(rtPathB);
+				std::ofstream out(rtPathB, std::ios::binary);
+				const auto yaml = YAML::Dump(desc.Serialize());
+				out.write(yaml.data(), static_cast<std::streamsize>(yaml.size()));
+				out.close();
+				Require(static_cast<bool>(out), "write updated descriptor must succeed");
+				if (std::filesystem::last_write_time(rtPathB) <= prevTime)
+				{
+					std::filesystem::last_write_time(rtPathB, prevTime + std::chrono::seconds(1));
+				}
+			}
+
+			const auto uidB = textureB->GetFileId();
+			auto info = registry->GetAssetInfoPtr<TextureAssetInfoPtr>(uidB);
+			Require(info != nullptr, "asset info must resolve for reload");
+
+			importer->OnUpdateAssetInfo(info, true);
+
+			auto promise = importer->GetLoadPromise(uidB);
+			Require(static_cast<bool>(promise), "load promise must be valid");
+			promise->Wait();
+			Require(static_cast<bool>(promise->GetResult()), "reload must succeed");
+
+			scheduler->WaitIdle({EThreadType::Worker, EThreadType::RHI, EThreadType::Render});
+			scheduler->ProcessTasksOnMainThread();
+			driver.WaitIdle();
+			driver.TrackResources_ThreadSafe();
+
+			tick();
+
+			auto newB = camB->GetData().GetResolvedRenderTarget();
+			Require(static_cast<bool>(newB), "newB resolved target must exist");
+			Require(newB != oldB, "newB must differ from oldB");
+
+			auto newBRt = newB.DynamicCast<RHI::RHIRenderTarget>();
+			Require(static_cast<bool>(newBRt), "newB must be render target");
+			auto newExtent = newBRt->GetExtent();
+			Require(newExtent.x == 5 && newExtent.y == 2, "newB extent must be 5x2");
+			Tests::RequireTexturePixels(newB, std::vector<uint32_t>(10, 0xffff0000u));
+
+			auto oldBRt = oldB.DynamicCast<RHI::RHIRenderTarget>();
+			Require(static_cast<bool>(oldBRt), "oldB must still be render target");
+			auto oldExtent = oldBRt->GetExtent();
+			Require(oldExtent.x == 3 && oldExtent.y == 5, "oldB extent must remain 3x5");
+			Tests::RequireTexturePixels(oldB, std::vector<uint32_t>(15, 0xffff0000u));
+
+			const uint64_t revAfter = camB->GetData().GetResolvedRevision();
+			Require(revAfter > revBefore, "resolved revision must advance");
+
+			Require(renderer->GetFrameGraph() == graphBeforeResize,
+				"A wrapper must equal graphBeforeResize after B reload");
+			Tests::RequireTexturePixels(rhiA, std::vector<uint32_t>(12, 0xff0000ffu));
+		}
+
+		std::printf("[CameraRoutingChecks] PASS\n");
 	}
 
 	void RequireImageInitializationRefusal(const std::function<void()>& record,
@@ -7612,6 +8041,10 @@ int main(int argc, const char** argv)
 	for (int i = 1; i < argc; ++i)
 	{
 		const std::string_view mode(argv[i]);
+		if (mode == "--gpu-camera-routing")
+		{
+			return Tests::RunCameraRoutingGpu(argc, argv);
+		}
 		if (mode == "--gpu-texture-importer")
 		{
 			return Tests::RunTextureImporterGpu(argc, argv);

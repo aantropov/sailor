@@ -3,6 +3,7 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/Texture/RenderTextureDescriptor.h"
 #include "RHI/RenderTarget.h"
+#include "RHI/Fence.h"
 #include <yaml-cpp/yaml.h>
 #include "Core/FileRevision.h"
 #include "Containers/Containers.h"
@@ -1198,7 +1199,14 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::CreateRenderTextureTask(
 			}
 
 			auto& driver = RHI::Renderer::GetDriver();
+			auto cmd = driver->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
+			if (!cmd)
+			{
+				return TexturePtr{};
+			}
+			RHI::Renderer::GetDriverCommands()->BeginCommandList(cmd, true);
 			auto rhi = driver->CreateRenderTarget(
+				cmd,
 				glm::ivec2(static_cast<int>(data->m_descriptor.m_width),
 					static_cast<int>(data->m_descriptor.m_height)),
 				1,
@@ -1208,6 +1216,15 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::CreateRenderTextureTask(
 				DefaultTextureUsage | RHI::ETextureUsageBit::ColorAttachment_Bit,
 				reduction);
 			if (!rhi)
+			{
+				return TexturePtr{};
+			}
+			RHI::Renderer::GetDriverCommands()->ImageMemoryBarrier(cmd, rhi, RHI::EImageLayout::ShaderReadOnlyOptimal);
+			rhi->ForceSetDefaultLayout(RHI::EImageLayout::ShaderReadOnlyOptimal);
+			RHI::Renderer::GetDriverCommands()->EndCommandList(cmd);
+			auto fence = RHI::RHIFencePtr::Make();
+			driver->TrackDelayedInitialization(rhi.GetRawPtr(), fence);
+			if (!driver->SubmitCommandList(cmd, fence))
 			{
 				return TexturePtr{};
 			}

@@ -95,6 +95,8 @@ namespace Sailor::RHI
 			InstanceId m_cameraInstanceId{};
 			FrameGraphPtr m_graph{};
 			RHITexturePtr m_target{};
+			RHIRenderTargetPtr m_output{};
+			glm::ivec2 m_renderExtent = glm::ivec2(1);
 			FileId m_configUid = FileId::Invalid;
 			FileRevision m_configRevision{};
 			uint64_t m_targetRevision = 0ull;
@@ -105,7 +107,7 @@ namespace Sailor::RHI
 			uint64_t m_lastSeenEpoch = 0ull;
 		};
 
-		FrameGraphPtr ResolveCameraGraph(WorldPtr world, const CameraData& camera, uint64_t epoch);
+		FrameGraphPtr ResolveCameraGraph(WorldPtr world, const CameraData& camera, uint64_t epoch, RHIRenderTargetPtr& outOutput, glm::ivec2& outRenderExtent);
 		void PruneCameraGraphEntries(WorldPtr world, uint64_t epoch);
 		void CaptureSceneView(FrameSubmission& submission, const Sailor::FrameState& frame);
 		bool AcquireSubmission(FrameSubmission& submission);
