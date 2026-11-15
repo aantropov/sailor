@@ -1900,6 +1900,11 @@ namespace SailorEditor.Services
                 return;
             }
 
+            if (ProjectContentInternalPathPolicy.IsInsideTransactionDirectory(changedPath))
+            {
+                return;
+            }
+
             var cancellation = new CancellationTokenSource();
             var previous = Interlocked.Exchange(ref _pendingFilesystemReload, cancellation);
             previous?.Cancel();
