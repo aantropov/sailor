@@ -265,8 +265,7 @@ namespace
 			Require(node["version"].as<uint32_t>() == 1, "serialized version must be 1");
 			Require(node["width"].as<uint32_t>() == 1920 && node["height"].as<uint32_t>() == 1080,
 				"non-square extents must roundtrip");
-			RenderTextureDescriptor dst;
-			dst.Deserialize(node);
+			const auto dst = node.as<RenderTextureDescriptor>();
 			Require(dst.m_width == 1920 && dst.m_height == 1080 && dst.m_format == fmt,
 				"roundtrip must preserve all fields");
 		}
@@ -302,6 +301,10 @@ namespace
 			"version: 1\nwidth: 1\nheight: 1\nformat: D24_UNORM_S8_UINT\n",
 			"version: 1\nwidth: 1\nheight: 1\nformat: BC7_UNORM\n",
 			"version: 1\nwidth: 1\nheight: 1\nformat: UNKNOWN_FMT\n",
+			"version: 1\nwidth: 1\nheight: 1\nformat: ''\n",
+			"version: 1\nwidth: 1\nheight: 1\nformat: [R8G8B8A8_UNORM]\n",
+			"version: 1\nwidth: 1\nheight: 1\nformat: {name: R8G8B8A8_UNORM}\n",
+			"version: 1\nwidth: 1\nwidth: 2\nheight: 1\n",
 			"[]",
 		};
 		for (const char* doc : invalidYaml)
@@ -321,6 +324,16 @@ namespace
 			Require(copy.m_width == 256 && copy.m_height == 256 &&
 				copy.m_format == RHI::ETextureFormat::R8G8B8A8_SRGB,
 				"failed Deserialize must leave descriptor unchanged");
+			threw = false;
+			try
+			{
+				bad.as<RenderTextureDescriptor>();
+			}
+			catch (const YAML::Exception&)
+			{
+				threw = true;
+			}
+			Require(threw, "generic YAML conversion must validate the descriptor");
 		}
 		struct BadSer { uint32_t w; uint32_t h; RHI::ETextureFormat fmt; uint32_t ver; };
 		const BadSer badSerialize[] = {

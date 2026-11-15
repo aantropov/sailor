@@ -1,6 +1,7 @@
 namespace SailorEditor.Content;
 
 using System.Globalization;
+using SailorEditor.Helpers;
 using YamlDotNet.RepresentationModel;
 
 public sealed record RenderTextureDescriptor(int Width = 512, int Height = 512, string Format = "R8G8B8A8_UNORM")
@@ -21,115 +22,42 @@ public sealed record RenderTextureDescriptor(int Width = 512, int Height = 512, 
 
         var stream = new YamlStream();
         stream.Load(new StringReader(yaml));
-
-        if (stream.Documents.Count != 1)
+        if (stream.Documents.Count != 1 || stream.Documents[0].RootNode is not YamlMappingNode map)
         {
-            throw new FormatException("RenderTextureDescriptor: expected a single document");
+            throw new FormatException("RenderTextureDescriptor: expected a single mapping document");
         }
-
-        var root = stream.Documents[0].RootNode;
-        if (root is not YamlMappingNode map)
+        if (YamlHelper.ReadInt(map, "version") != 1)
         {
-            throw new FormatException("RenderTextureDescriptor: expected a map");
-        }
-
-        if (!map.Children.TryGetValue(new YamlScalarNode("version"), out var versionNode))
-        {
-            throw new FormatException("RenderTextureDescriptor: missing 'version'");
-        }
-
-        if (versionNode is not YamlScalarNode versionScalar)
-        {
-            throw new FormatException("RenderTextureDescriptor: version must be a scalar");
-        }
-
-        if (!int.TryParse(versionScalar.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int version))
-        {
-            throw new FormatException("RenderTextureDescriptor: version must be an integer");
-        }
-
-        if (version != 1)
-        {
-            throw new FormatException("RenderTextureDescriptor: unsupported version");
-        }
-
-        if (!map.Children.TryGetValue(new YamlScalarNode("width"), out var widthNode))
-        {
-            throw new FormatException("RenderTextureDescriptor: missing 'width'");
-        }
-
-        if (widthNode is not YamlScalarNode widthScalar)
-        {
-            throw new FormatException("RenderTextureDescriptor: width must be a scalar");
-        }
-
-        if (!int.TryParse(widthScalar.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int width))
-        {
-            throw new FormatException("RenderTextureDescriptor: width must be an integer");
-        }
-
-        if (width < 1 || width > 16384)
-        {
-            throw new FormatException("RenderTextureDescriptor: width out of range");
-        }
-
-        if (!map.Children.TryGetValue(new YamlScalarNode("height"), out var heightNode))
-        {
-            throw new FormatException("RenderTextureDescriptor: missing 'height'");
-        }
-
-        if (heightNode is not YamlScalarNode heightScalar)
-        {
-            throw new FormatException("RenderTextureDescriptor: height must be a scalar");
-        }
-
-        if (!int.TryParse(heightScalar.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int height))
-        {
-            throw new FormatException("RenderTextureDescriptor: height must be an integer");
-        }
-
-        if (height < 1 || height > 16384)
-        {
-            throw new FormatException("RenderTextureDescriptor: height out of range");
+            throw new FormatException("RenderTextureDescriptor: expected version 1");
         }
 
         string format = "R8G8B8A8_UNORM";
-
-        if (map.Children.TryGetValue(new YamlScalarNode("format"), out var formatNode))
+        if (map.Children.ContainsKey(new YamlScalarNode("format")) &&
+            !YamlHelper.TryGetScalar(map, "format", out format, requireNonWhitespace: true))
         {
-            if (formatNode is not YamlScalarNode formatScalar)
-            {
-                throw new FormatException("RenderTextureDescriptor: format must be a scalar");
-            }
-
-            if (string.IsNullOrEmpty(formatScalar.Value))
-            {
-                throw new FormatException("RenderTextureDescriptor: format must not be empty");
-            }
-
-            if (!SupportedFormats.Contains(formatScalar.Value))
-            {
-                throw new FormatException("RenderTextureDescriptor: unsupported format string");
-            }
-
-            format = formatScalar.Value;
+            throw new FormatException("RenderTextureDescriptor: format must be a nonempty scalar");
         }
 
-        return new RenderTextureDescriptor(width, height, format);
+        var descriptor = new RenderTextureDescriptor(
+            YamlHelper.ReadInt(map, "width"), YamlHelper.ReadInt(map, "height"), format);
+        if (descriptor.GetValidationError() is { } error)
+        {
+            throw new FormatException("RenderTextureDescriptor: " + error);
+        }
+        return descriptor;
     }
 
     public string Serialize()
     {
         Validate();
-
-        var map = new YamlMappingNode();
-        map.Children.Add(new YamlScalarNode("version"), new YamlScalarNode("1"));
-        map.Children.Add(new YamlScalarNode("width"), new YamlScalarNode(Width.ToString(CultureInfo.InvariantCulture)));
-        map.Children.Add(new YamlScalarNode("height"), new YamlScalarNode(Height.ToString(CultureInfo.InvariantCulture)));
-        map.Children.Add(new YamlScalarNode("format"), new YamlScalarNode(Format));
-
-        var doc = new YamlDocument(map);
-        var stream = new YamlStream(doc);
+        var map = new YamlMappingNode
+        {
+            { "version", YamlHelper.Scalar(1) },
+            { "width", YamlHelper.Scalar(Width) },
+            { "height", YamlHelper.Scalar(Height) },
+            { "format", new YamlScalarNode(Format) }
+        };
+        var stream = new YamlStream(new YamlDocument(map));
         var writer = new StringWriter(CultureInfo.InvariantCulture);
         stream.Save(writer, false);
         return writer.ToString();
@@ -137,19 +65,22 @@ public sealed record RenderTextureDescriptor(int Width = 512, int Height = 512, 
 
     public void Validate()
     {
-        if (Width < 1 || Width > 16384)
+        if (GetValidationError() is { } error)
         {
-            throw new InvalidOperationException("RenderTextureDescriptor: width out of range");
+            throw new InvalidOperationException("RenderTextureDescriptor: " + error);
         }
+    }
 
-        if (Height < 1 || Height > 16384)
+    string? GetValidationError()
+    {
+        if (Width is < 1 or > 16384)
         {
-            throw new InvalidOperationException("RenderTextureDescriptor: height out of range");
+            return "width out of range";
         }
-
-        if (!SupportedFormats.Contains(Format))
+        if (Height is < 1 or > 16384)
         {
-            throw new InvalidOperationException("RenderTextureDescriptor: unsupported format");
+            return "height out of range";
         }
+        return SupportedFormats.Contains(Format) ? null : "unsupported format";
     }
 }
