@@ -18,7 +18,11 @@ namespace SailorEditor.ViewModels
     }
 
     public sealed class MaterialFile : AssetFile;
-    public sealed class TextureFile : AssetFile;
+    public class TextureFile : AssetFile;
+    public sealed class RenderTextureFile : TextureFile;
+    public sealed class FrameGraphFile : AssetFile
+    {
+    }
     public sealed class ModelFile : AssetFile;
     public sealed class ShaderFile : AssetFile;
     public sealed class AnimationFile : AssetFile;

@@ -197,6 +197,20 @@ namespace SailorEngine
 
     class EngineTypes
     {
+        public static Type? ResolveCameraAssetType(string ownerType, string propertyName)
+        {
+            if (ownerType != "Sailor::CameraComponent")
+            {
+                return null;
+            }
+            return propertyName switch
+            {
+                "rendererConfig" => typeof(FrameGraphFile),
+                "renderTarget" => typeof(RenderTextureFile),
+                _ => null
+            };
+        }
+
         public Dictionary<string, ComponentType> Components { get; private set; } = [];
         public Dictionary<string, AssetType> AssetTypes { get; private set; } = [];
         public Dictionary<string, AssetType> AssetTypesByExtension { get; private set; } = [];

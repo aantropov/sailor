@@ -390,20 +390,16 @@ public partial class ComponentTemplate : DataTemplate
         Component component,
         string propertyName)
     {
+        var cameraType = EngineTypes.ResolveCameraAssetType(component.Typename.Name, propertyName);
+        if (cameraType is not null)
+        {
+            return cameraType;
+        }
         if (component.Typename.Name == "Sailor::LandscapeComponent")
         {
             return propertyName switch
             {
                 "vegetation" => typeof(LandscapeVegetationFile),
-                _ => null
-            };
-        }
-        if (component.Typename.Name == "Sailor::CameraComponent")
-        {
-            return propertyName switch
-            {
-                "rendererConfig" => typeof(FrameGraphFile),
-                "renderTarget" => typeof(RenderTextureFile),
                 _ => null
             };
         }
