@@ -2,6 +2,7 @@
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "Components/CollisionShapeComponent.h"
 #include "Components/EditorComponent.h"
+#include "Components/CameraComponent.h"
 #include "Components/MeshRendererComponent.h"
 #include "ECS/StaticMeshRendererECS.h"
 #include "ECS/TransformECS.h"
@@ -83,6 +84,22 @@ namespace
 		}
 	};
 
+	// CPU-only selection/bounds tests need the editor-role classification
+	// without native window, swapchain, or camera ECS initialization.
+	// Real Camera/ECS init+save/play is covered separately in --gpu-camera-routing.
+	class SelectionCameraComponent final : public CameraComponent
+	{
+	public:
+
+		virtual void Initialize() override
+		{
+		}
+
+		virtual void EndPlay() override
+		{
+		}
+	};
+
 	class BoundsTestWorld final : public World
 	{
 	public:
@@ -103,26 +120,54 @@ namespace
 	{
 		BoundsTestWorld world;
 		Require(!world.GetPrimaryEditorSelection(), "an empty world has no primary selection");
+
 		auto editorOnly = world.Instantiate("Editor only");
 		editorOnly->AddComponent<EditorComponent>();
+		auto roleCam = editorOnly->AddComponent<SelectionCameraComponent>();
+		roleCam->SetEditorRole(true);
+
 		auto first = world.Instantiate("First", ParseInstanceId("0000000000000020"));
 		auto last = world.Instantiate("Last", ParseInstanceId("0000000000000010"));
+
 		const auto componentId = InstanceId::GenerateNewComponentId(first->GetInstanceId());
 		world.SetEditorSelection({ last->GetInstanceId(), InstanceId::Invalid, componentId,
 			editorOnly->GetInstanceId(), first->GetInstanceId(), ParseInstanceId("0000000000000099") });
 		Require(world.GetPrimaryEditorSelection() == first,
 			"primary selection uses world order, not click order, ID sorting or duplicates");
+
 		first->SetParent(last);
 		Require(world.GetPrimaryEditorSelection() == first, "reparenting must not change primary selection");
 		first->SetParent({});
-		auto editorMarker = first->AddComponent<EditorComponent>();
-		Require(world.GetPrimaryEditorSelection() == last, "adding an editor-only component must change eligibility immediately");
-		Require(first->RemoveComponent(editorMarker) && world.GetPrimaryEditorSelection() == first,
-			"removing an editor-only component must restore the original world order");
+
+		auto legacyEditorComponent = first->AddComponent<EditorComponent>();
+		Require(world.GetPrimaryEditorSelection() == first,
+			"authored legacy EditorComponent alone must NOT exclude from selection (editable)");
+
+		auto testRoleComponent = first->AddComponent<SelectionCameraComponent>();
+		testRoleComponent->SetEditorRole(true);
+		Require(world.GetPrimaryEditorSelection() == last,
+			"CameraComponent with editor role true must exclude immediately");
+
+		testRoleComponent->SetEditorRole(false);
+		Require(world.GetPrimaryEditorSelection() == first,
+			"toggling editor role false must restore selection immediately");
+
+		testRoleComponent->SetEditorRole(true);
+		Require(world.GetPrimaryEditorSelection() == last,
+			"re-enabling editor role true must exclude again");
+		Require(first->RemoveComponent(testRoleComponent) && world.GetPrimaryEditorSelection() == first,
+			"removing the role component must restore original world order");
+
+		Require(first->RemoveComponent(legacyEditorComponent) && world.GetPrimaryEditorSelection() == first,
+			"removing legacy EditorComponent must leave object still selectable");
+
 		world.SetEditorSelection({ editorOnly->GetInstanceId() });
-		Require(!world.GetPrimaryEditorSelection(), "editor infrastructure alone is not an editable selection");
+		Require(!world.GetPrimaryEditorSelection(),
+			"editor infrastructure (role camera) alone is not an editable selection");
+
 		world.SetEditorSelection({});
 		Require(!world.GetPrimaryEditorSelection(), "clearing selection must not retain a primary object");
+
 		world.Clear();
 	}
 
@@ -1005,10 +1050,25 @@ namespace
 		auto editorOnlyObject = world.Instantiate("EditorOnlyObject");
 		editorOnlyObject->AddComponent<EditorComponent>();
 		bUsesSelectableGeometry = true;
-		Require(!EditorViewport::ResolveGameObjectBounds(editorOnlyObject, actualBounds, bUsesSelectableGeometry),
-			"editor-only infrastructure must never enter scene picking candidates");
+		Require(EditorViewport::ResolveGameObjectBounds(editorOnlyObject, actualBounds, bUsesSelectableGeometry),
+			"an EditorComponent-only object must expose fallback bounds (editable)");
 		Require(!bUsesSelectableGeometry,
-			"rejected editor-only objects must clear the mesh-bound result flag");
+			"fallback bounds must not set the selectable-geometry flag");
+
+		auto roleCamera = editorOnlyObject->AddComponent<SelectionCameraComponent>();
+		roleCamera->SetEditorRole(true);
+		bUsesSelectableGeometry = true;
+		Require(!EditorViewport::ResolveGameObjectBounds(editorOnlyObject, actualBounds, bUsesSelectableGeometry),
+			"editor-role camera must exclude object from scene picking candidates");
+		Require(!bUsesSelectableGeometry,
+			"rejected editor-role object must clear the mesh-bound result flag");
+
+		roleCamera->SetEditorRole(false);
+		bUsesSelectableGeometry = true;
+		Require(EditorViewport::ResolveGameObjectBounds(editorOnlyObject, actualBounds, bUsesSelectableGeometry),
+			"clearing editor role must restore fallback bounds");
+		Require(!bUsesSelectableGeometry,
+			"restored fallback bounds must not set the selectable-geometry flag");
 
 		world.Clear();
 	}
