@@ -2,6 +2,11 @@
 #include "Support/RendererReady.h"
 #include "Components/SkyComponent.h"
 #include "Components/CameraComponent.h"
+#include "Components/EditorComponent.h"
+#include "ECS/CameraECS.h"
+#include "AssetRegistry/World/WorldPrefabImporter.h"
+#include "Math/Transform.h"
+#include "ECS/TransformECS.h"
 #include "AssetRegistry/Texture/RenderTextureDescriptor.h"
 #include "AssetRegistry/Texture/TextureAssetInfo.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
@@ -7888,6 +7893,26 @@ namespace Sailor::Tests
 				"presented count unchanged with swapchain unavailable");
 		}
 
+		{
+			camB->SetRendererConfig(bluePresentId);
+
+			const uint64_t presentedBefore = driver.GetPresentedFrameCount();
+
+			clearGreen(rhiA, rhiB);
+			tick();
+			tick();
+
+			const std::vector<uint32_t> bluePixels(15, 0xffff0000u);
+			const std::vector<uint32_t> redPixels(12, 0xff0000ffu);
+
+			RequireTexturePixels(rhiB, bluePixels);
+			RequireTexturePixels(rhiA, redPixels);
+
+			const uint64_t presentedAfter = driver.GetPresentedFrameCount();
+			Require(presentedAfter == presentedBefore,
+				"Native presented counter must remain unchanged despite Present node on camB");
+		}
+
 		// === ASSERTION 4 ===
 		{
 			camB->SetRendererConfig(blueId);
@@ -7983,6 +8008,253 @@ namespace Sailor::Tests
 			Require(renderer->GetFrameGraph() == graphBeforeResize,
 				"A wrapper must equal graphBeforeResize after B reload");
 			Tests::RequireTexturePixels(rhiA, std::vector<uint32_t>(12, 0xff0000ffu));
+		}
+
+		{
+			auto camAOwner = camA->GetOwner();
+			if (!camAOwner->GetComponent<EditorComponent>().IsInited())
+			{
+				camAOwner->AddComponent<EditorComponent>();
+			}
+
+			camA->SetFov(61.0f);
+			camA->SetZNear(0.4f);
+			camA->SetZFar(123.0f);
+
+			GameObjectPtr parentGO = world->Instantiate("Parent");
+			parentGO->GetTransformComponent().SetPosition(glm::vec3(10.0f, 0.0f, 0.0f));
+			camAOwner->SetParent(parentGO);
+			camAOwner->GetTransformComponent().SetPosition(glm::vec3(0.0f, 2.0f, 3.0f));
+			camB->SetFov(61.0f);
+			camB->SetZNear(0.4f);
+			camB->SetZFar(123.0f);
+			camB->GetOwner()->SetParent(parentGO);
+			camB->GetOwner()->GetTransformComponent().SetPosition(glm::vec3(0.0f, 2.0f, 3.0f));
+
+			Require(!camA->GetEditorRole(), "Source camA must remain role false before snapshot");
+
+			WorldPrefabPtr snapshot = WorldPrefab::FromWorld(world.GetRawPtr());
+			Require(static_cast<bool>(snapshot), "WorldPrefab::FromWorld must return valid snapshot");
+			Require(snapshot->IsReady(), "Snapshot prefab must be ready");
+
+			TSharedPtr<World> editorWorld = engine->InstantiateWorld(snapshot, EngineLoop::EditorWorldMask);
+			Require(static_cast<bool>(editorWorld), "Editor world instantiation must succeed");
+
+			Tests::ScopeExit editorGuard([&]()
+			{
+				if (editorWorld.IsValid())
+				{
+					renderer->WaitIdle();
+					engine->ExitWorld(editorWorld.GetRawPtr());
+					engine->ProcessPendingWorldExits();
+				}
+			});
+
+			int authoredCount = 0;
+			int editorRoleCount = 0;
+			GameObjectPtr editorCamGO;
+			GameObjectPtr authoredCamAGO;
+			GameObjectPtr authoredCamBGO;
+
+			for (const auto& go : editorWorld->GetGameObjects())
+			{
+				if (!go.IsValid())
+				{
+					continue;
+				}
+				auto cam = go->GetComponent<CameraComponent>();
+				if (!cam.IsInited())
+				{
+					continue;
+				}
+				if (cam->GetEditorRole())
+				{
+					++editorRoleCount;
+					editorCamGO = go;
+				}
+				else
+				{
+					++authoredCount;
+					if (go->GetName() == "Camera")
+					{
+						authoredCamAGO = go;
+					}
+					else if (go->GetName() == "CamB")
+					{
+						authoredCamBGO = go;
+					}
+				}
+			}
+
+			Require(authoredCount == 2, "Editor world must contain exactly 2 authored cameras");
+			Require(editorRoleCount == 1, "Editor world must contain exactly 1 editor-role camera");
+
+			Require(editorCamGO.IsValid(), "Editor camera GameObject handle must be valid");
+			Require(authoredCamAGO.IsValid(), "Authored Camera GameObject handle must be valid");
+			Require(authoredCamBGO.IsValid(), "Authored CamB GameObject handle must be valid");
+
+			Require(static_cast<bool>(editorCamGO->GetComponent<EditorComponent>()),
+				"Editor camera owner must have EditorComponent");
+
+			auto authoredCamA = authoredCamAGO->GetComponent<CameraComponent>();
+			Require(static_cast<bool>(authoredCamA), "Authored Camera component must exist");
+			Require(authoredCamA->GetRendererConfig() == redId,
+				"Authored Camera must preserve renderer redId");
+			Require(authoredCamA->GetRenderTarget().IsValid() &&
+				authoredCamA->GetRenderTarget()->GetFileId() == textureA->GetFileId(),
+				"Authored Camera must preserve renderTarget textureA FileId");
+			Require(authoredCamA->GetQualityPreset() == Settings::EGraphicsQualitySelection::Low,
+				"Authored Camera must preserve qualityLow");
+			Require(authoredCamA->GetFov() == 61.0f, "Authored Camera must preserve FOV 61");
+			Require(authoredCamA->GetZNear() == 0.4f, "Authored Camera must preserve near 0.4");
+			Require(authoredCamA->GetZFar() == 123.0f, "Authored Camera must preserve far 123");
+			Require(!authoredCamA->GetEditorRole(), "Source camA must remain role false");
+
+			auto editorCamComp = editorCamGO->GetComponent<CameraComponent>();
+			Require(static_cast<bool>(editorCamComp), "Editor camera component must exist");
+			Require(editorCamComp->GetRendererConfig() == Sailor::FileId::Invalid,
+				"Editor camera config must be Invalid");
+			Require(!editorCamComp->GetRenderTarget().IsValid(),
+				"Editor camera target must be null");
+			Require(editorCamComp->GetQualityPreset() == Settings::EGraphicsQualitySelection::ProjectDefault,
+				"Editor camera quality must be ProjectDefault");
+			Require(editorCamComp->GetFov() == 61.0f, "Editor camera must copy FOV 61");
+			Require(editorCamComp->GetZNear() == 0.4f, "Editor camera must copy near 0.4");
+			Require(editorCamComp->GetZFar() == 123.0f, "Editor camera must copy far 123");
+
+			Require(!editorCamGO->GetParent().IsValid(),
+				"Editor camera root must have no parent");
+			glm::vec4 editorLocalPos = editorCamGO->GetTransformComponent().GetPosition();
+			Require(glm::all(glm::epsilonEqual(glm::vec3(editorLocalPos),
+				glm::vec3(10.0f, 2.0f, 3.0f), 0.001f)),
+				"Editor camera root local position must be (10,2,3)");
+
+			{
+				Math::Transform activeTransform;
+				CameraData activeData;
+				auto cameraECS = editorWorld->GetECS<CameraECS>();
+				Require(cameraECS->TryGetActiveCamera(activeTransform, activeData),
+					"TryGetActiveCamera must succeed in editor world");
+				Require(activeData.GetEditorRole(),
+					"TryGetActiveCamera must pick editor-role camera even with legacy EditorComponent on authored");
+			}
+
+			WorldPrefabPtr editorSnapshot = WorldPrefab::FromWorld(editorWorld.GetRawPtr());
+			Require(static_cast<bool>(editorSnapshot), "Editor world save must produce valid prefab");
+			Require(editorSnapshot->IsReady(), "Editor world save must be ready");
+
+			TSharedPtr<World> playWorld = engine->InstantiateWorld(editorSnapshot, EngineLoop::DefaultWorldMask);
+			Require(static_cast<bool>(playWorld), "Play clone instantiation must succeed");
+
+			Tests::ScopeExit playGuard([&]()
+			{
+				if (playWorld.IsValid())
+				{
+					renderer->WaitIdle();
+					engine->ExitWorld(playWorld.GetRawPtr());
+					engine->ProcessPendingWorldExits();
+				}
+			});
+
+			int playAuthored = 0;
+			int playRole = 0;
+			for (const auto& go : playWorld->GetGameObjects())
+			{
+				if (!go.IsValid())
+				{
+					continue;
+				}
+				auto cam = go->GetComponent<CameraComponent>();
+				if (!cam.IsInited())
+				{
+					continue;
+				}
+				if (cam->GetEditorRole())
+				{
+					++playRole;
+				}
+				else
+				{
+					++playAuthored;
+				}
+			}
+
+			Require(playAuthored == 2, "Play clone must have exactly 2 authored cameras");
+			Require(playRole == 0, "Play clone must have 0 editor-role cameras");
+
+			for (const auto& go : playWorld->GetGameObjects())
+			{
+				if (!go.IsValid())
+				{
+					continue;
+				}
+				auto cam = go->GetComponent<CameraComponent>();
+				if (!cam.IsInited())
+				{
+					continue;
+				}
+				if (go->GetName() == "Camera")
+				{
+					Require(cam->GetRendererConfig() == redId,
+						"Play clone authored Camera must preserve redId");
+					Require(cam->GetRenderTarget().IsValid() &&
+						cam->GetRenderTarget()->GetFileId() == textureA->GetFileId(),
+						"Play clone authored Camera must preserve textureA target");
+					Require(cam->GetQualityPreset() == Settings::EGraphicsQualitySelection::Low,
+						"Play clone authored Camera must preserve qualityLow");
+					Require(cam->GetFov() == 61.0f, "Play clone authored Camera must preserve FOV");
+				}
+			}
+
+			for (const auto& go : playWorld->GetGameObjects())
+			{
+				if (!go.IsValid())
+				{
+					continue;
+				}
+				Require(!go->GetComponent<EditorComponent>().IsInited() ||
+					!go->GetComponent<CameraComponent>().IsInited() ||
+					!go->GetComponent<CameraComponent>()->GetEditorRole(),
+					"Play clone game controllers must NOT be tagged editor role");
+			}
+
+			TSharedPtr<World> emptyEditor = engine->CreateEmptyWorld("EmptyEditorTest", EngineLoop::EditorWorldMask);
+			Require(static_cast<bool>(emptyEditor), "Empty editor world must instantiate");
+
+			Tests::ScopeExit emptyGuard([&]()
+			{
+				if (emptyEditor.IsValid())
+				{
+					renderer->WaitIdle();
+					engine->ExitWorld(emptyEditor.GetRawPtr());
+					engine->ProcessPendingWorldExits();
+				}
+			});
+
+			int emptyAuthored = 0;
+			int emptyRole = 0;
+			for (const auto& go : emptyEditor->GetGameObjects())
+			{
+				if (!go.IsValid())
+				{
+					continue;
+				}
+				auto cam = go->GetComponent<CameraComponent>();
+				if (!cam.IsInited())
+				{
+					continue;
+				}
+				if (cam->GetEditorRole())
+				{
+					++emptyRole;
+				}
+				else
+				{
+					++emptyAuthored;
+				}
+			}
+			Require(emptyAuthored == 1, "Empty editor world must create 1 authored camera");
+			Require(emptyRole == 1, "Empty editor world must create 1 editor-role camera");
 		}
 
 		std::printf("[CameraRoutingChecks] PASS\n");

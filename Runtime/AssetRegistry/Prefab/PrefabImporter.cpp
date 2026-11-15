@@ -1,4 +1,5 @@
 #include "PrefabImporter.h"
+#include "Components/CameraComponent.h"
 #include "Platform/AtomicFile.h"
 #include "AssetRegistry/FileId.h"
 #include "AssetRegistry/AssetRegistry.h"
@@ -432,6 +433,14 @@ void Prefab::SerializeGameObject(
 	if (!root || (excludedRoots && excludedRoots->Contains(root->GetInstanceId())))
 	{
 		return;
+	}
+
+	{
+		auto camera = root->GetComponent<CameraComponent>();
+		if (camera.IsInited() && camera->GetEditorRole())
+		{
+			return;
+		}
 	}
 
 	Prefab::ReflectedGameObject rootData{};
