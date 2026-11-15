@@ -7,6 +7,7 @@
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 
 #include "Engine/GameObject.h"
+#include "ECS/TransformECS.h"
 #include "Components/CameraComponent.h"
 #include "Components/EditorComponent.h"
 #include "Submodules/ImGuiApi.h"
@@ -25,8 +26,8 @@ namespace
 {
 	void EnsureEditorWorldInfrastructure(const TSharedPtr<World>& world)
 	{
-		GameObjectPtr firstCamera;
-		GameObjectPtr editorOwner;
+		GameObjectPtr roleCamera;
+		GameObjectPtr firstNonRoleCamera;
 
 		for (const auto& gameObject : world->GetGameObjects())
 		{
@@ -35,33 +36,57 @@ namespace
 				continue;
 			}
 
-			if (!firstCamera.IsValid() && gameObject->GetComponent<CameraComponent>().IsInited())
+			auto camera = gameObject->GetComponent<CameraComponent>();
+			if (!camera.IsInited())
 			{
-				firstCamera = gameObject;
+				continue;
 			}
 
-			if (!editorOwner.IsValid() && gameObject->GetComponent<EditorComponent>().IsInited())
+			if (camera->GetEditorRole())
 			{
-				editorOwner = gameObject;
+				roleCamera = gameObject;
+				break;
+			}
+
+			if (!firstNonRoleCamera.IsValid())
+			{
+				firstNonRoleCamera = gameObject;
 			}
 		}
 
-		if (editorOwner.IsValid())
+		if (roleCamera.IsValid())
 		{
-			if (!editorOwner->GetComponent<CameraComponent>().IsInited())
+			if (!roleCamera->GetComponent<EditorComponent>().IsInited())
 			{
-				editorOwner->AddComponent<CameraComponent>();
+				roleCamera->AddComponent<EditorComponent>();
 			}
 			return;
 		}
 
-		if (!firstCamera.IsValid())
-		{
-			firstCamera = world->Instantiate("Editor Camera");
-			firstCamera->AddComponent<CameraComponent>();
-		}
+		GameObjectPtr editorCam = world->Instantiate("Editor Camera");
+		auto newCamera = editorCam->AddComponent<CameraComponent>();
+		newCamera->SetEditorRole(true);
+		editorCam->AddComponent<EditorComponent>();
 
-		firstCamera->AddComponent<EditorComponent>();
+		if (firstNonRoleCamera.IsValid())
+		{
+			glm::mat4 worldMatrix = glm::identity<glm::mat4>();
+			for (auto current = firstNonRoleCamera; current.IsValid(); current = current->GetParent())
+			{
+				worldMatrix = current->GetTransformComponent().GetTransform().Matrix() * worldMatrix;
+			}
+
+			Math::Transform decomposed = Math::Transform::FromMatrix(worldMatrix);
+			auto& editorTransform = editorCam->GetTransformComponent();
+			editorTransform.SetPosition(glm::vec3(decomposed.m_position));
+			editorTransform.SetRotation(decomposed.GetRotation());
+			editorTransform.SetScale(decomposed.m_scale);
+
+			auto sourceCamera = firstNonRoleCamera->GetComponent<CameraComponent>();
+			newCamera->SetFov(sourceCamera->GetFov());
+			newCamera->SetZNear(sourceCamera->GetZNear());
+			newCamera->SetZFar(sourceCamera->GetZFar());
+		}
 	}
 }
 
@@ -70,9 +95,13 @@ TSharedPtr<World> EngineLoop::CreateEmptyWorld(std::string name, EWorldBehaviour
 	m_worlds.Emplace(TSharedPtr<World>::Make(std::move(name), mask));
 	auto world = m_worlds[m_worlds.Num() - 1];
 
-	auto gameObject = world->Instantiate();
-	auto cameraComponent = gameObject->AddComponent<CameraComponent>();
-	auto editorComponent = gameObject->AddComponent<EditorComponent>();
+	auto gameObject = world->Instantiate("Camera");
+	gameObject->AddComponent<CameraComponent>();
+
+	if ((mask & EngineLoop::EditorWorldMask) == EngineLoop::EditorWorldMask)
+	{
+		EnsureEditorWorldInfrastructure(world);
+	}
 
 	return world;
 }

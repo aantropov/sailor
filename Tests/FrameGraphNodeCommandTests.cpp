@@ -1852,16 +1852,15 @@ frame:
 			m_bStarsRequested = true;
 		}
 
-		void PrepareCloudReadback()
+		void PrepareCloudReadback(RHIFrameGraphPtr graph)
 		{
-			const auto& profile = App::GetActiveGraphicsSettings();
-			const auto viewport = App::GetMainWindow()->GetRenderArea();
-			const auto render = Settings::ResolveRenderDimensions(viewport.x, viewport.y, profile.m_resolutionFactor);
+			const auto& profile = graph->GetCameraQualityProfile();
+			const auto sceneExtent = graph->GetSceneRenderExtent();
 			float multiplier = 1.0f;
 #if defined(__APPLE__)
 			multiplier = 0.5f;
 #endif
-			const auto extent = Settings::ResolveCloudsExtent(render.m_width, render.m_height, profile, multiplier);
+			const auto extent = Settings::ResolveCloudsExtent(sceneExtent.x, sceneExtent.y, profile, multiplier);
 			m_pCloudsTexture = Renderer::GetDriver()->CreateRenderTarget(glm::ivec2(extent.m_width, extent.m_height), 1,
 				EFormat::R16G16B16A16_SFLOAT, ETextureFiltration::Linear, ETextureClamping::Clamp,
 				ETextureUsageBit::Sampled_Bit | ETextureUsageBit::ColorAttachment_Bit |
@@ -2691,9 +2690,17 @@ frame:
 				ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit);
 			linearDepth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32_SFLOAT);
 			graph->SetRenderTarget("DepthBuffer"_h, depth);
+			graph->SetRenderTarget("Main"_h, color);
 			node->SetRHIResource("color"_h, color);
 			node->SetRHIResource("linearDepth"_h, linearDepth);
-			node->PrepareCloudReadback();
+
+			// Configure graph profile to differ from global settings to test resolution logic
+			auto profile = App::GetActiveGraphicsSettings();
+			profile.m_resolutionFactor = 0.5f;
+			profile.m_cloudsResolutionMultiplier = 0.625f;
+			graph->SetCameraQuality(App::GetActiveGraphicsQuality(), profile);
+
+			node->PrepareCloudReadback(graph);
 			scene.m_frameBindings = driver->CreateShaderBindings();
 			driver->AddBufferToShaderBindings(scene.m_frameBindings, "frameData"_h, sizeof(frameData), 0, EShaderBindingType::UniformBuffer);
 			auto params = node->GetSkyParams();
@@ -2739,6 +2746,17 @@ frame:
 				if (uploadError != VK_SUCCESS)
 					Tests::RequireImageInitializationRefusal([&]() { node->Process(graph, upload, draw, scene); }, 0, refusedUploads, uploadError);
 				else node->Process(graph, upload, draw, scene);
+
+				// Assert extent matches graph profile, not global settings
+				float platformMult = 1.0f;
+				#if defined(__APPLE__)
+				platformMult = 0.5f;
+				#endif
+				const auto expectedExtent = Settings::ResolveCloudsExtent(graph->GetSceneRenderExtent().x, graph->GetSceneRenderExtent().y, graph->GetCameraQualityProfile(), platformMult);
+				const auto actualExtent = node->GetCloudsTexture()->GetExtent();
+				Require(actualExtent.x == expectedExtent.m_width && actualExtent.y == expectedExtent.m_height,
+					"Clouds texture extent must match per-camera graph profile, not global settings");
+
 				const bool bNoDepthAttachment = recordedDepth.imageView == VK_NULL_HANDLE && recordedDepth.resolveImageView == VK_NULL_HANDLE;
 				const auto depthPixels = checkDepthIndependence ? ReadDepth(draw, depth, depthReadback) : RHIBufferPtr{};
 				const auto liveDepthPixels = checkDepthIndependence && depthSurface && depthSurface->NeedsResolve() ?
@@ -4989,7 +5007,7 @@ frame:
 		const Particle::PushConstants constants{ Instances, Frames, 1, Traces, 0.5f };
 		constexpr uint32_t Current[Frames][Traces] = { { 0, 0, 0, 0 }, { 1, 0, 0, 0 }, { 2, 1, 0, 0 } };
 		constexpr uint32_t Previous[Frames][Traces] = { { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 1, 0, 0, 0 } };
-		for (uint32_t time = 0; time < 5; ++time)
+		for (uint32_t time = 0; time < 2 * Frames + 2; ++time)
 		{
 			auto* actual = static_cast<Particle::PerInstanceData*>(output->GetPointer());
 			for (uint32_t i = 0; i <= Instances; ++i)
@@ -5024,8 +5042,32 @@ frame:
 				const glm::vec4 color(current.m_r2, current.m_g2, current.m_b2, decay);
 				const glm::vec4 oldColor(previous.m_r2, previous.m_g2, previous.m_b2, decay);
 				for (uint32_t column = 0; column < 4; ++column)
-					Require(glm::all(glm::lessThan(glm::abs(actual[i].model[column] - model[column]), glm::vec4(0.00001f))),
-						"particle history must clamp each trace frame before calculating its transform");
+				{
+					for (uint32_t row = 0; row < 4; ++row)
+					{
+						const float actualVal = actual[i].model[column][row];
+						const float expectedVal = model[column][row];
+						if (!(glm::abs(actualVal - expectedVal) < 0.00001f))
+						{
+							throw std::runtime_error(
+								"particle history must clamp each trace frame before calculating its transform"
+								" | time=" + std::to_string(time)
+								+ " instance=" + std::to_string(i)
+								+ " trace=" + std::to_string(trace)
+								+ " row=" + std::to_string(row)
+								+ " column=" + std::to_string(column)
+								+ " actual=" + std::to_string(actualVal)
+								+ " expected=" + std::to_string(expectedVal)
+								+ " currentFrame=" + std::to_string(Current[time % Frames][trace])
+								+ " previousFrame=" + std::to_string(Previous[time % Frames][trace])
+								+ " numInstances=" + std::to_string(constants.m_numInstances)
+								+ " numFrames=" + std::to_string(constants.m_numFrames)
+								+ " fps=" + std::to_string(constants.m_fps)
+								+ " traceFrames=" + std::to_string(constants.m_traceFrames)
+								+ " traceDecay=" + std::to_string(constants.m_traceDecay));
+						}
+					}
+				}
 				Require(actual[i].color == color && actual[i].colorOld == oldColor && actual[i].materialInstance == 100 + i,
 					"particle history must retain first-frame colors, clip wrap, trace decay and material identity");
 			}
@@ -5033,7 +5075,7 @@ frame:
 				actual[Instances].colorOld == glm::vec4(-17) && actual[Instances].materialInstance == 100 + Instances,
 				"particle compute must not write past the last instance");
 		}
-		std::cout << "Particle history: 513 particles, four trace segments, five times, GPU transforms/colors/decay and trailing sentinel passed\n";
+		std::cout << "Particle history: 513 particles, four trace segments, eight times (two full wraps plus boundary), GPU transforms/colors/decay and trailing sentinel passed\n";
 	}
 
 	void TestPipelineSampleVariants(ShaderSetPtr shader)

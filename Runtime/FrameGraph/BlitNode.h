@@ -36,5 +36,18 @@ namespace Sailor::Framegraph
 
 	};
 
+	// Declares presentation intent; Renderer owns the deferred physical
+	// swapchain acquire/present decision. This node reuses BlitNode behavior
+	// and performs no queue-present call itself.
+	class PresentNode : public BlitNode
+	{
+	public:
+		SAILOR_API static StringHash GetName() { return "Present"_h; }
+
+		virtual std::string_view GetDebugName() const override { return GetName().ToString(); }
+
+		virtual bool IsPresentationIntent() const override { return true; }
+	};
+
 	template class TFrameGraphNode<BlitNode>;
 };

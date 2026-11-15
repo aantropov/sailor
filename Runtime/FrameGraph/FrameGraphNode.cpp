@@ -1,4 +1,5 @@
 #include "FrameGraphNode.h"
+#include "FrameGraph/BlitNode.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -7,6 +8,11 @@ using namespace Sailor::Framegraph;
 namespace Sailor::Internal
 {
 	TUniquePtr<TMap<StringHash, std::function<FrameGraphNodePtr(void)>>> g_pNodeFactoryMethods;
+}
+
+FrameGraphBuilder::FrameGraphBuilder()
+{
+	RegisterFrameGraphNode(PresentNode::GetName(), []() { return TRefPtr<PresentNode>::Make(); });
 }
 
 void FrameGraphBuilder::RegisterFrameGraphNode(StringHash nodeName, std::function<FrameGraphNodePtr(void)> factoryMethod)

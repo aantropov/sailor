@@ -19,16 +19,48 @@ public static class ProjectContentInternalPathPolicy
     public static bool IsTransactionDirectory(string? path)
     {
         if (string.IsNullOrWhiteSpace(path))
+        {
             return false;
+        }
 
         var directoryName = Path.GetFileName(
             Path.TrimEndingDirectorySeparator(path));
+
         return directoryName.StartsWith(
                 TransactionDirectoryPrefix,
                 StringComparison.OrdinalIgnoreCase) &&
             directoryName.EndsWith(
                 TransactionDirectorySuffix,
                 StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsInsideTransactionDirectory(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        var current = Path.TrimEndingDirectorySeparator(path);
+
+        while (!string.IsNullOrEmpty(current))
+        {
+            if (IsTransactionDirectory(current))
+            {
+                return true;
+            }
+
+            var parent = Path.GetDirectoryName(current);
+
+            if (parent is null || parent == current)
+            {
+                break;
+            }
+
+            current = parent;
+        }
+
+        return false;
     }
 }
 

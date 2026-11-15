@@ -1,11 +1,13 @@
 #pragma once
 #include "Memory/RefPtr.hpp"
 #include "Engine/Object.h"
+#include "Settings/GraphicsSettings.h"
 #include "RHI/Types.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "Tasks/Tasks.h"
 #include "RHI/GlobalIllumination.h"
 #include "Core/SpinLock.h"
+#include <limits>
 
 using namespace Sailor::Framegraph;
 
@@ -31,6 +33,8 @@ namespace Sailor::RHI
 
 		SAILOR_API FrameGraphNodePtr GetGraphNode(StringHash tag);
 		SAILOR_API TVector<FrameGraphNodePtr>& GetGraph() { return m_graph; }
+		SAILOR_API const TVector<FrameGraphNodePtr>& GetGraph() const { return m_graph; }
+		SAILOR_API bool HasPresentationIntent() const;
 
 		SAILOR_API void SetSampler(StringHash name, RHI::RHITexturePtr sampler);
 		SAILOR_API void SetRenderTarget(StringHash name, RHI::RHIRenderTargetPtr sampler);
@@ -61,6 +65,14 @@ namespace Sailor::RHI
 		SAILOR_API RHIGlobalIlluminationRenderStats
 			GetGlobalIlluminationRenderStats() const;
 
+		SAILOR_API void SetCameraQuality(Settings::EGraphicsQuality quality, const Settings::GraphicsQualityProfile& profile)
+		{
+			m_cameraQuality = quality;
+			m_cameraQualityProfile = profile;
+		}
+		SAILOR_API Settings::EGraphicsQuality GetCameraQuality() const { return m_cameraQuality; }
+		SAILOR_API const Settings::GraphicsQualityProfile& GetCameraQualityProfile() const { return m_cameraQualityProfile; }
+
 		template<typename T>
 		void SetValue(StringHash name, T value)
 		{
@@ -73,14 +85,15 @@ namespace Sailor::RHI
 			m_values[name] = value;
 		}
 
-		SAILOR_API TVector<Sailor::Tasks::ITaskPtr> Prepare(RHI::RHISceneViewPtr rhiSceneView);
+		SAILOR_API TVector<Sailor::Tasks::ITaskPtr> Prepare(RHI::RHISceneViewPtr rhiSceneView, uint32_t cameraIndex = (std::numeric_limits<uint32_t>::max)());
 
 		SAILOR_API bool Process(RHI::RHISceneViewPtr rhiSceneView,
 			TVector<RHI::RHICommandListPtr>& outTransferCommandLists,
 			TVector<RHI::RHICommandListPtr>& outSecondaryCommandLists,
 			RHISemaphorePtr inSignalSemaphore,
 			RHISemaphorePtr& outWaitSemaphore,
-			bool bTrackGpuStats = true);
+			bool bTrackGpuStats = true,
+			uint32_t cameraIndex = (std::numeric_limits<uint32_t>::max)());
 
 		SAILOR_API void Clear();
 
@@ -110,6 +123,10 @@ namespace Sailor::RHI
 		TVector<RHI::RHITexturePtr> m_currentDepthPyramids;
 
 		RHI::RHIMeshPtr m_postEffectPlane;
+
+		Settings::GraphicsExtent m_cameraOutputExtent{0u, 0u};
+		Settings::EGraphicsQuality m_cameraQuality = Settings::EGraphicsQuality::Medium;
+		Settings::GraphicsQualityProfile m_cameraQualityProfile{};
 
 		mutable SpinLock m_globalIlluminationStatsLock;
 		RHIGlobalIlluminationRenderStats m_globalIlluminationStats{};

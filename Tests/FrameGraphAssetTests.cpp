@@ -1,6 +1,7 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "FrameGraph/FrameGraphNode.h"
+#include "FrameGraph/BlitNode.h"
 #include "Support/TempDirectory.h"
 #include "Workspace/WorkspaceContext.h"
 
@@ -30,6 +31,11 @@ namespace Sailor
 				throw std::runtime_error("Missing built frame-graph value: " + name.ToString());
 			}
 			return *value;
+		}
+
+		static void SetCameraOutputExtent(RHI::RHIFrameGraph& graph, const Settings::GraphicsExtent& extent)
+		{
+			graph.m_cameraOutputExtent = extent;
 		}
 
 		static size_t GetValueCount(const RHI::RHIFrameGraph& graph)
@@ -319,6 +325,214 @@ vec4:
 		Require(FrameGraphImporterTestAccess::GetValueCount(*empty) == 0 && empty->GetGraph().IsEmpty(),
 			"an empty description must not inherit values or nodes from previous builds");
 	}
+
+	void TestCameraDimensions()
+	{
+		const std::string yamlContent =
+			"renderTargets:\n"
+			"  - name: TestTarget\n"
+			"    width: RenderWidth/2\n"
+			"    height: ViewportHeight/2\n";
+
+		FrameGraphAsset asset1;
+		asset1.Deserialize(YAML::Load(yamlContent), Settings::GraphicsExtent{ 800, 600 }, 0.5f);
+
+		FrameGraphAsset asset2;
+		asset2.Deserialize(YAML::Load(yamlContent), Settings::GraphicsExtent{ 1024, 256 }, 1.0f);
+
+		// Asset 1: Output 800x600, Scale 0.5
+		// RenderWidth = 800 * 0.5 = 400. Width = 400 / 2 = 200.
+		// ViewportHeight = 600. Height = 600 / 2 = 300.
+		Require(asset1.m_renderTargets["TestTarget"].m_width == 200, "Asset1 width mismatch");
+		Require(asset1.m_renderTargets["TestTarget"].m_height == 300, "Asset1 height mismatch");
+
+		// Asset 2: Output 1024x256, Scale 1.0
+		// RenderWidth = 1024 * 1.0 = 1024. Width = 1024 / 2 = 512.
+		// ViewportHeight = 256. Height = 256 / 2 = 128.
+		Require(asset2.m_renderTargets["TestTarget"].m_width == 512, "Asset2 width mismatch");
+		Require(asset2.m_renderTargets["TestTarget"].m_height == 128, "Asset2 height mismatch");
+
+		// Verify independence: Re-parse asset1 to ensure it wasn't affected by asset2 parsing
+		FrameGraphAsset asset1Reparse;
+		asset1Reparse.Deserialize(YAML::Load(yamlContent), Settings::GraphicsExtent{ 800, 600 }, 0.5f);
+		Require(asset1Reparse.m_renderTargets["TestTarget"].m_width == 200, "Asset1 reparse width mismatch");
+		Require(asset1Reparse.m_renderTargets["TestTarget"].m_height == 300, "Asset1 reparse height mismatch");
+
+		// Verify literal dimensions unchanged
+		const std::string literalYaml =
+			"renderTargets:\n"
+			"  - name: LiteralTarget\n"
+			"    width: 100\n"
+			"    height: 200\n";
+
+		FrameGraphAsset literalAsset;
+		literalAsset.Deserialize(YAML::Load(literalYaml), Settings::GraphicsExtent{ 800, 600 }, 0.5f);
+		Require(literalAsset.m_renderTargets["LiteralTarget"].m_width == 100, "Literal width mismatch");
+		Require(literalAsset.m_renderTargets["LiteralTarget"].m_height == 200, "Literal height mismatch");
+	}
+
+	class RecorderNode : public Framegraph::RHINodeDefault
+	{
+	public:
+		TVector<uint32_t> m_observedIndices;
+
+		Tasks::TaskPtr<void, void> Prepare(RHI::RHIFrameGraphPtr frameGraph, RHI::RHISceneViewSnapshot& snapshot) override
+		{
+			m_observedIndices.Add(snapshot.m_cameraIndex);
+			return {};
+		}
+	};
+
+	void TestCameraSnapshotSelection()
+	{
+		auto graph = RHI::RHIFrameGraphPtr::Make();
+		auto recorder = TRefPtr<RecorderNode>::Make();
+		graph->GetGraph().Add(recorder);
+
+		auto view = RHI::RHISceneViewPtr::Make();
+		view->m_snapshots.Resize(2);
+
+		for (uint32_t i = 0; i < 2; ++i)
+		{
+			auto& snap = view->m_snapshots[i];
+			snap.m_camera = TUniquePtr<CameraData>::Make();
+			snap.m_camera->SetViewMatrix(glm::mat4(1.0f));
+			snap.m_camera->SetProjectionMatrix(glm::mat4(1.0f));
+			snap.m_cameraIndex = (i == 0) ? 17u : 29u;
+			snap.m_instancedLodOffsets.Add(0xDEADBEEF);
+		}
+
+		for (uint32_t i = 0; i < 3; ++i)
+		{
+			auto task = Tasks::CreateTaskWithResult<RHI::RHICommandListPtr>(
+				"Camera selector debug"_h,
+				[]()
+				{
+					return RHI::RHICommandListPtr{};
+				},
+				EThreadType::RHI
+			);
+			view->m_debugDraw.Add(task);
+		}
+
+		recorder->m_observedIndices.Clear();
+		auto tasks1 = graph->Prepare(view, 1);
+		Require(tasks1.Num() == 1, "Prepare(1) task count");
+		Require(tasks1[0].GetRawPtr() == view->m_debugDraw[1].GetRawPtr(), "Prepare(1) task identity");
+		Require(recorder->m_observedIndices.Num() == 1, "Prepare(1) observed count");
+		Require(recorder->m_observedIndices[0] == 29u, "Prepare(1) observed index");
+		Require(view->m_snapshots[0].m_instancedLodOffsets.Num() == 1, "Snapshot 0 LOD untouched");
+		Require(view->m_snapshots[0].m_instancedLodOffsets[0] == 0xDEADBEEF, "Snapshot 0 LOD value untouched");
+		Require(view->m_snapshots[1].m_instancedLodOffsets.Num() == 0, "Snapshot 1 LOD cleared");
+
+		recorder->m_observedIndices.Clear();
+		auto tasks0 = graph->Prepare(view, 0);
+		Require(tasks0.Num() == 1, "Prepare(0) task count");
+		Require(tasks0[0].GetRawPtr() == view->m_debugDraw[0].GetRawPtr(), "Prepare(0) task identity");
+		Require(recorder->m_observedIndices.Num() == 1, "Prepare(0) observed count");
+		Require(recorder->m_observedIndices[0] == 17u, "Prepare(0) observed index");
+		Require(view->m_snapshots[0].m_instancedLodOffsets.Num() == 0, "Snapshot 0 LOD cleared");
+
+		view->m_snapshots[0].m_instancedLodOffsets.Add(1);
+		view->m_snapshots[1].m_instancedLodOffsets.Add(2);
+		recorder->m_observedIndices.Clear();
+		auto tasksAll = graph->Prepare(view);
+		Require(tasksAll.Num() == 3, "Prepare(all) task count");
+		Require(recorder->m_observedIndices.Num() == 2, "Prepare(all) observed count");
+		Require(recorder->m_observedIndices[0] == 17u, "Prepare(all) first index");
+		Require(recorder->m_observedIndices[1] == 29u, "Prepare(all) second index");
+		Require(view->m_snapshots[0].m_instancedLodOffsets.Num() == 0, "Snapshot 0 LOD cleared all");
+		Require(view->m_snapshots[1].m_instancedLodOffsets.Num() == 0, "Snapshot 1 LOD cleared all");
+
+		CameraData* cam0Ptr = view->m_snapshots[0].m_camera.GetRawPtr();
+		CameraData* cam1Ptr = view->m_snapshots[1].m_camera.GetRawPtr();
+		uint32_t snapCount = view->m_snapshots.Num();
+
+		recorder->m_observedIndices.Clear();
+		auto tasksInvalid2 = graph->Prepare(view, 2);
+		Require(tasksInvalid2.Num() == 0, "Prepare(2) empty tasks");
+		Require(recorder->m_observedIndices.Num() == 0, "Prepare(2) no callbacks");
+		Require(view->m_snapshots.Num() == snapCount, "Prepare(2) snapshot count unchanged");
+		Require(view->m_snapshots[0].m_camera.GetRawPtr() == cam0Ptr, "Prepare(2) cam0 ptr unchanged");
+		Require(view->m_snapshots[1].m_camera.GetRawPtr() == cam1Ptr, "Prepare(2) cam1 ptr unchanged");
+
+		auto tasksInvalidMax = graph->Prepare(view, (std::numeric_limits<uint32_t>::max)() - 1);
+		Require(tasksInvalidMax.Num() == 0, "Prepare(max-1) empty tasks");
+		Require(recorder->m_observedIndices.Num() == 0, "Prepare(max-1) no callbacks");
+
+		TVector<RHI::RHICommandListPtr> transferVec;
+		TVector<RHI::RHICommandListPtr> graphicsVec;
+		RHI::RHISemaphorePtr inSem;
+		RHI::RHISemaphorePtr outSem;
+		bool result = graph->Process(view, transferVec, graphicsVec, inSem, outSem, true, 2);
+		Require(!result, "Process(2) returns false");
+		Require(transferVec.Num() == 0, "Process(2) no transfer cmds");
+		Require(graphicsVec.Num() == 0, "Process(2) no graphics cmds");
+		Require(outSem == inSem, "Process(2) semaphore unchanged");
+
+		auto emptyView = RHI::RHISceneViewPtr::Make();
+		emptyView->m_snapshots.Resize(0);
+		emptyView->m_debugDraw.Add(view->m_debugDraw[0]);
+		recorder->m_observedIndices.Clear();
+		auto tasksEmptyInvalid = graph->Prepare(emptyView, 0);
+		Require(tasksEmptyInvalid.Num() == 0, "Empty view Prepare(0) empty tasks");
+		Require(recorder->m_observedIndices.Num() == 0, "Empty view Prepare(0) no callbacks");
+		result = graph->Process(emptyView, transferVec, graphicsVec, inSem, outSem, true, 0);
+		Require(!result, "Empty view Process(0) returns false");
+	}
+
+	void TestPresentationIntent()
+	{
+		Framegraph::FrameGraphBuilder builder;
+
+		auto presentNode = builder.CreateNode("Present"_h);
+		auto blitNode = builder.CreateNode("Blit"_h);
+
+		Require(presentNode != nullptr, "Present node creation failed");
+		auto typedPresent = presentNode.DynamicCast<Framegraph::PresentNode>();
+		Require(typedPresent != nullptr && typedPresent->GetDebugName() == "Present", "Present debug name mismatch");
+		Require(presentNode->IsPresentationIntent(), "Present intent should be true");
+
+		Require(blitNode != nullptr, "Blit node creation failed");
+		Require(!blitNode->IsPresentationIntent(), "Blit intent should be false");
+
+		RHI::RHIFrameGraph graph;
+		Require(!graph.HasPresentationIntent(), "Empty graph should have no presentation intent");
+
+		graph.GetGraph().Add(blitNode);
+		Require(!graph.HasPresentationIntent(), "Graph with only Blit should have no presentation intent");
+
+		graph.GetGraph().Add(presentNode);
+		Require(graph.HasPresentationIntent(), "Graph with Present should have presentation intent");
+
+		graph.GetGraph().Clear();
+		Require(!graph.HasPresentationIntent(), "Cleared graph should have no presentation intent");
+	}
+
+	void TestExplicitCameraExtent()
+	{
+		auto graph = RHI::RHIFrameGraphPtr::Make();
+
+		Settings::GraphicsExtent extent64x48{64u, 48u};
+		FrameGraphImporterTestAccess::SetCameraOutputExtent(*graph, extent64x48);
+
+		Settings::GraphicsQualityProfile profileLow;
+		profileLow.m_resolutionFactor = 0.5f;
+		graph->SetCameraQuality(Settings::EGraphicsQuality::Low, profileLow);
+
+		Require(graph->GetSceneRenderExtent() == glm::ivec2(32, 24), "Explicit extent 64x48 @ 0.5 should be 32x24");
+
+		Settings::GraphicsExtent extent96x64{96u, 64u};
+		FrameGraphImporterTestAccess::SetCameraOutputExtent(*graph, extent96x64);
+
+		Require(graph->GetSceneRenderExtent() == glm::ivec2(48, 32), "Explicit extent 96x64 @ 0.5 should be 48x32");
+
+		Settings::GraphicsQualityProfile profileFull;
+		profileFull.m_resolutionFactor = 1.0f;
+		graph->SetCameraQuality(Settings::EGraphicsQuality::Low, profileFull);
+
+		Require(graph->GetSceneRenderExtent() == glm::ivec2(96, 64), "Explicit extent 96x64 @ 1.0 should be 96x64");
+	}
 }
 
 int main()
@@ -358,6 +572,10 @@ int main()
 		TestAttachmentDimensions();
 		TestNodeResourceBindings();
 		TestGlobalValues(importer);
+		TestCameraDimensions();
+		TestCameraSnapshotSelection();
+		TestPresentationIntent();
+		TestExplicitCameraExtent();
 		std::cout << "FrameGraphAssetTests passed\n";
 		return 0;
 	}

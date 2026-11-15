@@ -1203,9 +1203,30 @@ namespace
 			Require(reads == expectedReads, "one real RHI update must read each regular/debug artifact exactly once");
 			Require(ShaderCacheTestAccess::GetGeneration(cache, uid, 0) == generation,
 				"a warm RHI update must not recompile the shader");
-			const auto damaged = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 0,
+			const auto debugDamaged = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 0,
 				compute ? ShaderCache::ComputeShaderTag : ShaderCache::FragmentShaderTag, true);
-			std::filesystem::resize_file(damaged, 7);
+			std::filesystem::resize_file(debugDamaged, 7);
+			Require(update() && shader->IsReady(),
+				"a broken debug artifact must not prevent a complete regular RHI set");
+			Require(ShaderCacheTestAccess::GetGeneration(cache, uid, 0) == generation,
+				"a broken debug artifact must not trigger recompilation of the regular permutation");
+			if (compute)
+			{
+				Require(shader->GetComputeShaderRHI() != nullptr,
+					"regular compute stage must remain nonnull when debug artifact is corrupt");
+			}
+			else
+			{
+				Require(shader->GetVertexShaderRHI() != nullptr && shader->GetFragmentShaderRHI() != nullptr,
+					"regular vertex/fragment stages must remain nonnull when debug artifact is corrupt");
+			}
+			Require(shader->GetDebugVertexShaderRHI() == nullptr &&
+				shader->GetDebugFragmentShaderRHI() == nullptr &&
+				shader->GetDebugComputeShaderRHI() == nullptr,
+				"all debug stages must be absent when the debug artifact is corrupt");
+			const auto regularDamaged = ShaderCacheTestAccess::GetArtifactPath(cache, uid, 0,
+				compute ? ShaderCache::ComputeShaderTag : ShaderCache::FragmentShaderTag, false);
+			std::filesystem::resize_file(regularDamaged, 7);
 			ShaderCacheTestAccess::FailNextArtifactCleanup(cache);
 			Require(update() && shader->IsReady(), "a broken artifact must recompile to a complete RHI set");
 			const auto repairedGeneration = ShaderCacheTestAccess::GetGeneration(cache, uid, 0);

@@ -22,7 +22,7 @@ void RenderImGuiNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	RHI::RHITexturePtr colorAttachment = GetResolvedAttachment("color"_h, frameGraph.GetRawPtr());
 	RHI::RHITexturePtr depthAttachment = GetResolvedAttachment("depthStencil"_h, frameGraph.GetRawPtr());
 
-	if (!colorAttachment || !depthAttachment)
+	if (!colorAttachment || !depthAttachment || !sceneView.m_drawImGui)
 	{
 		return;
 	}

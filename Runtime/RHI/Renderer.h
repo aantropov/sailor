@@ -5,10 +5,13 @@
 
 #include "Core/Defines.h"
 #include "Core/SpinLock.h"
+#include "Core/FileRevision.h"
+#include "Engine/InstanceId.h"
 #include "Math/Math.h"
 #include "Engine/Types.h"
 #include "RHI/Types.h"
 #include "Containers/ConcurrentMap.h"
+#include "Containers/Vector.h"
 #include "Memory/RefPtr.hpp"
 #include "Memory/SharedPtr.hpp"
 #include "Memory/UniquePtr.hpp"
@@ -20,12 +23,14 @@
 #include "Readback.h"
 #include "SceneView.h"
 #include "FrameGraph/SkyParameters.h"
+#include "Settings/GraphicsSettings.h"
 
 namespace Sailor::Framegraph { class SkyNode; }
 
 namespace Sailor
 {
 	class FrameState;
+	class CameraData;
 }
 
 namespace Sailor::RHI
@@ -78,6 +83,32 @@ namespace Sailor::RHI
 	private:
 		friend class RendererSubmissionTestAccess;
 		struct FrameSubmission;
+
+		// Issue #184: Main-thread per-camera frame graph cache. Entries are
+		// keyed by world + the actual camera InstanceId and rebuild only when
+		// that camera's resolved config/target/extent/quality/MSAA signature
+		// changes. Existing m_frameGraph/GetFrameGraph remains the primary
+		// wrapper; this cache stores no separate primary reference.
+		struct CameraGraphEntry
+		{
+			WorldPtr m_world = nullptr;
+			InstanceId m_cameraInstanceId{};
+			FrameGraphPtr m_graph{};
+			RHITexturePtr m_target{};
+			RHIRenderTargetPtr m_output{};
+			glm::ivec2 m_renderExtent = glm::ivec2(1);
+			FileId m_configUid = FileId::Invalid;
+			FileRevision m_configRevision{};
+			uint64_t m_targetRevision = 0ull;
+			Settings::EGraphicsQuality m_resolvedQuality = Settings::EGraphicsQuality::Low;
+			float m_resolutionFactor = 1.0f;
+			Settings::GraphicsExtent m_outputExtent{};
+			uint32_t m_msaaSamples = 0u;
+			uint64_t m_lastSeenEpoch = 0ull;
+		};
+
+		FrameGraphPtr ResolveCameraGraph(WorldPtr world, const CameraData& camera, uint64_t epoch, RHIRenderTargetPtr& outOutput, glm::ivec2& outRenderExtent);
+		void PruneCameraGraphEntries(WorldPtr world, uint64_t epoch);
 		void CaptureSceneView(FrameSubmission& submission, const Sailor::FrameState& frame);
 		bool AcquireSubmission(FrameSubmission& submission);
 		void PrepareSceneView(FrameSubmission& submission);
@@ -127,5 +158,6 @@ namespace Sailor::RHI
 			std::atomic<uint64_t> m_nextSubmissionId = 1ull;
 			uint64_t m_frameGraphResourceGeneration = 0ull;
 			bool m_bIsInitialized = false;
+			TVector<CameraGraphEntry> m_cameraGraphCache{};
 		};
 	};

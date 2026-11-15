@@ -1394,7 +1394,7 @@ namespace
 	{
 		const auto path = workspace / "Content" / "GIEnvironment.hdr";
 		const auto rendererPath = workspace / "Content" /
-			(App::HasEditor() ? "EditorRenderer.renderer" : "DefaultRenderer.renderer");
+			(App::HasEditor() ? "EditorCamera.renderer" : "DefaultRenderer.renderer");
 		Require(!std::filesystem::exists(rendererPath), "the GI fixture must own its renderer override");
 		auto* registry = App::GetSubmodule<AssetRegistry>();
 		struct RestoreRenderer

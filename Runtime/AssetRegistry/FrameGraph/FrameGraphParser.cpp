@@ -2,10 +2,39 @@
 #include <charconv>
 #include <cmath>
 #include <cstdlib>
+#include <algorithm>
 
 using namespace Sailor;
 
+namespace
+{
+	Settings::GraphicsExtent GetDefaultOutputExtent()
+	{
+		Platform::Window* pWindow = App::GetMainWindowPlatform();
+		if (pWindow)
+		{
+			const glm::ivec2 extent = pWindow->GetRenderArea();
+			return Settings::GraphicsExtent
+			{
+				(static_cast<uint32_t>((std::max)(extent.x, 1))),
+				(static_cast<uint32_t>((std::max)(extent.y, 1)))
+			};
+		}
+		return Settings::GraphicsExtent{ 1, 1 };
+	}
+
+	float GetDefaultResolutionFactor()
+	{
+		return App::GetActiveGraphicsSettings().m_resolutionFactor;
+	}
+}
+
 uint32_t FrameGraphAsset::RenderTarget::ParseUintValue(std::string_view str)
+{
+	return ParseUintValue(str, GetDefaultOutputExtent(), GetDefaultResolutionFactor());
+}
+
+uint32_t FrameGraphAsset::RenderTarget::ParseUintValue(std::string_view str, const Settings::GraphicsExtent& outputExtent, float resolutionFactor)
 {
 	const std::string_view value = Utils::TrimView(str);
 	uint32_t size = 0;
@@ -43,11 +72,10 @@ uint32_t FrameGraphAsset::RenderTarget::ParseUintValue(std::string_view str)
 		}
 	}
 
-	const glm::ivec2 viewportExtent = App::GetMainWindow()->GetRenderArea();
-	const auto renderExtent = Settings::ResolveRenderDimensions(
-		static_cast<uint32_t>((std::max)(viewportExtent.x, 1)),
-		static_cast<uint32_t>((std::max)(viewportExtent.y, 1)),
-		App::GetActiveGraphicsSettings().m_resolutionFactor);
+	const uint32_t viewportWidth = (std::max)(outputExtent.m_width, 1u);
+	const uint32_t viewportHeight = (std::max)(outputExtent.m_height, 1u);
+	const auto renderExtent = Settings::ResolveRenderDimensions(viewportWidth, viewportHeight, resolutionFactor);
+
 	if (variable == "RenderWidth")
 	{
 		size = renderExtent.m_width;
@@ -58,16 +86,86 @@ uint32_t FrameGraphAsset::RenderTarget::ParseUintValue(std::string_view str)
 	}
 	else if (variable == "ViewportWidth")
 	{
-		size = static_cast<uint32_t>((std::max)(viewportExtent.x, 1));
+		size = viewportWidth;
 	}
 	else
 	{
-		size = static_cast<uint32_t>((std::max)(viewportExtent.y, 1));
+		size = viewportHeight;
 	}
 	return (std::max)(1u, static_cast<uint32_t>(size / divisor));
 }
 
+void FrameGraphAsset::RenderTarget::Deserialize(const YAML::Node& inData)
+{
+	Deserialize(inData, GetDefaultOutputExtent(), GetDefaultResolutionFactor());
+}
+
+void FrameGraphAsset::RenderTarget::Deserialize(const YAML::Node& inData, const Settings::GraphicsExtent& outputExtent, float resolutionFactor)
+{
+	m_name = inData["name"].as<std::string>();
+
+	if (inData["width"])
+	{
+		m_width = ParseUintValue(inData["width"].as<std::string_view>(), outputExtent, resolutionFactor);
+	}
+
+	if (inData["height"])
+	{
+		m_height = ParseUintValue(inData["height"].as<std::string_view>(), outputExtent, resolutionFactor);
+	}
+
+	if (inData["format"])
+	{
+		DeserializeEnum<RHI::ETextureFormat>(inData["format"], m_format);
+	}
+
+	if (inData["filtration"])
+	{
+		DeserializeEnum<RHI::ETextureFiltration>(inData["filtration"], m_filtration);
+	}
+
+	if (inData["reduction"])
+	{
+		DeserializeEnum<RHI::ESamplerReductionMode>(inData["reduction"], m_reduction);
+	}
+
+	if (inData["clamping"])
+	{
+		DeserializeEnum<RHI::ETextureClamping>(inData["clamping"], m_clamping);
+	}
+
+	if (inData["bIsSurface"])
+	{
+		m_bIsSurface = inData["bIsSurface"].as<bool>();
+	}
+
+	if (inData["bGenerateMips"])
+	{
+		m_bGenerateMips = inData["bGenerateMips"].as<bool>();
+	}
+
+	if (inData["maxMipLevel"])
+	{
+		const int32_t limit = inData["maxMipLevel"].as<int32_t>();
+		if (limit <= 0)
+		{
+			throw YAML::RepresentationException(inData["maxMipLevel"].Mark(), "Frame graph mip limit must be positive: " + m_name);
+		}
+		m_maxMipLevel = static_cast<uint32_t>(limit);
+	}
+
+	if (inData["bIsCompatibleWithComputeShaders"])
+	{
+		m_bIsCompatibleWithComputeShaders = inData["bIsCompatibleWithComputeShaders"].as<bool>();
+	}
+}
+
 void FrameGraphAsset::Deserialize(const YAML::Node& inData)
+{
+	Deserialize(inData, GetDefaultOutputExtent(), GetDefaultResolutionFactor());
+}
+
+void FrameGraphAsset::Deserialize(const YAML::Node& inData, const Settings::GraphicsExtent& outputExtent, float resolutionFactor)
 {
 	m_samplers.Clear();
 	m_values.Clear();
@@ -114,10 +212,11 @@ void FrameGraphAsset::Deserialize(const YAML::Node& inData)
 
 	if (inData["renderTargets"])
 	{
-		auto targets = inData["renderTargets"].as<TVector<RenderTarget>>();
-
-		for (auto& target : targets)
+		for (const auto& node : inData["renderTargets"])
 		{
+			RenderTarget target;
+			target.Deserialize(node, outputExtent, resolutionFactor);
+
 			if (m_renderTargets.ContainsKey(target.m_name) || m_samplers.ContainsKey(target.m_name))
 			{
 				throw YAML::RepresentationException(inData["renderTargets"].Mark(), "Duplicate frame graph resource: " + target.m_name);

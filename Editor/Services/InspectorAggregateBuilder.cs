@@ -18,6 +18,7 @@ sealed class InspectorAggregateBuilder(WorldService world, AssetsService assets,
     static readonly ConditionalWeakTable<ITransactionScopeFactory, SemaphoreSlim> SceneEditGates = new();
     static readonly Dictionary<string, string[]> AssetPropertyNames = new(StringComparer.Ordinal)
     {
+        [nameof(RenderTextureFile)] = ["RenderWidth", "RenderHeight", "RenderFormat"],
         [nameof(TextureFile)] = ["Filtration", "Format", "Clamping", "ShouldGenerateMips", "ShouldSupportStorageBinding", "ShouldKeepCpuBuffers", "SamplerReduction"],
         [nameof(ModelFile)] = ["ShouldGenerateMaterials", "ShouldBatchByMaterial", "ShouldKeepCpuBuffers", "ShouldGenerateBLAS", "ShouldGenerateLods", "NumGeneratedLods", "LodReductionFactor", "UnitScale", "Materials", "Animations"],
         [nameof(MaterialFile)] = ["RenderQueue", "DepthBias", "SupportMultisampling", "CustomDepthShader", "EnableDepthTest", "EnableZWrite", "CullMode", "BlendMode", "FillMode", "Shader", "Samplers", "UniformsVec4", "UniformsFloat", "ShaderDefines"],
@@ -120,7 +121,12 @@ sealed class InspectorAggregateBuilder(WorldService world, AssetsService assets,
             {
                 continue;
             }
-            fields.Add(BuildField(InspectorPropertyPresentation.FormatPropertyName(components[0].Typename.Name, name), sources, descriptors[0]));
+            Type? supportedType = null;
+            if (components.All(c => c.Typename.Name == "Sailor::CameraComponent"))
+            {
+                supportedType = EngineTypes.ResolveCameraAssetType(components[0].Typename.Name, name);
+            }
+            fields.Add(BuildField(InspectorPropertyPresentation.FormatPropertyName(components[0].Typename.Name, name), sources, descriptors[0], supportedAssetType: supportedType));
         }
 
         var ids = components.Select(component => new InstanceId(component.InstanceId.Value)).ToArray();
@@ -218,6 +224,7 @@ sealed class InspectorAggregateBuilder(WorldService world, AssetsService assets,
                 {
                     "Filtration" => "TextureFiltrationType",
                     "Clamping" => "TextureClampingType",
+                    "RenderFormat" => "RenderFormats",
                     "Format" => "TextureFormatType",
                     "SamplerReduction" => "SamplerReductionType",
                     _ => name + "EnumValues"
@@ -307,13 +314,14 @@ sealed class InspectorAggregateBuilder(WorldService world, AssetsService assets,
         PropertyBase? descriptor = null,
         string[]? choices = null,
         bool readOnly = false,
-        bool xyzOnly = false)
+        bool xyzOnly = false,
+        Type? supportedAssetType = null)
     {
         var sample = sources[0].Read();
         if (sample is not null && sample.GetType().IsGenericType && sample.GetType().GetGenericTypeDefinition() == typeof(Observable<>))
         {
             var valueProperty = sample.GetType().GetProperty("Value")!;
-            return BuildField(name, sources.Select(source => SelectProperty(source, valueProperty)).ToArray(), descriptor, choices, readOnly);
+            return BuildField(name, sources.Select(source => SelectProperty(source, valueProperty)).ToArray(), descriptor, choices, readOnly, xyzOnly, supportedAssetType);
         }
 
         var children = new List<InspectorAggregateField>();
@@ -380,7 +388,8 @@ sealed class InspectorAggregateBuilder(WorldService world, AssetsService assets,
             {
                 var property = sample.GetType().GetProperty(propertyName)!;
                 children.Add(BuildField(propertyName, sources.Select(source => SelectProperty(source, property)).ToArray(),
-                    descriptor: sample is ObjectPtr ? descriptor : null, readOnly: readOnly));
+                    descriptor: sample is ObjectPtr ? descriptor : null, readOnly: readOnly,
+                    supportedAssetType: sample is ObjectPtr ? supportedAssetType : null));
             }
         }
         else if (sample is ObservableObject && !IsScalar(sample.GetType()))
@@ -404,7 +413,7 @@ sealed class InspectorAggregateBuilder(WorldService world, AssetsService assets,
             IsReadOnly = readOnly || (children.Count == 0 && actions.Count == 0 && sample is not null && !IsScalar(sample.GetType())),
             Children = children,
             Actions = actions,
-            SupportedAssetType = descriptor is ObjectPtrProperty pointer ? pointer.GenericType : null,
+            SupportedAssetType = supportedAssetType ?? (descriptor is ObjectPtrProperty pointer ? pointer.GenericType : null),
             ExpectedInstanceType = descriptor is ObjectPtrProperty objectPointer ? objectPointer.GenericTypename : string.Empty,
             ApplyGroup = isSceneSelection && transactions is not null && contextProvider is not null
                 ? (apply, token) => ApplySceneEditGroupAsync(name, apply, token)

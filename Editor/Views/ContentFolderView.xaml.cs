@@ -688,6 +688,31 @@ namespace SailorEditor.Views
             }
         }
 
+        async Task CreateRenderTextureAsset(AssetFolder? parentFolder)
+        {
+            var result = await dispatcher.DispatchAsync(
+                new CreateRenderTextureAssetCommand(parentFolder),
+                contextProvider.GetCurrentContext(
+                    new CommandOrigin(
+                        CommandOriginKind.Panel,
+                        nameof(CreateRenderTextureAsset))));
+            if (!result.Succeeded)
+            {
+                await Application.Current.MainPage.DisplayAlert(
+                    "Create render texture failed",
+                    result.Message ?? "Unable to create the render texture.",
+                    "OK");
+                return;
+            }
+
+            if (result.Value is FileId fileId &&
+                service.Assets.TryGetValue(fileId, out var asset))
+            {
+                MauiProgram.GetService<SelectionService>()
+                    .SelectObject(asset, force: true);
+            }
+        }
+
         async Task CreateAnimationAsset(
             AssetFolder? parentFolder,
             bool createSet)
@@ -1115,7 +1140,6 @@ namespace SailorEditor.Views
             {
                 UpdateRowHighlight(border);
             }
-            RunContentUiAction(() => SelectRow(row, preserveSelected: true, useModifiers: false), "Select Content item");
         }
 
         void ShowContextMenu(object model)
@@ -1204,6 +1228,13 @@ namespace SailorEditor.Views
                     });
                     items.Add(new EditorContextMenuItem
                     {
+                        Text = "Create Render Texture",
+                        Command = CreateContentContextMenuCommand(
+                            () => CreateRenderTextureAsset(folder),
+                            "Create render texture")
+                    });
+                    items.Add(new EditorContextMenuItem
+                    {
                         Text = "Create Animation Controller",
                         Command = CreateContentContextMenuCommand(
                             () => CreateAnimationAsset(folder, false),
@@ -1266,6 +1297,13 @@ namespace SailorEditor.Views
                         Command = CreateContentContextMenuCommand(
                             () => CreateFolder(null),
                             "Create folder")
+                    });
+                    items.Add(new EditorContextMenuItem
+                    {
+                        Text = "Create Render Texture",
+                        Command = CreateContentContextMenuCommand(
+                            () => CreateRenderTextureAsset(null),
+                            "Create render texture")
                     });
                     items.Add(new EditorContextMenuItem
                     {

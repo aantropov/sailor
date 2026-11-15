@@ -1,6 +1,7 @@
 #include "FrameGraphImporter.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "Settings/GraphicsSettings.h"
 #include "FrameGraph/FrameGraphNode.h"
 #include "RHI/Renderer.h"
 #include "RHI/RenderTarget.h"
@@ -39,7 +40,7 @@ void FrameGraphImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpi
 
 const char* FrameGraphImporter::GetRendererAssetPath()
 {
-	return App::HasEditor() ? "EditorRenderer.renderer" : "DefaultRenderer.renderer";
+	return App::HasEditor() ? "EditorCamera.renderer" : "DefaultRenderer.renderer";
 }
 
 bool FrameGraphImporter::GetEnvironmentMap(std::string& outPath, std::string& outDiagnostic)
@@ -88,7 +89,7 @@ bool FrameGraphImporter::GetEnvironmentMap(std::string& outPath, std::string& ou
 	return true;
 }
 
-FrameGraphAssetPtr FrameGraphImporter::LoadFrameGraphAsset(FileId uid)
+FrameGraphAssetPtr FrameGraphImporter::LoadFrameGraphAsset(FileId uid, const Settings::GraphicsExtent* outputExtent, float resolutionFactor)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -109,7 +110,14 @@ FrameGraphAssetPtr FrameGraphImporter::LoadFrameGraphAsset(FileId uid)
 		try
 		{
 			auto frameGraphAsset = FrameGraphAssetPtr::Make();
-			frameGraphAsset->Deserialize(YAML::Load(text));
+			if (outputExtent)
+			{
+				frameGraphAsset->Deserialize(YAML::Load(text), *outputExtent, resolutionFactor);
+			}
+			else
+			{
+				frameGraphAsset->Deserialize(YAML::Load(text));
+			}
 			return frameGraphAsset;
 		}
 		catch (const YAML::Exception& error)
@@ -295,6 +303,9 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const Frame
 	FrameGraphPtr pFrameGraph = FrameGraphPtr::Make(m_allocator, uid);
 	pFrameGraph->m_frameGraph = pRhiFrameGraph;
 
+	// Default graphs receive active settings
+	pRhiFrameGraph->SetCameraQuality(App::GetActiveGraphicsQuality(), App::GetActiveGraphicsSettings());
+
 	return pFrameGraph;
 }
 
@@ -304,6 +315,23 @@ bool FrameGraphImporter::Instantiate(FileId uid, FrameGraphPtr& outFrameGraph)
 	{
 		if (FrameGraphPtr pFrameGraph = BuildFrameGraph(uid, pFrameGraphAsset))
 		{
+			outFrameGraph = pFrameGraph;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool FrameGraphImporter::Instantiate(FileId uid, FrameGraphPtr& outFrameGraph, const Settings::GraphicsExtent& outputExtent, Settings::EGraphicsQuality quality, const Settings::GraphicsQualityProfile& profile)
+{
+	if (auto pFrameGraphAsset = LoadFrameGraphAsset(uid, &outputExtent, profile.m_resolutionFactor))
+	{
+		if (FrameGraphPtr pFrameGraph = BuildFrameGraph(uid, pFrameGraphAsset))
+		{
+			// Override with explicit camera values before publication
+			pFrameGraph->m_frameGraph->m_cameraOutputExtent = outputExtent;
+			pFrameGraph->m_frameGraph->SetCameraQuality(quality, profile);
 			outFrameGraph = pFrameGraph;
 			return true;
 		}

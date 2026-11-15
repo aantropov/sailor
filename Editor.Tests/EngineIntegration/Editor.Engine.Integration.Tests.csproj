@@ -26,6 +26,8 @@
     <Compile Include="HeadlessUi.cs" />
     <Compile Include="AssetRefreshTests.cs" />
     <Compile Include="PrefabAssetCreationTests.cs" />
+    <Compile Include="RenderTextureAssetCreationTests.cs" />
+    <Compile Include="..\..\Editor\Content\RenderTextureDescriptor.cs" Link="Content\RenderTextureDescriptor.cs" />
     <Compile Include="ContentSelectionRestoreTests.cs" />
     <Compile Include="InspectorSelectionTests.cs" />
     <Compile Include="InspectorAggregateBuilderTests.cs" />

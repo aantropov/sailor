@@ -30,6 +30,10 @@
 #include "RHI/VertexDescription.h"
 #include "Raytracing/PathTracer.h"
 #include "Support/TempDirectory.h"
+#include <initializer_list>
+#include <chrono>
+#include <yaml-cpp/yaml.h>
+#include "Support/ScopeExit.h"
 #include <glm/gtc/packing.hpp>
 
 #include <array>
@@ -51,6 +55,7 @@ namespace Sailor::Tests
 	void RunGIProbesCommandTests(const std::filesystem::path& workspace);
 	int RunGIShutdownCommandTests(int argc, const char** argv, const std::filesystem::path& workspace);
 	void RunTextureImporterCommandTests(const std::filesystem::path& workspace);
+	void RunCameraRoutingChecks(const std::filesystem::path& workspace);
 	void RunMaterialImporterCommandTests(const std::filesystem::path& workspace);
 	void RunMaterialPreviewCommandTests(const std::filesystem::path& workspace);
 	void RunAudioCommandTests(const std::filesystem::path& workspace);
@@ -509,20 +514,91 @@ namespace
 		using namespace RHI;
 		auto* renderer = App::GetSubmodule<Renderer>();
 		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
-		Require(Tests::WaitForRendererGraph(), "the real renderer must have a graph for demand testing");
-		auto graph = renderer->GetFrameGraph()->GetRHI();
-		auto originalNodes = std::move(graph->GetGraph());
+		auto* registry = App::GetSubmodule<AssetRegistry>();
+
 		const auto originalMode = App::GetEditorRenderMode();
 		auto observer = TRefPtr<ScenePublicationNode>::Make();
-		auto tracer = TRefPtr<Framegraph::CPUPathTracerNode>::Make();
-		tracer->SetTag("AuthoredTracer"_h);
-		graph->GetGraph() = { observer };
+
+		Framegraph::FrameGraphBuilder::RegisterFrameGraphNode("TestScenePublication"_h,
+			[observer]() -> Framegraph::FrameGraphNodePtr
+			{
+				return observer;
+			});
+
+		Tests::ScopeExit cleanup([&]()
+		{
+			Framegraph::FrameGraphBuilder::RegisterFrameGraphNode("TestScenePublication"_h,
+				[]() -> Framegraph::FrameGraphNodePtr
+				{
+					return TRefPtr<ScenePublicationNode>::Make();
+				});
+			App::SetEditorRenderMode(originalMode);
+		});
+
+		const auto contentDir = App::GetWorkspaceContext().GetContent();
+		const auto rendererPath = contentDir / "TestTracerDemand.renderer";
+
+		std::filesystem::file_time_type lastWrite{};
+		auto bumpTime = [&]()
+		{
+			auto now = std::filesystem::file_time_type::clock::now();
+			if (now <= lastWrite)
+			{
+				now = lastWrite + std::chrono::seconds(1);
+			}
+			lastWrite = now;
+			return now;
+		};
+
+		auto writeConfig = [&](std::initializer_list<bool> enabledStates)
+		{
+			YAML::Node root;
+			root["renderTargets"] = YAML::Node(YAML::NodeType::Sequence);
+			root["frame"] = YAML::Node(YAML::NodeType::Sequence);
+
+			uint32_t idx = 0;
+			for (bool enabled : enabledStates)
+			{
+				YAML::Node tracerNode;
+				tracerNode["name"] = "CPUPathTracerNode";
+				tracerNode["tag"] = "Tracer" + std::to_string(idx);
+				tracerNode["float"] = YAML::Node(YAML::NodeType::Sequence);
+				YAML::Node floatEntry;
+				floatEntry["enabled"] = enabled ? 1.0f : 0.0f;
+				tracerNode["float"].push_back(floatEntry);
+				root["frame"].push_back(tracerNode);
+				++idx;
+			}
+
+			YAML::Node observerNode;
+			observerNode["name"] = "TestScenePublication";
+			root["frame"].push_back(observerNode);
+
+			std::ofstream out(rendererPath);
+			out << root;
+			out.close();
+
+			std::filesystem::last_write_time(rendererPath, bumpTime());
+		};
+
+		writeConfig({});
+		const auto fileId = registry->GetOrLoadFile(Workspace::PathToUtf8(rendererPath));
+
 		auto world = TSharedPtr<World>::Make("Tracer demand", static_cast<uint8_t>(EWorldBehaviourBit::EcsTickable));
-		world->Instantiate("First camera")->AddComponent<CameraComponent>();
-		world->Instantiate("Second camera")->AddComponent<CameraComponent>();
+		Tests::ScopeExit releaseWorld([&]()
+		{
+			renderer->WaitIdle();
+			world->Clear();
+		});
+		TObjectPtr<CameraComponent> firstCam = world->Instantiate("First camera")->AddComponent<CameraComponent>();
+		TObjectPtr<CameraComponent> secondCam = world->Instantiate("Second camera")->AddComponent<CameraComponent>();
+		firstCam->SetRendererConfig(fileId);
+		secondCam->SetRendererConfig(fileId);
+
 		auto object = world->Instantiate("Traced quad");
 		object->AddComponent<MeshRendererComponent>()->GetData().SetModel(model);
 		object->AddComponent<PathTracerProxyComponent>()->SetEnabled(true);
+
 		uint64_t tick = 0;
 		auto push = [&](bool expected)
 		{
@@ -541,34 +617,48 @@ namespace
 			Require(observer->m_scenes[0] == observer->m_scenes[1], "actual camera submissions must share tracer data");
 			return observer->m_scenes[0];
 		};
+
 		App::SetEditorRenderMode(ESceneViewRenderMode::Lit);
 		push(false);
-		graph->GetGraph() = { tracer, observer };
+
+		writeConfig({false});
+		registry->GetOrLoadFile(Workspace::PathToUtf8(rendererPath));
 		push(false);
-		tracer->SetFloat("enabled"_h, 1);
+
+		writeConfig({true});
+		registry->GetOrLoadFile(Workspace::PathToUtf8(rendererPath));
 		const auto original = push(true);
+
 		Require(original->m_instances.Num() == 1 && push(true) == original,
 			"the renderer must prepare the first enabled frame and reuse unchanged data");
+
 		App::SetEditorRenderMode(ESceneViewRenderMode::Cascades);
 		push(false);
+
 		App::SetEditorRenderMode(ESceneViewRenderMode::Lit);
 		Require(push(true) == original, "returning from debug visualization must reuse an unchanged scene");
-		tracer->SetFloat("enabled"_h, 0);
+
+		writeConfig({false});
+		registry->GetOrLoadFile(Workspace::PathToUtf8(rendererPath));
 		object->GetTransformComponent().SetPosition(vec3(7, 0, 0));
 		push(false);
-		tracer->SetFloat("enabled"_h, 1);
+
+		writeConfig({true});
+		registry->GetOrLoadFile(Workspace::PathToUtf8(rendererPath));
 		const auto edited = push(true);
 		Require(edited != original && edited->m_instances[0].m_worldMatrix[3].x == 7 &&
 			original->m_instances[0].m_worldMatrix[3].x == 0,
 			"reenabling the actual graph must capture deferred changes without altering in-flight data");
-		auto disabled = TRefPtr<Framegraph::CPUPathTracerNode>::Make();
-		graph->GetGraph() = { disabled, tracer, observer };
+
+		writeConfig({false, true});
+		registry->GetOrLoadFile(Workspace::PathToUtf8(rendererPath));
 		Require(push(true) == edited, "an inactive first tracer must not hide another enabled consumer");
-		graph->GetGraph() = { disabled, observer };
+
+		writeConfig({false});
+		registry->GetOrLoadFile(Workspace::PathToUtf8(rendererPath));
 		push(false);
-		graph->GetGraph() = std::move(originalNodes);
-		App::SetEditorRenderMode(originalMode);
-		world->Clear();
+
+
 		std::cout << "Tracer renderer demand: absent, disabled, enabled, debug, deferred changes and multiple nodes passed\n";
 	}
 
@@ -1555,6 +1645,98 @@ namespace Sailor::Tests
 		catch (const std::exception& error)
 		{
 			std::cerr << error.what() << '\n';
+		}
+		App::Stop();
+		if (!App::Shutdown())
+		{
+			result = 1;
+		}
+		return result;
+	}
+
+	int RunCameraRoutingGpu(int argc, const char** argv)
+	{
+		Tests::TempDirectory workspace("camera-routing");
+		int result = 1;
+		try
+		{
+			std::string enginePath = Workspace::PathToUtf8(std::filesystem::current_path());
+			for (int i = 1; i + 1 < argc; ++i)
+			{
+				if (std::string_view(argv[i]) == "--workspace")
+				{
+					enginePath = argv[i + 1];
+				}
+			}
+			WriteScene(workspace, enginePath, 2);
+			auto manifest = YAML::LoadFile(Workspace::PathToUtf8(workspace.Path("workspace.sailor")));
+			manifest["logicModuleName"] = "ImGuiWorkspaceFixture";
+			{
+				std::ofstream workspaceStream(workspace.Path("workspace.sailor"));
+				workspaceStream << manifest;
+			}
+			const auto modulePath = workspace.Path("Binaries") / App::GetBuildConfig() / std::filesystem::path(SAILOR_IMGUI_FIXTURE_PATH).filename();
+			std::filesystem::create_directories(modulePath.parent_path());
+			std::filesystem::copy_file(SAILOR_IMGUI_FIXTURE_PATH, modulePath);
+
+			const auto contentDir = workspace.Get() / "Content";
+			std::filesystem::create_directories(contentDir);
+			{
+				std::ofstream rendererFile(contentDir / "DefaultRenderer.renderer", std::ios::binary);
+				rendererFile << "renderTargets: []\nframe: []\n";
+			}
+			{
+				std::ofstream editorCamFile(contentDir / "EditorCamera.renderer", std::ios::binary);
+				editorCamFile << "renderTargets: []\nframe: []\n";
+			}
+
+			const auto root = Workspace::PathToUtf8(workspace.Get());
+			std::vector<const char*> arguments(argv, argv + argc);
+			arguments.insert(arguments.end(), { "--workspace", root.c_str(), "--world", "" });
+			Require(App::Initialize(arguments.data(), static_cast<int32_t>(arguments.size())) == EAppInitializationResult::Ready &&
+				App::IsRendererInitialized() &&
+				!App::HasEditor(), "camera routing fixture must initialize the native renderer without editor");
+			RunCameraRoutingChecks(workspace.Get());
+			result = 0;
+		}
+		catch (const std::exception& error)
+		{
+			std::cerr << error.what() << std::endl;
+		}
+		App::Stop();
+		if (!App::Shutdown())
+		{
+			result = 1;
+		}
+		return result;
+	}
+
+	int RunTextureImporterGpu(int argc, const char** argv)
+	{
+		Tests::TempDirectory workspace("texture-importer");
+		int result = 1;
+		try
+		{
+			std::string enginePath = Workspace::PathToUtf8(std::filesystem::current_path());
+			for (int i = 1; i + 1 < argc; ++i)
+			{
+				if (std::string_view(argv[i]) == "--workspace")
+				{
+					enginePath = argv[i + 1];
+				}
+			}
+			WriteScene(workspace, enginePath, 2);
+			const auto root = Workspace::PathToUtf8(workspace.Get());
+			std::vector<const char*> arguments(argv, argv + argc);
+			arguments.insert(arguments.end(), { "--workspace", root.c_str(), "--editor", "--port", "0", "--world", "" });
+			Require(App::Initialize(arguments.data(), static_cast<int32_t>(arguments.size())) == EAppInitializationResult::Ready &&
+				App::IsRendererInitialized(), "texture importer fixture must initialize the native renderer");
+			RunTextureImporterCommandTests(workspace.Get());
+			result = 0;
+		}
+		catch (const std::exception& error)
+		{
+			std::cerr << error.what() << std::endl;
 		}
 		App::Stop();
 		if (!App::Shutdown())

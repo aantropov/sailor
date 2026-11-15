@@ -1,6 +1,10 @@
 #include "AssetRegistry/Model/GltfImporterUtils.h"
 #include "Platform/FileSystem.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "AssetRegistry/Texture/RenderTextureDescriptor.h"
+#include "RHI/RenderTarget.h"
+#include "RHI/Fence.h"
+#include <yaml-cpp/yaml.h>
 #include "Core/FileRevision.h"
 #include "Containers/Containers.h"
 #include "AssetRegistry/FileId.h"
@@ -698,8 +702,10 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpir
 	auto* registry = App::GetSubmodule<AssetRegistry>();
 	const auto token = registry->BeginAssetProcessing(assetInfo);
 	const auto uid = assetInfo->GetFileId();
+	const bool bIsRenderTexture =
+		Utils::GetFileExtension(assetInfo->GetAssetFilename().c_str()) == "rendertexture";
 	auto& entry = m_textures.At_Lock(uid);
-	entry.m_bCpuBuffersRequested = assetInfo->ShouldKeepCpuBuffers();
+	entry.m_bCpuBuffersRequested = assetInfo->ShouldKeepCpuBuffers() && !bIsRenderTexture;
 	if (token)
 	{
 		entry.m_load = CreateTextureTask(texture, *assetInfo, false, true, entry.m_lastAccess);
@@ -746,6 +752,11 @@ bool TextureImporter::ImportTexture(FileId uid, ByteCode& decodedData, int32_t& 
 bool TextureImporter::ImportTexture(const CpuDecodeRequest& request, ByteCode& decodedData,
 	int32_t& width, int32_t& height, uint32_t& mipLevels)
 {
+	const std::string ext = Utils::GetFileExtension(request.m_filepath.c_str());
+	if (ext == "rendertexture")
+	{
+		return false;
+	}
 	SAILOR_PROFILE_FUNCTION();
 	const bool bDecodeAsFloat = request.m_bDecodeAsFloat;
 
@@ -868,6 +879,10 @@ bool TextureImporter::DecodeTextureCpu(FileId uid, ByteCode& decodedData,
 Tasks::TaskPtr<TextureImporter::CpuTextureSnapshot> TextureImporter::LoadCpuTexture(FileId uid)
 {
 	auto* info = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid);
+	if (info && Utils::GetFileExtension(info->GetAssetFilename().c_str()) == "rendertexture")
+	{
+		return {};
+	}
 	CpuDecodeRequest source;
 	if (!info || !CaptureCpuDecodeRequest(*info, source)) return {};
 	const auto clamping = info->GetClamping();
@@ -921,6 +936,11 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::CreateTextureTask(
 	TexturePtr texture, const TextureAssetInfo& assetInfo, bool bCpuOnly, bool bHotReload,
 	const Tasks::ITaskPtr& previous)
 {
+	const std::string ext = Utils::GetFileExtension(assetInfo.GetAssetFilename().c_str());
+	if (ext == "rendertexture")
+	{
+		return CreateRenderTextureTask(texture, assetInfo, bCpuOnly, bHotReload, previous);
+	}
 	CpuDecodeRequest source;
 	if (!CaptureCpuDecodeRequest(assetInfo, source))
 	{
@@ -1044,11 +1064,13 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& 
 		outTexture = nullptr;
 		return {};
 	}
+	const bool bIsRenderTexture =
+		Utils::GetFileExtension(assetInfo->GetAssetFilename().c_str()) == "rendertexture";
 
 	auto& entry = m_textures.At_Lock(uid);
 	auto& promise = entry.m_load;
 	auto& texture = entry.m_texture;
-	const bool bKeepCpu = assetInfo->ShouldKeepCpuBuffers();
+	const bool bKeepCpu = assetInfo->ShouldKeepCpuBuffers() && !bIsRenderTexture;
 	const bool bPending = promise && !promise->IsFinished();
 	bool bCpuOnly = false;
 	if (bPending)
@@ -1086,6 +1108,163 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& 
 	m_textures.Unlock(uid);
 	task->Run();
 	return task;
+}
+
+Tasks::TaskPtr<TexturePtr> TextureImporter::CreateRenderTextureTask(
+	TexturePtr texture, const TextureAssetInfo& assetInfo, bool bCpuOnly, bool bHotReload,
+	const Tasks::ITaskPtr& previous)
+{
+	if (bCpuOnly)
+	{
+		auto reject = Tasks::CreateTask<TexturePtr>("Reject CPU-only rendertexture"_h,
+			[]() { return TexturePtr{}; }, EThreadType::RHI);
+		if (previous)
+		{
+			reject->Join(previous);
+		}
+		return reject->ToTaskWithResult();
+	}
+
+	CpuDecodeRequest source;
+	if (!CaptureCpuDecodeRequest(assetInfo, source))
+	{
+		source = DescribeCpuTexture(assetInfo);
+	}
+
+	const auto filtration = assetInfo.GetFiltration();
+	const auto clamping = assetInfo.GetClamping();
+	const auto reduction = assetInfo.GetSamplerReduction();
+
+	struct Data
+	{
+		RenderTextureDescriptor m_descriptor;
+		bool m_bParsed = false;
+	};
+
+	auto parse = Tasks::CreateTask<TSharedPtr<Data>>("Parse rendertexture"_h,
+		[source]()
+		{
+			auto data = TSharedPtr<Data>::Make();
+			if (!HasCurrentTextureSources(source))
+			{
+				return data;
+			}
+			try
+			{
+				auto stream = FileSystem::OpenRead(Workspace::PathFromUtf8(source.m_filepath));
+				if (!stream)
+				{
+					SAILOR_LOG_ERROR("Cannot open rendertexture '%s'.", source.m_filepath.c_str());
+					return data;
+				}
+				auto node = YAML::Load(*stream);
+				data->m_descriptor.Deserialize(node);
+				if (!HasCurrentTextureSources(source))
+				{
+					return data;
+				}
+				data->m_bParsed = true;
+			}
+			catch (const YAML::Exception& e)
+			{
+				SAILOR_LOG_ERROR("Cannot parse rendertexture '%s': %s",
+					source.m_filepath.c_str(), e.what());
+			}
+			return data;
+		}, EThreadType::Worker);
+
+	auto ready = parse->Then<TSharedPtr<Data>>(
+		[source](TSharedPtr<Data> data)
+		{
+			if (!data->m_bParsed || !HasCurrentTextureSources(source))
+			{
+				data.Clear();
+			}
+			return data;
+		}, "Check rendertexture sources"_h, EThreadType::Worker);
+
+	if (previous)
+	{
+		ready->Join(previous);
+	}
+
+	auto publish = ready->Then<TexturePtr>(
+		[this, texture, source, filtration, clamping, reduction, bHotReload](TSharedPtr<Data> data) mutable
+		{
+			if (!data)
+			{
+				SAILOR_LOG_ERROR("Cannot load rendertexture '%s': parse failed or the source changed.",
+					source.m_filepath.c_str());
+				return TexturePtr{};
+			}
+
+			auto& driver = RHI::Renderer::GetDriver();
+			auto cmd = driver->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
+			if (!cmd)
+			{
+				return TexturePtr{};
+			}
+			RHI::Renderer::GetDriverCommands()->BeginCommandList(cmd, true);
+			auto rhi = driver->CreateRenderTarget(
+				cmd,
+				glm::ivec2(static_cast<int>(data->m_descriptor.m_width),
+					static_cast<int>(data->m_descriptor.m_height)),
+				1,
+				data->m_descriptor.m_format,
+				filtration,
+				clamping,
+				DefaultTextureUsage | RHI::ETextureUsageBit::ColorAttachment_Bit,
+				reduction);
+			if (!rhi)
+			{
+				return TexturePtr{};
+			}
+			RHI::Renderer::GetDriverCommands()->ImageMemoryBarrier(cmd, rhi, RHI::EImageLayout::ShaderReadOnlyOptimal);
+			rhi->ForceSetDefaultLayout(RHI::EImageLayout::ShaderReadOnlyOptimal);
+			RHI::Renderer::GetDriverCommands()->EndCommandList(cmd);
+			auto fence = RHI::RHIFencePtr::Make();
+			driver->TrackDelayedInitialization(rhi.GetRawPtr(), fence);
+			if (!driver->SubmitCommandList(cmd, fence))
+			{
+				return TexturePtr{};
+			}
+			driver->SetDebugName(rhi, source.m_filepath);
+
+			size_t index = 0;
+			m_textureSamplersIndices.TryGet(source.m_fileId, index);
+			if (IsUserTextureSamplerIndexValid(index))
+			{
+				if (!UpdateTextureSamplerBinding(rhi, static_cast<uint32_t>(index)))
+				{
+					return TexturePtr{};
+				}
+			}
+			else
+			{
+				if (!RegisterTextureSamplerBinding(rhi, index))
+				{
+					SAILOR_LOG_ERROR("Cannot register rendertexture sampler '%s'.",
+						source.m_filepath.c_str());
+					return TexturePtr{};
+				}
+				m_textureSamplersIndices.At_Lock(source.m_fileId) = index;
+				m_textureSamplersIndices.Unlock(source.m_fileId);
+			}
+
+			texture->m_rhiTexture = std::move(rhi);
+			texture->m_width = static_cast<int32_t>(data->m_descriptor.m_width);
+			texture->m_height = static_cast<int32_t>(data->m_descriptor.m_height);
+			texture->m_mipLevels = 1;
+			texture->m_cpuSource = source;
+			texture->SetDecodedData(ByteCode{});
+			if (bHotReload)
+			{
+				texture->TraceHotReload(nullptr);
+			}
+			return texture;
+		}, "Publish rendertexture"_h, EThreadType::RHI);
+
+	return publish->ToTaskWithResult();
 }
 
 size_t TextureImporter::GetTextureIndex(FileId uid)

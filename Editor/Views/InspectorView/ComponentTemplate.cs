@@ -390,15 +390,20 @@ public partial class ComponentTemplate : DataTemplate
         Component component,
         string propertyName)
     {
-        if (component.Typename.Name != "Sailor::LandscapeComponent")
+        var cameraType = EngineTypes.ResolveCameraAssetType(component.Typename.Name, propertyName);
+        if (cameraType is not null)
         {
-            return null;
+            return cameraType;
         }
-        return propertyName switch
+        if (component.Typename.Name == "Sailor::LandscapeComponent")
         {
-            "vegetation" => typeof(LandscapeVegetationFile),
-            _ => null
-        };
+            return propertyName switch
+            {
+                "vegetation" => typeof(LandscapeVegetationFile),
+                _ => null
+            };
+        }
+        return null;
     }
 
     static Command CreateContextMenuCommand(

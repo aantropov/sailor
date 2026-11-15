@@ -128,7 +128,7 @@ namespace SailorEditor.ViewModels
         public Task<bool> LoadDependentResources(CancellationToken token)
             => base.LoadDependentResources().WaitAsync(token);
     }
-    public sealed class TextureFile : AssetFile
+    public class TextureFile : AssetFile
     {
         public string Filtration { get; set; } = "Linear";
         public string Format { get; set; } = "R8G8B8A8_SRGB";
@@ -137,6 +137,20 @@ namespace SailorEditor.ViewModels
         public bool ShouldSupportStorageBinding { get; set; }
         public bool ShouldKeepCpuBuffers { get; set; }
         public string SamplerReduction { get; set; } = "Average";
+    }
+
+    public sealed class RenderTextureFile : TextureFile
+    {
+        public int RenderWidth { get; set; } = 512;
+        public int RenderHeight { get; set; } = 512;
+        public string RenderFormat { get; set; } = "R8G8B8A8_UNORM";
+
+        public IReadOnlyList<string> RenderFormats { get; } = new List<string>
+        {
+            "R8G8B8A8_UNORM",
+            "R8G8B8A8_SRGB",
+            "R16G16B16A16_SFLOAT"
+        };
     }
     public sealed class MaterialFile : AssetFile;
     public sealed class ShaderFile : AssetFile;

@@ -21,6 +21,83 @@ public sealed class ProjectContentFileOperationsTests : IDisposable
         Directory.CreateDirectory(engineContentRoot);
     }
 
+    [Theory]
+    [InlineData(".SAILOR-ASSET-WRITE-ABC123.PENDING", true)]
+    [InlineData(".SAILOR-ASSET-WRITE-ABC123.PENDING/Inner/File.PREFAB", true)]
+    [InlineData(".sailor-asset-write-abc123.pending/", true)]
+    [InlineData(".sailor-assets", false)]
+    [InlineData(".sailor-assets/file.prefab", false)]
+    [InlineData(".sailor-asset-write-abc123.pendingX", false)]
+    [InlineData("X.sailor-asset-write-abc123.pending", false)]
+    [InlineData("my.sailor-asset-write-abc123.pending", false)]
+    [InlineData("Workspace/Content/.sailor-abc123.pending/SomeAsset.yaml", true)]
+    [InlineData("Workspace/Content/.sailor-abc123.pending", true)]
+    [InlineData("Workspace/Content/.sailor-DEADBEEF.pending/Sub/Deep/Asset.yaml", true)]
+    [InlineData("Workspace/Content/SomeAsset.yaml", false)]
+    [InlineData("Workspace/Content/NormalDir/SomeAsset.yaml", false)]
+    [InlineData("Workspace/Content/.sailor-notpending/Asset.yaml", false)]
+    [InlineData("Workspace/Content/regular.pending/Asset.yaml", false)]
+    public void IsInsideTransactionDirectory_ReturnsExpected(
+        string? relativePath,
+        bool expected)
+    {
+        string? path;
+
+        if (string.IsNullOrEmpty(relativePath))
+        {
+            path = relativePath;
+        }
+        else
+        {
+            path = Path.Combine(
+                testRoot,
+                relativePath.Replace('/', Path.DirectorySeparatorChar));
+        }
+
+        Assert.Equal(
+            expected,
+            ProjectContentInternalPathPolicy.IsInsideTransactionDirectory(path));
+    }
+
+    [Fact]
+    public void IsInsideTransactionDirectory_Null_ReturnsFalse()
+    {
+        Assert.False(
+            ProjectContentInternalPathPolicy.IsInsideTransactionDirectory(null));
+    }
+
+    [Fact]
+    public void IsInsideTransactionDirectory_Empty_ReturnsFalse()
+    {
+        Assert.False(
+            ProjectContentInternalPathPolicy.IsInsideTransactionDirectory(string.Empty));
+    }
+
+    [Fact]
+    public void IsInsideTransactionDirectory_OrdinaryRoot_ReturnsFalse()
+    {
+        var root = Path.GetPathRoot(testRoot);
+
+        Assert.False(
+            ProjectContentInternalPathPolicy.IsInsideTransactionDirectory(root));
+    }
+
+    [Fact]
+    public void IsInsideTransactionDirectory_DeletedDirectory_StillRecognized()
+    {
+        var transactionDir = Path.Combine(
+            contentRoot,
+            ".sailor-deleted-test.pending");
+        var filePath = Path.Combine(transactionDir, "Asset.yaml");
+
+        Directory.CreateDirectory(transactionDir);
+        File.WriteAllText(filePath, "test");
+        Directory.Delete(transactionDir, true);
+
+        Assert.True(
+            ProjectContentInternalPathPolicy.IsInsideTransactionDirectory(filePath));
+    }
+
     [Fact]
     public void AssetPairWrite_RollbackRemovesANewlyPublishedPair()
     {

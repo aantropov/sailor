@@ -151,10 +151,11 @@ public partial class ComponentTemplate
             {
                 if (value is ObjectPtr ptr)
                 {
+                    var supportedType = ResolveFileIdSupportedType(component, propertyName) ?? objectPtr.GenericType;
                     if (!ptr.FileId.IsEmpty())
                     {
                         propertyEditor = Templates.FileIdEditor(ptr,
-                            nameof(ObjectPtr.FileId), (ObjectPtr p) => p.FileId, (p, value) => p.FileId = value, objectPtr.GenericType);
+                            nameof(ObjectPtr.FileId), (ObjectPtr p) => p.FileId, (p, value) => p.FileId = value, supportedType);
                     }
                     else if (!ptr.InstanceId.IsEmpty() || objectPtr.CouldBeInstantiated)
                     {
@@ -164,7 +165,7 @@ public partial class ComponentTemplate
                     else
                     {
                         propertyEditor = Templates.FileIdEditor(ptr,
-                           nameof(ObjectPtr.FileId), (ObjectPtr p) => p.FileId, (p, value) => p.FileId = value, objectPtr.GenericType);
+                            nameof(ObjectPtr.FileId), (ObjectPtr p) => p.FileId, (p, value) => p.FileId = value, supportedType);
                     }
                 }
             }

@@ -269,7 +269,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-	const auto& graphicsProfile = App::GetActiveGraphicsSettings();
+	const auto& graphicsProfile = frameGraph->GetCameraQualityProfile();
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdPostProcess);
 
 	if (!m_pSkyShader)
@@ -452,16 +452,11 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 #if defined(__APPLE__)
 	cloudsPlatformMultiplier = 0.5f;
 #endif
-	const glm::ivec2 viewportExtent = App::GetMainWindow()->GetRenderArea();
-	const Settings::GraphicsExtent renderExtent =
-		Settings::ResolveRenderDimensions(
-			static_cast<uint32_t>((std::max)(viewportExtent.x, 1)),
-			static_cast<uint32_t>((std::max)(viewportExtent.y, 1)),
-			graphicsProfile.m_resolutionFactor);
+	const glm::ivec2 sceneExtent = frameGraph->GetSceneRenderExtent();
 	const Settings::GraphicsExtent cloudsExtent =
 		Settings::ResolveCloudsExtent(
-			renderExtent.m_width,
-			renderExtent.m_height,
+			static_cast<uint32_t>((std::max)(sceneExtent.x, 1)),
+			static_cast<uint32_t>((std::max)(sceneExtent.y, 1)),
 			graphicsProfile,
 			cloudsPlatformMultiplier);
 	const glm::ivec2 desiredCloudsExtent(

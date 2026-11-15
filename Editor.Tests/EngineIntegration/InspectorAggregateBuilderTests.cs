@@ -307,6 +307,128 @@ public sealed class InspectorAggregateBuilderTests
     }
 
     [Fact]
+    public void CameraComponent_PointerFields_ResolveRenderTexturePolicy()
+    {
+        var world = new WorldService();
+        var owner = AddGameObject(world, "cam-owner");
+        var type = new ComponentType
+        {
+            Name = "Sailor::CameraComponent",
+            Properties = new()
+            {
+                ["rendererConfig"] = new Property<FileId>(),
+                ["renderTarget"] = new ObjectPtrProperty
+                {
+                    GenericType = typeof(TextureFile),
+                    GenericTypename = "Sailor::Texture"
+                }
+            }
+        };
+        var first = AddComponent(world, owner, "cam-a", type,
+            ("rendererConfig", new Observable<FileId>(new FileId())),
+            ("renderTarget", new ObjectPtr()));
+        var second = AddComponent(world, owner, "cam-b", type,
+            ("rendererConfig", new Observable<FileId>(new FileId())),
+            ("renderTarget", new ObjectPtr()));
+
+        var model = new InspectorAggregateBuilder(world, null!, new EngineTypes()).Build([first, second]);
+        var section = Assert.Single(model.Sections);
+
+        var rendererConfig = section.Fields.Single(f => f.SupportedAssetType == typeof(FrameGraphFile));
+        Assert.Equal(typeof(FrameGraphFile), rendererConfig.SupportedAssetType);
+
+        var renderTarget = section.Fields.Single(f => f.SupportedAssetType == typeof(RenderTextureFile));
+        Assert.Equal(typeof(RenderTextureFile), renderTarget.SupportedAssetType);
+        var fileIdChild = renderTarget.Children.Single(f => f.Name == "FileId");
+        Assert.Equal(typeof(RenderTextureFile), fileIdChild.SupportedAssetType);
+    }
+
+    [Fact]
+    public async Task RenderTextureAssetEdits_ChangeTypedProperties_AndKeepMetadataIndependent()
+    {
+        var serializer = new WorkspaceManifestSerializer();
+        var lifecycle = new WorkspaceLifecycleService(serializer, new WorkspaceTemplateService(serializer),
+            new RecentWorkspaceStore(Path.Combine(Path.GetTempPath(), $"sailor-rt-insp-{Guid.NewGuid():N}.yaml")));
+        await using var engine = new EngineService(lifecycle);
+        MauiProgram.SetService(engine);
+        using var assets = new AssetsService();
+        try
+        {
+            var first = new RenderTextureFile
+            {
+                FileId = new("rt-first"), IsMetadataLoaded = true,
+                RenderWidth = 256, RenderHeight = 256, RenderFormat = "R8G8B8A8_UNORM"
+            };
+            var second = new RenderTextureFile
+            {
+                FileId = new("rt-second"), IsMetadataLoaded = true,
+                RenderWidth = 1024, RenderHeight = 1024, RenderFormat = "R16G16B16A16_SFLOAT"
+            };
+            var model = new InspectorAggregateBuilder(new WorldService(), assets, new EngineTypes())
+                .Build([first, second]);
+
+            var fields = Assert.Single(model.Sections).Fields;
+            Assert.Equal(3, fields.Count);
+            var widthField = fields.Single(f => f.Name == "RenderWidth");
+            var heightField = fields.Single(f => f.Name == "RenderHeight");
+            var formatField = fields.Single(f => f.Name == "RenderFormat");
+
+            Assert.Equal("*", widthField.DisplayValue);
+            Assert.Equal("*", heightField.DisplayValue);
+            Assert.Equal("*", formatField.DisplayValue);
+            Assert.Equal(new[] { "R8G8B8A8_UNORM", "R8G8B8A8_SRGB", "R16G16B16A16_SFLOAT" },
+                formatField.Choices);
+
+            widthField.SetInputText("512");
+            formatField.SetChoice("R8G8B8A8_SRGB");
+
+            Assert.True(await model.CommitInspectorChangesAsync());
+
+            Assert.Equal(512, first.RenderWidth);
+            Assert.Equal(512, second.RenderWidth);
+            Assert.Equal("R8G8B8A8_SRGB", first.RenderFormat);
+            Assert.Equal("R8G8B8A8_SRGB", second.RenderFormat);
+            Assert.True(first.IsDirty);
+            Assert.True(second.IsDirty);
+            Assert.True(model.IsDirty);
+
+            Assert.False(first.AssetProperties.ContainsKey("RenderWidth"));
+            Assert.False(second.AssetProperties.ContainsKey("RenderWidth"));
+        }
+        finally
+        {
+            MauiProgram.ClearServices();
+        }
+    }
+
+    [Fact]
+    public void NonCameraPointer_RemainsBaseTextureFile()
+    {
+        var world = new WorldService();
+        var owner = AddGameObject(world, "non-cam-owner");
+        var type = new ComponentType
+        {
+            Name = "Test::Pointer",
+            Properties = new()
+            {
+                ["target"] = new ObjectPtrProperty
+                {
+                    GenericType = typeof(TextureFile),
+                    GenericTypename = "Test::Texture"
+                }
+            }
+        };
+        var first = AddComponent(world, owner, "nc-a", type, ("target", new ObjectPtr()));
+        var second = AddComponent(world, owner, "nc-b", type, ("target", new ObjectPtr()));
+
+        var model = new InspectorAggregateBuilder(world, null!, new EngineTypes()).Build([first, second]);
+        var target = Assert.Single(Assert.Single(model.Sections).Fields);
+
+        Assert.Equal(typeof(TextureFile), target.SupportedAssetType);
+        Assert.Equal(typeof(TextureFile), target.Children.Single(f => f.Name == "FileId").SupportedAssetType);
+    }
+
+    [Fact]
     public void PointerLeafEditors_PreserveReflectedAssetAndInstanceConstraints()
     {
         var world = new WorldService();

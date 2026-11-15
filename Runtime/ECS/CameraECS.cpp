@@ -65,6 +65,11 @@ void CameraECS::CopyCameraData(RHI::RHISceneViewPtr& outCameras)
 
 bool CameraECS::TryGetActiveCamera(Math::Transform& outCameraTransform, CameraData& outCameraData)
 {
+	// Issue #184: an active editor-role camera (independent viewport camera
+	// created by engine world infrastructure) wins over authored cameras so
+	// viewport focus/picking/navigation follow the editor view. Without one,
+	// behavior stays the historical first-active-camera selection.
+	CameraData* pBest = nullptr;
 	for (auto& data : m_components)
 	{
 		if (!data.m_bIsActive)
@@ -78,10 +83,25 @@ bool CameraECS::TryGetActiveCamera(Math::Transform& outCameraTransform, CameraDa
 			continue;
 		}
 
-		outCameraTransform = Math::Transform::FromMatrix(pOwner->GetTransformComponent().GetCachedWorldMatrix());
-		outCameraData = data;
-		return true;
+		if (data.GetEditorRole())
+		{
+			pBest = &data;
+			break;
+		}
+
+		if (!pBest)
+		{
+			pBest = &data;
+		}
 	}
 
-	return false;
+	if (!pBest)
+	{
+		return false;
+	}
+
+	GameObjectPtr pOwner = pBest->m_owner.StaticCast<GameObject>();
+	outCameraTransform = Math::Transform::FromMatrix(pOwner->GetTransformComponent().GetCachedWorldMatrix());
+	outCameraData = *pBest;
+	return true;
 }

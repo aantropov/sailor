@@ -1,6 +1,6 @@
 #include "Engine/World.h"
 #include "Engine/GameObject.h"
-#include "Components/EditorComponent.h"
+#include "Components/CameraComponent.h"
 #include "Engine/EngineLoop.h"
 #include "Containers/Set.h"
 #include "Core/LogMacros.h"
@@ -310,8 +310,18 @@ GameObjectPtr World::GetPrimaryEditorSelection() const
 	for (const auto& id : m_editorSelection)
 	{
 		auto object = GetObjectByInstanceId(id).DynamicCast<GameObject>();
-		if (object && !object->GetComponent<EditorComponent>() &&
-			(!primary || object->m_worldOrder < primary->m_worldOrder))
+		if (!object)
+		{
+			continue;
+		}
+
+		auto camera = object->GetComponent<CameraComponent>();
+		if (camera && camera->GetEditorRole())
+		{
+			continue;
+		}
+
+		if (!primary || object->m_worldOrder < primary->m_worldOrder)
 		{
 			primary = std::move(object);
 		}

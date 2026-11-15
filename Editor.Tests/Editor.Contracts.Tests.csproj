@@ -241,4 +241,8 @@
     <Compile Include="..\Editor\Workspace\GameBuildEnvironment.cs" Link="Workspace\GameBuildEnvironment.cs" />
     <Compile Include="..\Editor\Workspace\GameBuildSettings.cs" Link="Workspace\GameBuildSettings.cs" />
   </ItemGroup>
+<ItemGroup>
+    <Compile Include="RenderTextureDescriptorTests.cs" />
+    <Compile Include="../Editor/Content/RenderTextureDescriptor.cs" Link="RenderTextureDescriptor.cs" />
+</ItemGroup>
 </Project>

@@ -377,6 +377,115 @@ namespace SailorEditor.Services
             return Path.Combine(CurrentProjectRootPath, Path.Combine(parts.ToArray()));
         }
 
+        public async Task<RenderTextureFile?> CreateRenderTextureAssetAsync(
+            AssetFolder? targetFolder,
+            CancellationToken cancellationToken = default)
+        {
+            if (!TryGetWritableDestinationDirectory(
+                    targetFolder,
+                    out var destinationDirectory))
+            {
+                return null;
+            }
+
+            var filename = GetUniqueAssetName(
+                destinationDirectory,
+                "New Render Texture",
+                ".rendertexture");
+            var sourcePath = Path.Combine(destinationDirectory, filename);
+            var fileId = new FileId(
+                Guid.NewGuid().ToString().ToUpperInvariant());
+            var sourceContents = new SailorEditor.Content.RenderTextureDescriptor()
+                .Serialize();
+            var metadataContents = SerializeRenderTextureAssetInfo(
+                fileId,
+                filename);
+
+            await _assetSaveLock.WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+            try
+            {
+                ProjectContentAssetWriteTransaction transaction;
+                (FileSystemWatcher Watcher, bool Enabled)[] watcherStates;
+                lock (_watcherLock)
+                {
+                    watcherStates = _contentWatchers
+                        .Select(watcher =>
+                            (watcher, watcher.EnableRaisingEvents))
+                        .ToArray();
+                    foreach (var watcherState in watcherStates)
+                    {
+                        watcherState.Watcher.EnableRaisingEvents = false;
+                    }
+                }
+
+                try
+                {
+                    transaction = _fileOperations.BeginWriteAssetPair(
+                        CurrentProjectRootPath,
+                        sourcePath,
+                        sourceContents,
+                        metadataContents,
+                        fileId.Value,
+                        overwrite: false);
+                }
+                finally
+                {
+                    lock (_watcherLock)
+                    {
+                        foreach (var watcherState in watcherStates)
+                        {
+                            if (_contentWatchers.Contains(watcherState.Watcher))
+                            {
+                                watcherState.Watcher.EnableRaisingEvents =
+                                    watcherState.Enabled;
+                            }
+                        }
+                    }
+                }
+
+                if (!transaction.Result.Succeeded)
+                {
+                    return null;
+                }
+
+                AssetFile? created;
+                try
+                {
+                    created = await MainThread.InvokeOnMainThreadAsync(() =>
+                        PublishCreatedAsset(
+                            sourcePath,
+                            targetFolder,
+                            fileId));
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+
+                if (created is not RenderTextureFile renderTexture)
+                {
+                    transaction.Rollback();
+                    return null;
+                }
+
+                var commit = transaction.Commit();
+                if (!commit.Succeeded)
+                {
+                    await MainThread.InvokeOnMainThreadAsync(Refresh);
+                    return null;
+                }
+
+                QueueCreatedAssetReload();
+                return renderTexture;
+            }
+            finally
+            {
+                _assetSaveLock.Release();
+            }
+        }
+
         public async Task<AssetFile?> CreateAnimationAssetAsync(
             AssetFolder? targetFolder,
             bool createSet,
@@ -482,7 +591,7 @@ namespace SailorEditor.Services
                     return null;
                 }
 
-                QueueAnimationAssetReload();
+                QueueCreatedAssetReload();
                 return created;
             }
             finally
@@ -668,10 +777,10 @@ namespace SailorEditor.Services
             return asset;
         }
 
-        void QueueAnimationAssetReload()
-            => _ = ReloadCreatedAnimationAssetAsync();
+        void QueueCreatedAssetReload()
+            => _ = ReloadCreatedAssetAsync();
 
-        async Task ReloadCreatedAnimationAssetAsync()
+        async Task ReloadCreatedAssetAsync()
         {
             try
             {
@@ -679,13 +788,13 @@ namespace SailorEditor.Services
                         .ConfigureAwait(false))
                 {
                     Console.WriteLine(
-                        "[AssetsService] Engine did not register a newly created animation asset.");
+                        "[AssetsService] Engine did not register a newly created asset.");
                 }
             }
             catch (Exception exception)
             {
                 Console.WriteLine(
-                    $"[AssetsService] Failed to register a newly created animation asset: {exception.Message}");
+                    $"[AssetsService] Failed to register a newly created asset: {exception.Message}");
             }
         }
 
@@ -745,6 +854,24 @@ namespace SailorEditor.Services
             {
                 { "version", "1" },
                 { "clips", new YamlSequenceNode() }
+            });
+
+        private static string SerializeRenderTextureAssetInfo(
+            FileId fileId,
+            string filename) => SaveYaml(
+            new YamlMappingNode
+            {
+                { "assetInfoType", "Sailor::TextureAssetInfo" },
+                { "fileId", fileId.Value },
+                { "filename", filename },
+                { "filtration", "Linear" },
+                { "clamping", "Clamp" },
+                { "reduction", "Average" },
+                { "format", "R8G8B8A8_UNORM" },
+                { "bShouldGenerateMips", "false" },
+                { "bShouldSupportStorageBinding", "false" },
+                { "bShouldKeepCpuBuffers", "false" },
+                { "glbTextureIndex", "-1" }
             });
 
         static string SerializeAnimationAssetInfo(
@@ -1773,6 +1900,11 @@ namespace SailorEditor.Services
                 return;
             }
 
+            if (ProjectContentInternalPathPolicy.IsInsideTransactionDirectory(changedPath))
+            {
+                return;
+            }
+
             var cancellation = new CancellationTokenSource();
             var previous = Interlocked.Exchange(ref _pendingFilesystemReload, cancellation);
             previous?.Cancel();
@@ -2272,6 +2404,10 @@ namespace SailorEditor.Services
 
             AssetFile assetFile = assetInfoType switch
             {
+                "Sailor::TextureAssetInfo" when string.Equals(
+                    extension,
+                    ".rendertexture",
+                    StringComparison.OrdinalIgnoreCase) => new RenderTextureFile(),
                 "Sailor::TextureAssetInfo" => new TextureFile(),
                 "Sailor::ModelAssetInfo" => new ModelFile(),
                 "Sailor::AnimationAssetInfo" => new AnimationFile(),
@@ -2327,6 +2463,7 @@ namespace SailorEditor.Services
 
         private static AssetFile CreateAssetFileByExtension(string extension) => extension switch
         {
+            ".rendertexture" => new RenderTextureFile(),
             ".png" or ".jpg" or ".tga" or ".bmp" or ".dds" or ".hdr" => new TextureFile(),
             ".obj" or ".gltf" or ".glb" => new ModelFile(),
             ".anim" => new AnimationFile(),

@@ -370,7 +370,7 @@ bool EditorViewport::ResolveGameObjectBounds(
 {
 	outWorldBounds = {};
 	outUsesSelectableGeometry = false;
-	if (!gameObject || gameObject->GetComponent<EditorComponent>())
+	if (!gameObject || (gameObject->GetComponent<CameraComponent>() && gameObject->GetComponent<CameraComponent>()->GetEditorRole()))
 	{
 		return false;
 	}
@@ -448,7 +448,7 @@ namespace
 
 	bool ExtendHierarchyGeometryBounds(const TObjectPtr<GameObject>& object, Math::AABB& bounds, bool& hasBounds)
 	{
-		if (!object || object->GetComponent<EditorComponent>())
+		if (!object || (object->GetComponent<CameraComponent>() && object->GetComponent<CameraComponent>()->GetEditorRole()))
 		{
 			return false;
 		}
@@ -956,13 +956,13 @@ bool EditorViewportController::FocusCameraOnObject(
 	TObjectPtr<CameraComponent> cameraComponent{};
 	for (const auto& gameObject : std::as_const(world).GetGameObjects())
 	{
-		if (!gameObject || !gameObject->GetComponent<EditorComponent>())
+		if (!gameObject)
 		{
 			continue;
 		}
 
 		auto candidateCamera = gameObject->GetComponent<CameraComponent>();
-		if (candidateCamera)
+		if (candidateCamera && candidateCamera->GetEditorRole())
 		{
 			cameraObject = gameObject;
 			cameraComponent = candidateCamera;

@@ -1,3 +1,4 @@
+#include "AssetRegistry/AssetRegistry.h"
 #include "Types.h"
 #include "RHI/RenderTarget.h"
 #include "Renderer.h"
@@ -37,6 +38,19 @@ using namespace Sailor::RHI;
 
 struct Renderer::FrameSubmission
 {
+	struct CameraPass
+	{
+		uint32_t m_cameraIndex = 0u;
+		RHIFrameGraphPtr m_frameGraph;
+		RHIRenderTargetPtr m_output;
+		glm::ivec2 m_renderExtent = glm::ivec2(1);
+		Settings::EGraphicsQuality m_quality = Settings::EGraphicsQuality::Low;
+		Settings::GraphicsQualityProfile m_qualityProfile;
+		SkyParameters m_skyParameters;
+		bool m_bWantsPresent = false;
+		bool m_bUsesNativeOutput = false;
+	};
+
 	explicit FrameSubmission(uint64_t submissionId) :
 		m_submissionId(submissionId),
 		m_materialRevision(RHIMaterial::BeginSubmissionVersionCapture(submissionId))
@@ -63,6 +77,8 @@ struct Renderer::FrameSubmission
 	TSharedPtr<ReflectionProbeRenderState> m_reflectionProbes;
 	TVector<TRefPtr<LocalReflectionCaptureJob>> m_probeCaptures;
 	FrameSubmissionResult m_result;
+	TVector<CameraPass> m_cameraPasses;
+	bool m_bWantsPresent = false;
 };
 
 void IDelayedInitialization::TraceVisit(class TRefPtr<RHIResource> visitor, bool& bShouldRemoveFromList)
@@ -195,6 +211,7 @@ Renderer::~Renderer()
 	m_frameGraph.Clear();
 	m_skyNode.Clear();
 	m_cachedSceneViews.Clear();
+	m_cameraGraphCache.Clear();
 	m_submissionContexts.Clear();
 	m_driverInstance.Clear();
 }
@@ -417,6 +434,244 @@ RHISceneViewPtr Renderer::GetOrAddSceneView(WorldPtr worldPtr)
 void Renderer::RemoveSceneView(WorldPtr worldPtr)
 {
 	m_cachedSceneViews.Remove(worldPtr);
+	PruneCameraGraphEntries(worldPtr, 0ull);
+}
+
+FrameGraphPtr Renderer::ResolveCameraGraph(WorldPtr world, const CameraData& camera, uint64_t epoch, RHIRenderTargetPtr& outOutput, glm::ivec2& outRenderExtent)
+{
+	outRenderExtent = glm::ivec2(1);
+	outOutput = nullptr;
+	if (!world || !camera.GetInstanceId())
+	{
+		return {};
+	}
+
+	const InstanceId cameraId = camera.GetInstanceId();
+
+	// Find existing entry
+	CameraGraphEntry* pEntry = nullptr;
+	for (auto& entry : m_cameraGraphCache)
+	{
+		if (entry.m_world == world && entry.m_cameraInstanceId == cameraId)
+		{
+			pEntry = &entry;
+			break;
+		}
+	}
+
+	if (pEntry)
+	{
+		pEntry->m_lastSeenEpoch = epoch;
+	}
+
+	// Determine output extent
+	Settings::GraphicsExtent outputExtent{};
+	RHITexturePtr targetTexture{};
+	uint64_t targetRevision = 0ull;
+
+	TexturePtr authoredTarget = camera.GetRenderTarget();
+	if (authoredTarget)
+	{
+		RHITexturePtr resolvedTarget = camera.GetResolvedRenderTarget();
+		if (!resolvedTarget || !resolvedTarget->IsReady())
+		{
+			return {};
+		}
+
+		RHIRenderTargetPtr renderTarget = resolvedTarget.DynamicCast<RHIRenderTarget>();
+		if (!renderTarget)
+		{
+			return {};
+		}
+
+		auto extent = renderTarget->GetExtent();
+		if (extent.x == 0 || extent.y == 0)
+		{
+			return {};
+		}
+
+		outputExtent.m_width = static_cast<uint32_t>(extent.x);
+		outputExtent.m_height = static_cast<uint32_t>(extent.y);
+		targetTexture = resolvedTarget;
+		targetRevision = camera.GetResolvedRevision();
+	}
+	else
+	{
+		if (m_pViewport)
+		{
+			auto area = m_pViewport->GetRenderArea();
+			if (area.x > 0 && area.y > 0)
+			{
+				outputExtent.m_width = static_cast<uint32_t>(area.x);
+				outputExtent.m_height = static_cast<uint32_t>(area.y);
+			}
+			else
+			{
+				return {};
+			}
+		}
+		else
+		{
+			return {};
+		}
+	}
+
+	// Resolve config UID and revision
+	FileId configUid = camera.GetRendererConfig();
+	FileRevision configRevision{};
+
+	if (configUid == FileId::Invalid)
+	{
+		const char* path = camera.GetEditorRole() ? "EditorCamera.renderer" : "DefaultRenderer.renderer";
+		auto registry = App::GetSubmodule<AssetRegistry>();
+		if (!registry)
+		{
+			return {};
+		}
+		auto info = registry->GetAssetInfoPtr<FrameGraphAssetInfoPtr>(path);
+		if (!info)
+		{
+			return {};
+		}
+		configUid = info->GetFileId();
+		std::string filepath = info->GetAssetFilepath();
+		if (!Utils::TryGetFileRevision(filepath, configRevision))
+		{
+			return {};
+		}
+	}
+	else
+	{
+		auto registry = App::GetSubmodule<AssetRegistry>();
+		if (!registry)
+		{
+			return {};
+		}
+		auto info = registry->GetAssetInfoPtr<FrameGraphAssetInfoPtr>(configUid);
+		if (!info)
+		{
+			return {};
+		}
+		std::string filepath = info->GetAssetFilepath();
+		if (!Utils::TryGetFileRevision(filepath, configRevision))
+		{
+			return {};
+		}
+	}
+
+	// Resolve quality
+	Settings::EGraphicsQuality resolvedQuality = Settings::EGraphicsQuality::Low;
+	Settings::GraphicsQualityProfile profile{};
+
+	Settings::EGraphicsQualitySelection requestedQuality = camera.GetQualityPreset();
+	if (requestedQuality == Settings::EGraphicsQualitySelection::ProjectDefault)
+	{
+		if (camera.GetEditorRole())
+		{
+			resolvedQuality = App::GetActiveGraphicsQuality();
+		}
+		else
+		{
+			resolvedQuality = App::GetGraphicsSettings().m_defaultQuality;
+		}
+	}
+	else
+	{
+		resolvedQuality = Settings::ResolveQualitySelection(requestedQuality, App::GetGraphicsSettings().m_defaultQuality);
+	}
+
+	profile = App::GetGraphicsSettings().GetProfile(resolvedQuality);
+
+	uint32_t actualMsaa = static_cast<uint32_t>(m_msaaSamples);
+
+	// Check if cache hit
+	if (pEntry)
+	{
+		bool bConfigChanged = (pEntry->m_configUid != configUid) || (pEntry->m_configRevision != configRevision);
+		bool bTargetChanged = (pEntry->m_target != targetTexture) || (pEntry->m_targetRevision != targetRevision);
+		bool bExtentChanged = (pEntry->m_outputExtent.m_width != outputExtent.m_width) || (pEntry->m_outputExtent.m_height != outputExtent.m_height);
+		bool bQualityChanged = (pEntry->m_resolvedQuality != resolvedQuality);
+		bool bFactorChanged = (pEntry->m_resolutionFactor != profile.m_resolutionFactor);
+		bool bMsaaChanged = (pEntry->m_msaaSamples != actualMsaa);
+
+		if (!bConfigChanged && !bTargetChanged && !bExtentChanged && !bQualityChanged && !bFactorChanged && !bMsaaChanged)
+		{
+			if (pEntry->m_graph && pEntry->m_output)
+			{
+				outOutput = pEntry->m_output;
+				outRenderExtent = pEntry->m_renderExtent;
+				return pEntry->m_graph;
+			}
+		}
+	}
+
+	// Build new graph
+	FrameGraphPtr newGraph{};
+	auto importer = App::GetSubmodule<FrameGraphImporter>();
+	if (!importer)
+	{
+		return {};
+	}
+
+	if (!importer->Instantiate(configUid, newGraph, outputExtent, resolvedQuality, profile))
+	{
+		return {};
+	}
+
+	RHIRenderTargetPtr newOutput{};
+	if (targetTexture)
+	{
+		newOutput = targetTexture.DynamicCast<RHIRenderTarget>();
+	}
+	else
+	{
+		newOutput = m_driverInstance->CreateRenderTarget(glm::ivec2(static_cast<int>(outputExtent.m_width), static_cast<int>(outputExtent.m_height)), 1, GetColorFormat());
+	}
+	if (!newOutput)
+	{
+		return {};
+	}
+
+	// Update or create entry
+	if (!pEntry)
+	{
+		m_cameraGraphCache.Add(CameraGraphEntry{});
+		pEntry = &m_cameraGraphCache[m_cameraGraphCache.Num() - 1];
+		pEntry->m_world = world;
+		pEntry->m_cameraInstanceId = cameraId;
+	}
+
+	pEntry->m_graph = newGraph;
+	pEntry->m_output = newOutput;
+	outOutput = newOutput;
+	pEntry->m_renderExtent = newGraph->GetRHI()->GetSceneRenderExtent();
+	outRenderExtent = pEntry->m_renderExtent;
+	pEntry->m_target = targetTexture;
+	pEntry->m_configUid = configUid;
+	pEntry->m_configRevision = configRevision;
+	pEntry->m_targetRevision = targetRevision;
+	pEntry->m_resolvedQuality = resolvedQuality;
+	pEntry->m_resolutionFactor = profile.m_resolutionFactor;
+	pEntry->m_outputExtent = outputExtent;
+	pEntry->m_msaaSamples = actualMsaa;
+	pEntry->m_lastSeenEpoch = epoch;
+
+	return newGraph;
+}
+
+void Renderer::PruneCameraGraphEntries(WorldPtr world, uint64_t epoch)
+{
+	for (size_t index = m_cameraGraphCache.Num(); index > 0; --index)
+	{
+		size_t i = index - 1;
+		if (m_cameraGraphCache[i].m_world == world)
+		{
+			if (epoch == 0ull || m_cameraGraphCache[i].m_lastSeenEpoch != epoch)
+			{
+				m_cameraGraphCache.RemoveAt(i);
+			}
+		}
+	}
 }
 
 void Renderer::QueueEditorReadback(ReadbackFramePtr frame)
@@ -511,9 +766,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		return false;
 	}
 
-	if (m_bForceStop ||
-		(!App::HasEditor() && m_driverInstance->ShouldFixLostDevice(m_pViewport)) ||
-		!CanPrepareFrame())
+	if (m_bForceStop || !CanPrepareFrame())
 	{
 		return false;
 	}
@@ -523,20 +776,131 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		m_previousRenderFrame.Clear();
 	}
 
-	if (!EnsureFrameGraph() || !m_frameGraph)
+	auto* world = frame.GetWorld();
+	if (!world)
 	{
 		return false;
 	}
 
-	auto rhiFrameGraph = m_frameGraph->GetRHI();
-	UpdateSkyParameters(frame.GetWorld(), rhiFrameGraph);
-	auto submission = TSharedPtr<FrameSubmission>::Make(
-		m_nextSubmissionId.fetch_add(1ull, std::memory_order_relaxed));
-	submission->m_frameGraph = std::move(rhiFrameGraph);
+	m_driverInstance->TrackResources_ThreadSafe();
+
+	const uint64_t submissionId = m_nextSubmissionId.fetch_add(1ull, std::memory_order_relaxed);
+	auto submission = TSharedPtr<FrameSubmission>::Make(submissionId);
+
+	const auto& activeCameras = world->GetECS<CameraECS>()->GetActiveCameras();
+	const uint32_t cameraCount = static_cast<uint32_t>(activeCameras.Num());
+
+	// Detect presence of an active editor-role camera before graph resolution
+	bool bHasEditorRoleCamera = false;
+	for (uint32_t i = 0; i < cameraCount; ++i)
+	{
+		if (activeCameras[i].GetEditorRole())
+		{
+			bHasEditorRoleCamera = true;
+			break;
+		}
+	}
+
+	size_t primaryPassIndex = (std::numeric_limits<size_t>::max)();
+	FrameGraphPtr primaryGraph;
+	bool bFoundEditorPrimary = false;
+	bool bFoundNoTargetPrimary = false;
+
+	for (uint32_t i = 0; i < cameraCount; ++i)
+	{
+		const auto& cameraData = activeCameras[i];
+		const bool bIsEditorRole = cameraData.GetEditorRole();
+		const bool bHasAuthoredTarget = static_cast<bool>(cameraData.GetRenderTarget());
+
+		// Skip authored cameras that have neither editor role nor authored render target
+		// when an editor-role camera is present. This prevents redundant full-graph
+		// resolution for background game cameras in edit mode.
+		if (bHasEditorRoleCamera && !bIsEditorRole && !bHasAuthoredTarget)
+		{
+			continue;
+		}
+
+		RHIRenderTargetPtr outOutput;
+		glm::ivec2 outExtent;
+
+		FrameGraphPtr graph = ResolveCameraGraph(world, cameraData, submissionId, outOutput, outExtent);
+		if (!graph)
+		{
+			continue;
+		}
+
+		FrameSubmission::CameraPass pass;
+		pass.m_cameraIndex = i;
+		pass.m_frameGraph = graph->GetRHI();
+		pass.m_output = outOutput;
+		pass.m_renderExtent = outExtent;
+
+		// Resolve quality from App project settings, not cached graph mutable state
+		const auto defaultTier = bIsEditorRole ? App::GetActiveGraphicsQuality() : App::GetGraphicsSettings().m_defaultQuality;
+		pass.m_quality = Settings::ResolveQualitySelection(cameraData.GetQualityPreset(), defaultTier);
+		pass.m_qualityProfile = App::GetGraphicsSettings().GetProfile(pass.m_quality);
+
+		// Copy sky parameters once from world LightingECS
+		if (auto* lightingEcs = world->GetECS<LightingECS>())
+		{
+			const auto sky = lightingEcs->GetSky();
+			pass.m_skyParameters = sky ? sky->GetSkyParameters() : SkyParameters{};
+		}
+
+		// Determine presentation intent
+		const bool bHasPresentationIntent = pass.m_frameGraph->HasPresentationIntent();
+		pass.m_bWantsPresent = bHasPresentationIntent && !bHasAuthoredTarget && !App::HasEditor();
+
+		if (pass.m_bWantsPresent)
+		{
+			submission->m_bWantsPresent = true;
+		}
+
+		submission->m_cameraPasses.Add(pass);
+
+		// Primary selection logic
+		if (primaryPassIndex == (std::numeric_limits<size_t>::max)() ||
+			(bIsEditorRole && !bFoundEditorPrimary) ||
+			(!bFoundEditorPrimary && !bFoundNoTargetPrimary && !bHasAuthoredTarget))
+		{
+			primaryPassIndex = submission->m_cameraPasses.Num() - 1;
+			primaryGraph = graph;
+			bFoundEditorPrimary = bIsEditorRole;
+			bFoundNoTargetPrimary = !bHasAuthoredTarget;
+		}
+	}
+
+	PruneCameraGraphEntries(world, submissionId);
+
+	if (submission->m_cameraPasses.IsEmpty())
+	{
+		m_frameGraph.Clear();
+		m_editorReadback.Clear();
+		m_bHasEditorReadback = false;
+		m_bFrameGraphOutdated = false;
+		++m_frameGraphResourceGeneration;
+		return false;
+	}
+
+	const auto& primaryPass = submission->m_cameraPasses[primaryPassIndex];
+	const bool bPrimaryChanged = (m_frameGraph != primaryGraph);
+	const bool bWasOutdated = m_bFrameGraphOutdated.exchange(false);
+
+	if (bPrimaryChanged || bWasOutdated)
+	{
+		RefreshGpuTimings();
+		m_editorReadback.Clear();
+		++m_frameGraphResourceGeneration;
+	}
+
+	m_frameGraph = primaryGraph;
+	submission->m_frameGraph = primaryPass.m_frameGraph;
 	submission->m_frameGraphResourceGeneration = m_frameGraphResourceGeneration;
 
-	// Capture every live ECS input before allowing Main to tick the next frame.
+	m_bHasEditorReadback = Framegraph::EditorReadbackNode::Find(*submission->m_frameGraph).IsValid();
+
 	CaptureSceneView(*submission, frame);
+
 	auto render = Tasks::CreateTask("Render Frame"_h,
 		[this, frame, submission]() mutable
 		{
@@ -564,6 +928,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 				ReturnSceneView(current->m_sceneView);
 			}
 		}, EThreadType::Render);
+
 	auto prepare = Tasks::CreateTask("Prepare render submission flight"_h,
 		[this, submission = std::move(submission), render]() mutable
 		{
@@ -581,20 +946,80 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 				{
 					current->m_reflectionProbes->Poll(current->m_frameGraph);
 				}
-				auto tasks = current->m_frameGraph->Prepare(current->m_sceneView);
+
+				TVector<Sailor::Tasks::ITaskPtr> allTasks;
+				for (const auto& task : current->m_sceneView->m_debugDraw)
+				{
+					allTasks.Add(task);
+				}
+
+				// Iterate all passes for preparation
+				for (auto& pass : current->m_cameraPasses)
+				{
+					// Retain resources to prevent reuse before GPU flight fence
+					current->m_context->RetainResource(pass.m_frameGraph);
+					current->m_context->RetainResource(pass.m_output);
+
+					// Set quality
+					pass.m_frameGraph->SetCameraQuality(pass.m_quality, pass.m_qualityProfile);
+
+					// Update Sky node from copied params
+					if (auto skyNode = pass.m_frameGraph->GetGraphNode("Sky"_h).DynamicCast<Framegraph::SkyNode>())
+					{
+						skyNode->SetSkyParams(pass.m_skyParameters);
+					}
+
+					// Bind BackBuffer if needed
+					pass.m_bUsesNativeOutput = pass.m_bWantsPresent && current->m_bHasSwapchainImage && (!m_pViewport || !m_pViewport->IsIconic());
+					if (pass.m_bUsesNativeOutput)
+					{
+						pass.m_frameGraph->SetRenderTarget("BackBuffer"_h, m_driverInstance->GetBackBuffer());
+					}
+					else
+					{
+						pass.m_frameGraph->SetRenderTarget("BackBuffer"_h, pass.m_output);
+					}
+
+					// Prepare graph
+					auto passTasks = pass.m_frameGraph->Prepare(current->m_sceneView, pass.m_cameraIndex);
+					for (auto& task : passTasks)
+					{
+						if (!allTasks.Contains(task))
+						{
+							allTasks.Add(task);
+						}
+					}
+				}
+
+				// Handle Reflection/Probe captures with primary graph context (default all)
 				if (current->m_reflectionCapture)
 				{
-					tasks.AddRange(current->m_reflectionCapture->Prepare(current->m_frameGraph, current->m_context));
+					auto captureTasks = current->m_reflectionCapture->Prepare(current->m_frameGraph, current->m_context);
+					for (auto& task : captureTasks)
+					{
+						if (!allTasks.Contains(task))
+						{
+							allTasks.Add(task);
+						}
+					}
 				}
 				for (auto& capture : current->m_probeCaptures)
 				{
-					tasks.AddRange(capture->Prepare(current->m_frameGraph, current->m_context));
+					auto captureTasks = capture->Prepare(current->m_frameGraph, current->m_context);
+					for (auto& task : captureTasks)
+					{
+						if (!allTasks.Contains(task))
+						{
+							allTasks.Add(task);
+						}
+					}
 				}
-				for (auto& task : tasks)
+
+				for (auto& task : allTasks)
 				{
 					record->Join(task);
 				}
-				for (auto& task : tasks)
+				for (auto& task : allTasks)
 				{
 					task->Run();
 				}
@@ -603,6 +1028,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 			m_bIsFrameQueued.store(false, std::memory_order_release);
 			record->Run();
 		}, EThreadType::Render);
+
 	if (m_previousRenderFrame)
 	{
 		prepare->Join(m_previousRenderFrame);
@@ -616,7 +1042,6 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 void Renderer::CaptureSceneView(FrameSubmission& submission, const Sailor::FrameState& frame)
 {
 	auto& rhiSceneView = submission.m_sceneView;
-	auto& rhiFrameGraph = submission.m_frameGraph;
 	auto* world = frame.GetWorld();
 	SAILOR_PROFILE_SCOPE("Copy scene view to render thread");
 
@@ -626,17 +1051,30 @@ void Renderer::CaptureSceneView(FrameSubmission& submission, const Sailor::Frame
 	rhiSceneView->m_renderMode = App::GetEditorRenderMode();
 	world->GetECS<StaticMeshRendererECS>()->CopySceneView(rhiSceneView);
 	world->GetECS<LandscapeECS>()->AppendSceneView(rhiSceneView);
+
 	if (auto* pathTracerEcs = world->GetECS<PathTracerECS>())
 	{
-		const bool tracing = std::any_of(rhiFrameGraph->GetGraph().begin(), rhiFrameGraph->GetGraph().end(),
-			[mode = rhiSceneView->m_renderMode](const auto& node)
+		// Pathtracing enabled if ANY pass contains enabled CPUPathTracerNode
+		bool tracing = false;
+		for (const auto& pass : submission.m_cameraPasses)
+		{
+			const auto& graph = pass.m_frameGraph->GetGraph();
+			const bool bPassTracing = std::any_of(graph.begin(), graph.end(),
+				[mode = rhiSceneView->m_renderMode](const auto& node)
+				{
+					const auto* tracer = dynamic_cast<const Framegraph::CPUPathTracerNode*>(node.GetRawPtr());
+					return tracer && tracer->IsEnabled(mode);
+				});
+			if (bPassTracing)
 			{
-				const auto* tracer = dynamic_cast<const Framegraph::CPUPathTracerNode*>(node.GetRawPtr());
-				return tracer && tracer->IsEnabled(mode);
-			});
+				tracing = true;
+				break;
+			}
+		}
 		pathTracerEcs->SetPathTracingEnabled(tracing);
 		pathTracerEcs->CopySceneView(rhiSceneView);
 	}
+
 	rhiSceneView->m_globalIlluminationMode =
 		EGlobalIlluminationMode::Baked;
 	rhiSceneView->m_bGlobalIlluminationEnabled = true;
@@ -654,12 +1092,40 @@ void Renderer::CaptureSceneView(FrameSubmission& submission, const Sailor::Frame
 				? globalIlluminationEcs->GetActiveSnapshot()
 				: RHIGlobalIlluminationSnapshotPtr{};
 	}
+
 	world->GetECS<CameraECS>()->CopyCameraData(rhiSceneView);
+
+	// Initialize and fill camera render extents
+	const uint32_t cameraCount = static_cast<uint32_t>(rhiSceneView->m_cameras.Num());
+	rhiSceneView->m_cameraRenderExtents.Resize(cameraCount);
+	for (uint32_t i = 0; i < cameraCount; ++i)
+	{
+		rhiSceneView->m_cameraRenderExtents[i] = glm::ivec2(1);
+	}
+	for (const auto& pass : submission.m_cameraPasses)
+	{
+		if (pass.m_cameraIndex < cameraCount)
+		{
+			rhiSceneView->m_cameraRenderExtents[pass.m_cameraIndex] = pass.m_renderExtent;
+		}
+	}
+
 	rhiSceneView->m_deltaTime = frame.GetDeltaTime();
 	rhiSceneView->m_currentTime = world->GetTime();
 	world->GetECS<AnimationECS>()->FillAnimationData(rhiSceneView);
 	rhiSceneView->m_drawImGui = frame.GetDrawImGuiTask();
-	rhiSceneView->PrepareDebugDrawCommandLists(world, rhiFrameGraph->GetSceneRenderExtent());
+
+	glm::ivec2 primaryExtent(1);
+	for (const auto& pass : submission.m_cameraPasses)
+	{
+		if (pass.m_frameGraph == submission.m_frameGraph)
+		{
+			primaryExtent = pass.m_renderExtent;
+			break;
+		}
+	}
+	rhiSceneView->PrepareDebugDrawCommandLists(world, primaryExtent);
+
 	auto lighting = world->GetECS<LightingECS>();
 	const uint32_t firstCaptureCamera = static_cast<uint32_t>(rhiSceneView->m_cameras.Num());
 	submission.m_reflections = lighting->GetLocalReflectionState();
@@ -693,17 +1159,26 @@ void Renderer::CaptureSceneView(FrameSubmission& submission, const Sailor::Frame
 	{
 		submission.m_reflectionCapture->ExtractSnapshots(rhiSceneView);
 	}
+	for (const auto& pass : submission.m_cameraPasses)
+	{
+		if (pass.m_frameGraph != submission.m_frameGraph && pass.m_cameraIndex < rhiSceneView->m_snapshots.Num())
+		{
+			rhiSceneView->m_snapshots[pass.m_cameraIndex].m_drawImGui.Clear();
+		}
+	}
+
 }
 
 bool Renderer::AcquireSubmission(FrameSubmission& submission)
 {
 	auto& rhiFrameGraph = submission.m_frameGraph;
 	uint32_t flightSlot = 0u;
+	// Third argument ALWAYS true (deferred presentation)
 	const bool bAcquired =
 		m_driverInstance->BeginRenderSubmission(
 			flightSlot,
 			submission.m_bHasSwapchainImage,
-			!App::HasEditor());
+			true);
 	if (auto readback = Framegraph::EditorReadbackNode::Find(*rhiFrameGraph))
 	{
 		QueueEditorReadback(readback->TakeCompletedFrame());
@@ -760,7 +1235,6 @@ void Renderer::PrepareSceneView(FrameSubmission& submission)
 void Renderer::RecordAndSubmitFrame(FrameSubmission& submission, const Sailor::FrameState& frame)
 {
 	auto& rhiSceneView = submission.m_sceneView;
-	auto& rhiFrameGraph = submission.m_frameGraph;
 	SAILOR_PROFILE_SCOPE("Render Frame");
 	auto& frameSubmission = submission.m_result;
 	const bool bGpuQueriesEnabled = App::GetRenderStatsMode() ==
@@ -805,9 +1279,9 @@ void Renderer::RecordAndSubmitFrame(FrameSubmission& submission, const Sailor::F
 
 	const bool bHasSwapchainImage = submission.m_bHasSwapchainImage;
 	bool bFrameGraphProcessed = false;
+	bool bNativeOutputProcessed = false;
 	RHISemaphorePtr chainSemaphore{};
-	const bool bCanRenderFrame = !m_bForceStop &&
-		(bHasSwapchainImage || App::HasEditor());
+	const bool bCanRenderFrame = !m_bForceStop;
 	bool bFrameSubmitsSucceeded = true;
 	bool bGpuFrameTimeQueryStarted = false;
 	if (bCanRenderFrame && bGpuQueriesEnabled)
@@ -825,7 +1299,7 @@ void Renderer::RecordAndSubmitFrame(FrameSubmission& submission, const Sailor::F
 
 	if (bFrameSubmitsSucceeded && submission.m_reflectionCapture)
 	{
-		if (bCanRenderFrame && !m_bFrameGraphOutdated && !m_pViewport->IsIconic())
+		if (bCanRenderFrame)
 		{
 			if (!submission.m_reflectionCapture->Submit(chainSemaphore))
 			{
@@ -835,14 +1309,12 @@ void Renderer::RecordAndSubmitFrame(FrameSubmission& submission, const Sailor::F
 		}
 		else
 		{
-			// No capture commands were attempted. Preserve the request across
-			// resize, minimized-window and temporarily unavailable drawable frames.
 			submission.m_reflectionCapture->m_bRetry = true;
 		}
 	}
 	for (auto& capture : submission.m_probeCaptures)
 	{
-		if (bFrameSubmitsSucceeded && bCanRenderFrame && !m_bFrameGraphOutdated && !m_pViewport->IsIconic())
+		if (bFrameSubmitsSucceeded && bCanRenderFrame)
 		{
 			if (!capture->Submit(chainSemaphore))
 			{
@@ -856,33 +1328,92 @@ void Renderer::RecordAndSubmitFrame(FrameSubmission& submission, const Sailor::F
 		}
 	}
 
-	if (bFrameSubmitsSucceeded && bCanRenderFrame &&
-		!m_bFrameGraphOutdated && !m_pViewport->IsIconic())
+	if (bFrameSubmitsSucceeded && bCanRenderFrame)
 	{
-		if (!App::HasEditor())
+		auto flushPending = [](TVector<RHI::RHICommandListPtr>& transfers,
+			TVector<RHI::RHICommandListPtr>& graphics,
+			RHISemaphorePtr& chain) -> bool
 		{
-			rhiFrameGraph->SetRenderTarget("BackBuffer"_h, m_driverInstance->GetBackBuffer());
-		}
+			uint32_t idx = 0;
+			for (auto& cmd : transfers)
+			{
+				auto signal = GetDriver()->CreateWaitSemaphore();
+				auto fence = RHIFencePtr::Make();
+				GetDriver()->SetDebugName(signal, "Camera pass transfer"_h);
+				GetDriver()->SetDebugName(fence, "Camera pass transfer"_h);
+				if (!GetDriver()->SubmitCommandList(cmd, fence, signal, chain))
+				{
+					SAILOR_LOG_ERROR("Renderer::PushFrame: failed to submit camera pass transfer command buffer %u.", idx);
+					return false;
+				}
+				chain = signal;
+				idx++;
+			}
+			transfers.Clear();
+			idx = 0;
+			for (auto& cmd : graphics)
+			{
+				auto signal = GetDriver()->CreateWaitSemaphore();
+				auto fence = RHIFencePtr::Make();
+				GetDriver()->SetDebugName(signal, "Camera pass graphics"_h);
+				GetDriver()->SetDebugName(fence, "Camera pass graphics"_h);
+				if (!GetDriver()->SubmitCommandList(cmd, fence, signal, chain))
+				{
+					SAILOR_LOG_ERROR("Renderer::PushFrame: failed to submit camera pass graphics command buffer %u.", idx);
+					return false;
+				}
+				chain = signal;
+				idx++;
+			}
+			graphics.Clear();
+			return true;
+		};
 
-		RHISemaphorePtr frameGraphChainSemaphore = chainSemaphore;
-		const bool bFrameGraphSucceeded = rhiFrameGraph->Process(
-			rhiSceneView,
-			transferCommandLists,
-			primaryCommandLists,
-			chainSemaphore,
-			frameGraphChainSemaphore);
-		chainSemaphore = frameGraphChainSemaphore;
-		if (!bFrameGraphSucceeded)
+		for (auto& pass : submission.m_cameraPasses)
 		{
-			SAILOR_LOG_ERROR("Renderer::PushFrame: FrameGraph command buffer submission failed.");
-			bFrameSubmitsSucceeded = false;
-		}
-		else
-		{
+			if (!flushPending(transferCommandLists, primaryCommandLists, chainSemaphore))
+			{
+				bFrameSubmitsSucceeded = false;
+				break;
+			}
+
+			RHISemaphorePtr outChain{};
+			const bool bPassSucceeded = pass.m_frameGraph->Process(
+				rhiSceneView,
+				transferCommandLists,
+				primaryCommandLists,
+				chainSemaphore,
+				outChain,
+				true,
+				pass.m_cameraIndex);
+			chainSemaphore = outChain;
+
+			if (!bPassSucceeded)
+			{
+				SAILOR_LOG_ERROR("Renderer::PushFrame: FrameGraph command buffer submission failed for camera %u.", pass.m_cameraIndex);
+				bFrameSubmitsSucceeded = false;
+				break;
+			}
+
 			bFrameGraphProcessed = true;
-			drawCallStats = rhiFrameGraph->GetDrawCallStats();
-			globalIlluminationStats =
-				rhiFrameGraph->GetGlobalIlluminationRenderStats();
+			bNativeOutputProcessed = bNativeOutputProcessed || pass.m_bUsesNativeOutput;
+			drawCallStats += pass.m_frameGraph->GetDrawCallStats();
+
+			if (pass.m_frameGraph == submission.m_frameGraph)
+			{
+				globalIlluminationStats = pass.m_frameGraph->GetGlobalIlluminationRenderStats();
+			}
+
+			if (!pass.m_bUsesNativeOutput)
+			{
+				auto cmd = GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
+				auto commands = GetDriverCommands();
+				commands->BeginCommandList(cmd, true);
+				commands->ImageMemoryBarrier(cmd, pass.m_output, EImageLayout::ShaderReadOnlyOptimal);
+				pass.m_output->ForceSetDefaultLayout(EImageLayout::ShaderReadOnlyOptimal);
+				commands->EndCommandList(cmd);
+				primaryCommandLists.Add(cmd);
+			}
 		}
 	}
 
@@ -934,11 +1465,9 @@ void Renderer::RecordAndSubmitFrame(FrameSubmission& submission, const Sailor::F
 	if (!bFrameSubmitsSucceeded)
 	{
 		TVector<RHICommandListPtr> noCommandLists;
-		const FrameSubmissionResult flightRelease = bHasSwapchainImage ?
-			m_driverInstance->PresentFrame(frame, noCommandLists, waitFrameUpdate) :
-			m_driverInstance->SubmitFrameWithoutPresent(
-				noCommandLists,
-				waitFrameUpdate);
+		const FrameSubmissionResult flightRelease = m_driverInstance->SubmitFrameWithoutPresent(
+			noCommandLists,
+			waitFrameUpdate);
 		if (!flightRelease.m_bSubmitted)
 		{
 			SAILOR_LOG_ERROR("Renderer::PushFrame: failed to fence an acquired flight slot after a submit failure.");
@@ -947,13 +1476,18 @@ void Renderer::RecordAndSubmitFrame(FrameSubmission& submission, const Sailor::F
 
 	if (bFrameSubmitsSucceeded)
 	{
+		const bool bShouldPresent = submission.m_bWantsPresent && bHasSwapchainImage && !m_bForceStop && (!m_pViewport || !m_pViewport->IsIconic()) && bNativeOutputProcessed && bFrameGraphProcessed;
 		const auto completion = submission.m_context->GetFrameCompletion();
-		frameSubmission = bHasSwapchainImage
-			? m_driverInstance->PresentFrame(frame, primaryCommandLists, waitFrameUpdate, completion)
-			: m_driverInstance->SubmitFrameWithoutPresent(primaryCommandLists, waitFrameUpdate, completion);
+		if (bShouldPresent)
+		{
+			frameSubmission = m_driverInstance->PresentFrame(frame, primaryCommandLists, waitFrameUpdate, completion);
+		}
+		else
+		{
+			frameSubmission = m_driverInstance->SubmitFrameWithoutPresent(primaryCommandLists, waitFrameUpdate, completion);
+		}
 	}
 
-	// End/Cancel can publish an invalid result for this frame even before GPU polling.
 	const auto gpuTimingResult = m_driverInstance->TakeGpuTimingResult();
 	if (bFrameGraphProcessed && frameSubmission.m_bSubmitted)
 	{

@@ -14,6 +14,8 @@ namespace Sailor::Framegraph
 	{
 	public:
 
+		FrameGraphBuilder();
+
 		static void RegisterFrameGraphNode(StringHash nodeName, std::function<FrameGraphNodePtr(void)> factoryMethod);
 
 		FrameGraphNodePtr CreateNode(StringHash nodeName) const;

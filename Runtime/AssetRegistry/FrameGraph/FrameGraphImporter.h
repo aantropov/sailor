@@ -1,6 +1,7 @@
 #pragma once
 #include "Core/Defines.h"
 #include "Engine/Types.h"
+#include "Settings/GraphicsSettings.h"
 #include "RHI/Types.h"
 #include <string>
 #include "Containers/Vector.h"
@@ -44,9 +45,10 @@ namespace Sailor
 		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 
-		SAILOR_API FrameGraphAssetPtr LoadFrameGraphAsset(FileId uid);
+		SAILOR_API FrameGraphAssetPtr LoadFrameGraphAsset(FileId uid, const Settings::GraphicsExtent* outputExtent = nullptr, float resolutionFactor = 1.0f);
 		SAILOR_API bool LoadFrameGraph(FileId uid, FrameGraphPtr& outFrameGraph);
 		SAILOR_API bool Instantiate(FileId uid, FrameGraphPtr& outFrameGraph);
+		SAILOR_API bool Instantiate(FileId uid, FrameGraphPtr& outFrameGraph, const Settings::GraphicsExtent& outputExtent, Settings::EGraphicsQuality quality, const Settings::GraphicsQualityProfile& profile);
 		SAILOR_API static const char* GetRendererAssetPath();
 		// Main-thread configuration lookup; does not instantiate GPU resources or resolve viewport sizes.
 		SAILOR_API bool GetEnvironmentMap(std::string& outPath, std::string& outDiagnostic);

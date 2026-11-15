@@ -20,6 +20,12 @@ using namespace Sailor::Tasks;
 
 void EditorComponent::EditorTick(float deltaTime)
 {
+	auto camera = GetOwner()->GetComponent<CameraComponent>();
+	if (!camera.IsInited() || !camera->GetEditorRole())
+	{
+		return;
+	}
+
 	auto& transform = GetOwner()->GetTransformComponent();
 	auto syncViewAngles = [&]()
 	{

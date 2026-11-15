@@ -6,7 +6,11 @@
 #include "Components/Component.h"
 #include "Math/Transform.h"
 #include "RHI/Types.h"
+#include "RHI/Texture.h"
 #include "Memory/Memory.h"
+#include "Engine/Types.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
+#include "Settings/GraphicsSettings.h"
 
 namespace Sailor
 {
@@ -35,6 +39,33 @@ namespace Sailor
 		SAILOR_API void ResetMotionHistory() { ++m_motionHistoryRevision; }
 		SAILOR_API uint64_t GetMotionHistoryRevision() const { return m_motionHistoryRevision; }
 
+		SAILOR_API void SetRendererConfig(Sailor::FileId config) { m_rendererConfig = config; }
+		SAILOR_API Sailor::FileId GetRendererConfig() const { return m_rendererConfig; }
+
+		SAILOR_API void SetRenderTarget(TexturePtr target) { m_renderTarget = target; }
+		SAILOR_API TexturePtr GetRenderTarget() const { return m_renderTarget; }
+
+		SAILOR_API void SetQualityPreset(Settings::EGraphicsQualitySelection preset) { m_qualityPreset = preset; }
+		SAILOR_API Settings::EGraphicsQualitySelection GetQualityPreset() const { return m_qualityPreset; }
+
+		// Transient engine-assigned classification. True only for the
+		// independent editor viewport camera created by engine world
+		// infrastructure. Never serialized and never applied to authored
+		// game cameras.
+		SAILOR_API void SetEditorRole(bool value) { m_editorRole = value; }
+		SAILOR_API bool GetEditorRole() const { return m_editorRole; }
+
+		SAILOR_API void SetResolvedRenderTarget(RHI::RHITexturePtr target, uint64_t revision)
+		{
+			m_resolvedRenderTarget = target;
+			m_resolvedRevision = revision;
+		}
+		SAILOR_API RHI::RHITexturePtr GetResolvedRenderTarget() const { return m_resolvedRenderTarget; }
+		SAILOR_API uint64_t GetResolvedRevision() const { return m_resolvedRevision; }
+
+		SAILOR_API void SetInstanceId(const Sailor::InstanceId& id) { m_instanceId = id; }
+		SAILOR_API const Sailor::InstanceId& GetInstanceId() const { return m_instanceId; }
+
 	protected:
 
 		glm::mat4 m_projectionMatrix{};
@@ -46,6 +77,14 @@ namespace Sailor
 		float m_zNear = 0.1f;
 		float m_zFar = 3000.0f;
 		uint64_t m_motionHistoryRevision = 0ull;
+
+		Sailor::FileId m_rendererConfig = Sailor::FileId::Invalid;
+		TexturePtr m_renderTarget{};
+		Settings::EGraphicsQualitySelection m_qualityPreset = Settings::EGraphicsQualitySelection::ProjectDefault;
+		Sailor::InstanceId m_instanceId{};
+		RHI::RHITexturePtr m_resolvedRenderTarget{};
+		uint64_t m_resolvedRevision = 0ull;
+		bool m_editorRole = false;
 
 		friend class CameraECS;
 	};
