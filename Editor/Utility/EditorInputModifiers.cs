@@ -8,7 +8,12 @@ public static class EditorInputModifiers
     {
         get
         {
-#if MACCATALYST || IOS
+#if MACCATALYST
+            var flags = CoreGraphics.CGEventSource.GetFlagsState(CoreGraphics.CGEventSourceStateID.CombinedSession);
+            bool shift = (flags & CoreGraphics.CGEventFlags.Shift) != 0;
+            bool additive = (flags & CoreGraphics.CGEventFlags.Control) != 0 || (flags & CoreGraphics.CGEventFlags.Command) != 0;
+            return new(shift, additive);
+#elif IOS
             var keyboard = GameController.GCKeyboard.CoalescedKeyboard?.KeyboardInput;
             bool Pressed(nint key) => keyboard?.GetButton(key)?.IsPressed == true;
             return new(
