@@ -1021,7 +1021,6 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 void Renderer::CaptureSceneView(FrameSubmission& submission, const Sailor::FrameState& frame)
 {
 	auto& rhiSceneView = submission.m_sceneView;
-	auto& rhiFrameGraph = submission.m_frameGraph;
 	auto* world = frame.GetWorld();
 	SAILOR_PROFILE_SCOPE("Copy scene view to render thread");
 
@@ -1215,7 +1214,6 @@ void Renderer::PrepareSceneView(FrameSubmission& submission)
 void Renderer::RecordAndSubmitFrame(FrameSubmission& submission, const Sailor::FrameState& frame)
 {
 	auto& rhiSceneView = submission.m_sceneView;
-	auto& rhiFrameGraph = submission.m_frameGraph;
 	SAILOR_PROFILE_SCOPE("Render Frame");
 	auto& frameSubmission = submission.m_result;
 	const bool bGpuQueriesEnabled = App::GetRenderStatsMode() ==
@@ -1311,7 +1309,7 @@ void Renderer::RecordAndSubmitFrame(FrameSubmission& submission, const Sailor::F
 
 	if (bFrameSubmitsSucceeded && bCanRenderFrame)
 	{
-		auto flushPending = [this](TVector<RHI::RHICommandListPtr>& transfers,
+		auto flushPending = [](TVector<RHI::RHICommandListPtr>& transfers,
 			TVector<RHI::RHICommandListPtr>& graphics,
 			RHISemaphorePtr& chain) -> bool
 		{
