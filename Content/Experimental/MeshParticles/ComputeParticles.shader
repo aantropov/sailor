@@ -97,7 +97,7 @@ glslCompute: |
             break;
         }
         
-        uint frameIndex = uint(mod(frame.currentTime * PushConstants.fps, float(PushConstants.numFrames)));
+        uint frameIndex = uint(frame.currentTime * PushConstants.fps) % PushConstants.numFrames;
         uint traceIndex = instanceId % PushConstants.traceFrames;
         float decay = pow(PushConstants.traceDecay, traceIndex);
         uint particlesPerFrame = PushConstants.numInstances / PushConstants.traceFrames;
