@@ -1852,16 +1852,15 @@ frame:
 			m_bStarsRequested = true;
 		}
 
-		void PrepareCloudReadback()
+		void PrepareCloudReadback(RHIFrameGraphPtr graph)
 		{
-			const auto& profile = App::GetActiveGraphicsSettings();
-			const auto viewport = App::GetMainWindow()->GetRenderArea();
-			const auto render = Settings::ResolveRenderDimensions(viewport.x, viewport.y, profile.m_resolutionFactor);
+			const auto& profile = graph->GetCameraQualityProfile();
+			const auto sceneExtent = graph->GetSceneRenderExtent();
 			float multiplier = 1.0f;
 #if defined(__APPLE__)
 			multiplier = 0.5f;
 #endif
-			const auto extent = Settings::ResolveCloudsExtent(render.m_width, render.m_height, profile, multiplier);
+			const auto extent = Settings::ResolveCloudsExtent(sceneExtent.x, sceneExtent.y, profile, multiplier);
 			m_pCloudsTexture = Renderer::GetDriver()->CreateRenderTarget(glm::ivec2(extent.m_width, extent.m_height), 1,
 				EFormat::R16G16B16A16_SFLOAT, ETextureFiltration::Linear, ETextureClamping::Clamp,
 				ETextureUsageBit::Sampled_Bit | ETextureUsageBit::ColorAttachment_Bit |
@@ -2691,9 +2690,17 @@ frame:
 				ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit);
 			linearDepth = driver->CreateRenderTarget(glm::ivec2(Side), 1, EFormat::R32_SFLOAT);
 			graph->SetRenderTarget("DepthBuffer"_h, depth);
+			graph->SetRenderTarget("Main"_h, color);
 			node->SetRHIResource("color"_h, color);
 			node->SetRHIResource("linearDepth"_h, linearDepth);
-			node->PrepareCloudReadback();
+
+			// Configure graph profile to differ from global settings to test resolution logic
+			auto profile = App::GetActiveGraphicsSettings();
+			profile.m_resolutionFactor = 0.5f;
+			profile.m_cloudsResolutionMultiplier = 0.625f;
+			graph->SetCameraQuality(App::GetActiveGraphicsQuality(), profile);
+
+			node->PrepareCloudReadback(graph);
 			scene.m_frameBindings = driver->CreateShaderBindings();
 			driver->AddBufferToShaderBindings(scene.m_frameBindings, "frameData"_h, sizeof(frameData), 0, EShaderBindingType::UniformBuffer);
 			auto params = node->GetSkyParams();
@@ -2739,6 +2746,17 @@ frame:
 				if (uploadError != VK_SUCCESS)
 					Tests::RequireImageInitializationRefusal([&]() { node->Process(graph, upload, draw, scene); }, 0, refusedUploads, uploadError);
 				else node->Process(graph, upload, draw, scene);
+
+				// Assert extent matches graph profile, not global settings
+				float platformMult = 1.0f;
+				#if defined(__APPLE__)
+				platformMult = 0.5f;
+				#endif
+				const auto expectedExtent = Settings::ResolveCloudsExtent(graph->GetSceneRenderExtent().x, graph->GetSceneRenderExtent().y, graph->GetCameraQualityProfile(), platformMult);
+				const auto actualExtent = node->GetCloudsTexture()->GetExtent();
+				Require(actualExtent.x == expectedExtent.m_width && actualExtent.y == expectedExtent.m_height,
+					"Clouds texture extent must match per-camera graph profile, not global settings");
+
 				const bool bNoDepthAttachment = recordedDepth.imageView == VK_NULL_HANDLE && recordedDepth.resolveImageView == VK_NULL_HANDLE;
 				const auto depthPixels = checkDepthIndependence ? ReadDepth(draw, depth, depthReadback) : RHIBufferPtr{};
 				const auto liveDepthPixels = checkDepthIndependence && depthSurface && depthSurface->NeedsResolve() ?
