@@ -143,7 +143,8 @@ void SkyComponent::Apply()
 void SkyComponent::UpdateLightDirection()
 {
 	const float sunAngleRadians = glm::radians(m_sunAngleDegrees);
-	const glm::vec2 horizontalDirection = glm::normalize(glm::vec2(0.2f, 1.0f));
+	const float bearing = glm::radians(m_sunAzimuthDegrees);
+	const glm::vec2 horizontalDirection(-std::sin(bearing), -std::cos(bearing));
 	const float horizontalScale = std::cos(sunAngleRadians);
 	const glm::vec4 direction(
 		horizontalDirection.x * horizontalScale,
@@ -178,7 +179,22 @@ void SkyComponent::SetGroundAlbedo(const glm::vec3& value)
 
 void SkyComponent::SetSunAngle(float value)
 {
-	m_sunAngleDegrees = glm::clamp(value, -25.0f, 89.0f);
+	SetSunPosition(value, m_sunAzimuthDegrees);
+}
+
+void SkyComponent::SetSunAzimuth(float value)
+{
+	SetSunPosition(m_sunAngleDegrees, value);
+}
+
+void SkyComponent::SetSunPosition(float elevation, float azimuth)
+{
+	if (!std::isfinite(elevation) || !std::isfinite(azimuth))
+	{
+		return;
+	}
+	m_sunAngleDegrees = glm::clamp(elevation, -25.0f, 89.0f);
+	m_sunAzimuthDegrees = glm::mod(azimuth, 360.0f);
 	UpdateLightDirection();
 }
 
@@ -230,6 +246,15 @@ void SkyComponent::SetCloudsHorizonBlend(float value)
 void SkyComponent::SetCloudScatteringScale(float value)
 {
 	m_skyParams.m_cloudScatteringScale = glm::clamp(value, 0.0f, 8.0f);
+}
+
+void SkyComponent::SetNightSkyLuminance(float value)
+{
+	if (std::isfinite(value))
+	{
+		m_skyParams.m_nightSkyLuminance = glm::clamp(value, 0.0f, 0.1f);
+		UpdateGroundRadiance();
+	}
 }
 
 void SkyComponent::SetAmbient(float value)

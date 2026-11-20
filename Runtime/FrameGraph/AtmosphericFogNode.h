@@ -35,7 +35,7 @@ namespace Sailor::Framegraph
 		ShaderSetPtr m_shader;
 		RHI::RHIMaterialPtr m_material;
 		RHI::RHIShaderBindingSetPtr m_bindings;
-		RHI::RHITexturePtr m_depthTexture;
+		RHI::RHITexturePtr m_depthTexture, m_visibilityTexture;
 		RHI::RHICubemapPtr m_environment, m_previousEnvironment;
 		ShaderParameters m_parameters{};
 		float m_lightingBlend = 1.0f;

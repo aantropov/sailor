@@ -41,14 +41,10 @@ namespace Sailor::RHI
 	{
 		size_t result = handle.IsValid() ? std::hash<uint32_t>{}(handle.m_slot) :
 			std::hash<uint64_t>{}(producerKey);
-		HashCombine(
-			result,
-			producerKey,
-			handle.m_generation,
-			groupIndex,
-			meshIndex,
-			instanceIndex);
-		return static_cast<uint64_t>(result);
+		HashCombine(result, producerKey, handle.m_generation, groupIndex);
+		// Within a group every mesh/instance pair must occupy a distinct slot.
+		const uint64_t item = (static_cast<uint64_t>(meshIndex) << 32u) | instanceIndex;
+		return MixHash(static_cast<uint64_t>(result)) ^ item;
 	}
 
 	inline uint64_t BuildPackedDrawRangeKey(

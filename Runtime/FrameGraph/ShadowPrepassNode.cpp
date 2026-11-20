@@ -735,6 +735,21 @@ void ShadowPrepassNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView
 				const float alphaCutoff =
 					meshIndex < group.m_alphaCutoffs.Num() ? group.m_alphaCutoffs[meshIndex] : 0.5f;
 
+				RHIMeshPtr shadowLod;
+				if (group.m_preserveLodsForShadows)
+				{
+					const uint32_t lastLod = sourceMesh->GetNumLods() - 1u;
+					// The first LOD after the visible range retains perforations for close shadows.
+					// The outer cascades can draw the last silhouette LOD of the same model.
+					const uint32_t visibleLod = topology->m_lodPolicy.m_maxLod;
+					const uint32_t lod = shadowPass.m_lighMatrixIndex == 0u && visibleLod < lastLod ?
+						visibleLod + 1u : lastLod;
+					shadowLod = sourceMesh->GetLod(lod);
+					if (!shadowLod)
+					{
+						shadowLod = sourceMesh;
+					}
+				}
 				for (size_t instanceIndex = 0u; instanceIndex < group.m_instanceTransforms.Num();
 					++instanceIndex)
 				{
@@ -743,7 +758,7 @@ void ShadowPrepassNode::BuildVisiblePacket(const RHISceneViewSnapshot& sceneView
 					{
 						continue;
 					}
-					const auto& mesh =
+					const auto& mesh = shadowLod ? shadowLod :
 						sceneView.ResolveInstancedMesh(proxy, groupIndex, instanceIndex, meshIndex);
 					if (!mesh)
 					{

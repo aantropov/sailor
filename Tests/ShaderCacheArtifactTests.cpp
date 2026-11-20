@@ -389,7 +389,8 @@ namespace
 			{ "scatteringIntensity", offsetof(SkyParameters, m_scatteringIntensity) },
 			{ "scatteringPhase", offsetof(SkyParameters, m_scatteringPhase) },
 			{ "sunShaftsIntensity", offsetof(SkyParameters, m_sunShaftsIntensity) },
-			{ "sunShaftsDistance", offsetof(SkyParameters, m_sunShaftsDistance) }
+			{ "sunShaftsDistance", offsetof(SkyParameters, m_sunShaftsDistance) },
+			{ "nightSkyLuminance", offsetof(SkyParameters, m_nightSkyLuminance) }
 		};
 		bool matches = binding &&
 			binding->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER &&
@@ -2126,7 +2127,8 @@ void main() { result.value = params.value; }
 		RequireSpirvCombinedImageSamplerBinding(fog, 1u, 1u);
 		RequireSpirvCombinedImageSamplerBinding(fog, 1u, 2u);
 		RequireSpirvCombinedImageSamplerBinding(fog, 1u, 3u);
-		RequireSpirvDescriptorBindingAbsent(fog, 1u, 4u);
+		RequireSpirvCombinedImageSamplerBinding(fog, 1u, 4u);
+		RequireSpirvDescriptorBindingAbsent(fog, 1u, 5u);
 		const auto& fogModule = fog.GetModule();
 		const auto* fogBinding = fog.FindBinding(1u, 0u);
 		const bool fogLayoutValid = fogBinding &&
@@ -2279,6 +2281,7 @@ void main() { result.value = params.value; }
 			{}));
 		RequireSpirvCombinedImageSamplerBinding(hbao, 1u, 1u);
 		RequireSpirvCombinedImageSamplerBinding(hbao, 1u, 2u);
+		compileRuntimeFragment("Shaders/HBAO.shader", { "LOW_QUALITY" });
 		compileRuntimeFragment("Shaders/HBAO_Blur.shader", {});
 		compileRuntimeFragment("Shaders/HBAO_Blur.shader", { "VERTICAL" });
 		compileRuntimeFragment("Shaders/HBAO_Blur.shader", { "HORIZONTAL" });

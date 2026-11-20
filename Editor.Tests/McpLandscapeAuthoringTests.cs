@@ -19,7 +19,7 @@ public class McpLandscapeAuthoringTests
         [
             new() { ModelFileId = "tree", InstancesPerChunk = 37, Residency = "persistent", ColliderRadius = 0.5f },
             new() { ModelFileId = "grass", MaterialFileId = "leaves", MeshIndex = 3, InstancesPerChunk = 1024,
-                Residency = "grass", ShadowMode = "all", ColliderRadius = 0.25f, ScreenCoverageThresholds = [0.5f, 0.1f, 0.01f] }
+                Residency = "grass", ShadowMode = "all", PreserveLodsForShadows = true, ColliderRadius = 0.25f, ScreenCoverageThresholds = [0.5f, 0.1f, 0.01f] }
         ],
         Sculpt = [new() { X = 7, Z = 4, Radius = 8, Strength = 2, Operation = "flatten" }],
         Paint = [new() { X = -3, Layer = 3 }]
@@ -136,6 +136,7 @@ public class McpLandscapeAuthoringTests
               groundOffset: float
               shadowMode: enum Sailor::ELandscapeVegetationShadowMode
               shadowDistance: float
+              preserveLodsForShadows: bool
               minLod: uint32
               maxLod: uint32
               screenCoverageThresholds: List<float>

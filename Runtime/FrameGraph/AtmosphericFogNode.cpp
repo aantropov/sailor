@@ -3,6 +3,7 @@
 #include "FrameGraph/EnvironmentNode.h"
 #include "Raytracing/SkyEnvironmentGenerator.h"
 #include "RHI/Cubemap.h"
+#include "RHI/Lighting.h"
 #include "RHI/RenderTarget.h"
 #include "RHI/SceneView.h"
 #include "RHI/Shader.h"
@@ -16,6 +17,7 @@ using namespace Sailor::Framegraph;
 AtmosphericFogNode::AtmosphericFogNode()
 {
 	SetVec4("fog"_h, glm::vec4(0.0f));
+	SetVec4("sceneSunScattering"_h, glm::vec4(0.0f));
 	SetVec4("scattering"_h, glm::vec4(0.9f, 0.3f, 0.95f, 0.35f));
 }
 
@@ -89,12 +91,39 @@ void AtmosphericFogNode::Process(RHIFrameGraphPtr frameGraph, RHICommandListPtr 
 		m_parameters.m_previousSunIlluminance = m_parameters.m_sunIlluminance;
 		lightingChanged = true;
 	}
-	m_parameters.m_scattering.w = m_lightingBlend;
+	auto frameParameters = m_parameters;
+	frameParameters.m_scattering.w = m_lightingBlend;
+	// A sun-free HDR environment can use the scene directional light for in-scattering.
+	const glm::vec3 sceneSunScattering = glm::clamp(glm::vec3(GetVec4("sceneSunScattering"_h)), 0.0f, 1.0f);
+	if (glm::any(glm::greaterThan(sceneSunScattering, glm::vec3(0.0f))))
+	{
+		glm::vec3 direction = Math::vec3_Up;
+		glm::vec3 illuminance{};
+		if (sceneView.m_cpuLightsData)
+		{
+			for (uint32_t i = 0; i < sceneView.m_totalNumLights && i < sceneView.m_cpuLightsData->Num(); ++i)
+			{
+				const auto& light = (*sceneView.m_cpuLightsData)[i];
+				if (light.m_type == static_cast<uint32_t>(ELightType::Directional))
+				{
+					direction = Math::SafeNormalize(-light.m_direction, Math::vec3_Up);
+					illuminance = light.m_intensity * sceneSunScattering;
+					break;
+				}
+			}
+		}
+		frameParameters.m_directionToSun = glm::vec4(direction, frameParameters.m_directionToSun.w);
+		frameParameters.m_previousDirectionToSun = glm::vec4(direction, frameParameters.m_previousDirectionToSun.w);
+		frameParameters.m_sunIlluminance = glm::vec4(illuminance, 0.0f);
+		frameParameters.m_previousSunIlluminance = frameParameters.m_sunIlluminance;
+	}
 
 	auto& driver = App::GetSubmodule<Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<Renderer>()->GetDriverCommands();
 	RHITexturePtr sampledDepth = GetSampledAttachment("depthSampler"_h, frameGraph.GetRawPtr());
-	if (!m_bindings || m_depthTexture != sampledDepth || lightingChanged)
+	const RHITexturePtr visibility = GetSampledAttachment("visibilitySampler"_h, frameGraph.GetRawPtr());
+	frameParameters.m_sunIlluminance.w = visibility ? 1.0f : 0.0f;
+	if (!m_bindings || m_depthTexture != sampledDepth || m_visibilityTexture != visibility || lightingChanged)
 	{
 		m_bindings = driver->CreateShaderBindings();
 		driver->FillShadersLayout(m_bindings,
@@ -103,10 +132,12 @@ void AtmosphericFogNode::Process(RHIFrameGraphPtr frameGraph, RHICommandListPtr 
 		driver->AddSamplerToShaderBindings(m_bindings, "depthSampler"_h, sampledDepth, 1);
 		driver->AddSamplerToShaderBindings(m_bindings, "environmentSampler"_h, m_environment, 2);
 		driver->AddSamplerToShaderBindings(m_bindings, "previousEnvironmentSampler"_h, m_previousEnvironment, 3);
+		driver->AddSamplerToShaderBindings(m_bindings, "visibilitySampler"_h, visibility ? visibility : sampledDepth, 4);
 		m_bindings->RecalculateCompatibility();
+		m_visibilityTexture = visibility;
 		m_depthTexture = sampledDepth;
 	}
-	commands->UpdateShaderBinding(transferCommandList, m_bindings->GetOrAddShaderBinding("data"_h), &m_parameters, sizeof(m_parameters));
+	commands->UpdateShaderBinding(transferCommandList, m_bindings->GetOrAddShaderBinding("data"_h), &frameParameters, sizeof(frameParameters));
 	if (!m_material)
 	{
 		const RenderState state{ false, false, 0, false, ECullMode::None,
@@ -116,6 +147,10 @@ void AtmosphericFogNode::Process(RHIFrameGraphPtr frameGraph, RHICommandListPtr 
 	}
 
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdPostProcess);
+	if (visibility)
+	{
+		commands->ImageMemoryBarrier(commandList, visibility, EImageLayout::ShaderReadOnlyOptimal);
+	}
 	commands->ImageMemoryBarrier(commandList, depth, EImageLayout::ShaderReadOnlyOptimal);
 	commands->ImageMemoryBarrier(commandList, m_environment, EImageLayout::ShaderReadOnlyOptimal);
 	commands->ImageMemoryBarrier(commandList, m_previousEnvironment, EImageLayout::ShaderReadOnlyOptimal);
@@ -146,6 +181,7 @@ void AtmosphericFogNode::Clear()
 	m_material.Clear();
 	m_bindings.Clear();
 	m_depthTexture.Clear();
+	m_visibilityTexture.Clear();
 	m_environment.Clear();
 	m_previousEnvironment.Clear();
 	m_parameters = {};

@@ -396,6 +396,7 @@ glm::vec3 Sailor::Raytracing::CalculateSkyGroundRadiance(
 		}
 	}
 	diffuseSkyRadiance /= static_cast<float>(RadialSamples * AzimuthSamples);
+	diffuseSkyRadiance += glm::vec3(0.76f, 1.02f, 1.42f) * parameters.m_nightSkyLuminance;
 	const glm::vec3 directHorizontal = CalculateDirectSunIlluminance(parameters) *
 		(std::max)(-lightDirection.y, 0.0f);
 	const glm::vec3 result = reflectance * (diffuseSkyRadiance + directHorizontal / glm::pi<float>());
@@ -451,7 +452,7 @@ bool Sailor::Raytracing::GenerateSkyEnvironmentEquirectangular(
 				cosTheta,
 				std::sin(phi) * sinTheta);
 			outEnvironment[x + y * extent.x] = glm::vec4(
-				cosTheta < 0.0f ? groundRadiance : EvaluateClearSky(
+				cosTheta < 0.0f ? groundRadiance : glm::vec3(0.76f, 1.02f, 1.42f) * parameters.m_nightSkyLuminance + EvaluateClearSky(
 						direction,
 						lightDirection,
 						sunIlluminance),
