@@ -521,9 +521,11 @@ namespace
 			std::is_standard_layout_v<SkyParameters>,
 			"SkyParameters must remain suitable for direct UBO upload");
 		static_assert(
-			sizeof(SkyParameters) == 116,
+			sizeof(SkyParameters) == 120,
 			"SkyParameters must preserve its shader-facing byte size");
 
+		Require(offsetof(SkyParameters, m_nightSkyLuminance) == 116,
+			"night sky luminance should follow the shaft parameters");
 		Require(offsetof(SkyParameters, m_lightDirection) == 0,
 			"light direction should start the sky UBO");
 		Require(offsetof(SkyParameters, m_sunIlluminance) == 16,
@@ -856,6 +858,21 @@ namespace
 			"sun illuminance should update the shader parameters immediately");
 
 		world.Clear();
+	}
+
+	void TestSolarAzimuthAndNightEnvironment()
+	{
+		SkyComponent sky;
+		sky.SetSunPosition(30.0f, 90.0f);
+		const auto east = sky.GetSkyParameters().m_lightDirection;
+		sky.SetSunPosition(30.0f, -90.0f);
+		const auto west = sky.GetSkyParameters().m_lightDirection;
+		Require(IsNear(east.x, -west.x) && IsNear(east.y, west.y) && east.x < -0.8f,
+			"opposite bearings should reverse east-west shadows at the same elevation");
+		const auto dark = sky.GetSkyParameters().GetEnvironmentKey();
+		sky.SetNightSkyLuminance(0.012f);
+		Require(!(dark == sky.GetSkyParameters().GetEnvironmentKey()),
+			"changing the sky background must invalidate the IBL cache");
 	}
 
 	void TestEnvironmentKeyHashEquality()
@@ -1531,6 +1548,7 @@ int main()
 		{ "SkyParameterGpuLayoutAndDefaults", TestSkyParameterGpuLayoutAndDefaults },
 		{ "ReflectionMetadataRangesAndStableLightType", TestReflectionMetadataRangesAndStableLightType },
 		{ "SettersClampAndUpdateDirection", TestSettersClampAndUpdateDirection },
+		{ "SolarAzimuthAndNightEnvironment", TestSolarAzimuthAndNightEnvironment },
 		{ "EnvironmentKeyHashEquality", TestEnvironmentKeyHashEquality },
 		{ "TransientBakeEnvironmentUsesClearSkyParameters", TestTransientBakeEnvironmentUsesClearSkyParameters },
 		{ "GroundEnvironmentUsesTheSameSkyAndSun", TestGroundEnvironmentUsesTheSameSkyAndSun },

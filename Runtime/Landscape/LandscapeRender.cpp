@@ -200,9 +200,14 @@ namespace Sailor::LandscapeInternal
 
 		RHI::RHIInstancedMeshGroup instanceGroup;
 		instanceGroup.m_bCastShadows = profile.m_settings.m_shadowMode != ELandscapeVegetationShadowMode::None;
-		instanceGroup.m_maxShadowDistance = (std::min)(profile.m_settings.m_cullDistance,
-			profile.m_settings.m_shadowMode == ELandscapeVegetationShadowMode::NearOnly ? profile.m_settings.m_shadowDistance
-																			 : (std::numeric_limits<float>::max)());
+		instanceGroup.m_preserveLodsForShadows = profile.m_settings.m_preserveLodsForShadows;
+		instanceGroup.m_maxShadowDistance = profile.m_settings.m_cullDistance;
+		if (profile.m_settings.m_shadowMode == ELandscapeVegetationShadowMode::NearOnly)
+		{
+			// Dedicated shadow geometry can outlive the visible mesh when an impostor takes over.
+			instanceGroup.m_maxShadowDistance = instanceGroup.m_preserveLodsForShadows ? profile.m_settings.m_shadowDistance :
+				(std::min)(profile.m_settings.m_cullDistance, profile.m_settings.m_shadowDistance);
+		}
 		instanceGroup.m_materials.Reserve(vegetationMeshes.Num());
 		instanceGroup.m_sourceMaterialShaders.Reserve(vegetationMeshes.Num());
 		instanceGroup.m_renderQueueTags.Reserve(vegetationMeshes.Num());
@@ -257,7 +262,8 @@ namespace Sailor::LandscapeInternal
 	{
 		size_t result = Fnv1aOffsetBasis;
 		HashCombine(result, profile.m_settings.m_modelFileId, profile.m_model, profile.m_settings.m_meshIndex, profile.m_settings.m_residency,
-			profile.m_settings.m_shadowMode, profile.m_settings.m_shadowDistance, profile.m_settings.m_minLod, profile.m_settings.m_maxLod, profile.m_settings.m_cullDistance);
+			profile.m_settings.m_shadowMode, profile.m_settings.m_shadowDistance, profile.m_settings.m_preserveLodsForShadows,
+			profile.m_settings.m_minLod, profile.m_settings.m_maxLod, profile.m_settings.m_cullDistance);
 		for (float threshold : profile.m_settings.m_screenCoverageThresholds) HashCombine(result, threshold);
 		if (profile.m_settings.m_materialFileId)
 		{

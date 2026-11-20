@@ -72,6 +72,7 @@ glslFragment: |
     float scatteringPhase;
     float sunShaftsIntensity;
     int   sunShaftsDistance;
+    float nightSkyLuminance;
   } data;
   
   layout(set=1, binding=6) uniform sampler2D cloudsSampler;

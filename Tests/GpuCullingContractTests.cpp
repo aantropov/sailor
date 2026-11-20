@@ -832,6 +832,10 @@ renderTargets:
 			RHI::BuildPackedDrawStableKey({ 7u, 1u }, 12ull, 0u, 0u, 0u),
 			"identical handle slots from independent scene producers must not alias");
 
+		Require(RHI::BuildPackedDrawStableKey({ 7u, 1u }, 11ull, 1u, 0u, 200u) !=
+			RHI::BuildPackedDrawStableKey({ 7u, 1u }, 11ull, 1u, 1u, 0u),
+			"two mesh partitions of a static instanced group must retain distinct arena records");
+
 		RHI::TPackedDrawPacket<TestInstance> reordered;
 		reordered.Add({}, {}, { 30u }, 30ull, EMobilityType::Static);
 		reordered.Add({}, {}, { 10u }, 10ull, EMobilityType::Static);

@@ -3,6 +3,8 @@ includes:
 - Shaders/Constants.glsl
 - Shaders/Math.glsl
 
+defines:
+- LOW_QUALITY
 glslCommon: |
   #version 460
   #extension GL_ARB_separate_shader_objects : enable
@@ -63,8 +65,13 @@ glslFragment: |
   layout(location=0) in vec2 fragTexcoord;
   layout(location=0) out vec4 outColor;
  
+  #ifdef LOW_QUALITY
+  const uint NumDirections = 4;
+  const uint NumSamples = 4;
+  #else
   const uint NumDirections = 8;
   const uint NumSamples = 8;
+  #endif
   
   const vec2 Directions[8] = 
   {
@@ -244,7 +251,13 @@ glslFragment: |
     [[unroll]]
     for (uint i = 0; i < NumDirections; ++i)
     {
+        #ifdef LOW_QUALITY
+        // Interleave the axial and diagonal directions over adjacent pixels.
+        uint orientation = (uint(gl_FragCoord.x) ^ uint(gl_FragCoord.y)) & 1u;
+        vec2 direction = normalize(Directions[i + orientation * 4u] + noiseOffset);
+        #else
         vec2 direction = normalize(Directions[i] + noiseOffset);
+        #endif
         
         occlusionFactor += SampleRayAO(fragTexcoord,
             direction,

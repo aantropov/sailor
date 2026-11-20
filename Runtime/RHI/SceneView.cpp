@@ -341,7 +341,7 @@ namespace
 		{
 			HashCombine(
 				shadowRevision,
-				group.m_bCastShadows,
+				group.m_bCastShadows, group.m_preserveLodsForShadows,
 				std::hash<float>{}(group.m_maxShadowDistance));
 			for (size_t index = 0u; index < group.m_materials.Num(); ++index)
 			{

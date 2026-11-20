@@ -100,6 +100,7 @@ namespace Sailor::RHI
 		TVector<TVector<uint32_t>> m_materialTextureSamplers{};
 #endif
 		bool m_bCastShadows = false;
+		bool m_preserveLodsForShadows = false;
 		float m_maxShadowDistance = (std::numeric_limits<float>::max)();
 	};
 

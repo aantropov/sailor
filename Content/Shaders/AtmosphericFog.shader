@@ -30,6 +30,7 @@ glslFragment: |
   layout(set=1, binding=1) uniform sampler2D depthSampler;
   layout(set=1, binding=2) uniform samplerCube environmentSampler;
   layout(set=1, binding=3) uniform samplerCube previousEnvironmentSampler;
+  layout(set=1, binding=4) uniform sampler2D visibilitySampler;
   layout(set=1, binding=0) uniform FogData
   {
     vec4 fog;
@@ -55,14 +56,36 @@ glslFragment: |
       textureLod(environment, vec3(0, 0, -1), lod).rgb) / 6.0;
   }
 
-  vec3 ScatteredRadiance(samplerCube environment, vec4 sunDirection, vec3 sunIlluminance, vec3 viewDirection)
+  // RG stores extinction-weighted sun and sky visibility. B stores the ray length in metres.
+  vec2 SampleFogVisibility(vec2 uv, float rayLength)
+  {
+    if(data.sunIlluminance.w < 0.5) return vec2(1.0);
+    ivec2 extent = textureSize(visibilitySampler, 0);
+    vec2 pixel = uv * vec2(extent) - 0.5;
+    ivec2 base = ivec2(floor(pixel));
+    vec2 fraction = fract(pixel);
+    vec2 visibility = vec2(0.0);
+    float weightSum = 0.0;
+    for(int y = 0; y < 2; ++y) for(int x = 0; x < 2; ++x)
+    {
+      vec3 tap = texelFetch(visibilitySampler, clamp(base + ivec2(x,y), ivec2(0), extent-1), 0).rgb;
+      float mismatch = abs(tap.b - rayLength) / max(2.0, 0.04 * rayLength);
+      vec2 weight = mix(1.0-fraction, fraction, vec2(x,y));
+      float w = weight.x * weight.y / (1.0 + mismatch * mismatch);
+      visibility += w * tap.rg;
+      weightSum += w;
+    }
+    return clamp(visibility / max(weightSum, 1e-12), 0.0, 1.0);
+  }
+
+  vec3 ScatteredRadiance(samplerCube environment, vec4 sunDirection, vec3 sunIlluminance, vec3 viewDirection, vec2 visibility)
   {
     float g = clamp(data.scattering.y, -0.95, 0.95);
     // Looking toward the sun produces the forward-scattering lobe.
     float cosine = clamp(dot(viewDirection, sunDirection.xyz), -1.0, 1.0);
     float denominator = max(1.0 + g * g - 2.0 * g * cosine, 0.0001);
     float phase = (1.0 - g * g) / (4.0 * PI * denominator * sqrt(denominator));
-    return AmbientRadiance(environment, sunDirection.w) + sunIlluminance * phase;
+    return AmbientRadiance(environment, sunDirection.w) * visibility.y + sunIlluminance * (phase * visibility.x);
   }
 
   void main()
@@ -92,12 +115,13 @@ glslFragment: |
       -falloff * (min(startHeight, endHeight) - data.fog.z), -80.0, 20.0));
     float opticalDepth = min(80.0, density * (distance - startDistance) * integral);
     float opacity = min(1.0 - exp(-opticalDepth), clamp(data.scattering.z, 0.0, 1.0));
+    vec2 visibility = SampleFogVisibility(fragTexcoord, distance);
     vec3 radiance = ScatteredRadiance(environmentSampler, data.directionToSun,
-      data.sunIlluminance.rgb, displacement / distance);
+      data.sunIlluminance.rgb, displacement / distance, visibility);
     if(data.scattering.w < 1.0)
     {
       vec3 previous = ScatteredRadiance(previousEnvironmentSampler, data.previousDirectionToSun,
-        data.previousSunIlluminance.rgb, displacement / distance);
+        data.previousSunIlluminance.rgb, displacement / distance, visibility);
       radiance = mix(previous, radiance, clamp(data.scattering.w, 0.0, 1.0));
     }
     // Fixed-function source-over preserves HDR alpha metadata and avoids a

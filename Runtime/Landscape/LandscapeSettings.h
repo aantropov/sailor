@@ -37,6 +37,7 @@ namespace Sailor
 		float m_groundOffset = 0.0f;
 		ELandscapeVegetationShadowMode m_shadowMode = ELandscapeVegetationShadowMode::NearOnly;
 		float m_shadowDistance = 35.0f;
+		bool m_preserveLodsForShadows = false;
 		uint32_t m_minLod = 0u;
 		uint32_t m_maxLod = 2u;
 		TVector<float> m_screenCoverageThresholds{ 0.25f, 0.05f };
@@ -78,7 +79,7 @@ REFL_AUTO(type(Sailor::LandscapeVegetationSettings),
 	field(m_residency),
 	field(m_priority, Sailor::Attributes::Range(0, 100)),
 	field(m_minScale), field(m_maxScale), field(m_groundOffset),
-	field(m_shadowMode), field(m_shadowDistance),
+	field(m_shadowMode), field(m_shadowDistance), field(m_preserveLodsForShadows, Sailor::Attributes::YamlOptional{}),
 	field(m_minLod, Sailor::Attributes::Range(0, 15)),
 	field(m_maxLod, Sailor::Attributes::Range(0, 15)),
 	field(m_screenCoverageThresholds), field(m_cullDistance),

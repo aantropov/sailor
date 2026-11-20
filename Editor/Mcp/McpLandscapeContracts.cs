@@ -14,6 +14,7 @@ public sealed record McpLandscapeVegetationProfile
     public float MaxScale { get; init; } = 1.25f;
     public float GroundOffset { get; init; }
     public string ShadowMode { get; init; } = "NearOnly";
+    public bool PreserveLodsForShadows { get; init; }
     public float ShadowDistance { get; init; } = 35.0f;
     public uint MinLod { get; init; }
     public uint MaxLod { get; init; } = 2;

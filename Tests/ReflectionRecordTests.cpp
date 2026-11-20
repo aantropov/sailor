@@ -190,6 +190,11 @@ namespace
 		grass.m_shadowMode = ELandscapeVegetationShadowMode::None;
 		grass.m_meshIndex = 2;
 		grass.m_priority = 8;
+		trees.m_preserveLodsForShadows = true;
+		auto legacyProfile = YAML::Node(trees);
+		legacyProfile.remove("preserveLodsForShadows");
+		Require(!legacyProfile.as<LandscapeVegetationSettings>().m_preserveLodsForShadows,
+			"existing vegetation profiles must retain their original shadow LOD policy");
 		LandscapeComponent original;
 		original.SetVegetationProfiles({ trees, grass });
 		original.SetSculptStamps({ { 1, 2, 3, 4, ELandscapeSculptOperation::Lower } });

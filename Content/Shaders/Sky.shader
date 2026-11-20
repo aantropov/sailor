@@ -65,6 +65,7 @@ glslVertex: |
     float scatteringPhase;
     float sunShaftsIntensity;
     int   sunShaftsDistance;
+    float nightSkyLuminance;
   } data;
 
   #if defined(COMPOSE)
@@ -137,6 +138,7 @@ glslFragment: |
     float scatteringPhase;
     float sunShaftsIntensity;
     int   sunShaftsDistance;
+    float nightSkyLuminance;
   } data;
 
   #if defined(COMPOSE)
@@ -736,7 +738,8 @@ glslFragment: |
         const vec3 ground = hitsGround ? max(data.groundRadiance.xyz, vec3(0.0f)) *
           exp(-B0R * densityR - B0Mie * 1.1f * densityMie) : vec3(0.0f);
         return min(
-          max(data.sunIlluminance.xyz, vec3(0.0f)) * scattering + ground,
+          max(data.sunIlluminance.xyz, vec3(0.0f)) * scattering + ground +
+          (hitsGround ? vec3(0.0f) : vec3(0.76, 1.02, 1.42) * data.nightSkyLuminance),
           vec3(maxHalfFloat));
     #endif
   }

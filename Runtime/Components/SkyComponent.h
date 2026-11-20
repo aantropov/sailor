@@ -21,6 +21,9 @@ namespace Sailor
 
 		SAILOR_API float GetSunAngle() const { return m_sunAngleDegrees; }
 		SAILOR_API void SetSunAngle(float value);
+		SAILOR_API void SetSunPosition(float elevation, float azimuth);
+		SAILOR_API float GetSunAzimuth() const { return m_sunAzimuthDegrees; }
+		SAILOR_API void SetSunAzimuth(float value);
 
 		SAILOR_API float GetCloudsDensity() const { return m_skyParams.m_cloudsDensity; }
 		SAILOR_API void SetCloudsDensity(float value);
@@ -51,6 +54,9 @@ namespace Sailor
 
 		SAILOR_API float GetCloudScatteringScale() const { return m_skyParams.m_cloudScatteringScale; }
 		SAILOR_API void SetCloudScatteringScale(float value);
+
+		SAILOR_API float GetNightSkyLuminance() const { return m_skyParams.m_nightSkyLuminance; }
+		SAILOR_API void SetNightSkyLuminance(float value);
 
 		SAILOR_API float GetAmbient() const { return m_skyParams.m_ambient; }
 		SAILOR_API void SetAmbient(float value);
@@ -98,6 +104,7 @@ namespace Sailor
 		glm::vec3 m_sunIlluminance = glm::vec3(120000.0f);
 		glm::vec3 m_groundAlbedo = glm::vec3(0.0f);
 		float m_sunAngleDegrees = 60.0f;
+		float m_sunAzimuthDegrees = 191.30993f;
 		float m_giIndirectIntensity = 1.0f;
 	};
 }
@@ -109,6 +116,8 @@ REFL_AUTO(
 
 	func(GetSunAngle, property("sunAngle"), Range(-25.0, 89.0)),
 	func(SetSunAngle, property("sunAngle")),
+	func(GetSunAzimuth, property("sunAzimuth"), Range(0.0, 360.0)),
+	func(SetSunAzimuth, property("sunAzimuth")),
 
 	func(GetCloudsDensity, property("cloudsDensity"), Range(0.0, 1.0)),
 	func(SetCloudsDensity, property("cloudsDensity")),
@@ -139,6 +148,9 @@ REFL_AUTO(
 
 	func(GetCloudScatteringScale, property("cloudScatteringScale"), Range(0.0, 8.0)),
 	func(SetCloudScatteringScale, property("cloudScatteringScale")),
+
+	func(GetNightSkyLuminance, property("nightSkyLuminance"), Range(0.0, 0.1)),
+	func(SetNightSkyLuminance, property("nightSkyLuminance")),
 
 	func(GetAmbient, property("ambient"), Range(0.0, 10.0)),
 	func(SetAmbient, property("ambient")),

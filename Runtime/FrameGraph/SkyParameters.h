@@ -12,12 +12,14 @@ namespace Sailor
 		glm::ivec3 m_lightDirection{};
 		glm::vec3 m_sunIlluminance{};
 		glm::vec3 m_groundRadiance{};
+		float m_nightSkyLuminance{};
 		bool m_bUsesLightDirection{};
 
 		bool operator==(const SkyEnvironmentKey& rhs) const
 		{
 			return m_sunIlluminance == rhs.m_sunIlluminance &&
 				m_groundRadiance == rhs.m_groundRadiance &&
+				m_nightSkyLuminance == rhs.m_nightSkyLuminance &&
 				m_bUsesLightDirection == rhs.m_bUsesLightDirection &&
 				(!m_bUsesLightDirection || m_lightDirection == rhs.m_lightDirection);
 		}
@@ -29,7 +31,7 @@ namespace Sailor
 				m_sunIlluminance.x,
 				m_sunIlluminance.y,
 				m_sunIlluminance.z);
-			HashCombine(hash, m_bUsesLightDirection);
+			HashCombine(hash, m_bUsesLightDirection, m_nightSkyLuminance);
 			HashCombine(hash, m_groundRadiance.x, m_groundRadiance.y, m_groundRadiance.z);
 			if (m_bUsesLightDirection)
 			{
@@ -67,6 +69,8 @@ namespace Sailor
 		float m_scatteringPhase = 0.5f;
 		float m_sunShaftsIntensity = 0.45f;
 		int32_t m_sunShaftsDistance = 60;
+		// Diffuse night-sky background luminance in cd/m2.
+		float m_nightSkyLuminance = 0.0f;
 
 		bool operator==(const SkyParameters& rhs) const
 		{
@@ -89,12 +93,14 @@ namespace Sailor
 				m_scatteringIntensity == rhs.m_scatteringIntensity &&
 				m_scatteringPhase == rhs.m_scatteringPhase &&
 				m_sunShaftsIntensity == rhs.m_sunShaftsIntensity &&
-				m_sunShaftsDistance == rhs.m_sunShaftsDistance;
+				m_sunShaftsDistance == rhs.m_sunShaftsDistance &&
+				m_nightSkyLuminance == rhs.m_nightSkyLuminance;
 		}
 
 		SkyEnvironmentKey GetEnvironmentKey() const
 		{
 			SkyEnvironmentKey key;
+			key.m_nightSkyLuminance = m_nightSkyLuminance;
 			key.m_sunIlluminance = glm::vec3(m_sunIlluminance);
 			key.m_groundRadiance = glm::vec3(m_groundRadiance);
 			key.m_bUsesLightDirection =
@@ -110,5 +116,5 @@ namespace Sailor
 	};
 
 	static_assert(std::is_standard_layout_v<SkyParameters>);
-	static_assert(sizeof(SkyParameters) == 116);
+	static_assert(sizeof(SkyParameters) == 120);
 }
