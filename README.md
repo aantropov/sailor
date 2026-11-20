@@ -4,7 +4,7 @@
 
 [Download](https://github.com/aantropov/sailor/releases) · [Watch the showcase](https://youtu.be/WgifakC2LU0) · [Documentation](https://github.com/aantropov/sailor/wiki) · [Build from source](BUILDING.md)
 
-[![Sailor Engine — terrain, vegetation, water and atmospheric lighting in ForestRiver](.github/media/forest-river.jpg)](.github/media/forest-river.jpg)
+[![Sailor Engine — terrain, vegetation, water and atmospheric lighting in ForestRiver](.github/media/forest-river-05.png)](.github/media/forest-river-05.png)
 
 Sailor brings together real-time rendering, component-based worlds and tools for
 building games, visual effects and interactive scenes. The native runtime is
@@ -48,7 +48,7 @@ logic modules, with build and reload tools in the editor.
 | [![Light Pavilion — physically based materials, reflections and GI](.github/media/light-pavilion.jpg)](.github/media/light-pavilion.jpg) | [![SwarmAlien — a raymarched humanoid form](.github/media/swarm-alien.jpg)](.github/media/swarm-alien.jpg) |
 
 The [showcase video](https://youtu.be/WgifakC2LU0) brings these scenes together.
-Click any screenshot to view the original 4K capture.
+Click any screenshot to view the full-resolution capture.
 
 ## Get started
 
